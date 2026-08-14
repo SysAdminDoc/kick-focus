@@ -280,23 +280,73 @@ const FILTER_MAX_HIDDEN_RATIO = 0.25;
  * and the user has no way to tell which happened, so the safe failure is to
  * show everything and say so.
  */
-function filterDecision(total, wouldHide) {
+function filterDecision(total, wouldHide, options = {}) {
   const sample = Math.max(0, Number(total) || 0);
   const hidden = Math.min(sample, Math.max(0, Number(wouldHide) || 0));
   const ratio = sample > 0 ? hidden / sample : 0;
+
+  // On a category page the user asked for exactly one kind of content, so a
+  // page that is entirely that kind is the expected result rather than
+  // evidence of a labelling mistake. Suspending here would quietly overrule
+  // the filter the user turned on.
+  if (options.route === 'category') {
+    return { apply: true, hidden, total: sample, ratio, reason: 'category-route' };
+  }
+
   if (sample >= FILTER_MIN_SAMPLE && ratio > FILTER_MAX_HIDDEN_RATIO) {
     return { apply: false, hidden, total: sample, ratio, reason: 'ratio' };
   }
   return { apply: true, hidden, total: sample, ratio, reason: 'ok' };
 }
 
-function detectContentLabels(text) {
+// Kick's own category slugs. Language-independent and far more reliable than
+// the displayed name, which is localized and appears inside stream titles.
+const CASINO_CATEGORY_SLUGS = Object.freeze([
+  'slots', 'casino', 'slots-casino', 'poker', 'sports-betting', 'gambling',
+]);
+
+/**
+ * Classify a card.
+ *
+ * Structured evidence wins: a category slug and Kick's own short badge
+ * elements say what a card is, while the card's full text merely mentions
+ * things. Matching prose is what made "Drop the beat" read as a Drops
+ * promotion and any title mentioning a casino read as gambling.
+ *
+ * The text heuristics remain, but only as a fallback for a signal that has no
+ * structured evidence available — never to override it.
+ *
+ * @param {string} text Full card text, used only for fallback.
+ * @param {{categories?: string[], badges?: string[]}} [context] Structured
+ *   evidence read from the card: category slugs and short badge texts.
+ */
+function detectContentLabels(text, context = {}) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const categories = (Array.isArray(context.categories) ? context.categories : [])
+    .map((value) => String(value || '').toLowerCase().trim())
+    .filter(Boolean);
+  const badges = (Array.isArray(context.badges) ? context.badges : [])
+    .map((value) => String(value || '').toLowerCase().trim())
+    .filter(Boolean);
+
+  const hasCategories = categories.length > 0;
+  const hasBadges = badges.length > 0;
+  const badgeMatches = (pattern) => badges.some((badge) => pattern.test(badge));
+
   return {
-    casino: /\b(slots?\s*(?:&|and)\s*casino|casino|gambling)\b/.test(normalized),
-    mature: /(^|\s)18\+(?:\s|$)/.test(normalized) || /mature\s+(?:content|viewers?)/.test(normalized),
-    promoted: /\b(sponsored|promoted|advertisement)\b/.test(normalized),
-    drops: /\b(?:kick\s+)?drops?\b/.test(normalized),
+    casino: hasCategories
+      ? categories.some((slug) => CASINO_CATEGORY_SLUGS.includes(slug))
+      : /\b(slots?\s*(?:&|and)\s*casino|casino|gambling)\b/.test(normalized),
+    mature: hasBadges
+      ? badgeMatches(/^18\+$/) || badgeMatches(/^mature/)
+      : /(^|\s)18\+(?:\s|$)/.test(normalized) || /mature\s+(?:content|viewers?)/.test(normalized),
+    promoted: hasBadges
+      ? badgeMatches(/^(sponsored|promoted|advertisement|ad)$/)
+      : /\b(sponsored|promoted|advertisement)\b/.test(normalized),
+    // Never bare "drops": it is an ordinary English word in stream titles.
+    drops: hasBadges
+      ? badgeMatches(/^(drops?|drops enabled|kick drops)$/)
+      : /\b(?:kick\s+drops?|drops\s+enabled)\b/.test(normalized),
   };
 }
 
@@ -886,6 +936,30 @@ function cardCandidates() {
   ].join(','));
 }
 
+/**
+ * Read the structured evidence a card carries: Kick's category slug, and its
+ * short badge texts. Both are far stronger signals than the card's prose, and
+ * the slug survives localization.
+ */
+function cardContext(node) {
+  const categories = [];
+  for (const link of node.querySelectorAll?.('a[href*="/category/"]') || []) {
+    const slug = (link.getAttribute('href') || '').split('/category/')[1];
+    if (slug) categories.push(slug.split(/[/?#]/, 1)[0]);
+  }
+
+  // Badges are leaf elements with very short text. The cap keeps this cheap:
+  // this runs for every card on every apply cycle.
+  const badges = [];
+  for (const element of node.querySelectorAll?.('span, button, [class*="badge"], [data-testid*="badge"]') || []) {
+    if (element.children.length > 0 || badges.length >= 24) continue;
+    const label = (element.textContent || '').trim();
+    if (label && label.length <= 18) badges.push(label);
+  }
+
+  return { categories, badges };
+}
+
 function applyContentFilters() {
   const settings = state.settings.content;
 
@@ -896,7 +970,7 @@ function applyContentFilters() {
   for (const node of cardCandidates()) {
     delete node.dataset.kfFiltered;
     delete node.dataset.kfMature;
-    const labels = detectContentLabels(node.textContent);
+    const labels = detectContentLabels(node.textContent, cardContext(node));
     const link = node.matches?.('a[href]') ? node : node.querySelector?.('a[href]');
     let path = '';
     try { path = link ? new URL(link.href, location.origin).pathname : ''; } catch { /* noop */ }
@@ -910,7 +984,7 @@ function applyContentFilters() {
     scored.push({ node, labels, hide });
   }
 
-  const decision = filterDecision(scored.length, scored.filter((entry) => entry.hide).length);
+  const decision = filterDecision(scored.length, scored.filter((entry) => entry.hide).length, { route: state.route });
   for (const entry of scored) {
     if (decision.apply && entry.hide) entry.node.dataset.kfFiltered = 'true';
     if (entry.labels.mature) entry.node.dataset.kfMature = 'true';
@@ -2125,11 +2199,16 @@ function installCompanionBridge() {
 
 function startWhenBodyExists() {
   if (!document.body) {
-    new MutationObserver((observer) => {
+    // The observer is held in a binding rather than read from the callback's
+    // first argument, which is the mutation list. Taking it from there threw on
+    // every mutation, so the script never started on any load where it won the
+    // document-start race and <body> did not exist yet.
+    const bodyObserver = new MutationObserver(() => {
       if (!document.body) return;
-      observer.disconnect();
+      bodyObserver.disconnect();
       startWhenBodyExists();
-    }).observe(document.documentElement, { childList: true, subtree: true });
+    });
+    bodyObserver.observe(document.documentElement, { childList: true, subtree: true });
     return;
   }
   buildInterface();

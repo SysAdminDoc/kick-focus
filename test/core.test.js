@@ -51,7 +51,7 @@ test('diagnostic URLs never preserve query strings or long identifiers', () => {
 });
 
 test('content labels distinguish casino, mature, promoted, and drops surfaces', () => {
-  assert.deepEqual(detectContentLabels('LIVE Slots & Casino 18+ Sponsored Drops'), {
+  assert.deepEqual(detectContentLabels('LIVE Slots & Casino 18+ Sponsored Kick Drops'), {
     casino: true,
     mature: true,
     promoted: true,
@@ -110,4 +110,59 @@ test('apply delay is capped so a busy page cannot starve the work', () => {
   assert.equal(nextApplyDelay(0, 0), 0);
   assert.equal(nextApplyDelay(10, 100), 10);
   assert.equal(nextApplyDelay(undefined, undefined), 0);
+});
+
+test('structured card evidence outranks prose', () => {
+  // The failure this replaces: ordinary titles reading as promotional content.
+  const beat = detectContentLabels('DJ set - Drop the beat! | Music', {
+    categories: ['music'],
+    badges: ['LIVE', 'English', '4.2K'],
+  });
+  assert.equal(beat.drops, false);
+  assert.equal(beat.casino, false);
+
+  const frames = detectContentLabels('fixing dropped frames again', {
+    categories: ['just-chatting'],
+    badges: ['LIVE'],
+  });
+  assert.equal(frames.drops, false);
+
+  // Talking about a casino is not being one.
+  const talking = detectContentLabels('I lost it all at the casino, story time', {
+    categories: ['just-chatting'],
+    badges: ['LIVE'],
+  });
+  assert.equal(talking.casino, false);
+
+  // Kick's own slug is authoritative, whatever the title says.
+  const real = detectContentLabels('big wins tonight', {
+    categories: ['slots'],
+    badges: ['LIVE', '18+'],
+  });
+  assert.equal(real.casino, true);
+  assert.equal(real.mature, true);
+});
+
+test('label detection falls back to text only without structured evidence', () => {
+  const fallback = detectContentLabels('Slots & Casino 18+', {});
+  assert.equal(fallback.casino, true);
+  assert.equal(fallback.mature, true);
+
+  // A localized display name still classifies via the slug.
+  assert.equal(detectContentLabels('Tragamonedas', { categories: ['slots'] }).casino, true);
+
+  // Badges present but none matching means the card is genuinely unlabelled.
+  assert.equal(detectContentLabels('casino talk', { badges: ['LIVE'], categories: ['irl'] }).casino, false);
+});
+
+test('the ceiling yields to an explicit category page', () => {
+  // Browsing /category/slots with the casino filter on should empty the page:
+  // that is the filter working, not a labelling failure.
+  const category = filterDecision(24, 24, { route: 'category' });
+  assert.equal(category.apply, true);
+  assert.equal(category.reason, 'category-route');
+
+  // The same ratio anywhere else still suspends.
+  assert.equal(filterDecision(24, 24, { route: 'browse' }).apply, false);
+  assert.equal(filterDecision(24, 24).apply, false);
 });

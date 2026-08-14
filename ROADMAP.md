@@ -54,13 +54,6 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Acceptance: on a channel serving `auto_ads_enabled: true`, the response delivered to the page reports it false with the ad SDK blocks pruned, playback still starts, and the protection log records the rewrite.
   Complexity: M
 
-- [ ] P0 — Tighten content-label detection against false positives
-  Why: the Drops pattern matches "Drop the beat" and "dropped frames", and the casino pattern matches any title mentioning a casino, so ordinary streams vanish with no explanation.
-  Evidence: `src/core.mjs` `detectContentLabels` matches `\b(?:kick\s+)?drops?\b` and `\bcasino\b` against whole-card `textContent`.
-  Touches: `src/core.mjs` (`detectContentLabels`), `test/core.test.js`.
-  Acceptance: labels come from Kick's own badge and category elements where present, text heuristics act only as a fallback, and tests cover the false-positive strings above.
-  Complexity: M
-
 ### P1
 
 - [ ] P1 — Scrub stitched ad ranges from the HLS manifest

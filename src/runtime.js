@@ -570,6 +570,30 @@ function cardCandidates() {
   ].join(','));
 }
 
+/**
+ * Read the structured evidence a card carries: Kick's category slug, and its
+ * short badge texts. Both are far stronger signals than the card's prose, and
+ * the slug survives localization.
+ */
+function cardContext(node) {
+  const categories = [];
+  for (const link of node.querySelectorAll?.('a[href*="/category/"]') || []) {
+    const slug = (link.getAttribute('href') || '').split('/category/')[1];
+    if (slug) categories.push(slug.split(/[/?#]/, 1)[0]);
+  }
+
+  // Badges are leaf elements with very short text. The cap keeps this cheap:
+  // this runs for every card on every apply cycle.
+  const badges = [];
+  for (const element of node.querySelectorAll?.('span, button, [class*="badge"], [data-testid*="badge"]') || []) {
+    if (element.children.length > 0 || badges.length >= 24) continue;
+    const label = (element.textContent || '').trim();
+    if (label && label.length <= 18) badges.push(label);
+  }
+
+  return { categories, badges };
+}
+
 function applyContentFilters() {
   const settings = state.settings.content;
 
@@ -580,7 +604,7 @@ function applyContentFilters() {
   for (const node of cardCandidates()) {
     delete node.dataset.kfFiltered;
     delete node.dataset.kfMature;
-    const labels = detectContentLabels(node.textContent);
+    const labels = detectContentLabels(node.textContent, cardContext(node));
     const link = node.matches?.('a[href]') ? node : node.querySelector?.('a[href]');
     let path = '';
     try { path = link ? new URL(link.href, location.origin).pathname : ''; } catch { /* noop */ }
@@ -594,7 +618,7 @@ function applyContentFilters() {
     scored.push({ node, labels, hide });
   }
 
-  const decision = filterDecision(scored.length, scored.filter((entry) => entry.hide).length);
+  const decision = filterDecision(scored.length, scored.filter((entry) => entry.hide).length, { route: state.route });
   for (const entry of scored) {
     if (decision.apply && entry.hide) entry.node.dataset.kfFiltered = 'true';
     if (entry.labels.mature) entry.node.dataset.kfMature = 'true';
@@ -1809,11 +1833,16 @@ function installCompanionBridge() {
 
 function startWhenBodyExists() {
   if (!document.body) {
-    new MutationObserver((observer) => {
+    // The observer is held in a binding rather than read from the callback's
+    // first argument, which is the mutation list. Taking it from there threw on
+    // every mutation, so the script never started on any load where it won the
+    // document-start race and <body> did not exist yet.
+    const bodyObserver = new MutationObserver(() => {
       if (!document.body) return;
-      observer.disconnect();
+      bodyObserver.disconnect();
       startWhenBodyExists();
-    }).observe(document.documentElement, { childList: true, subtree: true });
+    });
+    bodyObserver.observe(document.documentElement, { childList: true, subtree: true });
     return;
   }
   buildInterface();

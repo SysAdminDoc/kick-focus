@@ -258,23 +258,73 @@ export const FILTER_MAX_HIDDEN_RATIO = 0.25;
  * and the user has no way to tell which happened, so the safe failure is to
  * show everything and say so.
  */
-export function filterDecision(total, wouldHide) {
+export function filterDecision(total, wouldHide, options = {}) {
   const sample = Math.max(0, Number(total) || 0);
   const hidden = Math.min(sample, Math.max(0, Number(wouldHide) || 0));
   const ratio = sample > 0 ? hidden / sample : 0;
+
+  // On a category page the user asked for exactly one kind of content, so a
+  // page that is entirely that kind is the expected result rather than
+  // evidence of a labelling mistake. Suspending here would quietly overrule
+  // the filter the user turned on.
+  if (options.route === 'category') {
+    return { apply: true, hidden, total: sample, ratio, reason: 'category-route' };
+  }
+
   if (sample >= FILTER_MIN_SAMPLE && ratio > FILTER_MAX_HIDDEN_RATIO) {
     return { apply: false, hidden, total: sample, ratio, reason: 'ratio' };
   }
   return { apply: true, hidden, total: sample, ratio, reason: 'ok' };
 }
 
-export function detectContentLabels(text) {
+// Kick's own category slugs. Language-independent and far more reliable than
+// the displayed name, which is localized and appears inside stream titles.
+export const CASINO_CATEGORY_SLUGS = Object.freeze([
+  'slots', 'casino', 'slots-casino', 'poker', 'sports-betting', 'gambling',
+]);
+
+/**
+ * Classify a card.
+ *
+ * Structured evidence wins: a category slug and Kick's own short badge
+ * elements say what a card is, while the card's full text merely mentions
+ * things. Matching prose is what made "Drop the beat" read as a Drops
+ * promotion and any title mentioning a casino read as gambling.
+ *
+ * The text heuristics remain, but only as a fallback for a signal that has no
+ * structured evidence available — never to override it.
+ *
+ * @param {string} text Full card text, used only for fallback.
+ * @param {{categories?: string[], badges?: string[]}} [context] Structured
+ *   evidence read from the card: category slugs and short badge texts.
+ */
+export function detectContentLabels(text, context = {}) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const categories = (Array.isArray(context.categories) ? context.categories : [])
+    .map((value) => String(value || '').toLowerCase().trim())
+    .filter(Boolean);
+  const badges = (Array.isArray(context.badges) ? context.badges : [])
+    .map((value) => String(value || '').toLowerCase().trim())
+    .filter(Boolean);
+
+  const hasCategories = categories.length > 0;
+  const hasBadges = badges.length > 0;
+  const badgeMatches = (pattern) => badges.some((badge) => pattern.test(badge));
+
   return {
-    casino: /\b(slots?\s*(?:&|and)\s*casino|casino|gambling)\b/.test(normalized),
-    mature: /(^|\s)18\+(?:\s|$)/.test(normalized) || /mature\s+(?:content|viewers?)/.test(normalized),
-    promoted: /\b(sponsored|promoted|advertisement)\b/.test(normalized),
-    drops: /\b(?:kick\s+)?drops?\b/.test(normalized),
+    casino: hasCategories
+      ? categories.some((slug) => CASINO_CATEGORY_SLUGS.includes(slug))
+      : /\b(slots?\s*(?:&|and)\s*casino|casino|gambling)\b/.test(normalized),
+    mature: hasBadges
+      ? badgeMatches(/^18\+$/) || badgeMatches(/^mature/)
+      : /(^|\s)18\+(?:\s|$)/.test(normalized) || /mature\s+(?:content|viewers?)/.test(normalized),
+    promoted: hasBadges
+      ? badgeMatches(/^(sponsored|promoted|advertisement|ad)$/)
+      : /\b(sponsored|promoted|advertisement)\b/.test(normalized),
+    // Never bare "drops": it is an ordinary English word in stream titles.
+    drops: hasBadges
+      ? badgeMatches(/^(drops?|drops enabled|kick drops)$/)
+      : /\b(?:kick\s+drops?|drops\s+enabled)\b/.test(normalized),
   };
 }
 
