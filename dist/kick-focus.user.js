@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.0.0
+// @version      1.1.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -18,7 +18,9 @@
 // ==/UserScript==
 (() => {
 'use strict';
-const VERSION = '1.0.0';
+if (window.__kickFocusBooted) return;
+window.__kickFocusBooted = true;
+const VERSION = '1.1.0';
 const SETTINGS_SCHEMA = 1;
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -331,6 +333,16 @@ const state = {
   casinoPaths: new Set(),
 };
 
+/**
+ * The companion extension marks the document from its isolated world. Its
+ * presence means ad requests are blocked at the browser network layer before
+ * they are sent, rather than only at the page layer this script can reach.
+ */
+function companionInfo() {
+  const version = document.documentElement?.dataset?.kickFocusCompanion || '';
+  return { active: Boolean(version), version };
+}
+
 function readSessionArray(key) {
   try {
     const value = JSON.parse(sessionStorage.getItem(key) || '[]');
@@ -378,7 +390,32 @@ function saveSettings(message = 'Autosaved') {
   state.saveTimer = window.setTimeout(() => {
     const saved = gmSet(STORAGE_KEY, state.settings);
     setSaveStatus(saved ? message : 'Could not save', !saved);
+    publishSettingsState();
   }, 80);
+}
+
+/**
+ * Tell the companion extension what the effective settings are.
+ *
+ * A same-page localStorage write fires no storage event, so this is the bridge's
+ * only in-tab signal. It also runs at startup: on a fresh profile nothing has
+ * been written yet, and without this the companion would never learn about
+ * defaults that are on, leaving its network rulesets disagreeing with the
+ * settings the user is actually looking at.
+ */
+function publishSettingsState() {
+  try {
+    // The settings ride on the event rather than being read back from storage,
+    // so a profile that has never saved still reports its effective defaults.
+    // They travel as a string: an object created in the page world is not
+    // structured-cloneable from the extension's isolated world, so passing one
+    // makes the receiver fail when it forwards the value.
+    document.dispatchEvent(new CustomEvent('kick-focus:settings-changed', {
+      detail: { settings: JSON.stringify(state.settings) },
+    }));
+  } catch {
+    // The page keeps working without the companion.
+  }
 }
 
 function setSaveStatus(message, isError = false) {
@@ -1458,9 +1495,12 @@ function protectionRows() {
 
 function renderContentPage() {
   const value = state.settings.content;
+  const companion = companionInfo();
   return `
     <div class="kf-page-header"><h2>Content & Ads</h2><p>Keep the page calm, private, and focused on streams.</p></div>
-    <section class="kf-status-card"><div><h3>Ad defense active</h3><p>Document-start page hooks and persistent shell cleanup.</p></div><div class="kf-active">Active</div></section>
+    <section class="kf-status-card"><div><h3>Ad defense active</h3><p>${companion.active
+      ? `Browser network ruleset plus page hooks and shell cleanup. Companion extension v${escapeHtml(companion.version)}.`
+      : 'Document-start page hooks and persistent shell cleanup. Install the companion extension for browser-level blocking.'}</p></div><div class="kf-active">${companion.active ? 'Network + page' : 'Page only'}</div></section>
     <div class="kf-stats"><div class="kf-stat"><span>Blocked this page</span><strong data-kf-stat="blocked">${state.diagnostics.blocked}</strong></div><div class="kf-stat"><span>Removed shells</span><strong data-kf-stat="shells">${state.diagnostics.shells}</strong></div><div class="kf-stat"><span>Last match</span><strong data-kf-stat="last">${escapeHtml(state.diagnostics.lastMatch)}</strong></div></div>
     <section class="kf-panel kf-subsection">
       ${row('Block separable ad requests', 'Intercept known ad hosts at the earliest userscript-supported page layer.', toggle('content.blockAds', true, { locked: true, label: 'Core ad protection is on' }), { locked: true })}
@@ -1473,7 +1513,9 @@ function renderContentPage() {
       ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
     </section>
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Protection log</h3><p>Sanitized in-memory diagnostics; query strings are never retained.</p></div></div><div class="kf-panel"><table class="kf-table"><thead><tr><th>Time</th><th>Layer</th><th>Match</th><th>Action</th></tr></thead><tbody data-kf-protection-log>${protectionRows()}</tbody></table></div></section>
-    <div class="kf-notice">Userscript interception is best-effort and can be bypassed by browser or server-side delivery. Browser-level request guarantees require an extension ruleset.</div>`;
+    <div class="kf-notice">${companion.active
+      ? 'The companion extension blocks known ad hosts at the browser network layer. Server-side stitched media is still delivered inside the stream itself.'
+      : 'Userscript interception is best-effort and can be bypassed by browser or server-side delivery. Browser-level request guarantees require an extension ruleset.'}</div>`;
 }
 
 function renderAccessibilityPage() {
@@ -1757,8 +1799,13 @@ function runSelfCheck() {
     ['route classified', state.route !== 'other' || location.pathname !== '/'],
     ['ad defense locked on', state.settings.content.blockAds === true],
   ];
+  const companion = companionInfo();
   const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
-  showToast(failures.length ? `Self-check needs attention: ${failures.join(', ')}.` : `Self-check passed: ${checks.length}/${checks.length}.`, failures.length > 0);
+  // The companion is optional, so its absence is reported but never a failure.
+  const layer = companion.active ? `network + page (companion v${companion.version})` : 'page only';
+  showToast(failures.length
+    ? `Self-check needs attention: ${failures.join(', ')}.`
+    : `Self-check passed: ${checks.length}/${checks.length}. Protection layer: ${layer}.`, failures.length > 0);
 }
 
 function restoreShortcuts() {
@@ -1947,7 +1994,26 @@ function syncQuickButton() {
 addStyle(SITE_CSS);
 installNetworkDefense();
 installSpaHooks();
+installCompanionBridge();
 applySettingsAttributes();
+
+/**
+ * Wire up the optional companion extension.
+ *
+ * These listeners are installed during bootstrap rather than with the rest of
+ * the interface: the two scripts are injected independently, so neither can
+ * assume the other is listening yet. The companion asks for the settings once
+ * it is ready, and this side answers, which makes the exchange independent of
+ * which script wins the injection race.
+ */
+function installCompanionBridge() {
+  document.addEventListener('kick-focus:request-settings', () => publishSettingsState());
+  document.addEventListener('kick-focus:open-settings', () => openSettings());
+  document.addEventListener('kick-focus:open-commands', () => openCommandMenu());
+  document.addEventListener('kick-focus:set-telemetry', (event) => {
+    updateSetting('content.reduceTelemetry', Boolean(event.detail?.enabled));
+  });
+}
 
 function startWhenBodyExists() {
   if (!document.body) {
@@ -1961,6 +2027,9 @@ function startWhenBodyExists() {
   buildInterface();
   installDocumentObserver();
   scheduleApply(0);
+  // Both content scripts have certainly registered their listeners by now, so
+  // this is the announcement the companion can rely on receiving.
+  publishSettingsState();
 }
 
 startWhenBodyExists();

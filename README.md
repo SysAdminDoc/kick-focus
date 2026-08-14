@@ -1,6 +1,13 @@
 # Kick Focus
 
+[![Version](https://img.shields.io/badge/version-1.1.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
+
 Kick Focus is a desktop-only userscript that gives [Kick](https://kick.com/) a calmer, more controllable layout. It adds focus and theater modes, compact discovery, a complete settings center, accessibility controls, content filters, and a best-effort document-start ad defense without shipping remote code.
+
+An optional Manifest V3 companion extension adds the one thing a userscript on Chromium can no longer do for itself: blocking ad requests at the browser network layer, before they are sent.
 
 ![Kick Focus Layout settings](design/mockups/settings-layout.png)
 
@@ -24,6 +31,32 @@ Kick Focus is a desktop-only userscript that gives [Kick](https://kick.com/) a c
 
 The script is not published or auto-updated. `dist/kick-focus.user.js` is the canonical install artifact in this repository.
 
+On Chromium 138 and later, a userscript manager also needs its **Allow user scripts** toggle enabled on its own entry in `chrome://extensions`. Without it the manager silently runs nothing.
+
+## Install the companion extension (optional)
+
+The companion is unsigned and installs unpacked. It is not published to any store.
+
+1. Run `npm run build` to produce `dist/extension/`.
+2. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `dist/extension/`.
+3. Reload Kick. The Content & Ads settings page now reports **Network + page** instead of **Page only**.
+
+`dist/kick-focus-extension-v<version>.zip` is the same package for sharing or for browsers that accept a zip.
+
+![Kick Focus companion popup](design/screenshots/extension-popup.png)
+
+The companion is self-contained: it carries the same page-world script as the userscript, so **install one or the other, not both**. If both are present the first to run claims the page and the second stands down, but only the extension gives you the network layer.
+
+| | Userscript | Companion extension |
+| --- | --- | --- |
+| Layout, settings, filters, accessibility | Yes | Yes |
+| Page-realm ad interception | Yes | Yes |
+| Ad requests blocked before they are sent | No | Yes (`declarativeNetRequest`) |
+| Guaranteed `document-start` timing | Manager-dependent | Yes |
+| Install effort | Paste one file | Load unpacked, survives as a folder |
+
+Every network rule is scoped to `kick.com` initiators, so the companion never changes how any other site loads. It requests no host permissions beyond Kick, and contains no remote code.
+
 ## Default shortcuts
 
 | Action | Shortcut |
@@ -42,11 +75,12 @@ Plain-letter shortcuts do not fire while typing in an input, textarea, select, o
 Kick Focus is deliberately honest about the userscript boundary:
 
 - `@run-at document-start` starts as early as a userscript manager supports, but another page script can still run first.
-- On Chromium Manifest V3, current Tampermonkey versions no longer expose the experimental pre-script `@webRequest` path.
-- Kick Focus therefore blocks requests it can separate in the page realm and continuously removes ad DOM. It does not claim browser-network control over parser requests that occur first, worker-only requests, or server-side stitched media.
-- A future optional Manifest V3 companion using `declarativeNetRequest` is the path to browser-level pre-request guarantees; see [ROADMAP.md](ROADMAP.md).
+- On Chromium Manifest V3, current Tampermonkey versions no longer expose the experimental pre-script `@webRequest` path, and `chrome.userScripts` injection can land after the page's own first scripts. The page-realm hooks are written to be idempotent so they still install when they lose that race.
+- The userscript alone therefore blocks requests it can separate in the page realm and continuously removes ad DOM. It does not claim browser-network control over parser requests that occur first, worker-only requests, or server-side stitched media.
+- **The companion extension closes the network gap.** Its `declarativeNetRequest` ruleset refuses the known ad hosts in the browser network stack, which was verified by observing `ERR_BLOCKED_BY_CLIENT` on a Kick-initiated request to `securepubads.g.doubleclick.net` (`npm run verify:extension`).
+- **Server-side stitched ads remain out of reach for both.** Kick splices pre/mid-rolls into the HLS stream itself, so no host blocklist can remove them. See [ROADMAP.md](ROADMAP.md) for the manifest-level work that would address it.
 
-This boundary is reflected directly in the Content & Ads settings page and protection log.
+This boundary is reflected directly in the Content & Ads settings page and protection log, which report `Network + page` or `Page only` depending on what is actually installed.
 
 ## Desktop support
 
@@ -63,21 +97,26 @@ Kick changes frequently. The most brittle hooks are the sidebar and chat selecto
 No runtime or development dependencies are required beyond Node.js 20+.
 
 ```powershell
-npm run build
-npm run verify
+npm run build              # userscript + dist/extension/ + shareable zip
+npm run verify             # offline: artifact checks + core tests
+npm run verify:extension   # live: loads the extension in Chromium against Kick
 ```
 
-The build concatenates the metadata block, tested pure core, and runtime into `dist/kick-focus.user.js`. Verification checks metadata, syntax, remote-code absence, SPA/ad-defense markers, and the core test suite.
+The build concatenates the metadata block, tested pure core, and runtime into `dist/kick-focus.user.js`, then emits the same page-world bundle into `dist/extension/`. The extension's network rules are generated from the same host lists the page-realm classifier uses, so the two layers cannot drift apart; `npm run verify` fails if they do.
+
+`npm run verify:extension` opens a throwaway Chromium profile, loads the unpacked extension, visits Kick, and asserts that the service worker is running, the rulesets match the manifest's promises, the page world booted and sees the companion, an ad-host request is refused by the network stack, and the popup renders. It needs a Chromium binary — Google Chrome stable will not work, because it ignores `--load-extension` without reporting an error. It finds Playwright's Chromium automatically, or set `CHROME_PATH`.
 
 ## Repository map
 
 ```text
 design/mockups/       Selected ImageGen direction and all settings-page mocks
-dist/                 Installable userscript
-scripts/              Deterministic build and artifact checks
+design/screenshots/   Captured UI, re-taken when the interface changes
+dist/                 Installable userscript, unpacked extension, and zip
+scripts/              Deterministic build, artifact checks, live extension proof
 src/core.mjs          Settings, routing, blocklist, and validation logic
 src/runtime.js        Live DOM, layout, settings UI, commands, and request hooks
-test/                  Node test suite
+src/extension/        Manifest, isolated-world bridge, service worker, popup
+test/                 Node test suite
 ```
 
 See [RESEARCH.md](RESEARCH.md) for the dated audit and evidence, [ROADMAP.md](ROADMAP.md) for prioritized follow-up work, and [CHANGELOG.md](CHANGELOG.md) for release history.

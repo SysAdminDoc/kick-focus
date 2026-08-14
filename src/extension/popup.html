@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kick Focus</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --surface-base: #171a1c;
+    --surface-high: #232629;
+    --surface-low: #0b0b0c;
+    --text: #ffffff;
+    --text-muted: #9fa6ad;
+    --accent: #53fc18;
+    --border: #2c3034;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 320px;
+    margin: 0;
+    padding: 16px;
+    background: var(--surface-base);
+    color: var(--text);
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  h1 { font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+  .version { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .card {
+    background: var(--surface-high);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .status { display: flex; align-items: center; gap: 9px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+  .dot[data-state="off"] { background: var(--text-muted); }
+  .status-text strong { display: block; font-size: 13px; font-weight: 600; }
+  .status-text span { color: var(--text-muted); font-size: 11px; }
+  .stats { display: flex; gap: 10px; }
+  .stat { flex: 1; background: var(--surface-low); border-radius: 8px; padding: 9px 10px; }
+  .stat span { display: block; color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .row p { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; }
+  .row label { font-weight: 500; }
+  input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; flex: none; cursor: pointer; }
+  button {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-high);
+    color: var(--text);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0b0c; }
+  button:hover { filter: brightness(1.08); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: 0.5; cursor: default; filter: none; }
+  .note { color: var(--text-muted); font-size: 11px; margin: 10px 2px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Kick Focus</h1>
+    <span class="version" id="version"></span>
+  </header>
+
+  <div class="card">
+    <div class="status">
+      <span class="dot" id="network-dot"></span>
+      <span class="status-text">
+        <strong id="network-title">Network layer active</strong>
+        <span id="network-detail">Ad requests blocked before they are sent.</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="card stats">
+    <div class="stat"><span>Blocked</span><strong id="blocked">0</strong></div>
+    <div class="stat"><span>Rulesets</span><strong id="rulesets">1</strong></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span>
+        <label for="telemetry">Reduce tracking telemetry</label>
+        <p>Also blocks video and error telemetry hosts.</p>
+      </span>
+      <input type="checkbox" id="telemetry">
+    </div>
+  </div>
+
+  <button class="primary" id="open-settings">Open Kick Focus settings</button>
+  <p class="note" id="note"></p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

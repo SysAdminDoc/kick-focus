@@ -1,4 +1,4 @@
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 export const SETTINGS_SCHEMA = 1;
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   }),
 });
 
-const AD_HOSTS = Object.freeze([
+export const AD_HOSTS = Object.freeze([
   'imasdk.googleapis.com',
   'pagead2.googlesyndication.com',
   'pubads.g.doubleclick.net',
@@ -64,7 +64,7 @@ const AD_HOSTS = Object.freeze([
   'tpc.googlesyndication.com',
 ]);
 
-const TELEMETRY_HOSTS = Object.freeze([
+export const TELEMETRY_HOSTS = Object.freeze([
   'litix.io',
   'browser-intake-datadoghq.com',
   'reporting.cdndex.io',

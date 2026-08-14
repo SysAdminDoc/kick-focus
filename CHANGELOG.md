@@ -2,6 +2,26 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.1.0 — 2026-08-14
+
+### Added
+
+- Optional Manifest V3 companion extension (`dist/extension/`, plus a shareable zip) that blocks known ad hosts at the browser network layer with `declarativeNetRequest`, which a Chromium userscript can no longer do for itself.
+- Isolated-world bridge, service worker, and popup showing live protection state, enabled rulesets, per-tab block count, and a telemetry toggle.
+- Companion handshake: the settings page and self-check now report `Network + page` or `Page only` based on what is actually installed, instead of describing a layer that may not be there.
+- `npm run verify:extension`, a live proof-of-load that drives Chromium against Kick and asserts network-level blocking, page-world boot, and popup render.
+- Generated extension icons and a dependency-free zip writer, keeping the project free of runtime and build dependencies.
+
+### Changed
+
+- The build emits both targets from one source, and generates the extension's network rules from the same host lists the page-realm classifier uses, so the layers cannot diverge.
+- `npm run verify` grew from 8 to 27 checks, now covering version parity across `package.json`, the manifest, and the userscript metadata, plus rule/blocklist parity and extension shape.
+
+### Fixed
+
+- Both targets now refuse to boot twice, so having the userscript and the companion installed together no longer mounts two interfaces.
+- Settings reached the companion only after the user changed something, leaving defaults that are on (such as Reduce tracking telemetry) disagreeing with the network rulesets on a fresh profile. The page now announces its effective settings, and the companion asks for them, so the exchange no longer depends on which script is injected first.
+
 ## 1.0.0 — 2026-08-14
 
 ### Added

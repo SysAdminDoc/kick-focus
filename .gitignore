@@ -3,3 +3,12 @@ coverage/
 *.log
 .DS_Store
 Thumbs.db
+
+# Local agent working files
+CLAUDE.md
+CODEX_CHANGELOG.md
+.claude/
+
+# Saved Kick page captures used as DOM references. Large binaries, and they
+# date quickly; keep them local rather than in history.
+page_examples/
