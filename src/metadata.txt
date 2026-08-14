@@ -1,0 +1,18 @@
+// ==UserScript==
+// @name         Kick Focus
+// @namespace    https://github.com/SysAdminDoc/kick-focus
+// @version      __VERSION__
+// @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
+// @author       SysAdminDoc
+// @match        https://kick.com/*
+// @match        https://www.kick.com/*
+// @run-at       document-start
+// @inject-into  page
+// @noframes
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_addStyle
+// @grant        unsafeWindow
+// ==/UserScript==
