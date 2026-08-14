@@ -226,6 +226,48 @@ export function classifyRequest(rawUrl, options = {}) {
   return { blocked: false, category: 'allowed', label: sanitizeDiagnosticUrl(url.href) };
 }
 
+// Kick's live pages mutate continuously — player, chat, viewer counts. A plain
+// debounce is reset by every one of those mutations and therefore never fires,
+// so the debounce is capped: once work has been waiting this long it runs, no
+// matter how busy the page still is.
+export const APPLY_MAX_WAIT = 500;
+
+/**
+ * Delay before the next apply cycle, given how long work has already waited.
+ * Returns 0 once the cap is reached, which converts a starving debounce into a
+ * throttle without giving up burst coalescing.
+ */
+export function nextApplyDelay(requestedDelay, waitedMs, maxWait = APPLY_MAX_WAIT) {
+  const requested = Math.max(0, Number(requestedDelay) || 0);
+  const waited = Math.max(0, Number(waitedMs) || 0);
+  const remaining = Math.max(0, maxWait - waited);
+  return Math.min(requested, remaining);
+}
+
+// A grid this small can legitimately be mostly filtered; below it the ratio
+// test is noise. Above it, hiding this share of a page is far more likely to be
+// a labelling mistake than a page that really is mostly casino content.
+export const FILTER_MIN_SAMPLE = 8;
+export const FILTER_MAX_HIDDEN_RATIO = 0.25;
+
+/**
+ * Decide whether filtering may be applied to a grid.
+ *
+ * Filtering is suspended rather than applied when it would hide most of a page.
+ * A filter that empties a grid is indistinguishable from the site being broken,
+ * and the user has no way to tell which happened, so the safe failure is to
+ * show everything and say so.
+ */
+export function filterDecision(total, wouldHide) {
+  const sample = Math.max(0, Number(total) || 0);
+  const hidden = Math.min(sample, Math.max(0, Number(wouldHide) || 0));
+  const ratio = sample > 0 ? hidden / sample : 0;
+  if (sample >= FILTER_MIN_SAMPLE && ratio > FILTER_MAX_HIDDEN_RATIO) {
+    return { apply: false, hidden, total: sample, ratio, reason: 'ratio' };
+  }
+  return { apply: true, hidden, total: sample, ratio, reason: 'ok' };
+}
+
 export function detectContentLabels(text) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
   return {

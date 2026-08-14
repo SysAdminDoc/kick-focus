@@ -54,13 +54,6 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Acceptance: on a channel serving `auto_ads_enabled: true`, the response delivered to the page reports it false with the ad SDK blocks pruned, playback still starts, and the protection log records the rewrite.
   Complexity: M
 
-- [ ] P0 — Add a fail-open ceiling to content filtering
-  Why: a label match hides a card with no cap, so a Kick copy change or a mislabelled page can silently empty a grid and read as Kick being broken.
-  Evidence: `src/runtime.js` `applyContentFilters` applies `data-kf-filtered` per card with no ratio guard and no user-visible signal.
-  Touches: `src/runtime.js` (`applyContentFilters`), `src/core.mjs` (decision helper plus tests), settings notice.
-  Acceptance: when filters would hide more than a quarter of a grid of eight or more cards, nothing is hidden, the interface states that filtering was suspended, and the reason reaches diagnostics.
-  Complexity: S
-
 - [ ] P0 — Tighten content-label detection against false positives
   Why: the Drops pattern matches "Drop the beat" and "dropped frames", and the casino pattern matches any title mentioning a casino, so ordinary streams vanish with no explanation.
   Evidence: `src/core.mjs` `detectContentLabels` matches `\b(?:kick\s+)?drops?\b` and `\bcasino\b` against whole-card `textContent`.

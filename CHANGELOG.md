@@ -2,6 +2,17 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## Unreleased
+
+### Fixed
+
+- Layout, filtering, ad-shell removal, chat detection, and sidebar sync stopped running after first paint on any busy page. The apply cycle was debounced with no maximum wait, and Kick mutates its DOM faster than the debounce window, so every mutation reset the timer and the work never ran. The delay is now capped, so a continuously changing page still gets serviced. Confirmed against live Kick: card detection went from 0 to 24 on `/browse`.
+
+### Added
+
+- Content filtering now fails open. When filters would hide more than a quarter of a grid of eight or more cards, nothing is hidden and the Content & Ads page explains why — a filter that empties a page is indistinguishable from the site being broken.
+- `npm run verify:extension` refuses to report DOM results when it did not reach the real site. Kick serves headless browsers a short JSON error, against which every layout assertion passed trivially; the suite now runs headed and gates those checks on Kick's own markup being present.
+
 ## 1.1.0 — 2026-08-14
 
 ### Added

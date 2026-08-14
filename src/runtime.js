@@ -37,6 +37,7 @@ const state = {
   quickButton: null,
   lastFocused: null,
   applyTimer: 0,
+  applyPendingSince: 0,
   saveTimer: 0,
   filterRun: 0,
   runtime: {
@@ -57,6 +58,12 @@ const state = {
   resetPending: false,
   watched: new Set(readSessionArray(WATCHED_KEY)),
   casinoPaths: new Set(),
+  filter: {
+    suspended: false,
+    hidden: 0,
+    wouldHide: 0,
+    total: 0,
+  },
 };
 
 /**
@@ -565,6 +572,11 @@ function cardCandidates() {
 
 function applyContentFilters() {
   const settings = state.settings.content;
+
+  // Decide first, apply second. Filtering is scored across the whole grid so a
+  // run that would hide most of the page can be suspended before anything
+  // disappears.
+  const scored = [];
   for (const node of cardCandidates()) {
     delete node.dataset.kfFiltered;
     delete node.dataset.kfMature;
@@ -576,13 +588,18 @@ function applyContentFilters() {
     if (path && state.casinoPaths.has(path)) labels.casino = true;
     node.dataset.kfWatched = String(Boolean(path && state.watched.has(path)));
     node.dataset.kfLiveCard = String(/(^|\s)live(?:\s|$)/i.test(node.textContent || ''));
-    if ((settings.hideCasino && labels.casino)
+    const hide = (settings.hideCasino && labels.casino)
       || (settings.suppressPromoted && labels.promoted)
-      || (settings.hideDropsPromotions && labels.drops)) {
-      node.dataset.kfFiltered = 'true';
-    }
-    if (labels.mature) node.dataset.kfMature = 'true';
+      || (settings.hideDropsPromotions && labels.drops);
+    scored.push({ node, labels, hide });
   }
+
+  const decision = filterDecision(scored.length, scored.filter((entry) => entry.hide).length);
+  for (const entry of scored) {
+    if (decision.apply && entry.hide) entry.node.dataset.kfFiltered = 'true';
+    if (entry.labels.mature) entry.node.dataset.kfMature = 'true';
+  }
+  recordFilterDecision(decision);
 
   if (settings.pauseHomeAutoplay && state.route === 'home') {
     for (const video of document.querySelectorAll('video[autoplay]:not([data-kf-autoplay-handled])')) {
@@ -590,6 +607,40 @@ function applyContentFilters() {
       try { video.pause(); } catch { /* noop */ }
     }
   }
+}
+
+/**
+ * Record the outcome of a filtering run, and say so when filtering was
+ * suspended. Silence here would leave the user looking at unfiltered content
+ * with no idea why, which is the same confusion the ceiling exists to prevent.
+ */
+function recordFilterDecision(decision) {
+  const previous = state.filter.suspended;
+  state.filter = {
+    suspended: !decision.apply,
+    hidden: decision.apply ? decision.hidden : 0,
+    wouldHide: decision.hidden,
+    total: decision.total,
+  };
+  document.documentElement.dataset.kfFilterSuspended = String(!decision.apply);
+  if (!decision.apply && !previous) {
+    const percent = Math.round(decision.ratio * 100);
+    announce(`Content filtering suspended: it would have hidden ${percent}% of this page.`);
+    recordProtection('Filter', {
+      category: 'filter',
+      label: `suspended (${decision.hidden}/${decision.total} cards)`,
+    });
+  }
+  updateFilterNoticeInPlace();
+}
+
+function updateFilterNoticeInPlace() {
+  const notice = state.shadow?.querySelector('[data-kf-filter-notice]');
+  if (!notice) return;
+  notice.hidden = !state.filter.suspended;
+  notice.textContent = state.filter.suspended
+    ? `Filtering is suspended on this page. It would have hidden ${state.filter.wouldHide} of ${state.filter.total} cards, which usually means Kick changed its labels rather than that the page is really that promotional. Everything is shown.`
+    : '';
 }
 
 function removeAdShells() {
@@ -606,9 +657,21 @@ function removeAdShells() {
   }
 }
 
+/**
+ * Queue an apply cycle.
+ *
+ * The delay is capped by how long work has already been waiting. Kick mutates
+ * its DOM continuously, so an uncapped debounce is reset by every mutation and
+ * the cycle never runs at all — which silently disabled card filtering, ad
+ * shell removal, chat detection, and sidebar sync after first paint.
+ */
 function scheduleApply(delay = 50) {
+  const now = Date.now();
+  if (!state.applyPendingSince) state.applyPendingSince = now;
+  const effective = nextApplyDelay(delay, now - state.applyPendingSince);
   clearTimeout(state.applyTimer);
   state.applyTimer = window.setTimeout(() => {
+    state.applyPendingSince = 0;
     const currentPath = location.pathname;
     state.route = routeKind(location.href);
     if (state.lastPath !== currentPath) {
@@ -629,7 +692,7 @@ function scheduleApply(delay = 50) {
     applyContentFilters();
     syncNativeSidebar();
     syncQuickButton();
-  }, delay);
+  }, effective);
 }
 
 function installSpaHooks() {
@@ -1228,6 +1291,9 @@ function renderContentPage() {
       ? `Browser network ruleset plus page hooks and shell cleanup. Companion extension v${escapeHtml(companion.version)}.`
       : 'Document-start page hooks and persistent shell cleanup. Install the companion extension for browser-level blocking.'}</p></div><div class="kf-active">${companion.active ? 'Network + page' : 'Page only'}</div></section>
     <div class="kf-stats"><div class="kf-stat"><span>Blocked this page</span><strong data-kf-stat="blocked">${state.diagnostics.blocked}</strong></div><div class="kf-stat"><span>Removed shells</span><strong data-kf-stat="shells">${state.diagnostics.shells}</strong></div><div class="kf-stat"><span>Last match</span><strong data-kf-stat="last">${escapeHtml(state.diagnostics.lastMatch)}</strong></div></div>
+    <div class="kf-notice" data-kf-filter-notice ${state.filter.suspended ? '' : 'hidden'}>${state.filter.suspended
+      ? `Filtering is suspended on this page. It would have hidden ${state.filter.wouldHide} of ${state.filter.total} cards, which usually means Kick changed its labels rather than that the page is really that promotional. Everything is shown.`
+      : ''}</div>
     <section class="kf-panel kf-subsection">
       ${row('Block separable ad requests', 'Intercept known ad hosts at the earliest userscript-supported page layer.', toggle('content.blockAds', true, { locked: true, label: 'Core ad protection is on' }), { locked: true })}
       ${row('Remove ad containers', 'Remove empty ad containers and reinjected ad frames.', toggle('content.removeAdContainers', value.removeAdContainers, { label: 'Remove ad containers' }))}

@@ -13,8 +13,16 @@
  * Google Chrome stable ignores --load-extension with no visible error; a
  * Chromium build (the one Playwright downloads) still honours it.
  *
+ * This runs headed on purpose. Kick answers headless browsers with
+ * `{"error": "Request blocked by security policy."}` instead of the site, and
+ * every DOM assertion here would pass trivially against that empty body. The
+ * network-level checks survive headless because they only depend on the
+ * request's origin, but the layout and filtering checks do not.
+ *
  *   node scripts/verify-extension.mjs [url]
  *   CHROME_PATH=/path/to/chromium node scripts/verify-extension.mjs
+ *   KF_WINDOW_POSITION=5360,0 node scripts/verify-extension.mjs   # off-screen display
+ *   KF_HEADLESS=1 node scripts/verify-extension.mjs               # network checks only
  */
 import { spawn } from 'node:child_process';
 import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
@@ -77,7 +85,8 @@ const child = spawn(CHROME, [
   `--remote-debugging-port=${PORT}`,
   `--load-extension=${EXT}`,
   `--disable-extensions-except=${EXT}`,
-  '--headless=new',
+  ...(process.env.KF_HEADLESS ? ['--headless=new'] : []),
+  ...(process.env.KF_WINDOW_POSITION ? [`--window-position=${process.env.KF_WINDOW_POSITION}`] : []),
   '--no-first-run',
   '--no-default-browser-check',
   '--window-size=1440,900',
@@ -194,7 +203,7 @@ try {
     return r.result.targetId;
   })();
 
-  await sleep(9000);
+  await sleep(Number(process.env.KF_SETTLE_MS || 9000));
   targets = await json('/json/list');
   const page = targets.find((t) => t.id === created);
   record('kick page target open', Boolean(page), page?.url);
@@ -202,6 +211,18 @@ try {
   const pageClient = cdp(page.webSocketDebuggerUrl);
   await pageClient.ready;
   await pageClient.send('Runtime.enable');
+
+  // Kick serves automated browsers a JSON error instead of the site. Every
+  // DOM assertion below would pass trivially against that 79-byte body, so the
+  // reachability of the real page is established before anything is claimed
+  // about it. Without this gate the suite reports a healthy layout for a page
+  // that never rendered.
+  const bodyText = await evaluate(pageClient, 'document.body ? document.body.innerText.slice(0, 200) : ""');
+  const kickShell = await evaluate(pageClient, 'Boolean(document.querySelector("#main-container, #sidebar-wrapper, nav"))');
+  const blocked = /Request blocked by security policy/i.test(String(bodyText.value || ''));
+  const reachedKick = kickShell.value === true && !blocked;
+  record('reached the real Kick page (not a bot wall)', reachedKick,
+    blocked ? 'Kick returned "Request blocked by security policy"' : `kick shell present=${kickShell.value}`);
 
   const booted = await evaluate(pageClient, 'Boolean(window.__kickFocusBooted)');
   record('page-world script booted', booted.value === true);
@@ -212,8 +233,27 @@ try {
   const mounted = await evaluate(pageClient, 'Boolean(document.querySelector("#kick-focus-root, [data-kf-root]")) || Boolean(window.__kickFocusNetworkDefenseV1)');
   record('kick focus runtime active on page', mounted.value === true);
 
-  const overflow = await evaluate(pageClient, 'document.documentElement.scrollWidth <= window.innerWidth');
-  record('no horizontal document overflow at 1440', overflow.value === true);
+  // These describe how Kick Focus treats Kick's own markup, so they are only
+  // meaningful when Kick's markup is present. Reported as skipped rather than
+  // passed when it is not.
+  if (reachedKick) {
+    const overflow = await evaluate(pageClient, 'document.documentElement.scrollWidth <= window.innerWidth');
+    record('no horizontal document overflow at 1440', overflow.value === true);
+
+    const cards = await evaluate(pageClient, 'document.querySelectorAll("[data-kf-live-card]").length');
+    record('card detection found Kick cards', Number(cards.value) > 0, `${cards.value} cards scored`);
+
+    // The fail-open ceiling must not fire on an ordinary page. If it does, the
+    // labels are over-matching and real content is scored as promotional.
+    const suspended = await evaluate(pageClient, 'document.documentElement.dataset.kfFilterSuspended || "unset"');
+    record('content filtering did not fail open on a normal page', suspended.value === 'false', `kfFilterSuspended=${suspended.value}`);
+
+    const filtered = await evaluate(pageClient, 'document.querySelectorAll("[data-kf-filtered]").length');
+    console.log(`INFO  cards hidden by filters: ${filtered.value} of ${cards.value}`);
+  } else {
+    console.log('SKIP  layout, card detection, and filter checks need the real Kick DOM');
+    console.log('      Run with a non-headless browser, or use the offline DOM fixtures.');
+  }
 
   // 3b. On a fresh profile nothing has ever been saved, so this proves the
   //     page announced its effective defaults and the worker acted on them.
