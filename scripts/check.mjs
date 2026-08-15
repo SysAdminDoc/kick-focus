@@ -31,6 +31,8 @@ const checks = [
   ['ships settings UI', source.includes('data-kf-settings-shell')],
   ['keeps page state separate from navigation actions', source.includes('dataset.kfCurrentPage')
     && !source.includes('page.dataset.page =')],
+  ['preserves sticker shelf scroll across organizer rerenders', source.includes('restoreStickerGridScroll')
+    && source.includes('rememberStickerGridScroll')],
   ['embeds the local product icon', source.includes('data:image/png;base64,') && !source.includes('__KICK_FOCUS_ICON__')],
   ['embeds the local appearance preview', source.includes('data:image/jpeg;base64,') && !source.includes('__KICK_FOCUS_PREVIEW__')],
   ['ships SPA lifecycle hook', source.includes('kick-focus:routechange')],

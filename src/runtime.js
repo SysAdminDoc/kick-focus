@@ -66,6 +66,7 @@ const state = {
     matureVisible: false,
     chatPaused: false,
     suspended: false,
+    stickerGridScrollTop: null,
   },
   diagnostics: {
     blocked: 0,
@@ -1440,6 +1441,24 @@ function removeStickerOrganizer() {
   for (const organizer of document.querySelectorAll('[data-kf-sticker-organizer]')) organizer.remove();
 }
 
+function restoreStickerGridScroll(organizer, scrollTop) {
+  if (!Number.isFinite(scrollTop)) return;
+  const grid = organizer.querySelector('[data-kf-sticker-grid]');
+  if (!grid) return;
+  const restore = () => {
+    if (!grid.isConnected) return;
+    const maximum = Math.max(0, grid.scrollHeight - grid.clientHeight);
+    grid.scrollTop = Math.min(Math.max(0, scrollTop), maximum);
+  };
+  restore();
+  requestAnimationFrame(restore);
+}
+
+function rememberStickerGridScroll(target) {
+  const grid = target.closest?.('[data-kf-sticker-organizer]')?.querySelector('[data-kf-sticker-grid]');
+  state.runtime.stickerGridScrollTop = Number.isFinite(grid?.scrollTop) ? grid.scrollTop : null;
+}
+
 function clearStickerUI() {
   removeStickerOrganizer();
   for (const node of document.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group]')) {
@@ -1483,6 +1502,8 @@ function renderStickerOrganizer() {
     organizer.dataset.kfStickerOrganizer = 'true';
   }
   if (organizer.parentElement !== scroll) scroll.prepend(organizer);
+  const previousGridScrollTop = state.runtime.stickerGridScrollTop;
+  state.runtime.stickerGridScrollTop = null;
 
   const query = String(search?.value || '').trim().toLowerCase();
   const showHidden = state.stickerPreferences.showHidden;
@@ -1521,6 +1542,7 @@ function renderStickerOrganizer() {
     </div>
     <div data-kf-sticker-note>Pin with ☆, remove with ×. These choices stay on this device.</div>
     ${list}`;
+  restoreStickerGridScroll(organizer, previousGridScrollTop);
 }
 
 function resetStickerPreferences() {
@@ -1552,6 +1574,7 @@ function handleStickerAction(event) {
     original?.click?.();
     return;
   }
+  if ((action === 'pin' || action === 'hide') && key) rememberStickerGridScroll(target);
   if (action === 'pin' && key) {
     if (state.stickerPreferences.pinned.has(key)) state.stickerPreferences.pinned.delete(key);
     else {

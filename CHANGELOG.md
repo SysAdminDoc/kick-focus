@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Fixed
+
+- Removing or pinning a sticker now preserves the grouped shelf's nested scroll position instead of jumping back to the first row.
+
 ### Added
 
 - Chat sticker organization with a local grouped shelf, pinned favorites, removable stickers, search-aware views, native-group fallback, and independent reset controls.

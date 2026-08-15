@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kick Focus sticker scroll fixture</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; color: #f4f7f5; background: #080a09; }
+      #chat-emotes-picker-panel { width: 430px; padding: 12px; border: 1px solid #343a36; background: #101311; }
+      #search-emotes-input { width: 100%; margin-bottom: 10px; padding: 9px 11px; color: inherit; border: 1px solid #3b423e; background: #171b19; }
+      .overflow-y-auto { height: 520px; overflow-y: auto; overscroll-behavior: contain; }
+      .native-group { margin-top: 16px; }
+      .native-group > span { display: block; margin-bottom: 8px; color: #9ca5a0; font-size: 12px; font-weight: 700; }
+      .native-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+      .native-grid button { min-height: 46px; border: 1px solid #303632; background: #171b19; }
+      .native-grid img { width: 28px; height: 28px; object-fit: contain; }
+    </style>
+  </head>
+  <body>
+    <main id="main-container">
+      <section id="chat-emotes-picker-panel" aria-label="Sticker picker">
+        <input id="search-emotes-input" type="search" placeholder="Search emotes" aria-label="Search emotes">
+        <div class="overflow-y-auto" data-testid="sticker-scroll"></div>
+      </section>
+    </main>
+    <script>
+      localStorage.removeItem('kick-focus:settings');
+      localStorage.removeItem('kick-focus:sticker-preferences');
+      const scroll = document.querySelector('[data-testid="sticker-scroll"]');
+      for (let groupIndex = 0; groupIndex < 3; groupIndex += 1) {
+        const section = document.createElement('section');
+        section.className = 'native-group';
+        const label = document.createElement('span');
+        label.id = `emote-picker-section-name-Group-${groupIndex + 1}`;
+        label.textContent = `Group ${groupIndex + 1}`;
+        const grid = document.createElement('div');
+        grid.className = 'native-grid';
+        for (let offset = 0; offset < 48; offset += 1) {
+          const index = groupIndex * 48 + offset + 1;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.dataset.emoteId = String(9000 + index);
+          button.setAttribute('aria-label', `Sticker ${index}`);
+          const image = document.createElement('img');
+          image.src = '/emotes/../dist/extension/icons/icon32.png';
+          image.alt = `Sticker ${index}`;
+          button.append(image);
+          grid.append(button);
+        }
+        section.append(label, grid);
+        scroll.append(section);
+      }
+    </script>
+    <script src="/dist/kick-focus.user.js"></script>
+  </body>
+</html>
