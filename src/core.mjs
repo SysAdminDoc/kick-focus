@@ -305,6 +305,26 @@ const PLAYBACK_AD_SDK_KEYS = Object.freeze([
   'google_ads_sdk', 'pal_sdk', 'datazoom_sdk', 'ima_sdk',
 ]);
 
+/**
+ * Describe how early the script actually started.
+ *
+ * `@run-at document-start` is a request, not a guarantee: Chromium userscript
+ * managers inject through `chrome.userScripts`, which can land after the page's
+ * own first scripts, and the "instant injection" modes that fix it are off by
+ * default. Rather than claim a timing the script cannot verify, it measures
+ * what it found on arrival and reports that.
+ */
+export function describeInjection({ readyState, scriptCount, hasBody } = {}) {
+  const scripts = Math.max(0, Number(scriptCount) || 0);
+  if (hasBody || readyState === 'complete' || readyState === 'interactive') {
+    return { grade: 'late', scripts, summary: 'after the page began rendering' };
+  }
+  if (scripts > 0) {
+    return { grade: 'contended', scripts, summary: `after ${scripts} page script${scripts === 1 ? '' : 's'}` };
+  }
+  return { grade: 'first', scripts, summary: 'before any page script' };
+}
+
 export function isPlaybackUrl(rawUrl) {
   const value = String(rawUrl || '');
   // Kick versions this endpoint, so the version segment is not pinned.

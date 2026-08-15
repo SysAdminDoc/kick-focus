@@ -6,7 +6,7 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks only out
 
 ## P0 — harden the zero-ad boundary
 
-- Add a repeatable cold-load test under installed Tampermonkey and Violentmonkey on current Chrome/Edge and Firefox. (2026-08-14: the extension half now exists as `npm run verify:extension`; the userscript-under-a-real-manager half is still unverified. Chrome 138+ also gates managers behind a per-extension "Allow user scripts" toggle, which the test must set or account for.)
+- Add a repeatable cold-load test under installed Tampermonkey and Violentmonkey on current Chrome/Edge and Firefox. (2026-08-14: the extension half exists as `npm run verify:extension`, which measures `before any page script` there. The script now also measures its own injection timing and prints it on the About page, so a manual run under any manager answers the question without tooling — what remains is automating the manager install. Chrome 138+ gates managers behind a per-extension "Allow user scripts" toggle, which the test must set or account for.)
 
 ## P1 — protect compatibility
 

@@ -4,6 +4,7 @@ import {
   DEFAULT_SETTINGS,
   FILTER_MIN_SAMPLE,
   classifyRequest,
+  describeInjection,
   detectContentLabels,
   filterDecision,
   isPlaybackUrl,
@@ -209,4 +210,20 @@ test('playback URLs are recognised across endpoint shapes', () => {
   assert.equal(isPlaybackUrl('https://kick.com/api/v1/channels/xqc'), false);
   assert.equal(isPlaybackUrl('https://stream.kick.com/playbackish/x.m3u8'), false);
   assert.equal(isPlaybackUrl(''), false);
+});
+
+test('injection timing is described from what the page already contained', () => {
+  // Ideal: nothing has parsed yet.
+  assert.equal(describeInjection({ readyState: 'loading', scriptCount: 0, hasBody: false }).grade, 'first');
+
+  // Chromium managers commonly land after the page's own scripts.
+  const contended = describeInjection({ readyState: 'loading', scriptCount: 3, hasBody: false });
+  assert.equal(contended.grade, 'contended');
+  assert.match(contended.summary, /after 3 page scripts/);
+  assert.match(describeInjection({ readyState: 'loading', scriptCount: 1 }).summary, /after 1 page script$/);
+
+  // A body already present means rendering started without us.
+  assert.equal(describeInjection({ readyState: 'loading', scriptCount: 0, hasBody: true }).grade, 'late');
+  assert.equal(describeInjection({ readyState: 'interactive' }).grade, 'late');
+  assert.equal(describeInjection({}).grade, 'first');
 });

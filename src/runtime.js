@@ -24,6 +24,16 @@ const AD_SHELL_SELECTORS = [
 ];
 
 const pageWindow = typeof unsafeWindow === 'object' ? unsafeWindow : window;
+
+// Measured immediately, before this script touches anything: what the page
+// already contained when it started. `@run-at document-start` is a request
+// that Chromium managers cannot always honour, so the real timing is recorded
+// rather than assumed, and reported on the About page.
+const INJECTION = describeInjection({
+  readyState: document.readyState,
+  scriptCount: document.querySelectorAll('script').length,
+  hasBody: Boolean(document.body),
+});
 const state = {
   settings: loadSettings(),
   currentPage: 'layout',
@@ -1511,14 +1521,14 @@ function renderAccessibilityPage() {
 function renderAboutPage() {
   return `
     <div class="kf-about-hero"><div><h2>Kick Focus <span style="color:var(--muted);font-weight:500">${VERSION}</span></h2><p>A desktop-first layout and control layer for Kick.</p></div></div>
-    <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong>Verified 2026-08-14</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>Best-effort userscript</strong></div></div>
+    <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong>Verified 2026-08-14</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move your preferences using a local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
-    <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>document-start</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
+    <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
 }
 
 function renderSettingsPage() {
@@ -1766,9 +1776,10 @@ function runSelfCheck() {
   const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
   // The companion is optional, so its absence is reported but never a failure.
   const layer = companion.active ? `network + page (companion v${companion.version})` : 'page only';
+  const timing = `injected ${INJECTION.summary}`;
   showToast(failures.length
     ? `Self-check needs attention: ${failures.join(', ')}.`
-    : `Self-check passed: ${checks.length}/${checks.length}. Protection layer: ${layer}.`, failures.length > 0);
+    : `Self-check passed: ${checks.length}/${checks.length}. Protection layer: ${layer}. Started ${timing}.`, failures.length > 0);
 }
 
 function restoreShortcuts() {
