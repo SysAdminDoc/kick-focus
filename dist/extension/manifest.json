@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kick Focus",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Desktop-first layout, accessibility, content filters, and network-level ad defense for Kick.",
   "minimum_chrome_version": "120",
   "icons": {

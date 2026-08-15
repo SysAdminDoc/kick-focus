@@ -94,10 +94,3 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Touches: `src/runtime.js` (teardown of styles, attributes, and observers), command menu.
   Acceptance: one command restores Kick's native layout without a reload, and a second restores Kick Focus.
   Complexity: M
-
-- [ ] P3 — Working-notes and ignore hygiene
-  Why: the repository carries no `CLAUDE.md`, and `.gitignore` omits the agent-artifact entries used across this fleet, so local working files risk being committed.
-  Evidence: `.gitignore` contains only `node_modules/`, `coverage/`, `*.log`, and OS files.
-  Touches: `.gitignore`, new `CLAUDE.md`.
-  Acceptance: agent artifacts are ignored and the repository carries stack, build, and gotcha notes.
-  Complexity: S

@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.1.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -18,8 +18,8 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - Widens browse grids and preserves a compact, sticky desktop top bar.
 - Adds a searchable command menu (`Ctrl+K`) and configurable keyboard shortcuts.
 - Adds Studio, OLED, and Slate surfaces, four accent choices, density, radius, thumbnail, contrast, and text controls.
-- Pauses home autoplay once, blurs marked mature cards, and can filter labeled casino, Drops, sponsored, and promoted content.
-- Blocks known separable ad and optional telemetry requests through early page-realm `fetch`, XHR, beacon, and dynamic-element hooks; a persistent observer removes known ad scripts, frames, and containers after reinsertion.
+- Keeps home-page previews silent, blurs marked mature cards, and can filter casino, Drops, sponsored, and promoted content using Kick's own category and badge markup. Filtering suspends itself and says so rather than emptying a page.
+- Clears the ad flags out of Kick's `/playback` response before the player reads them, so the ad SDKs are never started, and blocks known ad and optional telemetry requests through early page-realm `fetch`, XHR, beacon, and dynamic-element hooks. A persistent observer removes ad scripts, frames, and containers after reinsertion, and the Content & Ads page warns if Kick's ad stack stops matching what this build knows.
 - Stores settings locally in the userscript manager. There is no analytics, network update code, `@require`, or remote configuration.
 
 ## Install
@@ -78,7 +78,8 @@ Kick Focus is deliberately honest about the userscript boundary:
 - On Chromium Manifest V3, current Tampermonkey versions no longer expose the experimental pre-script `@webRequest` path, and `chrome.userScripts` injection can land after the page's own first scripts. The page-realm hooks are written to be idempotent so they still install when they lose that race.
 - The userscript alone therefore blocks requests it can separate in the page realm and continuously removes ad DOM. It does not claim browser-network control over parser requests that occur first, worker-only requests, or server-side stitched media.
 - **The companion extension closes the network gap.** Its `declarativeNetRequest` ruleset refuses the known ad hosts in the browser network stack, which was verified by observing `ERR_BLOCKED_BY_CLIENT` on a Kick-initiated request to `securepubads.g.doubleclick.net` (`npm run verify:extension`).
-- **Server-side stitched ads remain out of reach for both.** Kick splices pre/mid-rolls into the HLS stream itself, so no host blocklist can remove them. See [ROADMAP.md](ROADMAP.md) for the manifest-level work that would address it.
+- **Ads are disabled at their source in the playback response.** Kick gates client-side ad behaviour on flags it sends with each stream; those are rewritten in flight, so the ad SDKs never initialise.
+- **Server-side stitched ads remain out of reach.** Kick splices pre/mid-rolls into the HLS stream itself. Measured on 2026-08-14: the manifest is fetched inside the IVS WASM worker and never appears in page-realm traffic, so no page-level interceptor or host blocklist can reach it. See [ROADMAP.md](ROADMAP.md).
 
 This boundary is reflected directly in the Content & Ads settings page and protection log, which report `Network + page` or `Page only` depending on what is actually installed.
 
@@ -87,7 +88,7 @@ This boundary is reflected directly in the Content & Ads settings page and prote
 - Primary verified viewport: 1440×900
 - Secondary verified viewport: 1920×1080
 - Audited logged-out routes: Home, Browse, Categories, Clips, Category, Channel, search suggestions, search results, and Log In modal
-- Tested browser surface: current Chromium-based in-app browser on 2026-08-14
+- Tested browser surface: Chromium 151 (headed) against live Kick on 2026-08-14
 - Mobile is intentionally out of scope.
 
 Kick changes frequently. The most brittle hooks are the sidebar and chat selectors documented in [RESEARCH.md](RESEARCH.md). If the player or chat fails, disable Kick Focus first; Kick’s own help center notes that ad/privacy/script blockers can interfere with playback and chat.
@@ -104,7 +105,9 @@ npm run verify:extension   # live: loads the extension in Chromium against Kick
 
 The build concatenates the metadata block, tested pure core, and runtime into `dist/kick-focus.user.js`, then emits the same page-world bundle into `dist/extension/`. The extension's network rules are generated from the same host lists the page-realm classifier uses, so the two layers cannot drift apart; `npm run verify` fails if they do.
 
-`npm run verify:extension` opens a throwaway Chromium profile, loads the unpacked extension, visits Kick, and asserts that the service worker is running, the rulesets match the manifest's promises, the page world booted and sees the companion, an ad-host request is refused by the network stack, and the popup renders. It needs a Chromium binary — Google Chrome stable will not work, because it ignores `--load-extension` without reporting an error. It finds Playwright's Chromium automatically, or set `CHROME_PATH`.
+`npm run verify:extension` opens a throwaway Chromium profile, loads the unpacked extension, visits Kick, and asserts that the service worker is running, the rulesets match the manifest's promises, the page world booted and sees the companion, cards are detected, an ad-host request is refused by the network stack, and the popup renders. It needs a Chromium binary — Google Chrome stable will not work, because it ignores `--load-extension` without reporting an error. It finds Playwright's Chromium automatically, or set `CHROME_PATH`.
+
+It runs **headed**, because Kick answers headless browsers with a short JSON error instead of the site; DOM checks are skipped rather than reported as passing when the real page was not reached. `KF_WINDOW_POSITION=x,y` places the window, and `KF_HEADLESS=1` restricts the run to the network checks that do not depend on page content.
 
 ## Repository map
 
