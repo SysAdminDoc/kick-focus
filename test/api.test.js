@@ -321,3 +321,59 @@ test('channel input accepts whatever a person is likely to paste', async () => {
   assert.match(playerEmbedUrl('xqc', { muted: false }), /muted=false/);
   assert.equal(chatEmbedUrl('xqc'), 'https://kick.com/popout/xqc/chat');
 });
+
+test('realtime frames are treated as untrusted input', () => {
+  // The socket is an anonymous public subscription, so nothing about the
+  // transport guarantees the shape or size of what arrives.
+
+  // Oversized content is truncated rather than passed on whole.
+  const huge = normalizeChatMessage({ id: 'a', content: 'x'.repeat(50_000), sender: { id: 1 } });
+  assert.ok(huge.content.length <= 2000);
+
+  // A message crafted to be thousands of emote tokens must not become
+  // thousands of nodes downstream.
+  const spam = normalizeChatMessage({ id: 'b', content: '[emote:1:a]'.repeat(5000), sender: { id: 1 } });
+  assert.ok(spam.segments.length <= 200, `segments=${spam.segments.length}`);
+
+  // A colour goes straight into a style, so only real colours survive.
+  const styled = normalizeChatMessage({ id: 'c', sender: { id: 1, identity: { color: 'red; background:url(//evil)' } } });
+  assert.equal(styled.sender.color, '');
+  assert.equal(normalizeChatMessage({ id: 'd', sender: { id: 1, identity: { color: '#53fc18' } } }).sender.color, '#53fc18');
+
+  // Badge images must be Kick https URLs; a javascript: or data: URL is dropped
+  // while the badge itself still renders.
+  const badged = normalizeChatMessage({
+    id: 'e',
+    sender: { id: 1, identity: { badges_v2: [
+      { name: 'OG', badge_type: 'og', image_url: 'javascript:alert(1)' },
+      { name: 'Sub', badge_type: 'subscriber', image_url: 'https://ext.cdn.kick.com/chat/badges/sub.svg' },
+    ] } },
+  });
+  assert.equal(badged.badges[0].image, '');
+  assert.equal(badged.badges[0].type, 'og');
+  assert.equal(badged.badges[1].image, 'https://ext.cdn.kick.com/chat/badges/sub.svg');
+
+  // An unbounded badge array is capped.
+  const manyBadges = normalizeChatMessage({
+    id: 'f',
+    sender: { id: 1, identity: { badges_v2: Array.from({ length: 500 }, () => ({ badge_type: 'x', name: 'y' })) } },
+  });
+  assert.ok(manyBadges.badges.length <= 24);
+
+  // Junk in the id position is rejected outright instead of stringified.
+  for (const bad of [null, undefined, {}, [], { id: {} }, { id: [] }]) {
+    assert.equal(normalizeChatMessage(bad), null, `expected null for ${JSON.stringify(bad)}`);
+  }
+  for (const bad of [null, undefined, {}, { id: {} }]) {
+    assert.equal(normalizeDeletion(bad), null);
+  }
+
+  // Deletion rule lists are bounded and unknown slugs are shown, not dropped.
+  const flooded = normalizeDeletion({ id: 'g', aiModerated: true, violatedRules: Array.from({ length: 400 }, (_, i) => `rule_${i}`) });
+  assert.ok(flooded.rules.length <= 12);
+
+  // Nothing above throws on a prototype-polluting payload.
+  const polluted = JSON.parse('{"id":"h","content":"hi","__proto__":{"pwned":true},"sender":{"id":1}}');
+  assert.equal(normalizeChatMessage(polluted).content, 'hi');
+  assert.equal(({}).pwned, undefined);
+});

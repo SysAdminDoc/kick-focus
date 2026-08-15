@@ -125,13 +125,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
   Acceptance: frame parsing and subscription management are separated from the connection method so a second transport is an added function rather than a rewrite; an unsupported provider still degrades to the DOM path and says so. Settle open question 2 in RESEARCH.md — whether the gateway is reachable from a page-world content script at all — because a service-worker-only answer means the userscript build can never follow, and that belongs in the docs.
   Complexity: M
 
-- [ ] P1 — Treat realtime payloads as hostile input
-  Why: the socket is an anonymous public subscription, so anything it delivers is untrusted by construction, and every future consumer of the normalizers inherits whatever assumption is set now.
-  Evidence: `normalizeChatMessage`, `normalizeDeletion`, and `onRealtimeFrame` in `src/api.mjs` / `src/runtime.js` validate shape but not size or content bounds; `annotateDeletedMessage` is currently safe only because it happens to use `textContent`. Pusher's protocol documentation and the anonymous-subscribe model place no trust guarantee on frame contents.
-  Touches: `src/api.mjs` (normalizers), `src/runtime.js` (realtime consumers), `test/api.test.js`.
-  Acceptance: every field consumed from a frame is length-bounded and type-checked before use; no realtime-derived string reaches `innerHTML` on any path; a test feeds oversized, malformed, and prototype-polluting frames and asserts they are rejected without throwing.
-  Complexity: S
-
 - [ ] P1 — Say that multi-stream chat is read-only, or make it writable
   Why: Kick's popout chat refuses to send from inside an iframe, so the grid's chat panel looks broken rather than limited — and Kick Focus is the only tool positioned to fix it properly.
   Evidence: KickDevDocs#262 (2025-09-28, closed without staff response) documents that the chat popout throws a CSRF error on login and send inside an iframe — "lacks iframe support by design"; read-only works. bhamrick/multitwitch#51 and #52 are the same failure a platform earlier. Because Kick Focus runs on kick.com's own origin, it can compose and send through the page's own session — the structural advantage every standalone multi-view site lacks.

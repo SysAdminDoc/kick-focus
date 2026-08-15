@@ -198,6 +198,11 @@ const checks = [
     && source.includes('normalizeEmoteSets')
     && source.includes("state.live.catalogSource = 'api'")
     && source.includes('observeStickerPicker')],
+  // The realtime subscription is anonymous and public, so frames are untrusted
+  // input by construction and the bounds belong at the boundary.
+  ['realtime frames are bounded before use', source.includes('function boundedString')
+    && source.includes('const LIMITS = Object.freeze(')
+    && source.includes('/^#[0-9a-f]{3,8}$/i.test')],
   ['explains removed messages the DOM cannot', source.includes('normalizeDeletion')
     && source.includes('annotateDeletedMessage')
     && source.includes('kf-deletion-note')],

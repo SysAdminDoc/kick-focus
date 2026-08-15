@@ -325,6 +325,32 @@ export function findShadowedNames(emotes) {
 const EMOTE_TOKEN = /\[emote:(\d+):([^\]]*)\]/g;
 
 /**
+ * Bounds for anything arriving over the realtime socket.
+ *
+ * The subscription is anonymous and public, so a frame is untrusted input by
+ * construction — not because Kick is hostile, but because nothing about the
+ * transport guarantees otherwise. Every consumer of these normalizers inherits
+ * whatever assumption is set here, so the bounds live at the boundary rather
+ * than at each call site.
+ */
+const LIMITS = Object.freeze({
+  id: 128,
+  content: 2000,
+  username: 80,
+  color: 32,
+  segments: 200,
+  badges: 24,
+  badgeText: 60,
+  rules: 12,
+  url: 400,
+});
+
+/** Coerce to a bounded string; anything else becomes empty rather than throwing. */
+function boundedString(value, max) {
+  return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+/**
  * Split message content into text and emote segments.
  *
  * Kick's rendered DOM gives an `<img>` with an alt attribute; the wire format
@@ -332,22 +358,28 @@ const EMOTE_TOKEN = /\[emote:(\d+):([^\]]*)\]/g;
  * actually need. A name is not an identity on Kick — see `findShadowedNames`.
  */
 export function parseEmoteTokens(content) {
-  const text = String(content ?? '');
+  const text = boundedString(content, LIMITS.content);
   const segments = [];
   let index = 0;
   EMOTE_TOKEN.lastIndex = 0;
   for (const match of text.matchAll(EMOTE_TOKEN)) {
+    // A message crafted to be thousands of tokens must not become thousands of
+    // nodes downstream.
+    if (segments.length >= LIMITS.segments) break;
     if (match.index > index) segments.push({ type: 'text', value: text.slice(index, match.index) });
-    segments.push({ type: 'emote', id: match[1], name: match[2] });
+    segments.push({ type: 'emote', id: match[1].slice(0, LIMITS.id), name: match[2].slice(0, LIMITS.username) });
     index = match.index + match[0].length;
   }
-  if (index < text.length) segments.push({ type: 'text', value: text.slice(index) });
+  if (index < text.length && segments.length < LIMITS.segments) {
+    segments.push({ type: 'text', value: text.slice(index) });
+  }
   return segments;
 }
 
 export function normalizeChatMessage(event) {
-  const id = event?.id;
-  if (!id) return null;
+  if (!event || typeof event !== 'object') return null;
+  const id = event.id;
+  if (!id || (typeof id !== 'string' && typeof id !== 'number')) return null;
   const sender = event.sender || {};
   const identity = sender.identity || {};
   // badges_v2 supersedes badges: it carries image URLs and covers the global
@@ -357,21 +389,27 @@ export function normalizeChatMessage(event) {
     : (Array.isArray(identity.badges) ? identity.badges : []);
   const segments = parseEmoteTokens(event.content);
   return {
-    id: String(id),
-    content: String(event.content ?? ''),
+    id: String(id).slice(0, LIMITS.id),
+    content: boundedString(event.content, LIMITS.content),
     segments,
     emotes: segments.filter((segment) => segment.type === 'emote'),
-    createdAt: event.created_at || '',
+    createdAt: boundedString(event.created_at, LIMITS.id),
     sender: {
-      id: sender.id == null ? '' : String(sender.id),
-      username: String(sender.username || ''),
-      slug: String(sender.slug || ''),
-      color: String(identity.color || ''),
+      id: sender.id == null ? '' : String(sender.id).slice(0, LIMITS.id),
+      username: boundedString(sender.username, LIMITS.username),
+      slug: boundedString(sender.slug, LIMITS.username),
+      // A colour goes straight into a style, so it is restricted to shapes CSS
+      // can only read as a colour — never an arbitrary attacker-chosen string.
+      color: /^#[0-9a-f]{3,8}$/i.test(String(identity.color || '')) ? String(identity.color) : '',
     },
-    badges: badges.map((badge) => ({
-      type: String(badge?.type || badge?.badge_type || ''),
-      text: String(badge?.text || badge?.name || ''),
-      image: String(badge?.image_url || ''),
+    badges: badges.slice(0, LIMITS.badges).map((badge) => ({
+      type: boundedString(badge?.type || badge?.badge_type, LIMITS.badgeText),
+      text: boundedString(badge?.text || badge?.name, LIMITS.badgeText),
+      // Only https URLs on Kick's own CDNs; a javascript: or data: image URL
+      // has no legitimate reason to arrive here.
+      image: /^https:\/\/[a-z0-9.-]*kick\.com\//i.test(String(badge?.image_url || ''))
+        ? String(badge.image_url).slice(0, LIMITS.url)
+        : '',
     })).filter((badge) => badge.type || badge.text),
   };
 }
@@ -398,16 +436,19 @@ const RULE_LABELS = {
  * the reason is exposed at all.
  */
 export function normalizeDeletion(event) {
-  const id = event?.message?.id ?? event?.id;
-  if (!id) return null;
-  const rules = Array.isArray(event.violatedRules) ? event.violatedRules : [];
-  const labels = rules.map((rule) => RULE_LABELS[String(rule)] || String(rule).replace(/_/g, ' ')).filter(Boolean);
+  if (!event || typeof event !== 'object') return null;
+  const id = event.message?.id ?? event.id;
+  if (!id || (typeof id !== 'string' && typeof id !== 'number')) return null;
+  const rules = Array.isArray(event.violatedRules) ? event.violatedRules.slice(0, LIMITS.rules) : [];
+  const labels = rules
+    .map((rule) => RULE_LABELS[String(rule)] || String(rule).slice(0, LIMITS.badgeText).replace(/_/g, ' '))
+    .filter(Boolean);
   const aiModerated = Boolean(event.aiModerated);
   let reason = 'Removed by a moderator.';
   if (aiModerated && labels.length) reason = `Removed by Kick's automatic moderation for ${labels.join(', ')}.`;
   else if (aiModerated) reason = "Removed by Kick's automatic moderation.";
   else if (labels.length) reason = `Removed for ${labels.join(', ')}.`;
-  return { id: String(id), aiModerated, rules: labels, reason };
+  return { id: String(id).slice(0, LIMITS.id), aiModerated, rules: labels, reason };
 }
 
 // ---------------------------------------------------------------------------
