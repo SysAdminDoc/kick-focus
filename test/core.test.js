@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_SETTINGS,
+  isAdPreflightScript,
   SETTINGS_SCHEMA,
   approximateStorageBytes,
   describeStorageFailures,
@@ -452,4 +453,23 @@ test('imported keys hidden by the prototype chain are reported, not swallowed', 
   // Reporting only — normalizeSettings rebuilds from defaults, so nothing leaks.
   assert.equal(({}).polluted, undefined);
   assert.equal(result.value.layout.density, 'compact');
+});
+
+test('ad preflight scripts are matched exactly, not by hostname alone', () => {
+  const origin = 'https://kick.com';
+
+  // The three Kick actually waits on before it will request playback.
+  assert.equal(isAdPreflightScript('https://imasdk.googleapis.com/pal/sdkloader/pal.js', origin), true);
+  assert.equal(isAdPreflightScript('https://platform.datazoom.io/beacon/v1/config', origin), true);
+  assert.equal(isAdPreflightScript('/om/omweb-v1.js', origin), true);
+  assert.equal(isAdPreflightScript('https://kick.com/om/omweb-v1.js', origin), true);
+
+  // Same host, different script: removing it would break the IMA path this
+  // build deliberately leaves alone.
+  assert.equal(isAdPreflightScript('https://imasdk.googleapis.com/js/sdkloader/ima3.js', origin), false);
+  // The same-origin rule must not match another origin serving that path.
+  assert.equal(isAdPreflightScript('https://evil.example.com/om/omweb-v1.js', origin), false);
+  assert.equal(isAdPreflightScript('', origin), false);
+  assert.equal(isAdPreflightScript(null, origin), false);
+  assert.equal(isAdPreflightScript('not a url at all', 'also not a url'), false);
 });

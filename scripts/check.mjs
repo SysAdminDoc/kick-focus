@@ -106,6 +106,12 @@ const checks = [
   ['volume memory ignores the autoplay-policy mute', source.includes('VOLUME_GRACE_MS')
     && source.includes('elapsed < VOLUME_GRACE_MS && video.muted')],
 
+  ['releases the player from blocked ad preflight scripts', source.includes('installPlayerLoadingFix')
+    && source.includes('isAdPreflightScript')
+    && source.includes('/pal/sdkloader/pal.js')
+    // Capture phase is mandatory: resource errors do not bubble.
+    && source.includes("pageWindow.addEventListener('error'")],
+
   // Kick's own data, read read-only and same-origin
   ['reads the realtime provider from Kick instead of hardcoding it',
     source.includes('normalizeRealtimeConnection')

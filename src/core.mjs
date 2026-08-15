@@ -1,4 +1,4 @@
-export const VERSION = '1.4.0';
+export const VERSION = '1.5.0';
 export const SETTINGS_SCHEMA = 3;
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -58,6 +58,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     showEmoteRarity: true,
     warnShadowedEmotes: true,
     staticEmotes: false,
+    fixPlayerLoading: true,
   }),
   accessibility: Object.freeze({
     reduceMotion: true,
@@ -209,6 +210,7 @@ export function normalizeSettings(input) {
       showEmoteRarity: bool(content.showEmoteRarity, defaults.content.showEmoteRarity),
       warnShadowedEmotes: bool(content.warnShadowedEmotes, defaults.content.warnShadowedEmotes),
       staticEmotes: bool(content.staticEmotes, defaults.content.staticEmotes),
+      fixPlayerLoading: bool(content.fixPlayerLoading, defaults.content.fixPlayerLoading),
     },
     accessibility: {
       reduceMotion: bool(accessibility.reduceMotion, defaults.accessibility.reduceMotion),
@@ -790,6 +792,43 @@ export function validateImportedSettings(jsonText) {
   }
 
   return { ok: true, value, stickers, notes };
+}
+
+// ---------------------------------------------------------------------------
+// Player loading
+// ---------------------------------------------------------------------------
+
+/**
+ * The advertising preflight scripts Kick waits on before it will request
+ * playback.
+ *
+ * This matters most to a build like this one: `imasdk.googleapis.com` is in our
+ * own AD_HOSTS, so blocking PAL is exactly what makes Kick sit through the full
+ * preflight timeout before the stream starts. The block is correct; the wait is
+ * an artifact of it.
+ *
+ * Same-origin `/om/omweb-v1.js` is included because other content blockers stop
+ * it even though this build does not.
+ *
+ * Approach adapted from KickCX/KickFixPlayerLoading (MIT).
+ */
+export const AD_PREFLIGHT_SCRIPTS = Object.freeze([
+  { hostname: 'imasdk.googleapis.com', pathname: '/pal/sdkloader/pal.js' },
+  { hostname: 'platform.datazoom.io', pathname: '/beacon/v1/config' },
+  { sameOrigin: true, pathname: '/om/omweb-v1.js' },
+]);
+
+export function isAdPreflightScript(rawUrl, pageOrigin = 'https://kick.com') {
+  if (typeof rawUrl !== 'string' || !rawUrl) return false;
+  let url;
+  try {
+    url = new URL(rawUrl, pageOrigin);
+  } catch {
+    return false;
+  }
+  return AD_PREFLIGHT_SCRIPTS.some((entry) => entry.sameOrigin
+    ? url.origin === pageOrigin && url.pathname === entry.pathname
+    : url.hostname === entry.hostname && url.pathname === entry.pathname);
 }
 
 // ---------------------------------------------------------------------------

@@ -451,6 +451,46 @@ function disguise(wrapper, original, name) {
   return wrapper;
 }
 
+/**
+ * Stop a blocked ad preflight script from holding the player hostage.
+ *
+ * Kick waits on Google PAL, Datazoom and OM before it will request playback.
+ * When one of those is blocked, the failed `<script>` stays in the document and
+ * a listener Kick attaches *later* never sees the error that already fired, so
+ * the player sits out the full preflight timeout before starting.
+ *
+ * This build causes that directly: `imasdk.googleapis.com` is in its own
+ * AD_HOSTS. The block is correct; the wait is an artifact of it.
+ *
+ * Removing the dead element means Kick's next attempt is created with its error
+ * handler already attached, so it fails immediately instead of timing out.
+ * Resource errors do not bubble, but they do pass through capture — hence the
+ * capture-phase listener on window, installed at document-start.
+ *
+ * Approach adapted from KickCX/KickFixPlayerLoading (MIT).
+ */
+function installPlayerLoadingFix() {
+  if (pageWindow.__kickFocusPlayerLoadingV1) return;
+  pageWindow.__kickFocusPlayerLoadingV1 = true;
+  pageWindow.addEventListener('error', (event) => {
+    if (!state.settings.content.fixPlayerLoading || state.runtime.suspended) return;
+    const script = event.target;
+    if (!script || script.tagName !== 'SCRIPT') return;
+    if (!isAdPreflightScript(script.getAttribute('src') || script.src, location.origin)) return;
+    // The microtask lets any handler Kick attached directly to this element run
+    // first; only then is the unusable script removed.
+    queueMicrotask(() => {
+      if (script.isConnected && script.dataset.loaded !== 'true') {
+        script.remove();
+        recordProtection('Preflight', {
+          category: 'advertising',
+          label: `released the player from a blocked preflight script (${new URL(script.src, location.origin).pathname})`,
+        });
+      }
+    });
+  }, true);
+}
+
 function installNetworkDefense() {
   const marker = '__kickFocusNetworkDefenseV1';
   if (pageWindow[marker]) return;
@@ -4638,6 +4678,7 @@ function renderContentPage() {
         ${row('Organize chat stickers', 'Continuously record stickers from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
+        ${row('Start playback without waiting for blocked ad scripts', 'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them — which this build does — leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.', toggle('content.fixPlayerLoading', value.fixPlayerLoading, { label: 'Start playback without waiting for blocked ad scripts' }))}
       </div>
     </section>
     ${renderLiveDataSection(value)}
@@ -5589,6 +5630,8 @@ function syncQuickButton() {
 
 addStyle(SITE_CSS);
 installNetworkDefense();
+// Before anything else can append a preflight script.
+installPlayerLoadingFix();
 installSpaHooks();
 installCompanionBridge();
 applySettingsAttributes();
