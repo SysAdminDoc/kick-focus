@@ -79,26 +79,12 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Complexity: M
   Risk: contradicts the current "no remote configuration" claim in README. Ship only as explicit opt-in, carry data and never executable content, and reword that claim rather than quietly weakening it.
 
-- [ ] P2 — Document the Chromium "Allow user scripts" requirement in-product
-  Why: since Chrome 138 a userscript manager runs nothing until its per-extension toggle is enabled, and the symptom presents as Kick Focus being broken.
-  Evidence: `chrome.userScripts` gating in current Chromium; Manifest V2 removal completed 2026-06-30 with remaining store listings deleted 2026-08-31.
-  Touches: About settings page (README was covered in 1.1.0).
-  Acceptance: the About page names the toggle and the symptom, so the fix is reachable without leaving the browser.
-  Complexity: S
-
 - [ ] P2 — Firefox package for the companion
   Why: Firefox keeps both Manifest V2 and unrestricted userscript capability, making it the platform where the strongest version of this project can exist.
   Evidence: Mozilla's committed MV2 and MV3 support; `browser_specific_settings` is required for Firefox packaging.
   Touches: `src/extension/manifest.json`, `scripts/build.mjs` (per-browser manifest emit), README.
   Acceptance: an unsigned Firefox package loads via `about:debugging`, blocks the same hosts, and the handshake behaves identically.
   Complexity: M
-
-- [ ] P2 — Settings migration path
-  Why: imports from a newer schema are rejected and older shapes are silently reset to defaults, so any schema bump quietly discards user configuration.
-  Evidence: `src/core.mjs` `validateImportedSettings` rejects on `schema` and `normalizeSettings` falls back to defaults per field.
-  Touches: `src/core.mjs`, `test/core.test.js`, About page.
-  Acceptance: a settings file from an older schema upgrades with its values preserved, and anything dropped is named in the interface.
-  Complexity: S
 
 ### P3
 

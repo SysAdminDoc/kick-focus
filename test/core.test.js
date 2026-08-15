@@ -69,6 +69,28 @@ test('settings import reports malformed and future schemas', () => {
   assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').value.layout.chatWidth, 410);
 });
 
+test('settings import names whatever it could not keep', () => {
+  // A value outside the supported range is clamped, and the change is stated
+  // rather than silently applied.
+  const clamped = validateImportedSettings('{"schema":1,"layout":{"chatWidth":9000}}');
+  assert.equal(clamped.ok, true);
+  assert.equal(clamped.value.layout.chatWidth, 520);
+  assert.ok(clamped.notes.some((note) => /Adjusted "layout.chatWidth"/.test(note)));
+
+  // Settings and sections this build does not have are reported, not ignored.
+  const unknown = validateImportedSettings('{"schema":1,"layout":{"nonsense":1},"mystery":{}}');
+  assert.ok(unknown.notes.some((note) => /layout.nonsense/.test(note)));
+  assert.ok(unknown.notes.some((note) => /unknown section "mystery"/.test(note)));
+
+  // An older or unversioned file is upgraded, and says so.
+  assert.ok(validateImportedSettings('{"layout":{"chatWidth":410}}').notes
+    .some((note) => /Upgraded from an unversioned file/.test(note)));
+
+  // A clean, current file produces no noise.
+  const clean = validateImportedSettings(JSON.stringify({ schema: 1, layout: { chatWidth: 410 } }));
+  assert.deepEqual(clean.notes, []);
+});
+
 test('filtering fails open when it would hide most of a grid', () => {
   // A grid that is mostly promotional is far more likely to be a labelling
   // change than the truth, so nothing is hidden and the caller is told why.

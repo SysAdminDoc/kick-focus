@@ -478,6 +478,15 @@ export function detectContentLabels(text, context = {}) {
   };
 }
 
+/**
+ * Validate a settings file, and account for anything it contains that this
+ * build will not keep.
+ *
+ * Normalisation silently replaces unknown or malformed values with defaults,
+ * which means an import can quietly discard part of someone's configuration.
+ * The caller gets a list of what was dropped so the interface can say so
+ * instead of reporting a clean success.
+ */
 export function validateImportedSettings(jsonText) {
   let parsed;
   try {
@@ -489,5 +498,30 @@ export function validateImportedSettings(jsonText) {
   if (parsed.schema != null && Number(parsed.schema) > SETTINGS_SCHEMA) {
     return { ok: false, error: `Settings schema ${parsed.schema} is newer than this build supports.` };
   }
-  return { ok: true, value: normalizeSettings(parsed) };
+
+  const value = normalizeSettings(parsed);
+  const notes = [];
+  const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
+
+  for (const key of Object.keys(parsed)) {
+    if (key !== 'schema' && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
+  }
+  for (const section of sections) {
+    const incoming = parsed[section];
+    if (!isRecord(incoming)) continue;
+    for (const [key, raw] of Object.entries(incoming)) {
+      if (!(key in value[section])) {
+        notes.push(`Ignored unknown setting "${section}.${key}".`);
+      } else if (JSON.stringify(value[section][key]) !== JSON.stringify(raw)) {
+        notes.push(`Adjusted "${section}.${key}" to a supported value.`);
+      }
+    }
+  }
+
+  const from = parsed.schema == null ? 'an unversioned file' : `schema ${parsed.schema}`;
+  if (parsed.schema == null || Number(parsed.schema) < SETTINGS_SCHEMA) {
+    notes.unshift(`Upgraded from ${from} to schema ${SETTINGS_SCHEMA}.`);
+  }
+
+  return { ok: true, value, notes };
 }

@@ -500,6 +500,15 @@ function detectContentLabels(text, context = {}) {
   };
 }
 
+/**
+ * Validate a settings file, and account for anything it contains that this
+ * build will not keep.
+ *
+ * Normalisation silently replaces unknown or malformed values with defaults,
+ * which means an import can quietly discard part of someone's configuration.
+ * The caller gets a list of what was dropped so the interface can say so
+ * instead of reporting a clean success.
+ */
 function validateImportedSettings(jsonText) {
   let parsed;
   try {
@@ -511,7 +520,32 @@ function validateImportedSettings(jsonText) {
   if (parsed.schema != null && Number(parsed.schema) > SETTINGS_SCHEMA) {
     return { ok: false, error: `Settings schema ${parsed.schema} is newer than this build supports.` };
   }
-  return { ok: true, value: normalizeSettings(parsed) };
+
+  const value = normalizeSettings(parsed);
+  const notes = [];
+  const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
+
+  for (const key of Object.keys(parsed)) {
+    if (key !== 'schema' && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
+  }
+  for (const section of sections) {
+    const incoming = parsed[section];
+    if (!isRecord(incoming)) continue;
+    for (const [key, raw] of Object.entries(incoming)) {
+      if (!(key in value[section])) {
+        notes.push(`Ignored unknown setting "${section}.${key}".`);
+      } else if (JSON.stringify(value[section][key]) !== JSON.stringify(raw)) {
+        notes.push(`Adjusted "${section}.${key}" to a supported value.`);
+      }
+    }
+  }
+
+  const from = parsed.schema == null ? 'an unversioned file' : `schema ${parsed.schema}`;
+  if (parsed.schema == null || Number(parsed.schema) < SETTINGS_SCHEMA) {
+    notes.unshift(`Upgraded from ${from} to schema ${SETTINGS_SCHEMA}.`);
+  }
+
+  return { ok: true, value, notes };
 }
 
 const STORAGE_KEY = 'kick-focus:settings';
@@ -2076,6 +2110,7 @@ function renderAboutPage() {
     <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong>Verified 2026-08-14</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
+      ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move your preferences using a local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
@@ -2270,7 +2305,15 @@ async function onImportFile(event) {
     saveSettings('Imported');
     renderSettingsPage();
     scheduleApply(0);
-    showToast('Settings imported.');
+    // Naming what was not kept, because an import that silently drops half a
+    // configuration still reports success otherwise.
+    const notes = result.notes || [];
+    if (notes.length === 0) {
+      showToast('Settings imported.');
+    } else {
+      showToast(`Settings imported. ${notes[0]}${notes.length > 1 ? ` (+${notes.length - 1} more)` : ''}`);
+      announce(`Settings imported. ${notes.join(' ')}`);
+    }
   } catch {
     showToast('Could not read that settings file.', true);
   }
