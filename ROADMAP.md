@@ -62,13 +62,6 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Acceptance: at 21:9 and after a monitor move the video is uncropped, controls stay reachable, and playback position survives; each fix is individually toggleable.
   Complexity: L
 
-- [ ] P1 — Mute home autoplay rather than pausing it once
-  Why: the complaint is specifically about sound on arrival, and a single pass over `video[autoplay]` does not cover previews inserted later in a session.
-  Evidence: r/Kick 1uzr9e6; `src/runtime.js` `applyContentFilters` pauses each element once and marks it handled.
-  Touches: `src/runtime.js` (`applyContentFilters`), Content settings copy.
-  Acceptance: no home-page preview produces audio without an explicit user action, including previews added after first paint.
-  Complexity: S
-
 - [ ] P1 — Test the runtime and the companion handshake
   Why: the cross-world protocol and the layout runtime have no direct tests, and the v1.1.0 settings-sync race reached a live browser before anything caught it.
   Evidence: `test/core.test.js` imports only from `src/core.mjs`; `src/runtime.js` is 1,700+ lines with no coverage.

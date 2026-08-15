@@ -1113,6 +1113,37 @@ function cardCandidates() {
  * short badge texts. Both are far stronger signals than the card's prose, and
  * the slug survives localization.
  */
+/**
+ * Silence home-page previews.
+ *
+ * Pausing once was not enough: the complaint is about sound on arrival, and
+ * Kick restarts previews and inserts new ones as the page lives, so a preview
+ * added after the first pass would play with audio. Each element is muted and
+ * kept muted through a `play` listener, which survives the site restarting it.
+ * Muting rather than only pausing means an autoplay Kick insists on restarting
+ * is still silent.
+ */
+function quietHomeAutoplay() {
+  for (const video of document.querySelectorAll('video')) {
+    try {
+      video.muted = true;
+      video.volume = 0;
+      if (!video.paused) video.pause();
+      if (video.dataset.kfAutoplayHandled === 'true') continue;
+      video.dataset.kfAutoplayHandled = 'true';
+      video.addEventListener('play', () => {
+        // Leave manual playback alone: only the home rail is silenced, and only
+        // while the setting is on.
+        if (state.route !== 'home' || !state.settings.content.pauseHomeAutoplay) return;
+        video.muted = true;
+        video.pause();
+      });
+    } catch {
+      // A detached or cross-origin media element is skipped.
+    }
+  }
+}
+
 function cardContext(node) {
   const categories = [];
   for (const link of node.querySelectorAll?.('a[href*="/category/"]') || []) {
@@ -1163,12 +1194,7 @@ function applyContentFilters() {
   }
   recordFilterDecision(decision);
 
-  if (settings.pauseHomeAutoplay && state.route === 'home') {
-    for (const video of document.querySelectorAll('video[autoplay]:not([data-kf-autoplay-handled])')) {
-      video.dataset.kfAutoplayHandled = 'true';
-      try { video.pause(); } catch { /* noop */ }
-    }
-  }
+  if (settings.pauseHomeAutoplay && state.route === 'home') quietHomeAutoplay();
 }
 
 /**
