@@ -1,184 +1,173 @@
 # Research — Kick Focus
 
-Snapshot: **2026-08-14 authenticated recon; 2026-08-15 isolated companion verification**
+Date: 2026-08-15 — replaces all prior research.
 
-Target: **Kick desktop at 1440×900 and 1920×1080**
+Scope note: a verification-focused pass was written earlier the same day (2026-08-15 00:14). Its verified DOM/route/ad-surface evidence is carried forward below rather than re-derived; this pass adds the competitive, platform, security, and community research that document did not cover, plus a fresh source audit. Repo state at time of writing: v1.4.0, `main`, **no git remote**, working tree **dirty** with coherent in-progress sticker work (schema 2→3, chat-sticker discovery, header quick control) and all gates green (36 tests).
 
-Project: `C:\Users\--\repos\kick-focus`, branch `main`, no configured Git remote
+## Executive Summary
 
-## Executive summary
+Kick Focus is a dependency-free, desktop-only Kick.com client mod shipping three artifacts from one source: a userscript, a Chromium MV3 companion (`declarativeNetRequest`), and a Firefox MV2 companion (`webRequestBlocking`). Its strongest shape is now unusually clear: it is the only project in the Twitch+Kick field that combines route-aware layout, structured-evidence content filtering, playback-level ad neutralization, and a **persistent, exportable emote/sticker library** — and that last capability is, as far as this sweep can establish, unique in the entire field (BetterTTV cannot export by construction, 7TV closed the request). That differentiator arrives at the exact moment 7TV went effectively closed-source and began requesting broad "browsing activity" permissions, which users are publicly refusing. A dependency-free, MIT, no-network, no-analytics mod is the direct counter-position.
 
-Kick Focus 1.4.0 now addresses the current Kick desktop DOM rather than the older wrapper captured by the original implementation. The highest-impact defects were confirmed, not inferred: Following and Drops were classified as channels; most premium site CSS depended on a missing `#main-container`; Home's autoplay guard also cancelled deliberate playback; Search's clear state could repopulate from the URL; and the sticker catalog repeated work during unrelated chat mutations. Those paths are repaired and covered by unit, fixture, artifact, and isolated live-extension checks.
+The highest-value direction is therefore **not** more features — it is making the three shipped artifacts honest. Two of them currently claim protection they do not deliver.
 
-The authenticated native sticker picker exposes global, collectible, channel, and subscriber groups. Kick marks unavailable subscriber buttons disabled. Kick's current help material says subscriber emotes work only while the viewer has an active subscription; the typed name is the lookup token, not an entitlement grant. Kick Focus therefore records locked metadata for organization/export but never enables or sends a disabled sticker.
+Top opportunities in priority order:
 
-The site redesign is ImageGen-led on the Kick surfaces requested by the user: Home, Browse, Following, Drops, Category, Search, and Channel/chat. The implementation keeps Kick's real data and interaction model while applying a coherent graphite/charcoal shell, lime accent, clearer tabs, denser cards, a wider chat frame, and a larger three-row sticker shelf. Dynamic stream imagery and live inventory intentionally remain native.
+1. **The Firefox companion blocks nothing.** It gates on `details.initiator`, a Chromium-only field; Firefox provides `originUrl`/`documentUrl`. Every request short-circuits to "allow" while the popup reports active rulesets. *Verified.*
+2. **A build gate enforces that bug.** `scripts/check.mjs:112` asserts the source contains `kickInitiator(details.initiator)` — a correct fix fails the gate. *Verified.*
+3. **12 of 13 `gmSet` callers ignore failure**, so the sticker library, groups, favorites, notes, and blocklist cache are lost silently when storage is full or denied. *Verified.*
+4. **Volume memory poisons itself to muted.** `volumechange` binds with no grace window; autoplay policy forces `muted=true` immediately after attach and that value is persisted per channel. *Verified in code; the failure mode is documented by `kick-stream-tweaks`.*
+5. **Quality memory is very likely inert.** It drives a menu with plain `.click()` on selectors that appear nowhere in the project's own verified DOM contract. Two independent sources say Kick reads quality from `sessionStorage` at player init and ignores synthetic plain clicks. *Needs live validation.*
+6. **Windows High Contrast has no visible focus on inputs** — `outline: 0` plus a `box-shadow` ring, which `forced-colors` suppresses. *Verified.*
+7. **Ship-blocking manifest hygiene**: `declarativeNetRequestFeedback` is unpacked-only yet costs a "read your browsing history" warning; Firefox requests `<all_urls>` and `tabs` it does not need; `engines.node >= 20` endorses a runtime that reached EOL 2026-04-30 with unpatched HIGH CVEs. *Verified.*
+8. **Kick's collectibles surface is new, churning, and unserved.** Daily Rewards launched 2026-07-01 (244 items); Kick retroactively mutates emotes users already pulled and the inventory desyncs from chat. A local timestamped snapshot is the only record a user can trust — and this project already owns the persistence layer for it.
+9. **Freezing animated emotes** is an explicit, unanswered accessibility request framed as seizure risk, with zero competitors.
+10. **The telemetry strategy contradicts itself across layers** — the page realm resolves an empty 200 (storm-safe), while the companion hard-cancels the same host at the network layer, which is the behaviour the community reports as ineffective and CPU-costly.
 
-## Project and feature inventory
+## Product Map
 
-The active repository ships one source as a userscript, a Chromium Manifest V3 companion, and a Firefox Manifest V2 companion. Nearby Kick repositories were inspected and do not overlap this layout/chat scope. Raw MHTML captures in `page_examples/` remain ignored.
+**Core workflows**
+- Watch with a route-aware premium shell: Home, Browse, Categories, Category, Following, Drops, Search, Channel/chat — each with first-class layout rather than a channel fallback.
+- Organize the native sticker picker into groups, favorites, and a three-row quick shelf; persist and export/import the whole library.
+- Filter discovery by structured evidence (category slug + short badge leaves), with a 25% fail-open ceiling that yields on category routes.
+- Suppress ads and optional telemetry across three layers: playback-response rewrite, page-realm request hooks, and browser-level rules from the companion.
 
-| Feature group | Intended surface | Trigger/lifecycle | 2026-08-15 status |
-| --- | --- | --- | --- |
-| Premium shell, sidebar, cards, tabs | All covered Kick routes | document start + capped mutation apply + SPA route event | **VERIFIED** on fixtures and isolated live Home; semantic `main` fallback repaired |
-| Focus/theater/chat/sidebar layouts | Channel and discovery | settings attributes + stable shell probes | **VERIFIED** by fixtures; authenticated extension journey remains separate-profile work |
-| Search context and clear | `/search?query=…` | each apply cycle; click action writes native input event | **VERIFIED**; clear leaves input focused and no longer restores stale text |
-| Drops empty guidance | `/drops/*` | only when native empty root exists | **VERIFIED** in the Drops fixture; links are ordinary read-only navigation |
-| Card favorites, dismissals, filters | Discovery and sidebar cards | structured card/category/badge scan | **VERIFIED** by fixtures and 27 scored live Home cards; fail-open stayed inactive |
-| Home autoplay suppression | `/` | every content-filter pass, once-bound media listeners | **VERIFIED** structurally; background play remains muted/paused and deliberate pointer/keyboard play is allowed |
-| Chat pause, keywords, notes, diagnostics | Channel/chat | channel probes + bounded observers | **VERIFIED** by fixtures; no live writes performed |
-| Sticker discovery and organizer | Open `#chat-emotes-picker-panel` | picker-specific mutation dirty flag | **VERIFIED** with 143 available + 1 locked fixture stickers and authenticated native-picker recon |
-| Sticker persistence/import/export | Settings Content page | local storage/GM storage + schema validation | **VERIFIED** by round-trip unit tests and browser Content-manager handoff |
-| Page ad interception and shell removal | All matched pages | document-start fetch/XHR/beacon/element hooks + observer | **VERIFIED** by artifact tests and settled DOM assertion |
-| Chromium network blocking | Kick-initiated ad hosts | static MV3 DNR rules | **VERIFIED** live in a disposable profile; natural and probe matches recorded |
-| Firefox network blocking | Kick-initiated ad hosts | blocking `webRequest` listener | **PACKAGE-VERIFIED; LIVE UNVERIFIED** pending disposable Firefox run |
+**User personas**
+- Desktop viewer at 1440–1920 who finds Kick's shell wasteful and its new ads intolerable.
+- Collector engaging daily with Daily Rewards, whose inventory Kick mutates under them.
+- Privacy-minded user actively fleeing extensions that ask for broad permissions.
+- Accessibility-sensitive viewer needing motion, contrast, target-size, and text controls.
 
-## Live surface map
+**Platforms and distribution**
+- Userscript (Tampermonkey 5.5.0 / Violentmonkey 2.47.0 / ScriptCat), Chromium MV3 unpacked + zip, Firefox MV2 unpacked + zip. All unsigned by policy.
+- **Firefox distribution is materially constrained**: Release and Beta cannot install unsigned XPIs at all. Only `about:debugging` (wiped on restart) or Developer Edition/Nightly/ESR with `xpinstall.signatures.required=false`. AMO unlisted signing is the only permanent Release path and the no-signing policy excludes it.
 
-All rows below were inspected in the built-in isolated browser while authenticated on 2026-08-14. Navigation stayed within the existing document for route changes sampled during recon, and the page rerendered asynchronously, so lifecycle support must remain idempotent and mutation-aware.
+**Key integrations and data flows**
+- Settings and library live in userscript-manager storage, falling back to page-readable `localStorage`; the companion mirrors settings into `chrome.storage` and receives them as a JSON string over a request/response handshake.
+- Network rules are generated at build time from `AD_HOSTS`/`TELEMETRY_HOSTS` in `src/core.mjs`, so page and network layers cannot drift; `npm run check` gates the parity.
 
-| Surface | URL pattern and material state | Project behavior | Status |
-| --- | --- | --- | --- |
-| Home | `/`; personalized hero/rails and live cards | premium shell, rails, autoplay guard, card tools | **VERIFIED** |
-| Browse | `/browse`; Livestreams/Categories/Clips tabs, language/sort, grid | wide grid, tabs/cards, filters | **VERIFIED** |
-| Categories | `/browse/categories` | category-card grid | **VERIFIED** |
-| Category | `/category/<slug>` | category identity header + stream list | **VERIFIED** |
-| Following | `/following`; Live Channels/Categories/Channels tabs | first-class route styling and rails | **CHANGED then repaired**; previously classified as channel |
-| Drops | `/drops/campaigns`; Campaigns/Coming soon/Claimed/Expired; empty state sampled | first-class route and useful empty guidance | **CHANGED then repaired**; previously classified as channel |
-| Search | `/search?query=<term>`; All/Livestreams/Channels/Categories | result count, query context, clear action | **CHANGED then repaired**; current search control is the global nav input |
-| Channel/chat | `/<channel>`; player, channel content, live chat, open sticker picker | player/chat geometry, chat utilities, sticker shelf | **VERIFIED** |
+## Competitive Landscape
 
-The separate unpacked-extension profile reached real Kick rather than the bot wall on 2026-08-15 at both 1440×900 and 1920×1080. It was intentionally not given the authenticated session, because session export is prohibited.
+**7TV Extension** — the adjacent benchmark for emote menus (provider tabs, favorites, configurable default tab, cross-set search). *Learn:* durable local organization and a Favorites tab that survives set reloads. *Avoid:* its current trajectory is the single best positioning gift available — the extension went effectively closed-source (GitHub releases stop at v3.1.6 while AMO ships v3.1.22) and now requests broad browsing-activity permissions, which users are publicly refusing. Its usage map is declared but dead (`serialize: false`), and import/export was closed unimplemented.
 
-## DOM, route, and data contract
+**NipahTV** — the best data model in the field: Dexie compound keys `[platformId+channelId+emoteHid]` with an `orderIndex` for manual ordering and an embedded emote snapshot so a favorite survives its set unloading; usage counts are per channel; writes batch through a pending-changes map. *Learn:* the compound key, the snapshot, and batched writes. *Avoid:* nothing structural; it ships no releases.
 
-| Contract | Consumer | Context | Status and stability |
-| --- | --- | --- | --- |
-| semantic `main`, then `#main-container` fallback | site layout, cards, route enhancements | discovery/search/category | **CHANGED / VERIFIED**; semantic element is current and more durable |
-| `#sidebar-wrapper` | sidebar mode and rail scanning | all primary routes | **VERIFIED**, medium risk if Kick replaces the shell |
-| `[data-testid="search"]` with ARIA/type fallbacks | Search context/clear | top nav and Search route | **VERIFIED**, low-to-medium risk |
-| `[data-testid="livestream-results-card"]` and `[data-testid="media-card-thumbnail"]` | card styling/actions/filtering | Browse/Search/Following/category | **VERIFIED**, preferred stable test markers |
-| `a[href^="/category/"]` and short badge leaves | content labels | stream cards | **VERIFIED**; avoids localized prose and false positives |
-| `#injected-channel-player`, `#channel-content`, `#channel-chatroom` | channel layout and diagnostics | channel | **VERIFIED**, medium risk |
-| `#chat-emotes-picker-panel` and disabled native buttons | sticker catalog/organizer | authenticated, picker open | **VERIFIED**, high-value/high-drift surface |
-| History API + `popstate` + `kick-focus:routechange` | SPA lifecycle | all routes | **VERIFIED**; capped apply prevents mutation starvation |
-| `/api/v*/…/playback` or `/stream/…/playback` | playback-ad payload rewrite | channel startup | **VERIFIED historically on 2026-08-14**; undocumented and high risk |
-| `kick-focus:*` local keys | settings, media, favorites, notes, stickers | local profile | **VERIFIED**; companion bridge serializes settings as JSON across worlds |
+**FrankerFaceZ** — the canonical locked-emote implementation: locked emotes are not clickable, render a lock icon plus a per-kind *reason* ("Follow to unlock"), are excluded from search results, and offer a subscribe link that converts the dead tile into a legitimate path. *Learn:* the reason string and unlock affordance. *Avoid:* nothing; its open requests (custom sort #971 since 2021, frequently-used #1640) are opportunities.
 
-Kick appears to be a hydrated/client-routed application: initial shell markup exists, History API changes do not replace the document, and route content arrives and rerenders after navigation. This is an evidence-based architecture inference, not a framework guarantee. No required open shadow root was found in Kick's content; Kick Focus itself uses one open shadow root to isolate its settings UI. Stripe and advertising/measurement frames are cross-origin and are never inspected for private content.
+**BetterTTV** — frequently-used and per-channel sets. *Learn:* per-channel frequency. *Avoid:* its export limitation is instructive — the maintainer states the emote menu is a separate embedded project, so settings export is structurally impossible (#3660). This is precisely the constraint Kick Focus does not have.
 
-## Advertising surface and request map
+**KickTalk** — the Kick-native entitlement precedent, matching this project's model exactly: `__allowUse: !emote?.subscribers_only || allowSubscriberEmotes`, rendering sub-only emotes without enabling them. *Learn:* its subscription normalizer handles ~6 different response shapes because Kick's API is inconsistent; a single-shape check produces false negatives. The documented real-world bug class across clients is blocking emotes the user *does* own (frosty #514, Chatterino #7027/#7133) — not the reverse.
 
-| Placement/path | DOM or data hook | Host/endpoint, initiator, type, timing | Current control and proof |
-| --- | --- | --- | --- |
-| Google Publisher Tag bootstrap | `script[src*="securepubads.g.doubleclick.net"]`; possible GPT slots | `securepubads.g.doubleclick.net`, Kick initiator, script, cold/route load | MV3 rule 4 + page element hook + shell remover. Direct live probe returned `ERR_BLOCKED_BY_CLIENT`; no matching node remained after settle |
-| Google ad request/creative path | GPT/Google ad slots and iframes | `pagead2.googlesyndication.com`, `pubads/googleads*.doubleclick.net`, `tpc.googlesyndication.com`, Kick initiator, script/XHR/frame/image | Eight generated DNR rules. Natural live load matched rule 2; ruleset/source parity is build-gated |
-| Client-side video ad SDKs | playback JSON `auto_ads_enabled`, `google_ads_sdk`, `pal_sdk`, `ima_sdk` | first-party versioned playback response, then Google IMA hosts, channel startup | fetch/XHR response rewrite disables the flag and removes SDK blocks before player initialization; companion also blocks IMA host requests |
-| Native sponsored/promoted cards | stable card plus Kick's own short badges | first-party card payload/DOM, route render | suppressed at render time only when structured evidence says promoted; transport is not claimed blocked because it is inseparable from the content response |
-| Ad/measurement frames | iframe/script resource inventory included Google OMID-related resources | third-party frame/script, player/ad lifecycle | known ad frames removed by source selector; ordinary Stripe account/payment frames are preserved |
-| Telemetry, not advertising | no ad-shaped DOM | `litix.io`, `browser-intake-datadoghq.com`, `reporting.cdndex.io` | separate optional ruleset, enabled by the default privacy setting after page settings arrive |
-| Server-stitched media | no page DOM hook; HLS fetch lives in IVS WASM/blob workers | media worker, channel playback | **UNVERIFIED / not claimed removed**; existing page hooks cannot observe the manifest |
+**OverKick** — the strongest Kick player technique found: it pins quality by hooking `Storage.prototype` scoped to `sessionStorage['stream_quality']`, so the player *initializes* at the right quality with no menu interaction, immune to ad-break resets. It also defeats tab-blur downscaling by overriding `visibilityState`, while carefully caching the real getter and never auto-resuming a user-initiated pause. *Learn:* both techniques. *Avoid:* its `document.querySelector('video')` trap — hover-preview thumbnails are `<video>` elements too.
 
-Cold-load extension proof on 2026-08-15 reached the real Kick shell, scored 27 cards, had no horizontal overflow, kept filter fail-open inactive, recorded natural DNR ad matches, and blocked a Kick-initiated securepubads probe before load. The verifier now also asserts zero known ad creative/shell nodes after the apply cycle. A clean load cannot prove every geography/account/campaign variant, so worker-only and server-stitched delivery remain explicit roadmap work.
+**kick-stream-tweaks** — documents the friction of the menu-driving approach this project currently uses: Kick's menu ignores plain `.click()` and needs a full `PointerEvent` sequence; quality items are `[role="menuitemradio"]`; and it carries a `VOLUME_GRACE_MS` constant specifically because autoplay-policy muting otherwise persists "muted" forever. *Learn:* the grace window, urgently.
 
-Chrome's current DNR documentation confirms that static rules are packaged through `declarative_net_request`, can be toggled at runtime, and block before a request is made. Firefox uses `webRequest.onBeforeRequest` with `blocking`; MDN notes that both target and initiator access matter, which is why the generated Firefox package requests broad host access while enforcing a Kick-initiator guard in code.
+**uKick** — the only other remote-blocklist implementation. *Learn:* it requests host permission per subscription origin at add time rather than holding broad access. *Avoid:* its validation is literally `Array.isArray(data)` — no schema, no caps, no versioning, no backoff, failures collapse to a boolean. Kick Focus's validator is already far stronger; do not regress toward this.
 
-## Sticker entitlement and organizer findings
+**uBlock Origin / AdGuard list conventions** — the actual standard to follow if the subscription format is extended: a metadata header parsed from the first 1024 bytes (`! Title:`, `! Expires:`, `! Last-Modified:`), a publisher-declared `Expires` the client clamps, and `Diff-Path` + `Diff-Expires` for differential updates validated by digest. Interop lesson: emit both diff keys or clients silently fall back.
 
-The authenticated picker contained usable global/collectible/channel stickers and disabled subscriber stickers. The native button state is the authorization source. Kick's official documentation says the emote name is what a viewer types, but also says subscriber emotes can only be used by active subscribers and stop working when that subscription lapses. Therefore:
+**Kick Augmenter** (closed, the perceived feature leader) — ships **no emote or sticker features at all** (v0.0.21, 2026-08-04). *Learn:* its VOD-resume UX bar is a seekbar marker with hover timestamp preview. *Avoid:* nothing to fear here; the sticker space is open.
 
-- copying or pasting a name does not create the server-side/account entitlement;
-- synthesizing clicks or removing `disabled` would be a misleading UI bypass and was rejected;
-- locked records may be cataloged, searched, grouped, and exported, but they are excluded from sendable and quick-favorite results;
-- newly exposed stickers merge automatically while the picker is open;
-- a picker-scoped dirty flag avoids rescanning all stickers on every unrelated chat mutation.
+**KickAlert** — direct Following-page competitor using the same "MIT, zero dependencies" positioning, with channel groups and favorites. *Learn:* the positioning is not unique; the sticker library is what differentiates.
 
-Browser fixture evidence: 143 available stickers plus one locked record were cataloged; 24 favorites produced a 156 px three-row shelf with 21 immediately visible shortcuts at seven columns; removing adjacent Sticker 80 and Sticker 81 kept the nested grid at `scrollTop=955` both times; adding Sticker 145 increased the catalog without reopening the picker; Manage opened the Content-page library.
+## Security, Privacy, and Reliability
 
-## ImageGen design system and parity
+**Defects found (all with file paths)**
 
-Each prompt used the corresponding current Kick screenshot as its labeled reference, specified a 1440×900 desktop product UI, preserved real route semantics, and requested the same graphite canvas, charcoal panels, restrained lime accent, compact 56 px navigation, readable sidebar, dense cards, and clear mouse/keyboard states.
+- `src/extension/background.firefox.js:38` — `if (!kickInitiator(details.initiator)) return undefined;`. Firefox does not populate `initiator` (MDN documents `originUrl`/`documentUrl`); `new URL(undefined)` throws, the `catch` returns `false`, and **every request is allowed**. The popup meanwhile reports `rulesets: ['ads','telemetry']` and `countsAvailable: true` (`background.firefox.js:58-66`), so the UI asserts protection that does not exist. Second-order trap: `new URL('blob:https://kick.com/…').hostname === ''`, so a naive `originUrl` fix still misses worker/blob-originated requests. *Verified: code + MDN.*
+- `scripts/check.mjs:112` — the gate asserts `firefoxBackground.includes('kickInitiator(details.initiator)')`, so it passes *because* of the bug and fails on a correct fix. Same family as the project's own documented "checks that always pass" trap. *Verified.*
+- `src/runtime.js` — 12 of 13 `gmSet(...)` call sites discard the boolean result; only `saveSettings` (`:179`) checks it. The sticker library (up to 2,400 records), groups, assignments, favorites, per-channel layouts, watched set, notes, media preferences, and the remote-blocklist cache therefore fail **silently** on quota or denied storage. There is no `QuotaExceededError` handling anywhere in the tree. *Verified.*
+- `src/runtime.js:1645` — `video.addEventListener('volumechange', saveVolume)` with no grace window. Autoplay policy sets `muted = true` shortly after attach, firing `volumechange`, which persists `{muted:true}` for that path; `restore()` then re-applies it on every later visit. *Verified in code; failure mode documented externally.*
+- `src/runtime.js:1655-1676` (`applyQualityMemory`) — restores by calling `control.click()` on `[data-quality], [data-resolution], [data-testid*="quality" i], [aria-label*="quality" i]`. None of these appear in the project's own verified DOM-contract table, Kick's menu is reported to ignore plain synthetic clicks, and a menu item cannot be clicked while the menu is closed. *Needs live validation — but treat as inert until proven.*
+- `src/core.mjs:747` — `if (!(key in value[section]))` walks the prototype chain, so an imported `__proto__`/`constructor`/`toString` key is silently treated as known instead of reported. `normalizeSettings` still rebuilds from defaults, so this is a reporting gap, not pollution. Use `Object.hasOwn`. *Verified.*
+- `src/runtime.js:399` — `pageWindow.fetch = function kickFocusFetch(...)` leaves `window.fetch.name === 'kickFocusFetch'` and a non-native `toString()`, making the hook trivially fingerprintable now that Kick has a commercial reason to probe. *Verified.*
+- `src/extension/manifest.json:26` — `declarativeNetRequestFeedback` is **unpacked-only** (`onRuleMatchedDebug`/`getMatchedRules` debug feedback is ignored for packed installs) yet still triggers the "read your browsing history" install warning. Pure cost in the shipped manifest. *Verified.*
+- `src/extension/manifest.firefox.json` — requests `<all_urls>` and `tabs`. The blocking listener genuinely needs host access for both target and initiator, but the minimal correct set is kick.com plus the 11 generated hosts; `tabs` is unnecessary because `onRemoved`/`onUpdated` `status` is unprivileged. Also missing `browser_specific_settings.gecko.data_collection_permissions`, mandatory for AMO submissions since 2025-11-03 and extended to all extensions during H1 2026. *Verified against the manifest.*
+- `src/extension/bridge.firefox.js:19` — injects via `script.src = runtime.getURL(...)`, which is **async by spec**, so Kick's bundle can capture `fetch` first. The Chromium build's `world: MAIN` content script has no such gap. kick.com sent no CSP header as of 2026-08-15, so inlining the source is available — but that tradeoff should be deliberate, since inlining breaks the moment Kick adds a policy and `src=` does not.
+- `package.json` — `engines: { "node": ">=20" }`. Node 20 reached EOL 2026-04-30 and received no fixes in the 2026-07-29 security release (3 HIGH). Build-time only and zero npm dependencies, so real risk is low, but the declared floor is wrong. *Verified.*
 
-| Kick surface | Selected mockup | Implemented direction |
-| --- | --- | --- |
-| Home | `design/mockups/kick-home-premium.png` | premium shell, hero/card hierarchy, sidebar/chat framing |
-| Browse | `design/mockups/kick-browse-premium.png` | dense four-column discovery, filter/tab treatment |
-| Following | `design/mockups/kick-following-premium.png` | live-first tabs and followed-channel hierarchy |
-| Drops | `design/mockups/kick-drops-premium.png` | campaign status layout and useful empty recovery |
-| Category | `design/mockups/kick-category-premium.png` | identity header, metadata, stream grid |
-| Search | `design/mockups/kick-search-premium.png` | visible query/count context and grouped result shell |
-| Channel/chat | `design/mockups/kick-channel-chat-premium.png` | cinema player, 410 px chat, larger grouped sticker tray |
+**Contradiction across layers.** `blockedResponse` resolves a 200 with `{}` and `simulateEmptySuccess` does the same for XHR — deliberately storm-safe, matching the community's `no-fetch-if` fix. But `reduceTelemetry` defaults **true**, which enables the companion's telemetry ruleset, and a network-layer cancel wins the race over a page-layer resolve. Installing the companion therefore silently replaces the storm-safe strategy with the exact hard-block the community reports as ineffective and CPU-costly. A prior 5-minute measurement on 2026-08-14 showed flat request counts with no acceleration, so this is *not* reproduced here. *Needs live validation over a long session before changing the default.*
 
-Generated images are references only; the functional UI is HTML/CSS/JavaScript. Direct comparison used the same-view Drops fixture/reference pair and the 1440×900 live Home/reference pair. Dynamic content composition differs, but shell geometry, panel hierarchy, color, borders, card treatment, tabs, and chat/sticker density follow the selected system. The isolated extension screenshots at both target desktop sizes showed no horizontal overflow or clipped core shell.
+**Missing guardrails**
+- No storage-pressure surface: nothing reports how large the sticker library has grown or that a write failed.
+- No behavioural test for either background script; Firefox coverage is string-inclusion assertions over the built bundle, and `test/companion.test.js` contains one test (injection order).
+- The blocklist fetch uses page `fetch`, so it is subject to CORS and observable by the page. There is no `GM_xmlhttpRequest`/`@connect` path and the companion does not fetch it from the background.
 
-The five pre-existing settings mockups remain the source of truth for the settings shell and were regression-smoked after the site work:
+**Recovery and rollback**
+- Settings schema 2 migrates schema-1 defaults while preserving explicit values, and import fails closed on newer schemas with an explanation — good.
+- Sticker import/export round-trips with schema validation and reports dropped entries. This is the differentiator; it deserves an availability diff ("14 stickers no longer available in this channel") on import.
 
-| Settings page | Key material states | Mockup |
-| --- | --- | --- |
-| Layout | sidebar/chat modes, width, density, per-channel memory, reset/save | `design/mockups/settings-layout.png` |
-| Appearance | Studio/OLED/Slate, accent, radius, thumbnails, live preview | `design/mockups/settings-appearance.png` |
-| Content & Ads | filters, ad status/log, playback/chat, sticker library/groups/import data | `design/mockups/settings-content-ads.png` |
-| Accessibility & Shortcuts | motion, contrast, focus, targets, text/captions, conflicts | `design/mockups/settings-accessibility-shortcuts.png` |
-| About | compatibility, timing/layer diagnostics, export/import, panic/recovery | `design/mockups/settings-about.png` |
+## Architecture Assessment
 
-There is no light theme; Studio, OLED, and Slate are intentionally dark desktop surfaces. Focus, hover, disabled, conflict, saved, warning, confirmation, and panic-recovery states are code-native.
+- **`src/runtime.js` is ~4,650 lines** and now spans network hooks, layout, filtering, media memory, the sticker organizer, the settings UI, i18n, and diagnostics. The build concatenates, so splitting costs nothing at runtime. The settings UI and the sticker organizer are each self-contained enough to become modules; the i18n table is a third.
+- **i18n is structurally fragile.** `tr()` calls `canonicalTranslation()`, which reverse-maps a possibly-already-translated value back to English by scanning **all 252 dictionary entries**; `localizeInterface()` then walks every text node plus three attributes on every settings render. Measured: `es` declares 127 keys but only 126 are unique — `'Accessibility & Shortcuts'` is duplicated, and the later value silently wins; one string translated in `es` has no `pt` entry. Nothing in `npm run verify` checks parity or duplicates. A forward-only key map (`data-i18n` keys) removes both the cost and the ambiguity.
+- **The language picker localizes language names** (`'Português': 'Portugués'` under `es`), instead of using endonyms. Standard practice is to render each option in its own language so a user stranded in the wrong locale can still find theirs.
+- **The telemetry blocklist is host-granularity only** (`matchesHost` in `src/core.mjs`). AdGuard's shipped Kick tracking rules are **path-scoped** (`||d26yk4zpyhjeeq.cloudfront.net/*/tracking/`), and that host also serves media — so the current model cannot adopt them without either breaking playback or extending to path matching.
+- **Test and documentation gaps**: no behavioural coverage of `background.js`/`background.firefox.js`; no i18n gate; no storage-failure test; the README does not state that Violentmonkey on MV3 Chromium does not give real `document-start` by default, nor that Firefox Release cannot install the unsigned package.
 
-## Competitive and user evidence
+## Rejected Ideas
 
-7TV's current official changelog is the strongest adjacent benchmark. Its current Kick support includes an emote menu, autocomplete, favorites via Alt-click, a Favorites tab, default-tab selection, import/export backup, cross-tab search, lazy loading, and fixes for channel switching and scroll failures. The useful lessons for Kick Focus are durable local organization, fast scoped observation, search that reaches the right group, and obvious backup/recovery. Kick Focus's differentiator is that those ideas are applied to Kick's native account-authorized sticker catalog without importing a separate emote provider or remote executable code.
+- **"AdGuard shipped a stitched-ad redirect rule for Kick on 2026-08-14, so DNR can kill live SSAI ads."** Investigated and **did not verify**. Issue #237440 is real and closed completed, but the rules actually in `master` are two *tracking* rules (`||d26yk4zpyhjeeq.cloudfront.net/*/tracking/`, `||kick.com/*&loaderVersion=`, both in `SpywareFilter/sections/specific.txt`). There is no `/tm/*/asset_*.ts`, no `redirect=noopmp4-1s`, and no kick rule in `BaseFilter/sections/specific.txt`. Do not re-chase this without re-reading the filter files first.
+- **Third-party emote provider ingestion (7TV/BTTV/FFZ into Kick)** — external APIs, a separate entitlement model, and high maintenance; the only existing implementation has ~51 installs. Contradicts the no-network stance.
+- **Any subscriber-emote entitlement bypass** — prohibited, and unanimously against field precedent; FFZ, KickTalk and NipahTV all render-without-enabling.
+- **Supporting GreasePanda / Tweeks** — low-traction, single-author managers with marketplace/cloud-sync models; added supply-chain surface for negligible reach.
+- **AMO unlisted signing to reach Firefox Release** — the only permanent Release-channel path, and excluded by the project's no-signing policy. State the constraint in the README instead.
+- **Drops/collectibles *automation*** (auto-claim) — existing scripts do this via a private gamification API, but automation of account actions is explicitly deferred by this project. A read-only local inventory snapshot is not.
+- **Following-sidebar thumbnail previews** — someone shipped this on 2026-08-11; low differentiation for the effort.
 
-Recent public 7TV reports complain about unreliable loading and search fragmentation; these are sentiment signals rather than verified product facts. They reinforce two decisions already made here: the organizer stays useful when native groups rerender, and the catalog is cached locally and exportable.
+## Sources
 
-| Candidate | Evidence and hook | Impact / effort / risk | Disposition |
-| --- | --- | --- | --- |
-| Persistent native sticker library + groups | authenticated picker DOM; 7TV favorites/backup parity | 5 / M / medium DOM drift | **Now — shipped** |
-| Three-row quick shelf with scroll-stable removal | repeated-removal user report; picker button proxies | 5 / S / low | **Now — shipped** |
-| Premium current-route shell | seven live route screenshots + semantic `main`/test IDs | 5 / L / medium drift | **Now — shipped** |
-| Drops/search recovery context | native empty root and global search input | 4 / S / low | **Now — shipped** |
-| Authenticated unpacked-extension matrix | separate-profile browser boundary | 4 / M / low privacy if handoff is direct | **Next** |
-| Worker HLS observability | observed IVS worker targets | 4 / L / high playback risk | **Next, research only** |
-| Third-party 7TV/BTTV provider ingestion | external APIs and separate entitlement model | 2 / XL / high maintenance/privacy | **Rejected** |
-| Subscriber-emote entitlement bypass | disabled native state and account authorization | prohibited / misleading | **Rejected** |
-
-## Security, privacy, and reliability
-
-- The project contains no remote executable code, analytics, plaintext credentials, or session export.
-- Chromium network rules are limited by Kick initiator and use generated host lists. Firefox needs `<all_urls>` for `webRequest` target access, but the listener returns no block unless the initiator is Kick.
-- In a bare userscript/fixture environment, storage falls back to page-readable `localStorage`; userscript-manager storage remains preferred. This is a documented low-severity privacy boundary, not a secret store.
-- Settings schema 2 migrates schema-1 sidebar/chat defaults while preserving explicit values. Future schemas fail closed on import with an explanation.
-- Filtering uses structured category/badge evidence and a 25% fail-open ceiling on grids of eight or more, so selector drift is visible instead of silently emptying discovery.
-- Critical probes and ad-stack shape surface in the About/Content diagnostics. The highest-drift remaining assumption is `#chat-emotes-picker-panel` plus the native disabled-button semantics.
-
-## Verification summary
-
-- `npm run build` produced synchronized 1.4.0 userscript, Chromium, Firefox, and zip artifacts.
-- Node unit suite covers settings migration, explicit Following/Drops routing, filter boundaries, playback rewrites, sticker normalization and full library import/export.
-- Fixture suite covers Home, Browse, Category, Search, Channel, localized chat, Drops, settings preview, and the 144-sticker stress surface.
-- Browser journeys verified Search context/clear/focus/no overflow, Drops empty recovery, sticker auto-discovery, three-row capacity, adjacent removals with zero scroll delta, and Manage → Content library.
-- Isolated live Chromium extension runs passed at exact DPR-1 CSS viewports of 1440×900 and 1920×1080 with real Kick DOM, no horizontal overflow, 27/41 cards detected, active companion handshake, natural DNR matches, explicit `ERR_BLOCKED_BY_CLIENT`, clean popup, and no popup exceptions.
-
-## Sources (accessed 2026-08-15)
-
-### Primary platform and Kick sources
-
-- https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest
+**Platform and standards**
 - https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest/onBeforeRequest
-- https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest
-- https://help.kick.com/en/articles/7113467-how-to-add-or-edit-kick-emotes
-- https://help.kick.com/en/articles/15159735-how-kick-subscriptions-work-for-viewers
+- https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings
+- https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest
+- https://developer.chrome.com/docs/extensions/reference/permissions-list
+- https://blog.mozilla.org/addons/2024/03/13/manifest-v3-manifest-v2-march-2024-update/
+- https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/
+- https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/
+- https://wiki.mozilla.org/Add-ons/Extension_Signing
+- https://bugzilla.mozilla.org/show_bug.cgi?id=1745818
+- https://nodejs.org/en/blog/vulnerability/july-2026-security-releases
+- https://github.com/violentmonkey/violentmonkey/releases/tag/v2.46.0
+- https://github.com/violentmonkey/violentmonkey/releases/tag/v2.47.0
+- https://www.tampermonkey.net/changelog.php
+
+**Competitors**
+- https://github.com/FrankerFaceZ/FrankerFaceZ/blob/master/src/sites/twitch-twilight/modules/chat/emote_menu.jsx
+- https://github.com/FrankerFaceZ/FrankerFaceZ/issues/971
+- https://github.com/night/betterttv/issues/3660
+- https://github.com/SevenTV/Extension/issues/694
+- https://github.com/seventv/extension/releases
+- https://github.com/Xzensi/NipahTV
+- https://github.com/KickTalkOrg/KickTalk
+- https://github.com/Kristijan1001/OverKick
+- https://github.com/ebayybe/kick-stream-tweaks
+- https://github.com/berkaygediz/uKick
+- https://github.com/pixeltris/TwitchAdSolutions/issues/156
+- https://github.com/yt-dlp/yt-dlp/issues/17284
+- https://github.com/gorhill/uBlock/wiki/Dashboard:-Filter-lists
+
+**Kick platform**
+- https://about.kick.com/news-and-press/12-kick-goes-live-with-ads-the-direct-line-to-gen-z-brands-have-been-looking-for
 - https://help.kick.com/en/articles/15715119-daily-rewards-on-kick
+- https://help.kick.com/en/articles/15159735-how-kick-subscriptions-work-for-viewers
+- https://github.com/AdguardTeam/AdguardFilters/issues/237440
 
-### Competitors and community signals
+**Community signal** (sentiment, not fact)
+- https://old.reddit.com/r/Kick/comments/1vet977/what_kick_shipped_in_july/
+- https://old.reddit.com/r/KickStreaming/comments/1v4xjqa/
+- https://old.reddit.com/r/KickStreaming/comments/1v2pys7/
+- https://old.reddit.com/r/KickStreaming/comments/1ayc299/
+- https://old.reddit.com/r/KickStreaming/comments/1vjf4kw/anyone_has_a_clue_what_this_does/
+- https://old.reddit.com/r/7TV/comments/1tlii8d/the_new_7tv_version_is_terrible_for_me/
+- https://old.reddit.com/r/Kick/comments/1ux7syc/streams_are_all_zoomed_in/
+- https://old.reddit.com/r/KickStreaming/comments/1vmjrfi/kick_website_is_not_loading/
+- https://old.reddit.com/r/Kick/comments/1v5q7bs/can_i_block_a_streamer_so_i_dont_see_their/
+- https://old.reddit.com/r/uBlockOrigin/comments/1tm85mt/ads_on_kickcom/
+- https://old.reddit.com/r/Kick/comments/1vlt26z/kicking_kick_to_the_kurb/
 
-- https://github.com/SevenTV/Extension/blob/master/CHANGELOG.md
-- https://github.com/night/betterttv
-- https://github.com/FrankerFaceZ/FrankerFaceZ
-- https://www.reddit.com/r/7TV/comments/1tlii8d/the_new_7tv_version_is_terrible_for_me/
-- https://www.reddit.com/r/7TV/comments/1u4y268/7tv_takes_multiple_page_refreshes_almost_every/
+## Open Questions
 
-## Open questions
-
-1. Does the authenticated ad path differ when the unpacked companion is active? Authenticated recon and live companion proof were intentionally performed in separate isolated profiles.
-2. Can the IVS worker be observed safely without altering playback, and does its manifest carry a stable stitched-ad signifier? No mitigation should ship before that is answered.
-3. Does the generated Firefox package block current Kick requests end-to-end in Firefox 120+ without breaking player or chat?
-4. How often does Kick replace the native sticker picker rather than mutate it in place? A sanitized drift-capture workflow is the next maintainability improvement.
+1. Does the Chromium companion's `initiatorDomains: ["kick.com"]` actually match **worker-initiated** segment requests? Chrome documents the initiator as the creating document's origin, which implies yes — and if so the network layer can observe media the page-realm hooks provably cannot, changing the approach to stitched-ad work from a `Worker`-constructor prototype to a measurement question. *Needs live validation; do not ship a redirect on this assumption.*
+2. Does Kick still read stream quality from `sessionStorage` at player init, and under which key? Two independent community sources say yes; this decides whether quality memory should abandon menu-driving entirely.
+3. Over a multi-hour session with the companion installed, does hard-cancelling `litix.io` at the network layer produce the retry storm the community reports? A 5-minute 2026-08-14 measurement did not reproduce it. This decides whether the telemetry ruleset should defer to the page-realm resolve.
+4. Is there a stable, read-only path for Daily Rewards / collectibles inventory, and how often does it change shape? Existing third-party scripts drive a private gamification API; a read-only snapshot is only worth building if it can fail loudly without touching player or chat.

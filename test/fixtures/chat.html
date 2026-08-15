@@ -4,8 +4,21 @@
     <div data-sidebar="true"><div id="sidebar-wrapper"></div><main id="main-container"></main></div>
     <div class="localized-chat">
       <div role="separator" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="420" data-testid="chat-resizer"></div>
-      <div data-testid="chatroom"><div data-testid="chatroom-messages"></div></div>
+      <div data-testid="chatroom"><div data-testid="chatroom-messages"><div data-message-id="fixture-chat-1"><span><img src="/dist/extension/icons/icon-32.png?fixture=/emotes/7001" alt="ChatStickerOne"></span></div></div></div>
     </div>
+    <button id="add-chat-sticker" type="button">Simulate incoming chat sticker</button>
+    <script>
+      localStorage.removeItem('kick-focus:sticker-preferences');
+      document.getElementById('add-chat-sticker').addEventListener('click', () => {
+        const message = document.createElement('div');
+        message.dataset.messageId = 'fixture-chat-2';
+        const image = document.createElement('img');
+        image.src = '/dist/extension/icons/icon-32.png?fixture=/emotes/7002';
+        image.alt = 'ChatStickerTwo';
+        message.append(image);
+        document.querySelector('[data-testid="chatroom-messages"]').append(message);
+      });
+    </script>
     <script src="/dist/kick-focus.user.js"></script>
   </body>
 </html>

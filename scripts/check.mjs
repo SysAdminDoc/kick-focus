@@ -31,13 +31,22 @@ const checks = [
   ['ships settings UI', source.includes('data-kf-settings-shell')],
   ['keeps page state separate from navigation actions', source.includes('dataset.kfCurrentPage')
     && !source.includes('page.dataset.page =')],
+  ['mounts the Focus control beside Get KICKs', source.includes('ensureHeaderQuickControl')
+    && source.includes('data-testid="kicks-top-nav"')
+    && source.includes('data-kf-header-control')],
   ['preserves sticker shelf scroll across organizer rerenders', source.includes('restoreStickerGridScroll')
     && source.includes('rememberStickerGridScroll')],
+  ['collapses Kick native sticker chrome outside the Native view', source.includes('data-kf-sticker-native-list')
+    && source.includes('data-kf-sticker-native-shell')
+    && source.includes("nativeList.dataset.kfStickerNativeList = 'true'")
+    && source.includes("shell.dataset.kfStickerNativeShell = 'true'")],
   ['labels the sticker shelf as account-authorized', source.includes('New Kick stickers save automatically')
     && source.includes('max-height: min(720px, 76vh)')
     && source.includes('stickerButtonUnavailable')],
   ['persists and exports the complete sticker library', source.includes('mergeStickerLibrary')
     && source.includes('observeStickerPicker')
+    && source.includes('observeChatStickerDiscovery')
+    && source.includes("nativeGroups: ['Seen in chat']")
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
   ['offers a three-row one-click favorites shelf', source.includes('stickerQuickProxyMarkup')

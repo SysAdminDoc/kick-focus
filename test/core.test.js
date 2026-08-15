@@ -67,7 +67,7 @@ test('sticker preferences keep pins, removals, and view modes bounded and local'
 
 test('sticker library keeps portable metadata, custom groups, and one assignment per sticker', () => {
   const value = normalizeStickerPreferences({
-    schema: 2,
+    schema: 3,
     view: 'group',
     activeGroup: 'reactions',
     groups: [
@@ -82,17 +82,19 @@ test('sticker library keeps portable metadata, custom groups, and one assignment
     ],
     library: [
       { key: 'id:100', id: '100', name: 'Wave', src: 'https://files.kick.com/emotes/100/fullsize', nativeGroups: ['Global', ' Global '], access: 'locked' },
+      { key: 'id:101', id: '101', name: 'Chat find', src: 'https://files.kick.com/emotes/101/fullsize', nativeGroups: ['Seen in chat'], access: 'observed' },
       { key: 'id:200', id: '200', name: 'External', src: 'https://tracker.example/emotes/200/fullsize' },
       { key: 'id:300', id: '300', name: 'Protocol relative', src: '//tracker.example/emotes/300/fullsize' },
     ],
   });
-  assert.equal(value.schema, 2);
+  assert.equal(value.schema, 3);
   assert.equal(value.view, 'group');
   assert.equal(value.groups.length, 2);
   assert.deepEqual(value.assignments, [{ key: 'id:100', groupId: 'reactions' }]);
-  assert.equal(value.library.length, 1);
+  assert.equal(value.library.length, 2);
   assert.equal(value.library[0].access, 'locked');
   assert.deepEqual(value.library[0].nativeGroups, ['Global']);
+  assert.equal(value.library[1].access, 'observed');
   assert.equal(normalizeStickerPreferences({ view: 'group', activeGroup: 'missing' }).view, 'all');
 });
 

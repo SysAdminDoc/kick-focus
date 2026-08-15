@@ -53,6 +53,8 @@ const state = {
   commandInput: null,
   commandList: null,
   quickButton: null,
+  headerControlHost: null,
+  headerControlButton: null,
   lastFocused: null,
   applyTimer: 0,
   applyPendingSince: 0,
@@ -70,6 +72,7 @@ const state = {
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
     stickerPickerTarget: null,
+    stickerChatTarget: null,
     stickerCatalogDirty: true,
   },
   diagnostics: {
@@ -107,7 +110,10 @@ const state = {
     body: null,
     chat: null,
     stickers: null,
+    chatStickers: null,
   },
+  chatStickerScanTimer: 0,
+  chatStickerPendingNodes: new Set(),
   mediaBound: new WeakSet(),
   mediaSaveTimers: new WeakMap(),
   playbackDiagnosticsTimer: 0,
@@ -1139,6 +1145,12 @@ const SITE_CSS = `
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; }
+    html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
+    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
+    html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-list] { display: none !important; }
+    html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-shell],
+    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-shell],
+    html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-shell] { display: none !important; }
     #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; }
 
@@ -1201,7 +1213,9 @@ function applySettingsAttributes() {
   root.dataset.kfWideGrid = String(layout.wideGrid);
   root.dataset.kfFollowingRail = String(layout.showFollowingRail);
   root.dataset.kfRecommendedRail = String(layout.showRecommendedRail);
-  root.dataset.kfMiniPlayerCollision = String(layout.miniPlayerCollision && layout.quickButton);
+  root.dataset.kfMiniPlayerCollision = String(layout.miniPlayerCollision
+    && layout.quickButton
+    && !state.headerControlHost?.isConnected);
   root.dataset.kfPlayerResize = String(layout.playerResizeRecovery);
   root.dataset.kfPlayerContain = String(layout.playerContainVideo);
   root.dataset.kfTheme = appearance.theme;
@@ -1763,26 +1777,33 @@ function stickerButtonUnavailable(button) {
     || button.getAttribute('aria-disabled') === 'true';
 }
 
-function stickerButtonInfo(button, options = {}) {
-  if (button.closest?.('[data-kf-sticker-organizer]')) return null;
-  if (!options.includeUnavailable && stickerButtonUnavailable(button)) return null;
-  const image = button.querySelector('img[src*="/emotes/" i], img[data-src*="/emotes/" i]');
+function stickerImageInfo(image, options = {}) {
   if (!image) return null;
   const rawSrc = image.getAttribute('src') || image.getAttribute('data-src') || image.currentSrc || image.src || '';
   if (!/\/emotes\//i.test(rawSrc)) return null;
-  const alt = image.getAttribute('alt') || button.getAttribute('aria-label') || button.dataset.emoteName || 'Sticker';
+  const alt = image.getAttribute('alt') || options.name || 'Sticker';
   if (alt.trim().toLowerCase() === 'emotes') return null;
-  const src = rawSrc;
-  const rawId = button.dataset.emoteId
+  const rawId = options.id
     || image.dataset.emoteId
-    || button.getAttribute('data-emote-id')
     || image.getAttribute('data-emote-id')
     || rawSrc.match(/\/emotes\/(\d+)/i)?.[1]
     || '';
   const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
   const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Sticker';
+  const src = rawSrc;
   const key = (id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320);
-  return { key, id, name, src, button };
+  return { key, id, name, src };
+}
+
+function stickerButtonInfo(button, options = {}) {
+  if (button.closest?.('[data-kf-sticker-organizer]')) return null;
+  if (!options.includeUnavailable && stickerButtonUnavailable(button)) return null;
+  const image = button.querySelector('img[src*="/emotes/" i], img[data-src*="/emotes/" i]');
+  const info = stickerImageInfo(image, {
+    id: button.dataset.emoteId || button.getAttribute('data-emote-id') || '',
+    name: button.getAttribute('aria-label') || button.dataset.emoteName || 'Sticker',
+  });
+  return info ? { ...info, button } : null;
 }
 
 function stickerNativeGroup(label, picker) {
@@ -1802,10 +1823,21 @@ function stickerNativeGroup(label, picker) {
 
 function stickerNativeGroups(picker) {
   const groupsByButton = new Map();
+  const organizerScroll = stickerScrollContainer(picker);
+  const search = stickerSearchInput(picker);
   for (const label of picker.querySelectorAll('[id^="emote-picker-section-name-"]')) {
     const group = stickerNativeGroup(label, picker);
     if (!group) continue;
     group.dataset.kfStickerNativeGroup = 'true';
+    const nativeList = group.closest('.overflow-y-auto, [class*="overflow-y-auto" i]');
+    if (nativeList && nativeList !== organizerScroll && nativeList !== picker) {
+      nativeList.dataset.kfStickerNativeList = 'true';
+      for (let shell = nativeList.parentElement; shell && shell !== picker && shell !== organizerScroll; shell = shell.parentElement) {
+        if (!search || !shell.contains(search)) continue;
+        shell.dataset.kfStickerNativeShell = 'true';
+        break;
+      }
+    }
     const name = String(label.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     if (!name) continue;
     for (const button of group.querySelectorAll('button')) {
@@ -1819,14 +1851,24 @@ function mergeStickerLibrary(observed) {
   let changed = false;
   for (const sticker of observed) {
     const existing = state.stickerPreferences.library.get(sticker.key);
-    const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...sticker.nativeGroups])].slice(0, 20);
+    const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...(sticker.nativeGroups || [])])].slice(0, 20);
+    const incomingAccess = sticker.available
+      ? 'available'
+      : sticker.access === 'observed'
+        ? 'observed'
+        : 'locked';
+    const access = existing?.access === 'available' || incomingAccess === 'available'
+      ? 'available'
+      : existing?.access === 'locked' || incomingAccess === 'locked'
+        ? 'locked'
+        : 'observed';
     const record = {
       key: sticker.key,
       id: sticker.id,
       name: sticker.name,
       src: sticker.src,
       nativeGroups,
-      access: existing?.access === 'available' || sticker.available ? 'available' : 'locked',
+      access,
     };
     if (!existing || JSON.stringify(existing) !== JSON.stringify(record)) {
       state.stickerPreferences.library.set(sticker.key, record);
@@ -1866,14 +1908,90 @@ function observeStickerPicker(picker) {
   });
 }
 
+const CHAT_STICKER_IMAGE_SELECTOR = 'img[src*="/emotes/" i], img[data-src*="/emotes/" i]';
+
+function chatStickerInfo(image) {
+  const info = stickerImageInfo(image);
+  return info ? { ...info, nativeGroups: ['Seen in chat'], access: 'observed' } : null;
+}
+
+function stickerImagesWithin(node) {
+  if (node?.nodeType !== 1) return [];
+  const images = [];
+  if (node.matches?.(CHAT_STICKER_IMAGE_SELECTOR)) images.push(node);
+  for (const image of node.querySelectorAll?.(CHAT_STICKER_IMAGE_SELECTOR) || []) images.push(image);
+  return images;
+}
+
+function flushChatStickerScan() {
+  state.chatStickerScanTimer = 0;
+  const nodes = [...state.chatStickerPendingNodes];
+  state.chatStickerPendingNodes.clear();
+  const observed = new Map();
+  for (const node of nodes) {
+    for (const image of stickerImagesWithin(node)) {
+      const sticker = chatStickerInfo(image);
+      if (sticker) observed.set(sticker.key, sticker);
+    }
+  }
+  if (observed.size) mergeStickerLibrary(observed.values());
+}
+
+function queueChatStickerScan(nodes) {
+  for (const node of nodes || []) if (node?.nodeType === 1) state.chatStickerPendingNodes.add(node);
+  if (!state.chatStickerPendingNodes.size || state.chatStickerScanTimer) return;
+  state.chatStickerScanTimer = window.setTimeout(flushChatStickerScan, 120);
+}
+
+function disconnectChatStickerObserver() {
+  state.observers.chatStickers?.disconnect?.();
+  state.observers.chatStickers = null;
+  state.runtime.stickerChatTarget = null;
+  clearTimeout(state.chatStickerScanTimer);
+  state.chatStickerScanTimer = 0;
+  state.chatStickerPendingNodes.clear();
+}
+
+function observeChatStickerDiscovery() {
+  if (!state.settings.content.organizeChatStickers) {
+    disconnectChatStickerObserver();
+    return;
+  }
+  const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
+  if (!messages) {
+    disconnectChatStickerObserver();
+    return;
+  }
+  if (state.runtime.stickerChatTarget === messages && state.observers.chatStickers) return;
+  disconnectChatStickerObserver();
+  state.runtime.stickerChatTarget = messages;
+  queueChatStickerScan([messages]);
+  state.observers.chatStickers = new MutationObserver((mutations) => {
+    const changed = [];
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes') changed.push(mutation.target);
+      else for (const node of mutation.addedNodes) changed.push(node);
+    }
+    queueChatStickerScan(changed);
+  });
+  state.observers.chatStickers.observe(messages, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['alt', 'src', 'data-src', 'data-emote-id'],
+  });
+}
+
 function stickerDescriptors(picker) {
-  for (const node of picker.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group]')) {
+  for (const node of picker.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group], [data-kf-sticker-native-list], [data-kf-sticker-native-shell]')) {
     if (node.closest('[data-kf-sticker-organizer]')) continue;
     node.removeAttribute('data-kf-sticker-key');
     node.removeAttribute('data-kf-sticker-hidden');
     node.removeAttribute('data-kf-sticker-pinned');
     node.removeAttribute('data-kf-sticker-native');
     node.removeAttribute('data-kf-sticker-native-group');
+    node.removeAttribute('data-kf-sticker-native-list');
+    node.removeAttribute('data-kf-sticker-native-shell');
   }
 
   const nativeGroups = stickerNativeGroups(picker);
@@ -1987,13 +2105,15 @@ function rememberStickerGridScroll(target) {
 
 function clearStickerUI() {
   removeStickerOrganizer();
-  for (const node of document.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group]')) {
+  for (const node of document.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group], [data-kf-sticker-native-list], [data-kf-sticker-native-shell]')) {
     if (node.closest('[data-kf-sticker-organizer]')) continue;
     node.removeAttribute('data-kf-sticker-key');
     node.removeAttribute('data-kf-sticker-hidden');
     node.removeAttribute('data-kf-sticker-pinned');
     node.removeAttribute('data-kf-sticker-native');
     node.removeAttribute('data-kf-sticker-native-group');
+    node.removeAttribute('data-kf-sticker-native-list');
+    node.removeAttribute('data-kf-sticker-native-shell');
   }
   delete document.documentElement.dataset.kfStickerView;
   delete document.documentElement.dataset.kfStickersShowHidden;
@@ -2483,6 +2603,7 @@ function scheduleApply(delay = 50) {
     applyMediaMemory();
     applyPlayerResilience();
     applyChatPause();
+    observeChatStickerDiscovery();
     renderStickerOrganizer();
     applyChatHighlights();
     applyPlaybackDiagnostics();
@@ -2949,6 +3070,7 @@ const UI_CSS = `
   .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
   .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-access[data-access="available"] { border-color: rgba(var(--accent-rgb), .55); color: var(--accent); }
+  .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
   .kf-sticker-library-actions { grid-column: 1 / -1; display: grid; grid-template-columns: auto auto minmax(105px, 1fr); gap: 6px; }
   .kf-sticker-library-actions .kf-select { min-width: 0; width: 100%; }
 
@@ -3604,8 +3726,8 @@ function renderLayoutPage() {
       ${row('Show Following rail', 'Keep the Following discovery rail visible when Kick provides it.', toggle('layout.showFollowingRail', value.showFollowingRail, { label: 'Show Following rail' }))}
       ${row('Show Recommended rail', 'Keep recommended stream rows visible in the main content.', toggle('layout.showRecommendedRail', value.showRecommendedRail, { label: 'Show Recommended rail' }))}
       ${row('Sticky compact top bar', 'Keep search and account controls available while browsing.', toggle('layout.stickyTopbar', value.stickyTopbar, { label: 'Sticky compact top bar' }))}
-      ${row('Show quick command button', 'Keep the Focus control available in the lower-left corner.', toggle('layout.quickButton', value.quickButton, { label: 'Show quick command button' }))}
-      ${row('Move mini-player clear of controls', 'Raise Kick’s embedded mini-player when it would overlap the Focus button.', toggle('layout.miniPlayerCollision', value.miniPlayerCollision, { label: 'Move mini-player clear of controls' }))}
+      ${row('Show quick command button', 'Keep the Focus control beside Get KICKs in Kick’s top header.', toggle('layout.quickButton', value.quickButton, { label: 'Show quick command button' }))}
+      ${row('Move mini-player clear of controls', 'Raise Kick’s embedded mini-player only when the Focus control has to use its floating fallback.', toggle('layout.miniPlayerCollision', value.miniPlayerCollision, { label: 'Move mini-player clear of controls' }))}
       ${row('Recover player after resize', 'Re-apply player geometry after a window or monitor change.', toggle('layout.playerResizeRecovery', value.playerResizeRecovery, { label: 'Recover player after resize' }))}
       ${row('Keep ultrawide video uncropped', 'Prefer contained video geometry on wide or moved displays.', toggle('layout.playerContainVideo', value.playerContainVideo, { label: 'Keep ultrawide video uncropped' }))}
     </section>`;
@@ -3684,12 +3806,14 @@ function remoteBlocklistControls() {
 function stickerLibrarySummary() {
   const library = [...state.stickerPreferences.library.values()];
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
-  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${locked ? ` · ${locked} locked-only` : ''}`;
+  const observed = library.filter((sticker) => sticker.access === 'observed').length;
+  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}`;
 }
 
 function stickerLibraryFilterMatches(sticker, filter) {
   if (filter === 'favorites') return state.stickerPreferences.pinned.has(sticker.key);
   if (filter === 'removed') return state.stickerPreferences.hidden.has(sticker.key);
+  if (filter === 'observed') return sticker.access === 'observed';
   if (filter === 'locked') return sticker.access === 'locked';
   if (filter === 'ungrouped') return !state.stickerPreferences.assignments.has(sticker.key);
   if (filter.startsWith('group:')) return state.stickerPreferences.assignments.get(sticker.key) === filter.slice(6);
@@ -3714,6 +3838,7 @@ function renderStickerLibraryManager() {
     ['all', `All recorded (${state.stickerPreferences.library.size})`],
     ['favorites', `Favorites (${state.stickerPreferences.pinned.size})`],
     ['removed', `Removed (${state.stickerPreferences.hidden.size})`],
+    ['observed', 'Seen in chat'],
     ['locked', 'Locked-only'],
     ['ungrouped', 'Ungrouped'],
     ...state.stickerPreferences.groups.map((group) => [`group:${group.id}`, group.name]),
@@ -3732,9 +3857,10 @@ function renderStickerLibraryManager() {
     const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
     const searchText = `${sticker.name} ${nativeGroups}`.toLowerCase();
+    const accessLabel = sticker.access === 'available' ? 'Seen available' : sticker.access === 'observed' ? 'Seen in chat' : 'Locked only';
     return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}">
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
-      <div class="kf-sticker-library-copy"><strong title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small><span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${sticker.access === 'available' ? 'Seen available' : 'Locked only'}</span></div>
+      <div class="kf-sticker-library-copy"><strong title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small><span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span></div>
       <div class="kf-sticker-library-actions">
         <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
         <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>
@@ -3752,8 +3878,8 @@ function renderStickerLibraryManager() {
         </div>
         <div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="New custom group name" aria-label="New sticker group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>
         ${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : ''}
-        <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New picker stickers are merged automatically and included in export.</span></div>
-        ${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded stickers match this filter.' : 'Open Kick’s sticker picker once to begin the library. New stickers will be saved whenever Kick exposes them.'}</div>`}
+        <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New stickers from chat and the picker are merged automatically and included in export.</span></div>
+        ${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded stickers match this filter.' : 'Watch chat or open Kick’s sticker picker to begin the library. New stickers are saved whenever Kick exposes them.'}</div>`}
       </div>
     </section>`;
 }
@@ -3802,7 +3928,7 @@ function renderContentPage() {
         ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
-        ${row('Organize chat stickers', 'Continuously record Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
+        ${row('Organize chat stickers', 'Continuously record stickers from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
       </div>
@@ -4335,6 +4461,7 @@ function restoreShortcuts() {
 function clearEnhancedPage() {
   const root = document.documentElement;
   clearStickerUI();
+  disconnectChatStickerObserver();
   if (root.dataset.kfManagedSidebar === 'true') {
     findProbe(document, 'sidebarExpand').element?.click?.();
   }
@@ -4581,20 +4708,105 @@ function onGlobalKeydown(event) {
   else executeCommand(action);
 }
 
+function headerQuickTarget() {
+  const primary = document.querySelector('nav [data-testid="kicks-top-nav"], [data-testid="kicks-top-nav"]');
+  if (primary) return primary;
+  return [...document.querySelectorAll('nav button')]
+    .find((button) => /^get\s+kicks$/i.test(String(button.textContent || '').trim())) || null;
+}
+
+function ensureHeaderQuickControl() {
+  const target = headerQuickTarget();
+  const owner = target?.parentElement;
+  if (!target || !owner) {
+    state.headerControlHost?.remove?.();
+    return false;
+  }
+
+  if (!state.headerControlHost) {
+    const host = document.createElement('span');
+    host.id = 'kick-focus-header-control';
+    host.dataset.kfHeaderControl = 'true';
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `
+      <style>
+        :host { display: inline-flex; flex: 0 0 auto; color-scheme: dark; }
+        * { box-sizing: border-box; }
+        button {
+          display: inline-flex;
+          height: 36px;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          padding: 0 11px;
+          border: 1px solid rgba(124,255,43,.38);
+          border-radius: 5px;
+          background: linear-gradient(180deg, rgba(124,255,43,.12), rgba(124,255,43,.055));
+          color: #f4f7f5;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+          cursor: pointer;
+          font: 750 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          letter-spacing: .015em;
+          white-space: nowrap;
+          transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 80ms ease;
+        }
+        button:hover { border-color: #7cff2b; background: rgba(124,255,43,.15); color: #7cff2b; }
+        button:active { transform: scale(.97); }
+        button:focus-visible { outline: 2px solid #f4f7f5; outline-offset: 2px; }
+        img { display: block; width: 18px; height: 18px; object-fit: contain; }
+        @media (max-width: 960px) {
+          button { width: 36px; padding: 0; }
+          span { display: none; }
+        }
+      </style>
+      <button type="button" aria-label="Open Kick Focus command menu" title="Kick Focus">
+        <img src="__KICK_FOCUS_ICON__" alt="">
+        <span data-kf-header-control-label>Focus</span>
+      </button>`;
+    const button = shadow.querySelector('button');
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (state.runtime.suspended) togglePanicSwitch();
+      else openCommandMenu();
+    });
+    state.headerControlHost = host;
+    state.headerControlButton = button;
+  }
+
+  if (state.headerControlHost.parentElement !== owner || state.headerControlHost.nextElementSibling !== target) {
+    owner.insertBefore(state.headerControlHost, target);
+  }
+  return state.headerControlHost.isConnected;
+}
+
 function syncQuickButton() {
   if (!state.root?.isConnected && document.body) document.body.append(state.root);
   if (!state.quickButton) return;
+  const shouldShow = state.runtime.suspended || state.settings.layout.quickButton;
+  const headerMounted = shouldShow ? ensureHeaderQuickControl() : false;
+  if (!shouldShow) state.headerControlHost?.remove?.();
+  const label = tr(state.runtime.suspended ? 'Resume' : 'Focus');
+  const accessibleLabel = tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Open Kick Focus command menu');
+  if (state.headerControlButton) {
+    state.headerControlButton.querySelector('[data-kf-header-control-label]').textContent = label;
+    state.headerControlButton.setAttribute('aria-label', accessibleLabel);
+    state.headerControlButton.title = label;
+  }
+  document.documentElement.dataset.kfMiniPlayerCollision = String(
+    state.settings.layout.miniPlayerCollision && state.settings.layout.quickButton && !headerMounted,
+  );
   if (state.runtime.suspended) {
-    state.quickButton.hidden = false;
+    state.quickButton.hidden = headerMounted;
     state.quickButton.dataset.action = 'toggle-panic';
-    state.quickButton.textContent = tr('Resume');
-    state.quickButton.setAttribute('aria-label', tr('Restore Kick Focus'));
+    state.quickButton.textContent = label;
+    state.quickButton.setAttribute('aria-label', accessibleLabel);
     return;
   }
   state.quickButton.dataset.action = 'open-command';
-  state.quickButton.textContent = tr('Focus');
-  state.quickButton.setAttribute('aria-label', tr('Open Kick Focus command menu'));
-  state.quickButton.hidden = !state.settings.layout.quickButton;
+  state.quickButton.textContent = label;
+  state.quickButton.setAttribute('aria-label', accessibleLabel);
+  state.quickButton.hidden = !shouldShow || headerMounted;
 }
 
 addStyle(SITE_CSS);

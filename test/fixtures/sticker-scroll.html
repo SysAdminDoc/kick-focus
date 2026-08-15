@@ -10,7 +10,9 @@
       body { min-height: 100vh; margin: 0; display: grid; place-items: center; color: #f4f7f5; background: #080a09; }
       #chat-emotes-picker-panel { width: 430px; padding: 12px; border: 1px solid #343a36; background: #101311; }
       #search-emotes-input { width: 100%; margin-bottom: 10px; padding: 9px 11px; color: inherit; border: 1px solid #3b423e; background: #171b19; }
-      .overflow-y-auto { height: 520px; overflow-y: auto; overscroll-behavior: contain; }
+      .picker-scroll { max-height: 720px; overflow-y: auto; overscroll-behavior: contain; }
+      .native-tabs { height: 44px; margin-bottom: 4px; border-block: 1px solid #303632; }
+      .native-sticker-list { height: 240px; overflow-y: auto; overscroll-behavior: contain; }
       .native-group { margin-top: 16px; }
       .native-group > span { display: block; margin-bottom: 8px; color: #9ca5a0; font-size: 12px; font-weight: 700; }
       .native-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
@@ -23,14 +25,22 @@
     <button id="fill-quick-favorites" type="button" style="position:fixed;top:48px;right:16px">Fill quick favorites</button>
     <main id="main-container">
       <section id="chat-emotes-picker-panel" aria-label="Sticker picker">
-        <input id="search-emotes-input" type="search" placeholder="Search emotes" aria-label="Search emotes">
-        <div class="overflow-y-auto" data-testid="sticker-scroll"></div>
+        <div class="picker-scroll overflow-y-auto" data-testid="sticker-scroll">
+          <div class="native-shell grid h-full grid-rows-[auto_1fr] gap-1 lg:h-[unset] lg:grid-rows-[unset]" data-testid="native-sticker-shell">
+            <input id="search-emotes-input" type="search" placeholder="Search emotes" aria-label="Search emotes">
+            <div class="native-tabs" aria-hidden="true"></div>
+            <div class="native-sticker-list overflow-y-auto" data-testid="native-sticker-list">
+              <div data-testid="native-sticker-groups"></div>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
     <script>
       localStorage.removeItem('kick-focus:settings');
       localStorage.removeItem('kick-focus:sticker-preferences');
       const scroll = document.querySelector('[data-testid="sticker-scroll"]');
+      const nativeGroups = document.querySelector('[data-testid="native-sticker-groups"]');
       for (let groupIndex = 0; groupIndex < 3; groupIndex += 1) {
         const section = document.createElement('section');
         section.className = 'native-group';
@@ -53,7 +63,7 @@
           grid.append(button);
         }
         section.append(label, grid);
-        scroll.append(section);
+        nativeGroups.append(section);
       }
       document.getElementById('add-late-sticker').addEventListener('click', () => {
         if (document.querySelector('[data-emote-id="99999"]')) return;
@@ -65,7 +75,7 @@
         image.src = '/dist/extension/icons/icon-32.png?fixture=/emotes/145';
         image.alt = 'Sticker 145';
         button.append(image);
-        scroll.querySelector('.native-grid:last-of-type')?.append(button);
+        nativeGroups.querySelector('.native-grid:last-of-type')?.append(button);
       });
       document.getElementById('fill-quick-favorites').addEventListener('click', async () => {
         for (let index = 1; index <= 24; index += 1) {

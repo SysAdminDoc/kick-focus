@@ -522,7 +522,7 @@ export function detectContentLabels(text, context = {}) {
   };
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 2;
+export const STICKER_PREFERENCES_SCHEMA = 3;
 
 function cleanStickerKeys(input, limit = 2400) {
   if (!Array.isArray(input)) return [];
@@ -613,7 +613,7 @@ function cleanStickerLibrary(input) {
       nativeGroups: [...new Set((Array.isArray(raw.nativeGroups) ? raw.nativeGroups : [])
         .map((group) => cleanStickerText(group, 80))
         .filter(Boolean))].slice(0, 20),
-      access: enumValue(raw.access, ['available', 'locked'], 'available'),
+      access: enumValue(raw.access, ['available', 'observed', 'locked'], 'available'),
     });
     if (library.length >= 2400) break;
   }
