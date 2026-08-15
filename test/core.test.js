@@ -51,7 +51,38 @@ test('sticker preferences keep pins, removals, and view modes bounded and local'
 
   assert.equal(normalizeStickerPreferences({ view: 'unexpected' }).view, 'all');
   assert.equal(normalizeStickerPreferences(null).showHidden, false);
-  assert.equal(normalizeStickerPreferences({ pinned: Array.from({ length: 801 }, (_, index) => `id:${index}`) }).pinned.length, 800);
+  assert.equal(normalizeStickerPreferences({ pinned: Array.from({ length: 2401 }, (_, index) => `id:${index}`) }).pinned.length, 2400);
+});
+
+test('sticker library keeps portable metadata, custom groups, and one assignment per sticker', () => {
+  const value = normalizeStickerPreferences({
+    schema: 2,
+    view: 'group',
+    activeGroup: 'reactions',
+    groups: [
+      { id: 'reactions', name: 'Reactions' },
+      { id: 'duplicate-name', name: ' reactions ' },
+      { id: 'bad id!', name: 'Invalid id is cleaned' },
+    ],
+    assignments: [
+      { key: 'id:100', groupId: 'reactions' },
+      { key: 'id:100', groupId: 'badid' },
+      { key: 'id:200', groupId: 'missing' },
+    ],
+    library: [
+      { key: 'id:100', id: '100', name: 'Wave', src: 'https://files.kick.com/emotes/100/fullsize', nativeGroups: ['Global', ' Global '], access: 'locked' },
+      { key: 'id:200', id: '200', name: 'External', src: 'https://tracker.example/emotes/200/fullsize' },
+      { key: 'id:300', id: '300', name: 'Protocol relative', src: '//tracker.example/emotes/300/fullsize' },
+    ],
+  });
+  assert.equal(value.schema, 2);
+  assert.equal(value.view, 'group');
+  assert.equal(value.groups.length, 2);
+  assert.deepEqual(value.assignments, [{ key: 'id:100', groupId: 'reactions' }]);
+  assert.equal(value.library.length, 1);
+  assert.equal(value.library[0].access, 'locked');
+  assert.deepEqual(value.library[0].nativeGroups, ['Global']);
+  assert.equal(normalizeStickerPreferences({ view: 'group', activeGroup: 'missing' }).view, 'all');
 });
 
 test('route classifier covers every audited desktop surface', () => {
@@ -114,6 +145,25 @@ test('settings import names whatever it could not keep', () => {
   // A clean, current file produces no noise.
   const clean = validateImportedSettings(JSON.stringify({ schema: 1, layout: { chatWidth: 410 } }));
   assert.deepEqual(clean.notes, []);
+});
+
+test('settings import round-trips the sticker library without treating it as an unknown section', () => {
+  const imported = validateImportedSettings(JSON.stringify({
+    schema: 1,
+    stickers: {
+      schema: 2,
+      pinned: ['id:100'],
+      hidden: [],
+      groups: [{ id: 'memes', name: 'Memes' }],
+      assignments: [{ key: 'id:100', groupId: 'memes' }],
+      library: [{ key: 'id:100', id: '100', name: 'Wave', src: 'https://files.kick.com/emotes/100/fullsize', nativeGroups: ['Global'], access: 'available' }],
+    },
+  }));
+  assert.equal(imported.ok, true);
+  assert.equal(imported.stickers.library.length, 1);
+  assert.deepEqual(imported.stickers.assignments, [{ key: 'id:100', groupId: 'memes' }]);
+  assert.equal(imported.notes.some((note) => /unknown section "stickers"/.test(note)), false);
+  assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Sticker schema 99/);
 });
 
 test('remote blocklists accept data-only entries and reject executable or unknown fields', () => {

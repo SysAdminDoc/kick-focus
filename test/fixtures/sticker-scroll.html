@@ -19,6 +19,7 @@
     </style>
   </head>
   <body>
+    <button id="add-late-sticker" type="button" style="position:fixed;top:16px;right:16px">Simulate new sticker</button>
     <main id="main-container">
       <section id="chat-emotes-picker-panel" aria-label="Sticker picker">
         <input id="search-emotes-input" type="search" placeholder="Search emotes" aria-label="Search emotes">
@@ -53,6 +54,18 @@
         section.append(label, grid);
         scroll.append(section);
       }
+      document.getElementById('add-late-sticker').addEventListener('click', () => {
+        if (document.querySelector('[data-emote-id="99999"]')) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.emoteId = '99999';
+        button.setAttribute('aria-label', 'Sticker 145');
+        const image = document.createElement('img');
+        image.src = '/dist/extension/icons/icon-32.png?fixture=/emotes/145';
+        image.alt = 'Sticker 145';
+        button.append(image);
+        scroll.querySelector('.native-grid:last-of-type')?.append(button);
+      });
     </script>
     <script src="/dist/kick-focus.user.js"></script>
   </body>

@@ -67,6 +67,9 @@ const state = {
     chatPaused: false,
     suspended: false,
     stickerGridScrollTop: null,
+    stickerLibraryQuery: '',
+    stickerLibraryFilter: 'all',
+    stickerPickerTarget: null,
   },
   diagnostics: {
     blocked: 0,
@@ -102,6 +105,7 @@ const state = {
     document: null,
     body: null,
     chat: null,
+    stickers: null,
   },
   mediaBound: new WeakSet(),
   mediaSaveTimers: new WeakMap(),
@@ -799,9 +803,11 @@ const SITE_CSS = `
     [data-kf-sticker-tools] button:hover, [data-kf-sticker-tools] button:focus-visible { background: rgba(255,255,255,.12) !important; color: var(--kf-accent) !important; }
     [data-kf-sticker-empty] { padding: 10px 2px 4px !important; color: rgba(247,249,250,.62) !important; font-size: 11px !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
-    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; }
+    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
+    html[data-kf-sticker-view="group"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
-    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; }
+    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
+    html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; }
     #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; }
 
@@ -931,31 +937,42 @@ function readPersistentRecord(key) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-function readStickerPreferences() {
-  const value = normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {}));
+function stickerPreferencesFromValue(value) {
   return {
     pinned: new Set(value.pinned),
     hidden: new Set(value.hidden),
     view: value.view,
     showHidden: value.showHidden,
+    activeGroup: value.activeGroup,
+    groups: value.groups,
+    assignments: new Map(value.assignments.map((assignment) => [assignment.key, assignment.groupId])),
+    library: new Map(value.library.map((sticker) => [sticker.key, sticker])),
   };
 }
 
-function persistStickerPreferences() {
-  const value = normalizeStickerPreferences({
+function stickerPreferencesValue(preferences = state.stickerPreferences) {
+  return normalizeStickerPreferences({
     schema: STICKER_PREFERENCES_SCHEMA,
-    pinned: [...state.stickerPreferences.pinned],
-    hidden: [...state.stickerPreferences.hidden],
-    view: state.stickerPreferences.view,
-    showHidden: state.stickerPreferences.showHidden,
+    pinned: [...preferences.pinned],
+    hidden: [...preferences.hidden],
+    view: preferences.view,
+    showHidden: preferences.showHidden,
+    activeGroup: preferences.activeGroup,
+    groups: preferences.groups,
+    assignments: [...preferences.assignments].map(([key, groupId]) => ({ key, groupId })),
+    library: [...preferences.library.values()],
   });
-  state.stickerPreferences = {
-    pinned: new Set(value.pinned),
-    hidden: new Set(value.hidden),
-    view: value.view,
-    showHidden: value.showHidden,
-  };
+}
+
+function readStickerPreferences() {
+  return stickerPreferencesFromValue(normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {})));
+}
+
+function persistStickerPreferences() {
+  const value = stickerPreferencesValue();
+  state.stickerPreferences = stickerPreferencesFromValue(value);
   gmSet(STICKER_PREFERENCES_KEY, value);
+  return value;
 }
 
 function readRemoteBlocklist() {
@@ -1362,7 +1379,7 @@ function stickerButtonInfo(button, options = {}) {
   if (!/\/emotes\//i.test(rawSrc)) return null;
   const alt = image.getAttribute('alt') || button.getAttribute('aria-label') || button.dataset.emoteName || 'Sticker';
   if (alt.trim().toLowerCase() === 'emotes') return null;
-  const src = image.currentSrc || image.src || rawSrc;
+  const src = rawSrc;
   const rawId = button.dataset.emoteId
     || image.dataset.emoteId
     || button.getAttribute('data-emote-id')
@@ -1390,6 +1407,69 @@ function stickerNativeGroup(label, picker) {
   return sectionLabels.length === 1 && sectionButtons.length ? section : null;
 }
 
+function stickerNativeGroups(picker) {
+  const groupsByButton = new Map();
+  for (const label of picker.querySelectorAll('[id^="emote-picker-section-name-"]')) {
+    const group = stickerNativeGroup(label, picker);
+    if (!group) continue;
+    group.dataset.kfStickerNativeGroup = 'true';
+    const name = String(label.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!name) continue;
+    for (const button of group.querySelectorAll('button')) {
+      if (stickerButtonInfo(button, { includeUnavailable: true })) groupsByButton.set(button, name);
+    }
+  }
+  return groupsByButton;
+}
+
+function mergeStickerLibrary(observed) {
+  let changed = false;
+  for (const sticker of observed) {
+    const existing = state.stickerPreferences.library.get(sticker.key);
+    const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...sticker.nativeGroups])].slice(0, 20);
+    const record = {
+      key: sticker.key,
+      id: sticker.id,
+      name: sticker.name,
+      src: sticker.src,
+      nativeGroups,
+      access: existing?.access === 'available' || sticker.available ? 'available' : 'locked',
+    };
+    if (!existing || JSON.stringify(existing) !== JSON.stringify(record)) {
+      state.stickerPreferences.library.set(sticker.key, record);
+      changed = true;
+    }
+  }
+  if (!changed) return false;
+  persistStickerPreferences();
+  for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
+    summary.textContent = stickerLibrarySummary();
+  }
+  return true;
+}
+
+function disconnectStickerObserver() {
+  state.observers.stickers?.disconnect?.();
+  state.observers.stickers = null;
+  state.runtime.stickerPickerTarget = null;
+}
+
+function observeStickerPicker(picker) {
+  if (state.runtime.stickerPickerTarget === picker && state.observers.stickers) return;
+  disconnectStickerObserver();
+  state.runtime.stickerPickerTarget = picker;
+  state.observers.stickers = new MutationObserver((mutations) => {
+    if (mutations.every((mutation) => mutation.target.closest?.('[data-kf-sticker-organizer]'))) return;
+    scheduleApply(35);
+  });
+  state.observers.stickers.observe(picker, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['alt', 'aria-disabled', 'disabled', 'src', 'data-src', 'data-emote-id'],
+  });
+}
+
 function stickerDescriptors(picker) {
   for (const node of picker.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group]')) {
     if (node.closest('[data-kf-sticker-organizer]')) continue;
@@ -1400,25 +1480,45 @@ function stickerDescriptors(picker) {
     node.removeAttribute('data-kf-sticker-native-group');
   }
 
+  const nativeGroups = stickerNativeGroups(picker);
+  const observed = new Map();
   const descriptors = new Map();
   for (const button of [...picker.querySelectorAll('button')].filter((candidate) => !candidate.closest('[data-kf-sticker-organizer]'))) {
-    const info = stickerButtonInfo(button);
+    const info = stickerButtonInfo(button, { includeUnavailable: true });
     if (!info) continue;
+    const group = nativeGroups.get(button);
+    const available = !stickerButtonUnavailable(button);
+    const seen = observed.get(info.key);
+    if (seen) {
+      if (group && !seen.nativeGroups.includes(group)) seen.nativeGroups.push(group);
+      seen.available ||= available;
+    } else {
+      observed.set(info.key, {
+        key: info.key,
+        id: info.id,
+        name: info.name,
+        src: info.src,
+        nativeGroups: group ? [group] : [],
+        available,
+      });
+    }
+    if (!available) continue;
     const existing = descriptors.get(info.key);
-    if (existing) existing.originals.push(button);
-    else descriptors.set(info.key, {
-      key: info.key,
-      id: info.id,
-      name: info.name,
-      src: info.src,
-      originals: [button],
-    });
+    if (existing) {
+      existing.originals.push(button);
+      if (group && !existing.nativeGroups.includes(group)) existing.nativeGroups.push(group);
+    } else {
+      descriptors.set(info.key, {
+        key: info.key,
+        id: info.id,
+        name: info.name,
+        src: info.src,
+        nativeGroups: group ? [group] : [],
+        originals: [button],
+      });
+    }
   }
-
-  for (const label of picker.querySelectorAll('[id^="emote-picker-section-name-"]')) {
-    const group = stickerNativeGroup(label, picker);
-    if (group) group.dataset.kfStickerNativeGroup = 'true';
-  }
+  mergeStickerLibrary(observed.values());
 
   for (const descriptor of descriptors.values()) {
     const hidden = state.stickerPreferences.hidden.has(descriptor.key);
@@ -1442,7 +1542,7 @@ function stickerProxyMarkup(descriptor) {
   return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}">
     <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
     <div data-kf-sticker-tools>
-      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Unpin' : 'Pin'} ${safeName}" title="${pinned ? 'Unpin' : 'Pin'}">${pinned ? '★' : '☆'}</button>
+      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Remove favorite' : 'Favorite'} ${safeName}" title="${pinned ? 'Remove favorite' : 'Favorite'}">${pinned ? '★' : '☆'}</button>
       <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${hidden ? 'Restore' : 'Remove'} ${safeName}" title="${hidden ? 'Restore' : 'Remove'}">${hidden ? '↶' : '×'}</button>
     </div>
   </div>`;
@@ -1496,18 +1596,20 @@ function clearStickerUI() {
 }
 
 function renderStickerOrganizer() {
+  const picker = stickerPicker();
+  if (!picker) {
+    disconnectStickerObserver();
+    state.stickerCatalog = new Map();
+    return;
+  }
+  observeStickerPicker(picker);
+  const descriptors = stickerDescriptors(picker);
   if (!state.settings.content.organizeChatStickers) {
     clearStickerUI();
     return;
   }
-  const picker = stickerPicker();
-  if (!picker) {
-    state.stickerCatalog = new Map();
-    return;
-  }
   const scroll = stickerScrollContainer(picker);
   if (!scroll) return;
-  const descriptors = stickerDescriptors(picker);
   if (!descriptors.length) {
     removeStickerOrganizer();
     return;
@@ -1533,16 +1635,21 @@ function renderStickerOrganizer() {
   const allVisible = descriptors.filter(matches);
   const visible = state.stickerPreferences.view === 'pinned'
     ? allVisible.filter((descriptor) => state.stickerPreferences.pinned.has(descriptor.key))
-    : allVisible;
+    : state.stickerPreferences.view === 'group'
+      ? allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === state.stickerPreferences.activeGroup)
+      : allVisible;
   const unavailableCount = unavailableStickerCount(picker, descriptors);
   const signature = [
     state.stickerPreferences.view,
+    state.stickerPreferences.activeGroup,
     String(showHidden),
     query,
     descriptors.map((descriptor) => descriptor.key).join(','),
     String(unavailableCount),
     [...state.stickerPreferences.pinned].join(','),
     [...state.stickerPreferences.hidden].join(','),
+    state.stickerPreferences.groups.map((group) => `${group.id}:${group.name}`).join(','),
+    [...state.stickerPreferences.assignments].map(([key, groupId]) => `${key}:${groupId}`).join(','),
   ].join('\u0001');
   if (organizer.dataset.kfStickerSignature === signature) return;
   organizer.dataset.kfStickerSignature = signature;
@@ -1555,38 +1662,53 @@ function renderStickerOrganizer() {
     ? '<div data-kf-sticker-empty>Kick’s native sticker groups are shown below.</div>'
     : visible.length
       ? `<div data-kf-sticker-grid>${visible.map(stickerProxyMarkup).join('')}</div>`
-      : `<div data-kf-sticker-empty>${view === 'pinned' ? 'Pin stickers here to build your shelf.' : 'No stickers match this search.'}</div>`;
+      : `<div data-kf-sticker-empty>${view === 'pinned' ? 'Favorite stickers here to build your shelf.' : view === 'group' ? 'No available stickers are assigned to this group.' : 'No stickers match this search.'}</div>`;
+  const customGroups = state.stickerPreferences.groups.map((group) => {
+    const count = allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === group.id).length;
+    const active = view === 'group' && state.stickerPreferences.activeGroup === group.id;
+    return `<button type="button" data-kf-sticker-view="group" data-kf-sticker-group="${escapeHtml(group.id)}" data-active="${active}" aria-pressed="${active}">${escapeHtml(group.name)} (${count})</button>`;
+  }).join('');
   organizer.innerHTML = `
     <div data-kf-sticker-toolbar>
       <strong>Sticker shelf</strong>
       <span data-kf-sticker-count>${escapeHtml(countLabel)}</span>
-      <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Pinned (${state.stickerPreferences.pinned.size})</button>
+      <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Favorites (${state.stickerPreferences.pinned.size})</button>
       <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All available (${allVisible.length})</button>
+      ${customGroups}
       <button type="button" data-kf-sticker-view="native" data-active="${view === 'native'}" aria-pressed="${view === 'native'}">Native groups</button>
       <button type="button" data-kf-sticker-show-hidden="true" aria-pressed="${showHidden}">${showHidden ? 'Hide removed' : 'Show removed'}</button>
       <button type="button" data-kf-sticker-reset="true">Reset changes</button>
       ${unavailableLabel}
     </div>
-    <div data-kf-sticker-note>Kick supplies the enabled stickers this account can use. Pin with ☆, remove with ×; locked stickers remain visible in Native groups.</div>
+    <div data-kf-sticker-note>New Kick stickers are saved automatically. Favorite with ☆, remove with ×, and manage custom groups in Kick Focus settings.</div>
     ${list}`;
   restoreStickerGridScroll(organizer, previousGridScrollTop);
 }
 
-function resetStickerPreferences() {
-  gmDelete(STICKER_PREFERENCES_KEY);
+function resetStickerPreferences(options = {}) {
+  const keepLibrary = options.keepLibrary === true;
+  const library = keepLibrary ? state.stickerPreferences.library : new Map();
+  state.runtime.stickerLibraryFilter = 'all';
+  state.runtime.stickerLibraryQuery = '';
   state.stickerPreferences = {
     pinned: new Set(),
     hidden: new Set(),
     view: 'all',
     showHidden: false,
+    activeGroup: '',
+    groups: [],
+    assignments: new Map(),
+    library,
   };
+  if (keepLibrary) persistStickerPreferences();
+  else gmDelete(STICKER_PREFERENCES_KEY);
 }
 
 function clearStickerPreferences() {
-  resetStickerPreferences();
+  resetStickerPreferences({ keepLibrary: true });
   renderSettingsPage();
   scheduleApply(0);
-  showToast('Sticker pins and removals reset.');
+  showToast('Sticker favorites, removals, and custom groups reset.');
 }
 
 function handleStickerAction(event) {
@@ -1620,12 +1742,13 @@ function handleStickerAction(event) {
     announce(state.stickerPreferences.hidden.has(key) ? 'Sticker removed' : 'Sticker restored');
   } else if (target.dataset.kfStickerView) {
     state.stickerPreferences.view = target.dataset.kfStickerView;
+    state.stickerPreferences.activeGroup = target.dataset.kfStickerGroup || state.stickerPreferences.activeGroup;
     persistStickerPreferences();
   } else if (target.dataset.kfStickerShowHidden) {
     state.stickerPreferences.showHidden = !state.stickerPreferences.showHidden;
     persistStickerPreferences();
   } else if (target.dataset.kfStickerReset) {
-    resetStickerPreferences();
+    resetStickerPreferences({ keepLibrary: true });
     announce('Sticker changes reset');
   } else {
     return;
@@ -2365,6 +2488,26 @@ const UI_CSS = `
   .kf-tool-card { min-height: 92px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
   .kf-tool-card h3 { margin: 0 0 3px; font-size: 11px; }
   .kf-tool-card p { margin: 0; color: var(--muted); font-size: 10px; }
+  .kf-sticker-library-shell { padding: 14px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
+  .kf-sticker-library-controls { display: grid; grid-template-columns: minmax(220px, 1fr) 180px; gap: 9px; }
+  .kf-sticker-library-controls .kf-select { width: 100%; height: 40px; }
+  .kf-sticker-group-builder { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 9px; margin-top: 9px; }
+  .kf-sticker-group-list { display: grid; gap: 7px; margin-top: 10px; }
+  .kf-sticker-group-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: 7px; align-items: center; }
+  .kf-sticker-group-row .kf-text { min-height: 34px; padding-block: 6px; }
+  .kf-sticker-library-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 13px 0 8px; color: var(--muted); font-size: 10px; }
+  .kf-sticker-library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 470px; overflow: auto; padding-right: 4px; scrollbar-gutter: stable; }
+  .kf-sticker-library-item { min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; }
+  .kf-sticker-library-item[data-removed="true"] { opacity: .58; }
+  .kf-sticker-library-image { width: 52px; height: 52px; display: grid; place-items: center; padding: 5px; border: 1px solid #343a36; border-radius: 4px; background: #151916; }
+  .kf-sticker-library-image img { width: 100%; height: 100%; object-fit: contain; }
+  .kf-sticker-library-copy { min-width: 0; }
+  .kf-sticker-library-copy strong { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .kf-sticker-access[data-access="available"] { border-color: rgba(var(--accent-rgb), .55); color: var(--accent); }
+  .kf-sticker-library-actions { grid-column: 1 / -1; display: grid; grid-template-columns: auto auto minmax(105px, 1fr); gap: 6px; }
+  .kf-sticker-library-actions .kf-select { min-width: 0; width: 100%; }
 
   .kf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .kf-table th, .kf-table td { padding: 11px 9px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; }
@@ -2504,6 +2647,9 @@ const UI_CSS = `
     .kf-defense-overview { grid-template-columns: 1fr; }
     .kf-defense-overview .kf-stats { border-left: 0; border-top: 1px solid var(--border-subtle); }
     .kf-tool-grid { grid-template-columns: 1fr; }
+    .kf-sticker-library-controls, .kf-sticker-group-builder, .kf-sticker-group-row, .kf-sticker-library-grid { grid-template-columns: 1fr; }
+    .kf-sticker-library-actions { grid-template-columns: repeat(2, auto); }
+    .kf-sticker-library-actions .kf-select { grid-column: 1 / -1; }
   }
 
   @media (max-width: 700px) {
@@ -2951,6 +3097,7 @@ function buildInterface() {
 
   shadow.addEventListener('click', onInterfaceClick);
   shadow.addEventListener('change', onInterfaceChange);
+  shadow.addEventListener('input', onInterfaceInput);
   state.commandInput.addEventListener('input', renderCommands);
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
@@ -3091,6 +3238,96 @@ function remoteBlocklistControls() {
     </section>`;
 }
 
+function stickerLibrarySummary() {
+  const library = [...state.stickerPreferences.library.values()];
+  const locked = library.filter((sticker) => sticker.access === 'locked').length;
+  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${locked ? ` · ${locked} locked-only` : ''}`;
+}
+
+function stickerLibraryFilterMatches(sticker, filter) {
+  if (filter === 'favorites') return state.stickerPreferences.pinned.has(sticker.key);
+  if (filter === 'removed') return state.stickerPreferences.hidden.has(sticker.key);
+  if (filter === 'locked') return sticker.access === 'locked';
+  if (filter === 'ungrouped') return !state.stickerPreferences.assignments.has(sticker.key);
+  if (filter.startsWith('group:')) return state.stickerPreferences.assignments.get(sticker.key) === filter.slice(6);
+  return true;
+}
+
+function stickerGroupOptions(selectedGroup = '') {
+  return `<option value="">Ungrouped</option>${state.stickerPreferences.groups.map((group) => `<option value="${escapeHtml(group.id)}"${selected(group.id, selectedGroup) ? ' selected' : ''}>${escapeHtml(group.name)}</option>`).join('')}`;
+}
+
+function renderStickerLibraryManager() {
+  const filter = state.runtime.stickerLibraryFilter;
+  const library = [...state.stickerPreferences.library.values()]
+    .filter((sticker) => stickerLibraryFilterMatches(sticker, filter))
+    .sort((left, right) => {
+      const favoriteDifference = Number(state.stickerPreferences.pinned.has(right.key)) - Number(state.stickerPreferences.pinned.has(left.key));
+      if (favoriteDifference) return favoriteDifference;
+      const removedDifference = Number(state.stickerPreferences.hidden.has(left.key)) - Number(state.stickerPreferences.hidden.has(right.key));
+      return removedDifference || left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+    });
+  const filters = [
+    ['all', `All recorded (${state.stickerPreferences.library.size})`],
+    ['favorites', `Favorites (${state.stickerPreferences.pinned.size})`],
+    ['removed', `Removed (${state.stickerPreferences.hidden.size})`],
+    ['locked', 'Locked-only'],
+    ['ungrouped', 'Ungrouped'],
+    ...state.stickerPreferences.groups.map((group) => [`group:${group.id}`, group.name]),
+  ];
+  const groupRows = state.stickerPreferences.groups.map((group) => {
+    const count = [...state.stickerPreferences.assignments.values()].filter((groupId) => groupId === group.id).length;
+    return `<div class="kf-sticker-group-row">
+      <input class="kf-text" value="${escapeHtml(group.name)}" maxlength="60" data-kf-sticker-group-name="${escapeHtml(group.id)}" aria-label="Rename ${escapeHtml(group.name)}">
+      <button type="button" class="kf-button kf-button-small" data-action="rename-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}">Save name</button>
+      <button type="button" class="kf-button kf-button-small kf-danger" data-action="delete-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}">Delete (${count})</button>
+    </div>`;
+  }).join('');
+  const cards = library.map((sticker) => {
+    const favorite = state.stickerPreferences.pinned.has(sticker.key);
+    const removed = state.stickerPreferences.hidden.has(sticker.key);
+    const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
+    const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
+    const searchText = `${sticker.name} ${nativeGroups}`.toLowerCase();
+    return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}">
+      <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
+      <div class="kf-sticker-library-copy"><strong title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small><span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${sticker.access === 'available' ? 'Seen available' : 'Locked only'}</span></div>
+      <div class="kf-sticker-library-actions">
+        <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
+        <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>
+        <select class="kf-select" data-kf-sticker-assignment="${escapeHtml(sticker.key)}" aria-label="Custom group for ${escapeHtml(sticker.name)}">${stickerGroupOptions(groupId)}</select>
+      </div>
+    </article>`;
+  }).join('');
+  return `
+    <section class="kf-subsection" data-kf-sticker-library>
+      <div class="kf-subsection-header"><div><h3>Recorded sticker library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="export">Export all settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
+      <div class="kf-sticker-library-shell">
+        <div class="kf-sticker-library-controls">
+          <input class="kf-text" type="search" value="${escapeHtml(state.runtime.stickerLibraryQuery)}" data-kf-sticker-library-search placeholder="Search recorded stickers or Kick groups" aria-label="Search recorded stickers">
+          <select class="kf-select" data-kf-sticker-library-filter aria-label="Filter recorded stickers">${filters.map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(filter, value) ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
+        </div>
+        <div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="New custom group name" aria-label="New sticker group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>
+        ${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : ''}
+        <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New picker stickers are merged automatically and included in export.</span></div>
+        ${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded stickers match this filter.' : 'Open Kick’s sticker picker once to begin the library. New stickers will be saved whenever Kick exposes them.'}</div>`}
+      </div>
+    </section>`;
+}
+
+function applyStickerLibrarySearch(value = state.runtime.stickerLibraryQuery) {
+  const query = String(value || '').trim().toLowerCase();
+  state.runtime.stickerLibraryQuery = query;
+  const items = [...(state.shadow?.querySelectorAll('[data-kf-sticker-library-item]') || [])];
+  let visible = 0;
+  for (const item of items) {
+    item.hidden = Boolean(query) && !String(item.dataset.kfStickerSearch || '').includes(query);
+    if (!item.hidden) visible += 1;
+  }
+  const count = state.shadow?.querySelector('[data-kf-sticker-library-visible]');
+  if (count) count.textContent = `${visible} shown`;
+}
+
 function renderContentPage() {
   const value = state.settings.content;
   const companion = companionInfo();
@@ -3122,15 +3359,16 @@ function renderContentPage() {
         ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
-        ${row('Organize chat stickers', 'Add a local shelf for pins, removals, search, and one grouped sticker view.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
+        ${row('Organize chat stickers', 'Continuously record Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
       </div>
     </section>
     <div class="kf-tool-grid">
-      <section class="kf-tool-card"><div><h3>Sticker organization</h3><p>${state.stickerPreferences.pinned.size} pinned · ${state.stickerPreferences.hidden.size} removed. Choices stay in this browser.</p></div><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset stickers</button></section>
+      <section class="kf-tool-card"><div><h3>Sticker library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><button type="button" class="kf-button kf-button-small" data-action="export">Export library</button></section>
       <section class="kf-tool-card"><div><h3>Local discovery choices</h3><p>Favorites and not-interested choices stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear hidden</button></div></section>
     </div>
+    ${renderStickerLibraryManager()}
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Local channel tools</h3><p>Channel keywords and private notes stay on this device.</p></div></div>${localChannelTools()}</section>
     ${remoteBlocklistControls()}
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Protection log</h3><p>Sanitized in-memory diagnostics; query strings are never retained.</p></div></div><div class="kf-panel"><table class="kf-table"><thead><tr><th>Time</th><th>Layer</th><th>Match</th><th>Action</th></tr></thead><tbody data-kf-protection-log>${protectionRows()}</tbody></table></div></section>
@@ -3176,7 +3414,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
-      <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move your preferences using a local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
+      <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded sticker metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
     <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
@@ -3203,6 +3441,7 @@ function renderSettingsPage() {
   const reset = state.shadow.querySelector('[data-action="reset-page"]');
   reset.disabled = state.currentPage === 'about';
   localizeInterface();
+  if (state.currentPage === 'content') applyStickerLibrarySearch();
 }
 
 function updateDiagnosticsInPlace() {
@@ -3270,6 +3509,99 @@ function coerceSetting(path, raw) {
   if (typeof current === 'boolean') return raw === true || raw === 'true';
   if (typeof current === 'number') return Number(raw);
   return String(raw);
+}
+
+function cleanCustomStickerGroupName(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
+function saveStickerOrganization(message) {
+  persistStickerPreferences();
+  applySettingsAttributes();
+  renderSettingsPage();
+  scheduleApply(0);
+  showToast(message);
+}
+
+function createStickerGroup() {
+  const input = state.shadow?.querySelector('[data-kf-new-sticker-group]');
+  const name = cleanCustomStickerGroupName(input?.value);
+  if (!name) {
+    showToast('Enter a custom sticker group name.', true);
+    input?.focus?.();
+    return;
+  }
+  if (state.stickerPreferences.groups.some((group) => group.name.toLowerCase() === name.toLowerCase())) {
+    showToast('That sticker group already exists.', true);
+    return;
+  }
+  const id = `group_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  state.stickerPreferences.groups.push({ id, name });
+  state.runtime.stickerLibraryFilter = 'all';
+  saveStickerOrganization(`Created sticker group “${name}”.`);
+}
+
+function renameStickerGroup(target) {
+  const id = target.dataset.kfStickerGroupId;
+  const group = state.stickerPreferences.groups.find((entry) => entry.id === id);
+  const input = state.shadow?.querySelector(`[data-kf-sticker-group-name="${CSS.escape(id || '')}"]`);
+  const name = cleanCustomStickerGroupName(input?.value);
+  if (!group || !name) {
+    showToast('Enter a valid sticker group name.', true);
+    return;
+  }
+  if (state.stickerPreferences.groups.some((entry) => entry.id !== id && entry.name.toLowerCase() === name.toLowerCase())) {
+    showToast('That sticker group already exists.', true);
+    return;
+  }
+  group.name = name;
+  saveStickerOrganization('Sticker group renamed.');
+}
+
+function deleteStickerGroup(target) {
+  const id = target.dataset.kfStickerGroupId;
+  const group = state.stickerPreferences.groups.find((entry) => entry.id === id);
+  if (!group) return;
+  state.stickerPreferences.groups = state.stickerPreferences.groups.filter((entry) => entry.id !== id);
+  state.stickerPreferences.assignments = new Map([...state.stickerPreferences.assignments].filter(([, groupId]) => groupId !== id));
+  if (state.stickerPreferences.activeGroup === id) {
+    state.stickerPreferences.activeGroup = '';
+    state.stickerPreferences.view = 'all';
+  }
+  if (state.runtime.stickerLibraryFilter === `group:${id}`) state.runtime.stickerLibraryFilter = 'all';
+  saveStickerOrganization(`Deleted sticker group “${group.name}”.`);
+}
+
+function toggleLibrarySticker(target, kind) {
+  const key = target.dataset.kfStickerKey;
+  if (!state.stickerPreferences.library.has(key)) return;
+  if (kind === 'favorite') {
+    if (state.stickerPreferences.pinned.has(key)) state.stickerPreferences.pinned.delete(key);
+    else {
+      state.stickerPreferences.pinned.add(key);
+      state.stickerPreferences.hidden.delete(key);
+    }
+    saveStickerOrganization(state.stickerPreferences.pinned.has(key) ? 'Sticker favorited.' : 'Sticker favorite removed.');
+    return;
+  }
+  if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
+  else {
+    state.stickerPreferences.hidden.add(key);
+    state.stickerPreferences.pinned.delete(key);
+  }
+  saveStickerOrganization(state.stickerPreferences.hidden.has(key) ? 'Sticker removed from the shelf.' : 'Sticker restored.');
+}
+
+function assignLibrarySticker(selectElement) {
+  const key = selectElement.dataset.kfStickerAssignment;
+  const groupId = selectElement.value;
+  if (!state.stickerPreferences.library.has(key)) return;
+  if (groupId && state.stickerPreferences.groups.some((group) => group.id === groupId)) {
+    state.stickerPreferences.assignments.set(key, groupId);
+  } else {
+    state.stickerPreferences.assignments.delete(key);
+  }
+  saveStickerOrganization(groupId ? 'Sticker assigned to custom group.' : 'Sticker moved to Ungrouped.');
 }
 
 function onInterfaceClick(event) {
@@ -3340,6 +3672,11 @@ function onInterfaceClick(event) {
   } else if (action === 'clear-sticker-preferences') {
     clearStickerPreferences();
   }
+  else if (action === 'create-sticker-group') createStickerGroup();
+  else if (action === 'rename-sticker-group') renameStickerGroup(actionTarget);
+  else if (action === 'delete-sticker-group') deleteStickerGroup(actionTarget);
+  else if (action === 'favorite-library-sticker') toggleLibrarySticker(actionTarget, 'favorite');
+  else if (action === 'remove-library-sticker') toggleLibrarySticker(actionTarget, 'remove');
   else if (action === 'cancel-shortcut') {
     state.shortcutCapture = null;
     state.shortcutError = '';
@@ -3350,9 +3687,25 @@ function onInterfaceClick(event) {
 }
 
 function onInterfaceChange(event) {
+  const assignment = event.target.closest('select[data-kf-sticker-assignment]');
+  if (assignment) {
+    assignLibrarySticker(assignment);
+    return;
+  }
+  const stickerFilter = event.target.closest('select[data-kf-sticker-library-filter]');
+  if (stickerFilter) {
+    state.runtime.stickerLibraryFilter = stickerFilter.value;
+    renderSettingsPage();
+    return;
+  }
   const input = event.target.closest('input[data-set], select[data-set]');
   if (!input) return;
   updateSetting(input.dataset.set, coerceSetting(input.dataset.set, input.value));
+}
+
+function onInterfaceInput(event) {
+  const search = event.target.closest('input[data-kf-sticker-library-search]');
+  if (search) applyStickerLibrarySearch(search.value);
 }
 
 function openSettings(page = state.currentPage) {
@@ -3415,14 +3768,18 @@ function confirmReset() {
 
 function exportSettings() {
   try {
-    const blob = new Blob([`${JSON.stringify(state.settings, null, 2)}\n`], { type: 'application/json' });
+    const payload = { ...state.settings, stickers: stickerPreferencesValue() };
+    const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `kick-focus-settings-${new Date().toISOString().slice(0,10)}.json`;
+    link.hidden = true;
+    document.body.append(link);
     link.click();
+    link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast('Settings exported.');
+    showToast(`Settings and ${state.stickerPreferences.library.size} recorded stickers exported.`);
   } catch {
     showToast('Could not export settings.', true);
   }
@@ -3439,6 +3796,12 @@ async function onImportFile(event) {
       return;
     }
     state.settings = result.value;
+    if (result.stickers) {
+      state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
+      gmSet(STICKER_PREFERENCES_KEY, result.stickers);
+      state.runtime.stickerLibraryFilter = 'all';
+      state.runtime.stickerLibraryQuery = '';
+    }
     saveSettings('Imported');
     renderSettingsPage();
     scheduleApply(0);
@@ -3552,9 +3915,12 @@ function clearEnhancedPage() {
   state.observers.document?.disconnect?.();
   state.observers.body?.disconnect?.();
   state.observers.chat?.disconnect?.();
+  state.observers.stickers?.disconnect?.();
   state.observers.document = null;
   state.observers.body = null;
   state.observers.chat = null;
+  state.observers.stickers = null;
+  state.runtime.stickerPickerTarget = null;
   clearInterval(state.remoteSyncTimer);
   state.remoteSyncTimer = 0;
   state.runtime.focus = false;

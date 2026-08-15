@@ -11,6 +11,7 @@ All notable changes are documented here. Dates use ISO 8601.
 ### Added
 
 - Chat sticker organization with a local grouped shelf, pinned favorites, removable stickers, search-aware views, native-group fallback, and independent reset controls.
+- A persistent sticker library continuously merges every enabled or locked sticker Kick exposes, records native groups, supports custom group assignment in settings, and round-trips the complete catalog and configuration through JSON export/import.
 
 ### Changed
 

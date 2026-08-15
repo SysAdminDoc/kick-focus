@@ -510,9 +510,9 @@ export function detectContentLabels(text, context = {}) {
   };
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 1;
+export const STICKER_PREFERENCES_SCHEMA = 2;
 
-function cleanStickerKeys(input, limit = 800) {
+function cleanStickerKeys(input, limit = 2400) {
   if (!Array.isArray(input)) return [];
   const values = [];
   const seen = new Set();
@@ -527,16 +527,105 @@ function cleanStickerKeys(input, limit = 800) {
   return values;
 }
 
+function cleanStickerText(value, maximum = 80) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\s+/g, ' ').trim().slice(0, maximum);
+}
+
+function cleanStickerAssetUrl(value) {
+  const raw = cleanStickerText(value, 500);
+  if (!raw || !/\/emotes\//i.test(raw)) return '';
+  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || (host !== 'kick.com' && !host.endsWith('.kick.com'))) return '';
+    url.hash = '';
+    return url.href.slice(0, 500);
+  } catch {
+    return '';
+  }
+}
+
+function cleanStickerGroups(input) {
+  if (!Array.isArray(input)) return [];
+  const groups = [];
+  const ids = new Set();
+  const names = new Set();
+  for (const raw of input) {
+    if (!isRecord(raw)) continue;
+    const id = cleanStickerText(raw.id, 64).replace(/[^a-zA-Z0-9_-]/g, '');
+    const name = cleanStickerText(raw.name, 60);
+    const normalizedName = name.toLowerCase();
+    if (!id || !name || ids.has(id) || names.has(normalizedName)) continue;
+    ids.add(id);
+    names.add(normalizedName);
+    groups.push({ id, name });
+    if (groups.length >= 40) break;
+  }
+  return groups;
+}
+
+function cleanStickerAssignments(input, groupIds) {
+  if (!Array.isArray(input)) return [];
+  const assignments = [];
+  const keys = new Set();
+  for (const raw of input) {
+    if (!isRecord(raw)) continue;
+    const key = cleanStickerKeys([raw.key], 1)[0];
+    const groupId = cleanStickerText(raw.groupId, 64).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!key || !groupIds.has(groupId) || keys.has(key)) continue;
+    keys.add(key);
+    assignments.push({ key, groupId });
+    if (assignments.length >= 2400) break;
+  }
+  return assignments;
+}
+
+function cleanStickerLibrary(input) {
+  if (!Array.isArray(input)) return [];
+  const library = [];
+  const keys = new Set();
+  for (const raw of input) {
+    if (!isRecord(raw)) continue;
+    const key = cleanStickerKeys([raw.key], 1)[0];
+    const name = cleanStickerText(raw.name, 80);
+    const src = cleanStickerAssetUrl(raw.src);
+    if (!key || !name || !src || keys.has(key)) continue;
+    keys.add(key);
+    library.push({
+      key,
+      id: cleanStickerText(raw.id, 120).replace(/[^a-zA-Z0-9_-]/g, ''),
+      name,
+      src,
+      nativeGroups: [...new Set((Array.isArray(raw.nativeGroups) ? raw.nativeGroups : [])
+        .map((group) => cleanStickerText(group, 80))
+        .filter(Boolean))].slice(0, 20),
+      access: enumValue(raw.access, ['available', 'locked'], 'available'),
+    });
+    if (library.length >= 2400) break;
+  }
+  return library;
+}
+
 export function normalizeStickerPreferences(input) {
   const source = isRecord(input) ? input : {};
   const hidden = cleanStickerKeys(source.hidden);
   const hiddenSet = new Set(hidden);
+  const groups = cleanStickerGroups(source.groups);
+  const groupIds = new Set(groups.map((group) => group.id));
+  const activeGroup = groupIds.has(source.activeGroup) ? source.activeGroup : '';
+  const view = enumValue(source.view, ['all', 'pinned', 'native', 'group'], 'all');
   return {
     schema: STICKER_PREFERENCES_SCHEMA,
     pinned: cleanStickerKeys(source.pinned).filter((key) => !hiddenSet.has(key)),
     hidden,
-    view: enumValue(source.view, ['all', 'pinned', 'native'], 'all'),
+    view: view === 'group' && !activeGroup ? 'all' : view,
     showHidden: bool(source.showHidden, false),
+    activeGroup,
+    groups,
+    assignments: cleanStickerAssignments(source.assignments, groupIds),
+    library: cleanStickerLibrary(source.library),
   };
 }
 
@@ -624,13 +713,20 @@ export function validateImportedSettings(jsonText) {
   if (parsed.schema != null && Number(parsed.schema) > SETTINGS_SCHEMA) {
     return { ok: false, error: `Settings schema ${parsed.schema} is newer than this build supports.` };
   }
+  if (parsed.stickers != null && !isRecord(parsed.stickers)) {
+    return { ok: false, error: 'The sticker library must be a JSON object.' };
+  }
+  if (parsed.stickers?.schema != null && Number(parsed.stickers.schema) > STICKER_PREFERENCES_SCHEMA) {
+    return { ok: false, error: `Sticker schema ${parsed.stickers.schema} is newer than this build supports.` };
+  }
 
   const value = normalizeSettings(parsed);
+  const stickers = parsed.stickers == null ? null : normalizeStickerPreferences(parsed.stickers);
   const notes = [];
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
 
   for (const key of Object.keys(parsed)) {
-    if (key !== 'schema' && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
+    if (key !== 'schema' && key !== 'stickers' && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
   }
   for (const section of sections) {
     const incoming = parsed[section];
@@ -649,5 +745,17 @@ export function validateImportedSettings(jsonText) {
     notes.unshift(`Upgraded from ${from} to schema ${SETTINGS_SCHEMA}.`);
   }
 
-  return { ok: true, value, notes };
+  if (stickers) {
+    const stickerFields = ['pinned', 'hidden', 'groups', 'assignments', 'library'];
+    for (const field of stickerFields) {
+      if (Array.isArray(parsed.stickers[field]) && parsed.stickers[field].length !== stickers[field].length) {
+        notes.push(`Adjusted sticker ${field} to supported entries.`);
+      }
+    }
+    if (parsed.stickers.schema == null || Number(parsed.stickers.schema) < STICKER_PREFERENCES_SCHEMA) {
+      notes.push(`Upgraded stickers to schema ${STICKER_PREFERENCES_SCHEMA}.`);
+    }
+  }
+
+  return { ok: true, value, stickers, notes };
 }
