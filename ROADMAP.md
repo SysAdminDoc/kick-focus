@@ -9,20 +9,19 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 1. **Authenticated companion journey at both desktop viewports.** Load the unpacked extension in a throwaway profile that the user signs into directly, then repeat Home → Browse → Following → Drops → Search → Channel/chat at 1440×900 and 1920×1080. The isolated in-app browser supplied authenticated recon, while the extension proof used a separate logged-out profile; session data must never be exported between them.
 2. **Worker-level stitched-ad observability.** Prototype a bounded `Worker`-constructor wrapper around the IVS worker and record only manifest/ad-signifier counts. Ship a mitigation only if it can separate ad media without replaying private endpoints, breaking playback, or proxying traffic. The current page-realm fetch/XHR hooks cannot see the worker-owned HLS manifest. (2026-08-15: check the cheaper question first — Chrome documents a request's initiator as the creating document's origin, so the companion's existing `initiatorDomains: ["kick.com"]` rules may already observe worker-initiated segment requests that the page realm cannot. Measure that before building the wrapper. Note also that the AdGuard "stitched-ad redirect rule" reported for 2026-08-14 **does not exist** — see Rejected Ideas in RESEARCH.md — so there is no external rule to copy.)
 3. **Automated Kick DOM drift snapshots.** Add a maintainer-only reducer that turns fresh MHTML/live captures into small, sanitized fixtures and fails when stable probes disappear on Home, Browse, Following, Drops, Search, Category, Channel, or the open sticker picker. Keep raw captures ignored.
-4. **Live Firefox companion proof.** Exercise the generated Manifest V2 package in a disposable Firefox profile, proving `webRequestBlocking`, page/bridge handshake, popup state, and current Kick DOM behavior. Firefox requires target and initiator host access for this API, so document the `<all_urls>` warning alongside the Kick-initiator runtime guard. (2026-08-15: the Chromium-only initiator guard that would have made this proof vacuous was fixed in 1.5.0 and is now covered by a behavioural test, so this item is unblocked and is about the live profile only.)
+4. **Live Firefox companion proof.** Exercise the generated Manifest V2 package in a disposable Firefox profile, proving `webRequestBlocking`, page/bridge handshake, popup state, and current Kick DOM behavior. Firefox requires target and initiator host access for this API, so document the `<all_urls>` warning alongside the Kick-initiator runtime guard. (2026-08-15: this proof will fail as written — the initiator guard reads a Chromium-only field. Land the P0 fix below first, or this item just rediscovers it.)
 5. **Userscript-manager cold-start matrix.** Verify current Tampermonkey and Violentmonkey injection timing, storage/export behavior, SPA navigation, and ad-defense diagnostics in isolated profiles. Manager-specific grants cannot be considered live-verified by the direct fixture bundle. (2026-08-15: Violentmonkey 2.47.0 only reached MV3 on 2026-08-06, and its release notes state `@run-at document-start` is **not** real document-start under MV3 Chromium unless "Alternative page mode" is enabled, which is off by default and advisory-limited to ~1 MB of injected script. Test that mode explicitly, both on and off.)
 
 ## Explicitly deferred
 
 - Mobile layout or mobile claims
-- Remote analytics or telemetry
-- Account automation, moderation writes, or bypassing authentication or sticker/subscription entitlements
-- Proxy services, replay of private endpoints, or remote executable code
 - Publishing to a userscript catalog or extension store without explicit approval
 
 ## Research-Driven Additions
 
 Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
+
+### P0
 
 ### P1
 
@@ -30,8 +29,7 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Why: the shipped manifests request access they do not need, and the declared Node floor endorses an end-of-life runtime.
   Evidence: `src/extension/manifest.json:26` ships `declarativeNetRequestFeedback`, which is unpacked-only for `onRuleMatchedDebug`/`getMatchedRules` yet still triggers the "read your browsing history" warning; `src/extension/manifest.firefox.json` requests `<all_urls>` and `tabs` (tab `status` updates need no permission) and omits `browser_specific_settings.gecko.data_collection_permissions`, mandatory for AMO since 2025-11-03; `package.json` declares `engines.node >= 20`, EOL 2026-04-30 with 3 HIGH CVEs unpatched in that line.
   Touches: `src/extension/manifest.json`, `src/extension/manifest.firefox.json`, `scripts/build.mjs` (dev-only manifest variant), `package.json`.
-  Acceptance: the release Chromium manifest drops the feedback permission while a dev variant keeps it; the Firefox manifest enumerates kick.com plus the generated hosts instead of `<all_urls>`, drops `tabs`, and declares `data_collection_permissions: { required: ["none"] }`; the block counter degrades gracefully where debug feedback is unavailable.
-  Done 2026-08-15 (1.5.0): `engines.node` is now `>=22`. The manifest permissions remain.
+  Acceptance: the release Chromium manifest drops the feedback permission while a dev variant keeps it; the Firefox manifest enumerates kick.com plus the generated hosts instead of `<all_urls>`, drops `tabs`, and declares `data_collection_permissions: { required: ["none"] }`; `engines.node` is `>=22`; the block counter degrades gracefully where debug feedback is unavailable.
   Complexity: M
 
 - [ ] P1 — Fetch the remote blocklist off the page realm
@@ -109,7 +107,6 @@ Gate for this whole group: the deferred list rules out "replay of private endpoi
   Why: Kick ships no product called a sticker — its API path, chat wire format and picker DOM all say emote — so the current wording breaks the match between this UI and the one users are looking at.
   Evidence: `kick.com/emotes/{slug}`, chat tokens `[emote:5748003:collectiblesGoldenLULW]` captured live 2026-08-15, and Kick's own picker container `#chat-emotes-picker-panel`.
   Touches: `README.md`, settings copy in `src/runtime.js`, `TRANSLATIONS`, storage keys (migrate, do not rename in place), `scripts/check.mjs` gate strings.
-  Note (2026-08-15): 1.5.0 enlarged this. `src/api.mjs` and the whole Kick-data settings section already say "emote", so the two vocabularies now sit side by side in one interface — which is worse than either alone. The i18n parity gate added in 1.5.0 will catch dictionary drift during the rename.
   Acceptance: user-facing text says emote; stored keys either stay or migrate with a schema bump; no gate still asserts the old wording.
   Complexity: M
 
