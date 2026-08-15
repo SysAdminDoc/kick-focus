@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- A blocked `XMLHttpRequest` reported an error to the caller, which invites telemetry clients to retry and is how blocking one endpoint turns into a request loop. Blocked requests now answer with an empty success, matching what the `fetch` path already did. Measured over five minutes on a live channel: telemetry attempts flat, total requests steady at roughly 54 per minute with no acceleration, and uninterrupted playback.
 - Kick Focus never started at all on any load where it won the `document-start` race. The observer that waits for `<body>` read the observer from its callback's first argument, which is the mutation list, so it threw on every mutation and the interface, apply cycle, and filters were never reached. It worked only when injection landed late enough that `<body>` already existed.
 - Layout, filtering, ad-shell removal, chat detection, and sidebar sync stopped running after first paint on any busy page. The apply cycle was debounced with no maximum wait, and Kick mutates its DOM faster than the debounce window, so every mutation reset the timer and the work never ran. The delay is now capped, so a continuously changing page still gets serviced. Confirmed against live Kick: card detection went from 0 to 24 on `/browse`.
 

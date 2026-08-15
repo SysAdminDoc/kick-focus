@@ -638,6 +638,31 @@ function blockedResponse(win) {
  * result is cached against the raw body: transforming on every read would be
  * wasteful, and reporting on every read would flood the protection log.
  */
+/**
+ * Make a blocked XHR look like a request that succeeded and returned nothing.
+ *
+ * Reporting an error instead invites the caller to retry, which is how a
+ * blocked telemetry endpoint turns into a request loop that costs more than
+ * the telemetry would have.
+ */
+function simulateEmptySuccess(xhr, win) {
+  const fixed = (name, value) => Object.defineProperty(xhr, name, {
+    configurable: true,
+    get: () => value,
+  });
+
+  fixed('readyState', 4);
+  fixed('status', 200);
+  fixed('statusText', 'OK');
+  fixed('responseText', '{}');
+  fixed('responseURL', '');
+  fixed('response', xhr.responseType === 'json' ? {} : '{}');
+
+  for (const type of ['readystatechange', 'load', 'loadend']) {
+    xhr.dispatchEvent(new win.Event(type));
+  }
+}
+
 function installPlaybackRewrite(xhr, nativeText, nativeResponse, report) {
   let cache = null;
   let reported = false;
@@ -777,10 +802,12 @@ function installNetworkDefense() {
         if (this.__kfPlayback && nativeText?.get) installPlaybackRewrite(this, nativeText, nativeResponse, report);
         if (!this.__kfRequest?.blocked) return nativeSend.apply(this, args);
         report('XHR', this.__kfRequest);
+        // Answer with an empty success rather than an error. Telemetry clients
+        // treat a failed request as worth retrying, and an aggressive retry
+        // loop costs the user far more than the request that was blocked.
         queueMicrotask(() => {
           try {
-            this.dispatchEvent(new pageWindow.Event('error'));
-            this.dispatchEvent(new pageWindow.Event('loadend'));
+            simulateEmptySuccess(this, pageWindow);
           } catch {
             // The caller still receives an unsent XHR with status 0.
           }

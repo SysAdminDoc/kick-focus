@@ -55,13 +55,6 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Complexity: L
   Depends on: the worker-target capture in P0, which decides whether the page-realm hooks can see the manifest at all.
 
-- [ ] P1 — Make telemetry blocking storm-safe, and re-decide its default
-  Why: blocking Mux telemetry reportedly provokes thousands of retries per minute and tanks CPU, and `reduceTelemetry` ships on, so the project may be shipping the storm rather than the fix.
-  Evidence: r/uBlockOrigin 1uh81lp, where users report over three million blocked requests in one session; the community fix (`no-fetch-if, litix.io`) resolves the request rather than rejecting it.
-  Touches: `src/runtime.js` (`installNetworkDefense`, `blockedResponse`), `src/core.mjs` (`TELEMETRY_HOSTS`), companion `rules/telemetry.json`.
-  Acceptance: a multi-hour session with telemetry reduction on shows a bounded request count and no measurable CPU regression; if the default cannot be made safe it flips to off, with the reason documented.
-  Complexity: M
-
 - [ ] P1 — Harden the player against resize, monitor moves, and ultrawide
   Why: three widely reported breakages that make the site feel broken — controls vanish on window resize, moving the window to another monitor reloads the stream and resets VOD position, and ultrawide or 2K crops the video and kills hotkeys.
   Evidence: r/Kick 1r2pjvn, r/KickStreaming 1rs5zge, r/Kick 1ux7syc (2026-07).
