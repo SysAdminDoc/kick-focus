@@ -865,8 +865,26 @@ export function normalizeMultistream(input) {
       ? streams.find((slug) => slug.toLowerCase() === String(source.chat).toLowerCase())
       : focus,
     showChat: typeof source.showChat === 'boolean' ? source.showChat : true,
+    // Nine autoplaying tiles with no way to stop them is a WCAG 2.2.2 failure,
+    // and the focused tile's audio is a 1.4.2 failure. These two flags back the
+    // pause-all and mute-all controls. `muted` is deliberately separate from
+    // `focus`: silencing the grid must not also move the chat panel.
+    paused: typeof source.paused === 'boolean' ? source.paused : false,
+    muted: typeof source.muted === 'boolean' ? source.muted : false,
     layouts,
   };
+}
+
+/**
+ * Should a tile carry audio?
+ *
+ * Exactly one tile ever does, and only when the grid is neither paused nor
+ * muted — so this is the single place the "one unmuted tile" invariant lives.
+ */
+export function multistreamTileMuted(value, slug) {
+  const state = value || {};
+  if (state.paused || state.muted) return true;
+  return slug !== state.focus;
 }
 
 /**

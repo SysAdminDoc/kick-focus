@@ -110,3 +110,119 @@ Gate for this whole group: the deferred list rules out "replay of private endpoi
   Acceptance: user-facing text says emote; stored keys either stay or migrate with a schema bump; no gate still asserts the old wording.
   Complexity: M
 
+## Research-Driven Additions — differential pass
+
+Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](RESEARCH.md), run against v1.5.0.
+
+### P0
+
+- [ ] P0 — Close the untranslated-settings-copy gap and gate it
+  Why: most settings copy has no dictionary entry at all, so `es` and `pt` users read English for the majority of the interface — and nothing detects it.
+  Evidence: measured 2026-08-15 — **76 of 112** `row()`/`pageHeader()` label and description strings are missing from at least one locale (`es` and `pt` hold 126 keys each). This is partly pre-existing (layout, chat, density, appearance descriptions) and was widened by v1.5.0, which added the entire Kick-data section and multi-stream surface untranslated. Only 2 of 16 `tr()` call-site strings are missing, so the gap is specifically in markup that `localizeInterface()` translates by lookup after render — a string with no entry silently stays English. `test/i18n.test.js` passes throughout because it checks locale *parity* and duplicates, never whether a rendered string has any entry.
+  Touches: `src/runtime.js` (`TRANSLATIONS`, settings markup), `test/i18n.test.js`.
+  Acceptance: every `row()`/`pageHeader()` string and every `tr()` argument has an `es` and `pt` entry; the i18n gate additionally fails when a rendered UI string has no dictionary entry in any locale, and is verified red against a deliberately removed entry before being trusted. If full translation is too large for one pass, land the gate first with an explicit allow-list of known-untranslated strings so the count can only shrink.
+  Complexity: L
+
+- [ ] P0 — Cap non-focused tile quality and pause offscreen tiles
+  Why: nine tiles at source quality exceeds the hardware most viewers own, so the grid's headline capacity is unusable on a laptop — and this is the one axis no competitor has claimed.
+  Evidence: ~4–6 simultaneous 1080p60 decodes is the realistic integrated-GPU ceiling before dropped frames; bhamrick/multitwitch#59 is the same complaint against Twitch ("defaults to source, melts CPUs") and was never fixed. Chrome pauses muted video in backgrounded tabs and advises the Page Visibility API. destinygg/kickstiny#19 proves the Amazon IVS worker inside `player.kick.com` is scriptable for quality, which is the only available lever because the embed exposes no quality parameter.
+  Touches: `src/runtime.js` (multi-stream tile lifecycle), `src/api.mjs` (`playerEmbedUrl`), `src/core.mjs` (policy + tests).
+  Acceptance: non-focused tiles render at a capped quality while the focused tile is unrestricted; tiles scrolled out of view or in a hidden tab suspend and resume without losing grid position; the mechanism degrades to today's behaviour when quality cannot be controlled, and says which mode is in effect. Settle open question 1 in RESEARCH.md first — whether `sessionStorage['stream_quality']` reaches the embed's own document — since a negative answer forces the IVS-worker route.
+  Complexity: L
+
+### P1
+
+- [ ] P1 — Carry emote usage counts and multi-stream layouts through export
+  Why: the export/import round-trip is this project's unique differentiator, and it now silently omits two stores the About page tells users it is keeping.
+  Evidence: `exportSettings()` (`src/runtime.js:5586`) serializes `{...state.settings, stickers: stickerPreferencesValue()}` only; `kick-focus:emote-usage` and `kick-focus:multistream` are absent, and `validateImportedSettings()` in `src/core.mjs` has no branch for either. Both appear in `STORAGE_LABELS` and in the About storage table.
+  Touches: `src/core.mjs` (`validateImportedSettings`, normalizers), `src/runtime.js` (`exportSettings`, `onImportFile`), `test/core.test.js`.
+  Acceptance: export carries usage counts and saved layouts; import validates and reports them the way it reports settings and the library, including counts of anything dropped; a round-trip test asserts both survive.
+  Complexity: M
+
+- [ ] P1 — Make the realtime transport swappable before Kick forces it
+  Why: the anonymous Pusher path can be switched off by a single vendor toggle, and Kick already runs a replacement gateway speaking the same protocol — so the migration is a question of when, not whether.
+  Evidence: Pusher's Authorized Connections feature (out of beta) lets an app owner disconnect clients that never authenticate or join a private/presence channel — exactly our subscription shape. Kick's self-hosted `wss://websockets.kick.com/viewer/v1/connect` is live (Cloudflare-fronted 403 without a token) and speaks the same `pusher:subscribe` / `chatrooms.{id}.v2` / `App\Events\ChatMessageEvent` frames; its token flow is documented in Pkkls/kick-core. The broker's `provider` discriminator and `degraded` state are the migration scaffolding. Hosted Pusher verified still working by anonymous handshake 2026-08-15.
+  Touches: `src/api.mjs` (transport selection), `src/runtime.js` (`connectRealtime`, `onRealtimeFrame`), `test/api.test.js`.
+  Acceptance: frame parsing and subscription management are separated from the connection method so a second transport is an added function rather than a rewrite; an unsupported provider still degrades to the DOM path and says so. Settle open question 2 in RESEARCH.md — whether the gateway is reachable from a page-world content script at all — because a service-worker-only answer means the userscript build can never follow, and that belongs in the docs.
+  Complexity: M
+
+- [ ] P1 — Treat realtime payloads as hostile input
+  Why: the socket is an anonymous public subscription, so anything it delivers is untrusted by construction, and every future consumer of the normalizers inherits whatever assumption is set now.
+  Evidence: `normalizeChatMessage`, `normalizeDeletion`, and `onRealtimeFrame` in `src/api.mjs` / `src/runtime.js` validate shape but not size or content bounds; `annotateDeletedMessage` is currently safe only because it happens to use `textContent`. Pusher's protocol documentation and the anonymous-subscribe model place no trust guarantee on frame contents.
+  Touches: `src/api.mjs` (normalizers), `src/runtime.js` (realtime consumers), `test/api.test.js`.
+  Acceptance: every field consumed from a frame is length-bounded and type-checked before use; no realtime-derived string reaches `innerHTML` on any path; a test feeds oversized, malformed, and prototype-polluting frames and asserts they are rejected without throwing.
+  Complexity: S
+
+- [ ] P1 — Say that multi-stream chat is read-only, or make it writable
+  Why: Kick's popout chat refuses to send from inside an iframe, so the grid's chat panel looks broken rather than limited — and Kick Focus is the only tool positioned to fix it properly.
+  Evidence: KickDevDocs#262 (2025-09-28, closed without staff response) documents that the chat popout throws a CSRF error on login and send inside an iframe — "lacks iframe support by design"; read-only works. bhamrick/multitwitch#51 and #52 are the same failure a platform earlier. Because Kick Focus runs on kick.com's own origin, it can compose and send through the page's own session — the structural advantage every standalone multi-view site lacks.
+  Touches: `src/runtime.js` (multi-stream chat panel), `README.md`.
+  Acceptance: the chat panel states plainly that sending is unavailable in the embed, or a same-origin composer sends through the page's own session; either way the limitation is never left for the user to discover by failing.
+  Complexity: M
+
+- [ ] P1 — Detect the adblock collision and say it is not ours
+  Why: since ads launched, filter lists break Kick's own signup and follow actions, and the last extension a user installed gets the blame.
+  Evidence: four distinct users in one week (2026-08-09 to 2026-08-15, r/KickStreaming and r/Kick) report signup, follow, and sign-in failing with "Unknown error" until uBlock Origin is disabled *and* the browser restarted; one abandoned the platform. Attributed by users to Kick's new trackers, not to deliberate adblock detection. Kick Focus does not block those hosts — `AD_HOSTS` and `TELEMETRY_HOSTS` in `src/core.mjs` contain none of them — which is precisely why the disclaimer is honest.
+  Touches: `src/runtime.js` (diagnostics, Content & Ads page), `README.md`.
+  Acceptance: when a Kick account action fails in a way consistent with the known collision, the interface states that Kick Focus does not block the hosts involved and names what to check; the README carries the same note. Settle open question 3 in RESEARCH.md — which filter rule is responsible — before naming a specific fix, and disclaim only what is verified.
+  Complexity: S
+
+- [ ] P1 — Contain focus in the multi-stream and command surfaces
+  Why: both are modal overlays, and only the settings modal traps focus, so keyboard users tab out of a dialog into a page they cannot see.
+  Evidence: `trapFocus` (`src/runtime.js:5927`) is invoked once, guarded on `state.modal` (`:5984`); the multi-stream backdrop and command backdrop have no equivalent. Cross-origin player frames cannot be focus-managed internally, which makes host-level containment the only control available.
+  Touches: `src/runtime.js` (`trapFocus`, key handling for both backdrops).
+  Acceptance: while either overlay is open, Tab and Shift+Tab cycle within it; Escape still closes the topmost surface; focus returns to the control that opened it.
+  Complexity: S
+
+### P2
+
+- [ ] P2 — Make saved layouts shareable and show who is live
+  Why: path-style layout URLs are the field's de facto sharing format, and live-status on saved layouts is the stickiest feature of the closest competitor.
+  Evidence: MultiKick.com builds grids from `multikick.com/{a}/{b}` and pairs favorites with live indicators; ViewGrid ships shareable grid URLs; multitwitch#49 asked for URL-driven functions. `kick.com/current-viewers?ids[]=` returns bulk live status in one anonymous request (verified 2026-08-15), so the status half is nearly free.
+  Touches: `src/runtime.js` (multi-stream layout UI), `src/api.mjs` (`endpoints.currentViewers`), `src/core.mjs` (layout serialization).
+  Acceptance: a layout can be copied as a link and restored from one, validating every slug before use; saved layouts show which channels are live from a single bulk request rather than per-channel polling.
+  Complexity: M
+
+- [ ] P2 — Surface the collectible facts Kick leaves unexplained
+  Why: this is the strongest unmet demand the community sweep found, and the project already holds the data.
+  Evidence: 7+ distinct users 2026-07-18 to 2026-08-09 confused or burned — the daily streak confers nothing (confirmed by a quoted Kick support reply), duplicate protection is undocumented, drop odds are opaque, unlock state desyncs between the collectibles page and the chat emote set, and Kick retroactively changed already-pulled emotes. Extends the existing "Snapshot the collectibles inventory locally" item rather than replacing it: that one records history, this one explains the mechanics.
+  Touches: `src/runtime.js` (collectibles surface), `src/core.mjs`.
+  Acceptance: the collectibles view states what the streak does and does not do, shows observed duplicate rate from the user's own local history, and flags entries whose name or asset changed since first capture; nothing is claimed that the local record cannot support.
+  Complexity: M
+
+- [ ] P2 — Detect Kick API drift instead of discovering it through breakage
+  Why: Kick removed an endpoint, dropped a header requirement, and changed moderation behaviour inside four weeks, and each was found by a competing client breaking in public.
+  Evidence: NipahTV v1.5.110 (2026-07-29) exists solely because `/api/v1/video/:livestream_id` was deleted; Kickerino shipped fixes for collectible badges appearing in chat payloads (v1.31, 2026-08-08), the XSRF requirement being dropped (v1.33, 2026-08-11), and timeout/ban-delete behaviour changing (v1.34, 2026-08-13). Kick Focus is exposed to none of the three — verified by grep, no XSRF header is sent and no `/api/v1/video/` path is referenced — but has no mechanism to notice the next one.
+  Touches: `src/api.mjs` (response validation), `src/runtime.js` (diagnostics), `scripts/`.
+  Acceptance: when a normalizer rejects a payload for a shape reason, diagnostics record which endpoint and which field, and the About page reports accumulated drift rather than silently falling back; the existing `assessAdStack` drift report is the model.
+  Complexity: M
+
+- [ ] P2 — Render collectible badges now that chat payloads carry them
+  Why: Kick added collectible badges to chat identity payloads, and clients that ignore them render gaps where other clients show a badge.
+  Evidence: Kickerino v1.29 (2026-08-02) fixed collectible-emote download freezes and v1.31 (2026-08-08) shipped a collectible-badges appearance fix — two releases in a week driven by the change. `normalizeChatMessage` in `src/api.mjs` already prefers `badges_v2` and captures `image_url`, so the data is parsed but nothing renders it.
+  Touches: `src/runtime.js` (chat surface), `src/api.mjs`.
+  Acceptance: badges present in `badges_v2` render in the chat surface at their correct size, including collectible and global badges the legacy array omits; a missing or broken badge image degrades to text rather than an empty box.
+  Complexity: S
+
+- [ ] P2 — Pin the live harness to its Chromium requirement
+  Why: the flags the live gate depends on no longer exist in official Chrome builds, and the next person to run it on the wrong binary will get a confusing failure rather than a clear one.
+  Evidence: Chrome 139 (2025-06-30) removed `--extensions-on-chrome-urls` and `--disable-extensions-except` from official builds; `scripts/verify-extension.mjs` passes the latter and survives only because it targets Playwright's Chromium-for-Testing. Compounding it, `--disable-extensions-except` never excluded component extensions anyway — already recorded in `CLAUDE.md`.
+  Touches: `scripts/verify-extension.mjs`, `CLAUDE.md`, `README.md`.
+  Acceptance: the harness detects a binary that ignores the flag and fails with a message naming the requirement, instead of attaching to the wrong extension or reporting a vacuous pass.
+  Complexity: S
+
+- [ ] P2 — Split the multi-stream and live-data surfaces out of `src/runtime.js`
+  Why: the file is 6,179 lines carrying five unrelated concerns, and the two newest are the most testable and least entangled.
+  Evidence: `src/runtime.js` now holds site styling, content filtering, the settings UI, the Kick live-data client, and the multi-stream surface. The build concatenates with `export` stripped, so extraction costs nothing at runtime, and the bundle-completeness gate in `scripts/check.mjs` covers any file added to its `moduleFiles` list.
+  Touches: new `src/multistream.js` and `src/live.js`, `scripts/build.mjs`, `scripts/check.mjs`.
+  Acceptance: both surfaces move without behaviour change, the new files are covered by the bundle-export gate, and `npm run verify` plus the live harness both stay green — a green build alone does not prove a refactor equivalent.
+  Complexity: M
+
+### P3
+
+- [ ] P3 — Test the multi-stream invariants that only the live harness currently checks
+  Why: three load-bearing behaviours are asserted only by a headed browser run that `npm run verify` does not execute.
+  Evidence: tile reuse across renders (replacing an `<iframe>` restarts its stream), the single-unmuted-tile rule in `applyMultistreamAudio`, and `normalizeDeletion` to `annotateDeletedMessage` have no offline coverage; `test/companion.test.js` shows the pattern for running built code against stubs.
+  Touches: `test/`, possibly `src/runtime.js` for testability seams.
+  Acceptance: offline tests assert that adding a channel does not recreate existing tiles, that exactly one tile is ever unmuted, and that a deletion annotates the right node once; they fail if any invariant is broken.
+  Complexity: M

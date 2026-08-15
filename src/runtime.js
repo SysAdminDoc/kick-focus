@@ -1933,6 +1933,11 @@ function openMultistream() {
   if (!backdrop) return;
   state.lastFocused = document.activeElement;
   backdrop.hidden = false;
+  // Someone asking the system for reduced motion should not be handed nine
+  // autoplaying videos. They mount paused with a visible way to start.
+  if (!state.multistream.paused && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    state.multistream = normalizeMultistream({ ...state.multistream, paused: true });
+  }
   renderMultistream();
   backdrop.querySelector('[data-kf-multistream-input]')?.focus();
   announce(tr('Multi-stream opened'));
@@ -1967,9 +1972,11 @@ function renderMultistream() {
   const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
   if (!backdrop || backdrop.hidden) return;
   const grid = backdrop.querySelector('[data-kf-multistream-grid]');
-  const { streams, focus, chat, showChat } = state.multistream;
+  const { streams, focus, chat, showChat, paused, muted } = state.multistream;
 
   backdrop.dataset.kfMultistreamShowChat = String(showChat && Boolean(chat));
+  backdrop.dataset.kfMultistreamPaused = String(paused);
+  backdrop.dataset.kfMultistreamMuted = String(muted);
   grid.style.setProperty('--kf-multistream-columns', String(multistreamColumns(streams.length)));
 
   const existing = new Map();
@@ -1988,10 +1995,13 @@ function renderMultistream() {
       tile.className = 'kf-ms-tile';
       const frame = document.createElement('iframe');
       // Every tile starts muted; audio follows focus, so a nine-way grid is
-      // never nine simultaneous audio streams.
-      frame.src = playerEmbedUrl(slug, { muted: true, autoplay: true });
+      // never nine simultaneous audio streams. A paused grid mounts with no
+      // src at all, which is the only way to stop a cross-origin player.
+      frame.src = paused ? 'about:blank' : playerEmbedUrl(slug, { muted: true, autoplay: true });
       frame.title = `${slug} stream`;
-      frame.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media';
+      // Kick playback is Amazon IVS HLS with no DRM, so encrypted-media would
+      // be a grant with no function.
+      frame.allow = 'autoplay; fullscreen; picture-in-picture';
       frame.referrerPolicy = 'origin';
       frame.loading = 'eager';
       tile.append(frame);
@@ -2014,7 +2024,7 @@ function renderMultistream() {
 
   renderMultistreamChat(backdrop, chat, showChat);
   renderMultistreamControls(backdrop);
-  applyMultistreamAudio(grid, focus);
+  applyMultistreamAudio(grid);
 }
 
 /**
@@ -2025,12 +2035,16 @@ function renderMultistream() {
  * its stream, so only the two frames whose audio state actually changed are
  * touched, never the whole grid.
  */
-function applyMultistreamAudio(grid, focus) {
+function applyMultistreamAudio(grid) {
   for (const tile of grid.querySelectorAll('[data-kf-multistream-tile]')) {
     const slug = tile.dataset.kfMultistreamTile;
     const frame = tile.querySelector('iframe');
     if (!frame) continue;
-    const wanted = playerEmbedUrl(slug, { muted: slug !== focus, autoplay: true });
+    // Pausing means dropping the document: a cross-origin player cannot be
+    // paused from here, and leaving it loaded would keep decoding.
+    const wanted = state.multistream.paused
+      ? 'about:blank'
+      : playerEmbedUrl(slug, { muted: multistreamTileMuted(state.multistream, slug), autoplay: true });
     if (frame.getAttribute('src') !== wanted) frame.setAttribute('src', wanted);
   }
 }
@@ -2070,6 +2084,18 @@ function renderMultistreamControls(backdrop) {
   if (chatSelect) {
     chatSelect.innerHTML = streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join('');
     chatSelect.disabled = !streams.length;
+  }
+  const pauseToggle = backdrop.querySelector('[data-kf-multistream-pause]');
+  if (pauseToggle) {
+    pauseToggle.setAttribute('aria-pressed', String(state.multistream.paused));
+    pauseToggle.textContent = state.multistream.paused ? 'Play all' : 'Pause all';
+    pauseToggle.disabled = !streams.length;
+  }
+  const muteToggle = backdrop.querySelector('[data-kf-multistream-mute]');
+  if (muteToggle) {
+    muteToggle.setAttribute('aria-pressed', String(state.multistream.muted));
+    muteToggle.textContent = state.multistream.muted ? 'Unmute' : 'Mute all';
+    muteToggle.disabled = !streams.length || state.multistream.paused;
   }
   const chatToggle = backdrop.querySelector('[data-action="multistream-toggle-chat"]');
   if (chatToggle) {
@@ -4201,6 +4227,20 @@ const UI_CSS = `
   }
   /* The focused tile owns the audio, so it has to be obvious which one that is. */
   .kf-ms-tile[data-kf-multistream-focused="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  /* A paused grid still shows which channels it holds, so the layout reads as
+     intact rather than empty. */
+  .kf-ms-backdrop[data-kf-multistream-paused="true"] .kf-ms-tile::after {
+    content: attr(data-kf-multistream-tile) " — paused";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: #0b0d0b;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .kf-ms-backdrop[data-kf-multistream-paused="true"] .kf-ms-bar { z-index: 1; }
   .kf-ms-tile iframe { width: 100%; height: 100%; border: 0; display: block; }
   .kf-ms-bar {
     position: absolute;
@@ -4719,6 +4759,8 @@ function buildInterface() {
           <label class="kf-sr-only" for="kf-ms-input">Add a Kick channel</label>
           <input id="kf-ms-input" data-kf-multistream-input type="search" autocomplete="off" placeholder="Add a channel or paste a kick.com link…">
           <button type="button" class="kf-button kf-button-primary kf-button-small" data-action="multistream-add">Add</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-pause" data-kf-multistream-pause aria-pressed="false">Pause all</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-mute" data-kf-multistream-mute aria-pressed="false">Mute all</button>
           <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
           <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
@@ -5416,6 +5458,20 @@ function onInterfaceClick(event) {
     persistMultistream();
     renderMultistream();
     announce(`${slug} now has the audio`);
+  }
+  else if (action === 'multistream-toggle-pause') {
+    const paused = !state.multistream.paused;
+    state.multistream = normalizeMultistream({ ...state.multistream, paused });
+    persistMultistream();
+    renderMultistream();
+    announce(paused ? 'All streams paused' : 'All streams playing');
+  }
+  else if (action === 'multistream-toggle-mute') {
+    const muted = !state.multistream.muted;
+    state.multistream = normalizeMultistream({ ...state.multistream, muted });
+    persistMultistream();
+    renderMultistream();
+    announce(muted ? 'All streams muted' : 'Audio restored to the focused stream');
   }
   else if (action === 'multistream-toggle-chat') {
     state.multistream = normalizeMultistream({ ...state.multistream, showChat: !state.multistream.showChat });

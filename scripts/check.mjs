@@ -158,6 +158,14 @@ const checks = [
     && source.includes('applyMultistreamAudio')],
   // Every framed URL must be a Kick origin. The trailing slash matters, or a
   // lookalike host such as player.kick.com.evil.net would satisfy the lookahead.
+  // WCAG 2.2.2 and 1.4.2: autoplaying tiles need a visible, keyboard-reachable
+  // way to stop them, and prefers-reduced-motion is not a substitute for one.
+  ['multi-stream can be paused and muted as a whole', source.includes('data-kf-multistream-pause')
+    && source.includes('data-kf-multistream-mute')
+    && source.includes('multistreamTileMuted')
+    && source.includes("matchMedia('(prefers-reduced-motion: reduce)').matches")],
+  ['player embeds request no permission they do not use', source.includes("frame.allow = 'autoplay; fullscreen; picture-in-picture'")
+    && !source.includes('picture-in-picture; encrypted-media')],
   ['multi-stream embeds only Kick origins', source.includes('https://player.kick.com/')
     && !/https:\/\/(?!(?:player\.|web\.|files\.|ext\.cdn\.)?kick\.com\/)[a-z0-9.-]+\/(?:popout|embed)\//i.test(source)],
 

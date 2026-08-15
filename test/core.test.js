@@ -522,3 +522,36 @@ test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', a
   assert.equal(multistreamColumns(9), 3);
   assert.equal(multistreamColumns(0), 1);
 });
+
+test('pausing and muting the grid are separate controls', async () => {
+  const { normalizeMultistream, multistreamTileMuted } = await import('../src/core.mjs');
+
+  const grid = normalizeMultistream({ streams: ['a', 'b', 'c'], focus: 'b' });
+  assert.equal(grid.paused, false);
+  assert.equal(grid.muted, false);
+
+  // Exactly one tile carries audio, and it is the focused one.
+  assert.equal(multistreamTileMuted(grid, 'b'), false);
+  assert.equal(grid.streams.filter((s) => !multistreamTileMuted(grid, s)).length, 1);
+
+  // Mute-all silences every tile without moving focus or chat — silencing the
+  // grid must not also change which chat you are reading.
+  const muted = normalizeMultistream({ ...grid, muted: true });
+  assert.equal(muted.streams.every((s) => multistreamTileMuted(muted, s)), true);
+  assert.equal(muted.focus, 'b');
+  assert.equal(muted.chat, grid.chat);
+
+  // Pause implies silence regardless of the mute flag.
+  const paused = normalizeMultistream({ ...grid, paused: true });
+  assert.equal(paused.streams.every((s) => multistreamTileMuted(paused, s)), true);
+
+  // Both flags survive a persist/reload round-trip.
+  const restored = normalizeMultistream(JSON.parse(JSON.stringify(normalizeMultistream({ ...grid, paused: true, muted: true }))));
+  assert.equal(restored.paused, true);
+  assert.equal(restored.muted, true);
+
+  // Nonsense values fall back to playing rather than trapping the grid paused.
+  const junk = normalizeMultistream({ streams: ['a'], paused: 'yes', muted: 1 });
+  assert.equal(junk.paused, false);
+  assert.equal(junk.muted, false);
+});
