@@ -9,6 +9,7 @@ const CHANNEL_NOTES_KEY = 'kick-focus:channel-notes';
 const STICKER_PREFERENCES_KEY = 'kick-focus:sticker-preferences';
 const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
 const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
+const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 
 // Declared ahead of `state` because writes can happen while `state` is still in
@@ -140,6 +141,8 @@ const state = {
     provider: '',
   },
   emoteUsage: readEmoteUsage(),
+  multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
+  multistreamError: '',
   chatStickerScanTimer: 0,
   usagePersistTimer: 0,
   chatStickerPendingNodes: new Set(),
@@ -1858,6 +1861,191 @@ function liveStatusSummary() {
   if (state.live.collisions.length) parts.push(`${state.live.collisions.length} emote name${state.live.collisions.length === 1 ? '' : 's'} shadowed.`);
   if (state.live.catalogError) parts.push(state.live.catalogError);
   return parts.join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// Multi-stream
+//
+// A grid of Kick's own embedded players and chat, so playback, subscriptions
+// and entitlements all stay Kick's. Nothing here reimplements a player or
+// works around an entitlement; it arranges surfaces Kick already publishes.
+// ---------------------------------------------------------------------------
+
+function persistMultistream() {
+  gmSet(MULTISTREAM_KEY, state.multistream);
+}
+
+function openMultistream() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  if (!backdrop) return;
+  state.lastFocused = document.activeElement;
+  backdrop.hidden = false;
+  renderMultistream();
+  backdrop.querySelector('[data-kf-multistream-input]')?.focus();
+  announce(tr('Multi-stream opened'));
+}
+
+function closeMultistream() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  if (!backdrop || backdrop.hidden) return;
+  backdrop.hidden = true;
+  // Blanking the grid drops every embedded player, so closing the surface
+  // actually stops the decoding rather than leaving nine streams running.
+  const grid = backdrop.querySelector('[data-kf-multistream-grid]');
+  if (grid) grid.innerHTML = '';
+  const chat = backdrop.querySelector('[data-kf-multistream-chat]');
+  if (chat) chat.innerHTML = '';
+  state.lastFocused?.focus?.();
+}
+
+function multistreamOpen() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  return Boolean(backdrop && !backdrop.hidden);
+}
+
+/**
+ * Rebuild the grid.
+ *
+ * Tiles are keyed by slug and reused across renders: replacing an `<iframe>`
+ * restarts its stream from scratch, so adding a ninth channel must not
+ * interrupt the eight already playing.
+ */
+function renderMultistream() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  if (!backdrop || backdrop.hidden) return;
+  const grid = backdrop.querySelector('[data-kf-multistream-grid]');
+  const { streams, focus, chat, showChat } = state.multistream;
+
+  backdrop.dataset.kfMultistreamChat = String(showChat && Boolean(chat));
+  grid.style.setProperty('--kf-multistream-columns', String(multistreamColumns(streams.length)));
+
+  const existing = new Map();
+  for (const tile of grid.querySelectorAll('[data-kf-multistream-tile]')) {
+    existing.set(tile.dataset.kfMultistreamTile, tile);
+  }
+
+  const ordered = [];
+  for (const slug of streams) {
+    let tile = existing.get(slug);
+    if (tile) {
+      existing.delete(slug);
+    } else {
+      tile = document.createElement('div');
+      tile.dataset.kfMultistreamTile = slug;
+      tile.className = 'kf-ms-tile';
+      const frame = document.createElement('iframe');
+      // Every tile starts muted; audio follows focus, so a nine-way grid is
+      // never nine simultaneous audio streams.
+      frame.src = playerEmbedUrl(slug, { muted: true, autoplay: true });
+      frame.title = `${slug} stream`;
+      frame.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media';
+      frame.referrerPolicy = 'origin';
+      frame.loading = 'eager';
+      tile.append(frame);
+      const bar = document.createElement('div');
+      bar.className = 'kf-ms-bar';
+      bar.innerHTML = `
+        <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
+        <span class="kf-ms-spacer"></span>
+        <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
+        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid" title="Remove">×</button>`;
+      tile.append(bar);
+    }
+    tile.dataset.kfMultistreamFocused = String(slug === focus);
+    ordered.push(tile);
+  }
+
+  // Anything still in `existing` was removed from the grid.
+  for (const stale of existing.values()) stale.remove();
+  for (const tile of ordered) grid.append(tile);
+
+  renderMultistreamChat(backdrop, chat, showChat);
+  renderMultistreamControls(backdrop);
+  applyMultistreamAudio(grid, focus);
+}
+
+/**
+ * Audio follows focus.
+ *
+ * The embedded player is cross-origin, so its `muted` state cannot be reached
+ * from here — the URL is the only control surface. Reloading a frame restarts
+ * its stream, so only the two frames whose audio state actually changed are
+ * touched, never the whole grid.
+ */
+function applyMultistreamAudio(grid, focus) {
+  for (const tile of grid.querySelectorAll('[data-kf-multistream-tile]')) {
+    const slug = tile.dataset.kfMultistreamTile;
+    const frame = tile.querySelector('iframe');
+    if (!frame) continue;
+    const wanted = playerEmbedUrl(slug, { muted: slug !== focus, autoplay: true });
+    if (frame.getAttribute('src') !== wanted) frame.setAttribute('src', wanted);
+  }
+}
+
+function renderMultistreamChat(backdrop, chat, showChat) {
+  const host = backdrop.querySelector('[data-kf-multistream-chat]');
+  if (!host) return;
+  if (!showChat || !chat) {
+    host.innerHTML = '';
+    return;
+  }
+  const current = host.querySelector('iframe');
+  if (current?.dataset.slug === chat) return;
+  host.innerHTML = '';
+  const frame = document.createElement('iframe');
+  frame.src = chatEmbedUrl(chat);
+  frame.dataset.slug = chat;
+  frame.title = `${chat} chat`;
+  frame.referrerPolicy = 'origin';
+  host.append(frame);
+}
+
+function renderMultistreamControls(backdrop) {
+  const { streams, chat, showChat, layouts } = state.multistream;
+  const count = backdrop.querySelector('[data-kf-multistream-count]');
+  if (count) {
+    count.textContent = streams.length
+      ? `${streams.length} of ${MULTISTREAM_MAX} streams`
+      : 'No streams yet — add a channel to start.';
+  }
+  const error = backdrop.querySelector('[data-kf-multistream-error]');
+  if (error) {
+    error.textContent = state.multistreamError;
+    error.hidden = !state.multistreamError;
+  }
+  const chatSelect = backdrop.querySelector('[data-kf-multistream-chat-select]');
+  if (chatSelect) {
+    chatSelect.innerHTML = streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join('');
+    chatSelect.disabled = !streams.length;
+  }
+  const chatToggle = backdrop.querySelector('[data-action="multistream-toggle-chat"]');
+  if (chatToggle) {
+    chatToggle.setAttribute('aria-pressed', String(showChat));
+    chatToggle.textContent = showChat ? 'Hide chat' : 'Show chat';
+  }
+  const savedList = backdrop.querySelector('[data-kf-multistream-layouts]');
+  if (savedList) {
+    savedList.innerHTML = layouts.length
+      ? layouts.map((layout) => `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} <small>${layout.streams.length}</small></button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`).join('')
+      : '<span class="kf-ms-empty">No saved layouts yet.</span>';
+  }
+}
+
+function addMultistream(raw) {
+  const slug = parseChannelInput(raw);
+  if (!slug) {
+    state.multistreamError = 'Enter a Kick channel name or a kick.com link.';
+    renderMultistream();
+    return;
+  }
+  const result = addMultistreamChannel(state.multistream, slug);
+  state.multistreamError = result.ok ? '' : result.error;
+  if (result.ok) {
+    state.multistream = result.value;
+    persistMultistream();
+    announce(`${slug} added to the multi-stream grid`);
+  }
+  renderMultistream();
 }
 
 function readRemoteBlocklist() {
@@ -3892,6 +4080,109 @@ const UI_CSS = `
   .kf-rarity[data-rarity="legendary"] { color: #ffb648; }
   .kf-rarity[data-rarity="mythic"] { color: #ff6b8b; }
 
+  /* Multi-stream: a grid of Kick's own embedded players. */
+  .kf-ms-backdrop { padding: 0; }
+  .kf-ms-shell {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    width: 100vw;
+    height: 100vh;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .kf-ms-head, .kf-ms-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: #121512;
+    flex-wrap: wrap;
+  }
+  .kf-ms-foot { border-bottom: 0; border-top: 1px solid var(--border); }
+  .kf-ms-spacer { flex: 1; }
+  .kf-ms-count { font-size: 11px; opacity: .75; }
+  .kf-ms-head input, .kf-ms-foot input {
+    min-width: 220px;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #0d0f0d;
+    color: var(--text);
+    font-size: 12px;
+  }
+  .kf-ms-head input:focus, .kf-ms-foot input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-ms-select { min-height: 32px; font-size: 12px; }
+  .kf-ms-error { padding: 8px 14px; border-bottom: 1px solid var(--danger); background: #2a1416; font-size: 12px; }
+  .kf-ms-error[hidden] { display: none; }
+
+  .kf-ms-body { display: grid; grid-template-columns: 1fr 0; min-height: 0; }
+  .kf-ms-backdrop[data-kf-multistream-chat="true"] .kf-ms-body { grid-template-columns: 1fr 340px; }
+  .kf-ms-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--kf-multistream-columns, 1), 1fr);
+    gap: 4px;
+    padding: 4px;
+    min-height: 0;
+    align-content: stretch;
+  }
+  .kf-ms-tile {
+    position: relative;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+  }
+  /* The focused tile owns the audio, so it has to be obvious which one that is. */
+  .kf-ms-tile[data-kf-multistream-focused="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .kf-ms-tile iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .kf-ms-bar {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    background: linear-gradient(180deg, rgba(0,0,0,.78), transparent);
+    opacity: 0;
+    transition: opacity .12s ease;
+    font-size: 11px;
+  }
+  .kf-ms-tile:hover .kf-ms-bar, .kf-ms-tile:focus-within .kf-ms-bar { opacity: 1; }
+  .kf-ms-bar button, .kf-ms-bar .kf-ms-link {
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 4px;
+    background: rgba(0,0,0,.55);
+    color: #fff;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); }
+  .kf-ms-chat iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .kf-ms-layouts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .kf-ms-layout { display: inline-flex; }
+  .kf-ms-layout button {
+    border: 1px solid var(--border);
+    background: #0d0f0d;
+    color: var(--text);
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .kf-ms-layout button:first-child { border-radius: 6px 0 0 6px; }
+  .kf-ms-layout button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+  .kf-ms-layout button:hover { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-layout small { opacity: .6; }
+  .kf-ms-empty { font-size: 11px; opacity: .6; }
+
   .kf-shadow-warning { display: grid; gap: 6px; }
   .kf-shadow-warning code { font-size: 11px; color: var(--accent); }
   .kf-command-list { max-height: 490px; overflow: auto; padding: 8px; }
@@ -4355,6 +4646,32 @@ function buildInterface() {
         <div class="kf-command-list" data-kf-command-list role="listbox"></div>
       </section>
     </div>
+    <div class="kf-backdrop kf-ms-backdrop" data-kf-multistream-backdrop hidden>
+      <section class="kf-ms-shell" role="dialog" aria-modal="true" aria-label="Kick Focus multi-stream">
+        <header class="kf-ms-head">
+          <strong>Multi-stream</strong>
+          <span class="kf-ms-count" data-kf-multistream-count></span>
+          <span class="kf-ms-spacer"></span>
+          <label class="kf-sr-only" for="kf-ms-input">Add a Kick channel</label>
+          <input id="kf-ms-input" data-kf-multistream-input type="search" autocomplete="off" placeholder="Add a channel or paste a kick.com link…">
+          <button type="button" class="kf-button kf-button-primary kf-button-small" data-action="multistream-add">Add</button>
+          <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
+          <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
+        </header>
+        <div class="kf-ms-error" role="alert" data-kf-multistream-error hidden></div>
+        <div class="kf-ms-body">
+          <div class="kf-ms-grid" data-kf-multistream-grid></div>
+          <aside class="kf-ms-chat" data-kf-multistream-chat></aside>
+        </div>
+        <footer class="kf-ms-foot">
+          <label class="kf-sr-only" for="kf-ms-layout-name">Layout name</label>
+          <input id="kf-ms-layout-name" data-kf-multistream-layout-name type="text" autocomplete="off" placeholder="Name this layout…">
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-save">Save layout</button>
+          <div class="kf-ms-layouts" data-kf-multistream-layouts></div>
+        </footer>
+      </section>
+    </div>
     <input type="file" accept="application/json,.json" data-kf-import hidden>
     <div class="kf-storage-alert" data-kf-storage-alert role="alert" hidden>
       <div class="kf-storage-alert-body">
@@ -4382,6 +4699,22 @@ function buildInterface() {
   state.commandInput.addEventListener('input', renderCommands);
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
+  // Enter is how anyone actually adds a channel; the button is the backup.
+  for (const [selector, action] of [
+    ['[data-kf-multistream-input]', 'multistream-add'],
+    ['[data-kf-multistream-layout-name]', 'multistream-save'],
+  ]) {
+    shadow.querySelector(selector)?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      shadow.querySelector(`[data-action="${action}"]`)?.click();
+    });
+  }
+  shadow.querySelector('[data-kf-multistream-chat-select]')?.addEventListener('change', (event) => {
+    state.multistream = normalizeMultistream({ ...state.multistream, chat: event.target.value });
+    persistMultistream();
+    renderMultistream();
+  });
   renderSettingsPage();
   // Writes can fail before the interface exists — startup reads and migrations
   // both persist. Replay whatever failed so it is not lost to mount ordering.
@@ -4753,6 +5086,7 @@ function renderAboutPage() {
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
       ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
+      <div class="kf-action-row"><div><h3>Multi-stream</h3><p>Watch up to ${MULTISTREAM_MAX} Kick channels in one grid, with audio and chat following whichever you focus. Uses Kick’s own embedded player, so subscriptions and entitlements are unchanged.${state.multistream.streams.length ? ` Currently holding ${state.multistream.streams.length}.` : ''}</p></div><button type="button" class="kf-button" data-action="open-multistream">Open multi-stream</button></div>
       <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
@@ -4991,6 +5325,70 @@ function onInterfaceClick(event) {
   else if (action === 'export') exportSettings();
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
   else if (action === 'copy-diagnostics') copyDiagnostics();
+  else if (action === 'open-multistream') openMultistream();
+  else if (action === 'close-multistream') closeMultistream();
+  else if (action === 'multistream-add') {
+    const input = state.shadow.querySelector('[data-kf-multistream-input]');
+    addMultistream(input?.value || '');
+    if (input) { input.value = ''; input.focus(); }
+  }
+  else if (action === 'multistream-remove') {
+    state.multistream = removeMultistreamChannel(state.multistream, actionTarget.dataset.slug);
+    state.multistreamError = '';
+    persistMultistream();
+    renderMultistream();
+  }
+  else if (action === 'multistream-focus') {
+    // Focus moves the audio and, unless the user picked a different chat, the
+    // chat with it — watching one stream while reading another's chat is a
+    // deliberate choice, not something to reset on every click.
+    const slug = actionTarget.dataset.slug;
+    const followChat = state.multistream.chat === state.multistream.focus;
+    state.multistream = normalizeMultistream({
+      ...state.multistream,
+      focus: slug,
+      chat: followChat ? slug : state.multistream.chat,
+    });
+    persistMultistream();
+    renderMultistream();
+    announce(`${slug} now has the audio`);
+  }
+  else if (action === 'multistream-toggle-chat') {
+    state.multistream = normalizeMultistream({ ...state.multistream, showChat: !state.multistream.showChat });
+    persistMultistream();
+    renderMultistream();
+  }
+  else if (action === 'multistream-save') {
+    const input = state.shadow.querySelector('[data-kf-multistream-layout-name]');
+    const result = saveMultistreamLayout(state.multistream, input?.value || '');
+    state.multistreamError = result.ok ? '' : result.error;
+    if (result.ok) {
+      state.multistream = result.value;
+      persistMultistream();
+      if (input) input.value = '';
+      showToast('Layout saved.');
+    }
+    renderMultistream();
+  }
+  else if (action === 'multistream-load') {
+    const layout = state.multistream.layouts.find((entry) => entry.name === actionTarget.dataset.layout);
+    if (layout) {
+      state.multistream = normalizeMultistream({ ...state.multistream, streams: layout.streams, focus: layout.streams[0], chat: layout.streams[0] });
+      state.multistreamError = '';
+      persistMultistream();
+      renderMultistream();
+      announce(`Loaded layout ${layout.name}`);
+    }
+  }
+  else if (action === 'multistream-delete-layout') {
+    const name = actionTarget.dataset.layout;
+    state.multistream = normalizeMultistream({
+      ...state.multistream,
+      layouts: state.multistream.layouts.filter((entry) => entry.name !== name),
+    });
+    persistMultistream();
+    renderMultistream();
+  }
   else if (action === 'dismiss-storage-alert') {
     // Acknowledging this exact set of failures; a different key failing later
     // raises the warning again rather than staying silent.
@@ -5365,6 +5763,7 @@ function commandDefinitions() {
     { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
     { id: 'density', label: tr(`Use ${state.settings.layout.density === 'compact' ? 'comfortable' : 'compact'} density`), description: tr('Change discovery spacing and save it'), key: 'D' },
     { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
+    { id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid'), key: '' },
     { id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access'), key: state.settings.shortcuts.settings },
   ];
 }
@@ -5393,6 +5792,12 @@ function closeCommandMenu() {
 }
 
 function executeCommand(id) {
+  if (id === 'multistream') {
+    closeCommandMenu();
+    if (multistreamOpen()) closeMultistream();
+    else openMultistream();
+    return;
+  }
   if (id === 'panic') {
     togglePanicSwitch();
     closeCommandMenu();
@@ -5502,6 +5907,11 @@ function onGlobalKeydown(event) {
     return;
   }
 
+  if (multistreamOpen() && event.key === 'Escape') {
+    event.preventDefault();
+    closeMultistream();
+    return;
+  }
   if (!state.modal.hidden && event.key === 'Escape') {
     event.preventDefault();
     closeSettings();

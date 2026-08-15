@@ -21,7 +21,45 @@ const mainWorld = manifest.content_scripts.find((entry) => entry.world === 'MAIN
 const isolated = manifest.content_scripts.find((entry) => entry.world === 'ISOLATED');
 const ruleFiles = manifest.declarative_net_request.rule_resources;
 
+/**
+ * Every symbol a source module exports must be *defined* in every built bundle.
+ *
+ * `src/api.mjs` once shipped entirely missing: the build computed the bundle
+ * string and then forgot to interpolate it. Every check still passed, because
+ * `source.includes('playerEmbedUrl')` matches the call site in runtime.js just
+ * as happily as the definition, and the unit tests import the module directly
+ * rather than through the bundle. So this looks for the definition, and derives
+ * the list from the source instead of a hand-maintained one — a module added
+ * later is covered without anyone remembering to add it here.
+ */
+async function missingExports(moduleFile, bundle) {
+  const moduleSource = await read(moduleFile);
+  const missing = [];
+  for (const match of moduleSource.matchAll(/^export\s+(?:async\s+)?(function|const|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+    const [, kind, name] = match;
+    const defined = kind === 'function'
+      ? new RegExp(`(?:^|\\n)(?:async\\s+)?function\\s+${name}\\b`).test(bundle)
+      : new RegExp(`(?:^|\\n)${kind}\\s+${name}\\b`).test(bundle);
+    if (!defined) missing.push(name);
+  }
+  return missing;
+}
+
+const bundleTargets = [['dist/kick-focus.user.js', source], ['dist/extension/content/kick-focus.js', content], ['dist/extension-firefox/content/kick-focus.js', firefoxContent]];
+const moduleFiles = ['src/core.mjs', 'src/api.mjs', 'src/compatibility.mjs'];
+const bundleGaps = [];
+for (const [bundleName, bundleSource] of bundleTargets) {
+  for (const moduleFile of moduleFiles) {
+    const missing = await missingExports(moduleFile, bundleSource);
+    if (missing.length) bundleGaps.push(`${bundleName} is missing ${missing.length} export(s) from ${moduleFile}: ${missing.slice(0, 6).join(', ')}`);
+  }
+}
+
 const checks = [
+  // The detail goes in the label, not the value: this loop treats any truthy
+  // value as a pass, so `gaps.length === 0 || gaps.join()` would report success
+  // precisely when there were gaps.
+  [`every module export is defined in every bundle${bundleGaps.length ? ` — ${bundleGaps.join(' | ')}` : ''}`, bundleGaps.length === 0],
   // Userscript artifact
   ['metadata starts at byte zero', source.startsWith('// ==UserScript==')],
   ['version is synchronized', source.includes(`// @version      ${VERSION}`)],
@@ -111,6 +149,17 @@ const checks = [
     && source.includes('/pal/sdkloader/pal.js')
     // Capture phase is mandatory: resource errors do not bubble.
     && source.includes("pageWindow.addEventListener('error'")],
+
+  ['ships a multi-stream grid built on Kick own embeds', source.includes('data-kf-multistream-grid')
+    && source.includes('playerEmbedUrl')
+    && source.includes('chatEmbedUrl')
+    && source.includes('normalizeMultistream')
+    // Audio follows focus: a nine-tile grid must never be nine audio streams.
+    && source.includes('applyMultistreamAudio')],
+  // Every framed URL must be a Kick origin. The trailing slash matters, or a
+  // lookalike host such as player.kick.com.evil.net would satisfy the lookahead.
+  ['multi-stream embeds only Kick origins', source.includes('https://player.kick.com/')
+    && !/https:\/\/(?!(?:player\.|web\.|files\.|ext\.cdn\.)?kick\.com\/)[a-z0-9.-]+\/(?:popout|embed)\//i.test(source)],
 
   // Kick's own data, read read-only and same-origin
   ['reads the realtime provider from Kick instead of hardcoding it',

@@ -800,6 +800,121 @@ function validateImportedSettings(jsonText) {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-stream
+// ---------------------------------------------------------------------------
+
+const MULTISTREAM_SCHEMA = 1;
+/**
+ * Nine tiles is a hard ceiling, not a preference. Each tile is a real Kick
+ * player: an independent HLS decode plus its own socket. Past a 3×3 the grid
+ * stops being watchable and starts being a way to melt a laptop, so the limit
+ * is enforced in the data rather than suggested in the interface.
+ */
+const MULTISTREAM_MAX = 9;
+const MULTISTREAM_LAYOUT_LIMIT = 24;
+
+/** Column count per tile count, chosen so the last row is never a lone tile. */
+function multistreamColumns(count) {
+  const total = Number(count) || 0;
+  if (total <= 1) return 1;
+  if (total <= 4) return 2;
+  if (total <= 6) return 3;
+  return 3;
+}
+
+function cleanSlugList(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const slugs = [];
+  for (const raw of input) {
+    const slug = typeof raw === 'string' ? raw.trim() : '';
+    if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
+    const key = slug.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    slugs.push(slug);
+    if (slugs.length >= MULTISTREAM_MAX) break;
+  }
+  return slugs;
+}
+
+function normalizeMultistream(input) {
+  const source = isRecord(input) ? input : {};
+  const streams = cleanSlugList(source.streams);
+  const focusCandidate = typeof source.focus === 'string' ? source.focus : '';
+  // Audio follows focus, and focus must name a stream that is actually present
+  // or the grid ends up silent with no obvious way to fix it.
+  const focus = streams.some((slug) => slug.toLowerCase() === focusCandidate.toLowerCase())
+    ? streams.find((slug) => slug.toLowerCase() === focusCandidate.toLowerCase())
+    : (streams[0] || '');
+
+  const layouts = [];
+  if (Array.isArray(source.layouts)) {
+    const names = new Set();
+    for (const raw of source.layouts) {
+      if (!isRecord(raw)) continue;
+      const name = String(raw.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      const saved = cleanSlugList(raw.streams);
+      if (!name || !saved.length || names.has(name.toLowerCase())) continue;
+      names.add(name.toLowerCase());
+      layouts.push({ name, streams: saved });
+      if (layouts.length >= MULTISTREAM_LAYOUT_LIMIT) break;
+    }
+  }
+
+  return {
+    schema: MULTISTREAM_SCHEMA,
+    streams,
+    focus,
+    chat: streams.some((slug) => slug.toLowerCase() === String(source.chat ?? '').toLowerCase())
+      ? streams.find((slug) => slug.toLowerCase() === String(source.chat).toLowerCase())
+      : focus,
+    showChat: typeof source.showChat === 'boolean' ? source.showChat : true,
+    layouts,
+  };
+}
+
+/**
+ * Add a channel, reporting *why* nothing happened rather than failing silently
+ * — "I clicked add and nothing appeared" is the whole failure mode here.
+ */
+function addMultistreamChannel(value, slug) {
+  const state = normalizeMultistream(value);
+  const cleaned = typeof slug === 'string' ? slug.trim() : '';
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(cleaned)) {
+    return { ok: false, error: 'That is not a Kick channel name.', value: state };
+  }
+  if (state.streams.some((entry) => entry.toLowerCase() === cleaned.toLowerCase())) {
+    return { ok: false, error: `${cleaned} is already in the grid.`, value: state };
+  }
+  if (state.streams.length >= MULTISTREAM_MAX) {
+    return { ok: false, error: `The grid holds ${MULTISTREAM_MAX} streams. Remove one first.`, value: state };
+  }
+  const streams = [...state.streams, cleaned];
+  return { ok: true, value: normalizeMultistream({ ...state, streams, focus: state.focus || cleaned }) };
+}
+
+function removeMultistreamChannel(value, slug) {
+  const state = normalizeMultistream(value);
+  const streams = state.streams.filter((entry) => entry.toLowerCase() !== String(slug).toLowerCase());
+  // Focus and chat fall through to normalizeMultistream, which re-points them
+  // at a surviving stream rather than leaving the grid muted and chatless.
+  return normalizeMultistream({ ...state, streams });
+}
+
+function saveMultistreamLayout(value, name) {
+  const state = normalizeMultistream(value);
+  const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!clean) return { ok: false, error: 'Name this layout first.', value: state };
+  if (!state.streams.length) return { ok: false, error: 'Add at least one stream before saving.', value: state };
+  const layouts = [
+    { name: clean, streams: state.streams },
+    ...state.layouts.filter((layout) => layout.name.toLowerCase() !== clean.toLowerCase()),
+  ];
+  return { ok: true, value: normalizeMultistream({ ...state, layouts }) };
+}
+
+// ---------------------------------------------------------------------------
 // Player loading
 // ---------------------------------------------------------------------------
 
@@ -922,6 +1037,586 @@ function formatBytes(bytes) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Kick's own API surface, as pure data handling.
+ *
+ * Everything here is a URL builder, a normaliser, or a join. Nothing in this
+ * file performs a request, touches the DOM, or holds state, so all of it is
+ * unit-tested against payload shapes captured from the live site on 2026-08-15.
+ *
+ * Boundaries this module holds to, deliberately:
+ *   - Read-only. No endpoint here mutates anything on Kick.
+ *   - Same-origin, inheriting whatever session the page already has. Nothing
+ *     handles, stores or forwards a credential.
+ *   - Only endpoints Kick's own client already calls from the page.
+ *   - Every normaliser tolerates a changed shape and reports it, because the
+ *     one thing certain about an internal API is that it will change.
+ */
+
+const KICK_ORIGIN = 'https://kick.com';
+const KICK_WEB_ORIGIN = 'https://web.kick.com';
+
+/** Emote images are content-addressed by id; the size suffix is Kick's own. */
+function emoteImageUrl(id, size = 'fullsize') {
+  return `https://files.kick.com/emotes/${encodeURIComponent(String(id))}/${size}`;
+}
+
+const endpoints = {
+  channel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}`,
+  emoteSets: (slug) => `${KICK_ORIGIN}/emotes/${encodeURIComponent(slug)}`,
+  chatSettings: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/chat/settings`,
+  chatHistory: (chatroomId) => `${KICK_WEB_ORIGIN}/api/v1/chat/${encodeURIComponent(chatroomId)}/history`,
+  collectibles: () => `${KICK_WEB_ORIGIN}/api/v1/gamification/collectibles`,
+  /**
+   * One request for the live state of many channels, instead of N per-channel
+   * polls. Kick's own sidebar uses it.
+   */
+  currentViewers: (ids) => {
+    const query = [...new Set(ids.map((id) => String(id)).filter(Boolean))]
+      .map((id) => `ids[]=${encodeURIComponent(id)}`)
+      .join('&');
+    return `${KICK_ORIGIN}/current-viewers?${query}`;
+  },
+  /**
+   * The realtime *broker*, not a realtime connection. It answers with whichever
+   * provider is currently in force. See `normalizeRealtimeConnection`.
+   */
+  realtimeChat: (chatroomId, clientId) =>
+    `${KICK_WEB_ORIGIN}/api/v1/realtime/chat/${encodeURIComponent(chatroomId)}/client/${encodeURIComponent(clientId)}/connection`,
+};
+
+/**
+ * Kick's own embeddable surfaces, verified frameable on 2026-08-15 (200, and
+ * neither sends X-Frame-Options nor a frame-ancestors CSP).
+ *
+ * These are Kick's real player and chat, not a reimplementation: playback,
+ * subscriptions, and entitlements all stay Kick's, which is what keeps a
+ * multi-stream grid from becoming a workaround for anything.
+ */
+function playerEmbedUrl(slug, { muted = true, autoplay = true } = {}) {
+  const params = new URLSearchParams({ muted: String(muted), autoplay: String(autoplay) });
+  return `https://player.kick.com/${encodeURIComponent(slug)}?${params}`;
+}
+
+function chatEmbedUrl(slug) {
+  return `${KICK_ORIGIN}/popout/${encodeURIComponent(slug)}/chat`;
+}
+
+/** Kick channel slugs: what the site itself accepts in a path segment. */
+function isValidSlug(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value);
+}
+
+/**
+ * Accept whatever a person is most likely to paste: a bare name, a kick.com
+ * URL, a URL with query or trailing path, or a name with stray whitespace.
+ */
+function parseChannelInput(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  let candidate = text;
+  if (/^https?:\/\//i.test(text) || /^(?:www\.)?kick\.com\//i.test(text)) {
+    try {
+      const url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+      if (!/(^|\.)kick\.com$/i.test(url.hostname)) return '';
+      candidate = url.pathname.replace(/^\//, '').split('/')[0];
+    } catch {
+      return '';
+    }
+  }
+  candidate = candidate.replace(/^@/, '').split(/[?#/]/)[0];
+  return isValidSlug(candidate) ? candidate : '';
+}
+
+// ---------------------------------------------------------------------------
+// Realtime
+// ---------------------------------------------------------------------------
+
+const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(['PUSHER']);
+
+/**
+ * Read the broker's answer without assuming Pusher.
+ *
+ * The response carries an array of connections behind a `provider`
+ * discriminator, and Kick's client tracks a `degraded` connection state — a
+ * multi-provider failover abstraction it can flip server-side. A build that
+ * hardcodes the Pusher app key keeps working right up until it silently does
+ * not, so an unrecognised provider must degrade to the DOM path rather than
+ * throw or guess.
+ */
+function normalizeRealtimeConnection(payload) {
+  const connections = payload?.data?.connections;
+  if (!Array.isArray(connections) || connections.length === 0) {
+    return { ok: false, reason: 'no-connections' };
+  }
+  const usable = connections.find((entry) => SUPPORTED_REALTIME_PROVIDERS.includes(entry?.provider));
+  if (!usable) {
+    const offered = connections.map((entry) => String(entry?.provider || 'unknown'));
+    return { ok: false, reason: 'unsupported-provider', offered };
+  }
+  const appKey = usable.credentials?.app_key;
+  const cluster = usable.credentials?.cluster;
+  if (typeof appKey !== 'string' || !appKey || typeof cluster !== 'string' || !cluster) {
+    return { ok: false, reason: 'incomplete-credentials' };
+  }
+  return {
+    ok: true,
+    provider: usable.provider,
+    appKey,
+    cluster,
+    mode: payload?.data?.mode || 'WEBSOCKET',
+  };
+}
+
+/** Pusher's documented client handshake. The key never appears in our source. */
+function pusherSocketUrl({ appKey, cluster }, version = '8.6.0') {
+  return `wss://ws-${cluster}.pusher.com/app/${appKey}?protocol=7&client=js&version=${version}&flash=false`;
+}
+
+/**
+ * Kick's channel naming is inconsistent by design: `chatrooms.{id}.v2` and
+ * `chatroom_{id}` are different channels carrying different events, as are
+ * `channel.{id}` and `channel_{id}`. Getting a separator wrong subscribes
+ * successfully to a channel that is simply never published to, which looks
+ * exactly like a working connection.
+ */
+function realtimeChannels({ chatroomId, channelId }) {
+  const names = [];
+  if (chatroomId) names.push(`chatrooms.${chatroomId}.v2`, `chatroom_${chatroomId}`);
+  if (channelId) names.push(`channel.${channelId}`, `channel_${channelId}`);
+  return names;
+}
+
+/**
+ * A dead Kick socket stays `readyState === OPEN` and never fires `close` or
+ * `error`, so "connected" is not evidence of anything. Liveness is inferred
+ * from inbound traffic, and a run of unparseable frames is treated as Kick
+ * having changed shape rather than as noise to swallow.
+ */
+const REALTIME_SILENCE_MS = 60_000;
+const REALTIME_UNPARSABLE_LIMIT = 20;
+
+function realtimeHealth({ lastFrameAt = 0, unparsable = 0, now = 0, connected = false }) {
+  if (!connected) return { state: 'offline', healthy: false };
+  if (unparsable >= REALTIME_UNPARSABLE_LIMIT) {
+    return { state: 'unparsable', healthy: false, detail: `${unparsable} consecutive frames could not be read — Kick's payload shape has probably changed.` };
+  }
+  if (lastFrameAt && now - lastFrameAt > REALTIME_SILENCE_MS) {
+    return { state: 'stale', healthy: false, detail: `No events for ${Math.round((now - lastFrameAt) / 1000)}s — the socket reports open but is not delivering.` };
+  }
+  return { state: 'live', healthy: true };
+}
+
+// ---------------------------------------------------------------------------
+// Channel identity
+// ---------------------------------------------------------------------------
+
+function normalizeChannel(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const id = Number(payload.id);
+  if (!Number.isFinite(id)) return null;
+  const livestream = payload.livestream && typeof payload.livestream === 'object' ? payload.livestream : null;
+  return {
+    id,
+    userId: Number(payload.user_id) || 0,
+    slug: typeof payload.slug === 'string' ? payload.slug : '',
+    chatroomId: Number(payload.chatroom?.id) || 0,
+    followers: Number(payload.followers_count) || 0,
+    isLive: Boolean(livestream?.is_live),
+    viewers: Number(livestream?.viewer_count) || 0,
+    title: typeof livestream?.session_title === 'string' ? livestream.session_title : '',
+    mature: Boolean(livestream?.is_mature),
+    language: typeof livestream?.language === 'string' ? livestream.language : '',
+    categories: Array.isArray(livestream?.categories)
+      ? livestream.categories.map((entry) => String(entry?.slug || '')).filter(Boolean)
+      : [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Emotes
+// ---------------------------------------------------------------------------
+
+/**
+ * Kick's own marker for a Daily Rewards emote is the name prefix — there is no
+ * type field on the emote itself.
+ */
+const COLLECTIBLE_PREFIX = 'collectibles';
+
+function isCollectibleEmote(name) {
+  return typeof name === 'string' && name.startsWith(COLLECTIBLE_PREFIX);
+}
+
+/**
+ * Collectible emotes can be 2:1, and every third-party renderer squashes them
+ * square because the rule lives only in Kick's own client. Measure the loaded
+ * image rather than trusting the name: the prefix alone is not the rule, and a
+ * name-only guess stretches ordinary square collectibles.
+ */
+const WIDE_ASPECT_RATIO = 1.2;
+
+function emoteAspect(name, naturalWidth, naturalHeight) {
+  const width = Number(naturalWidth);
+  const height = Number(naturalHeight);
+  if (!isCollectibleEmote(name)) return 'square';
+  if (!Number.isFinite(width) || !Number.isFinite(height) || height <= 0) return 'square';
+  return width / height > WIDE_ASPECT_RATIO ? 'wide' : 'square';
+}
+
+function setKind(name) {
+  const label = String(name || '').toLowerCase();
+  if (label === 'global') return 'global';
+  if (label === 'emojis') return 'emoji';
+  return 'channel';
+}
+
+/**
+ * Turn `/emotes/{slug}` into a flat, deduplicated catalog.
+ *
+ * Two facts drive the shape here:
+ *
+ *   - `subscribers_only` is not only an entitlement flag. Kick uses it to mean
+ *     "usable in every chat", which is inverted from what the name suggests: a
+ *     free channel emote works only in its own channel, while a sub emote
+ *     travels everywhere. That is why `global` is derived from it.
+ *   - Kick resolves a typed name through one name-keyed map where the last set
+ *     loaded wins, so duplicate names across sets are a real collision, not a
+ *     display detail. `normalizeEmoteSets` keeps every occurrence so the
+ *     collision can be reported; see `findShadowedNames`.
+ */
+function normalizeEmoteSets(payload) {
+  if (!Array.isArray(payload)) return { ok: false, reason: 'not-an-array', sets: [], emotes: [] };
+  const sets = [];
+  const emotes = [];
+  for (const rawSet of payload) {
+    if (!rawSet || typeof rawSet !== 'object') continue;
+    const kind = setKind(rawSet.name);
+    const setName = typeof rawSet.name === 'string' && rawSet.name ? rawSet.name : (rawSet.slug || 'Channel');
+    const list = Array.isArray(rawSet.emotes) ? rawSet.emotes : [];
+    const normalized = [];
+    for (const raw of list) {
+      const id = raw?.id;
+      const name = raw?.name;
+      if ((typeof id !== 'number' && typeof id !== 'string') || typeof name !== 'string' || !name) continue;
+      const entry = {
+        id: String(id),
+        name,
+        setId: rawSet.id == null ? null : String(rawSet.id),
+        setName,
+        kind,
+        channelId: raw.channel_id == null ? null : String(raw.channel_id),
+        // Kick's flag: subscriber emotes are usable platform-wide.
+        subscribersOnly: Boolean(raw.subscribers_only),
+        usableEverywhere: kind !== 'channel' || Boolean(raw.subscribers_only),
+        collectible: isCollectibleEmote(name),
+        url: emoteImageUrl(id),
+      };
+      normalized.push(entry);
+      emotes.push(entry);
+    }
+    sets.push({ id: rawSet.id == null ? null : String(rawSet.id), name: setName, kind, emotes: normalized });
+  }
+  // A catalog with no usable emote is not a catalog — sets full of entries that
+  // failed validation mean Kick changed shape, and the caller must fall back to
+  // scraping rather than render an empty picker as success.
+  if (!sets.length) return { ok: false, reason: 'no-sets', sets: [], emotes: [] };
+  if (!emotes.length) return { ok: false, reason: 'no-emotes', sets, emotes };
+  return { ok: true, sets, emotes };
+}
+
+/**
+ * Which typed names resolve to something other than what the user expects.
+ *
+ * Sub emotes work in every chat, and Kick matches a typed name against a single
+ * name-keyed Map, so two channels shipping `KEKW` means one of them silently
+ * sends the other's image. Collisions grow with each subscription, and nothing
+ * on Kick surfaces them.
+ *
+ * "Last loaded wins" is the platform's own resolution order, so the winner is
+ * the last occurrence, not the first.
+ */
+function findShadowedNames(emotes) {
+  const byName = new Map();
+  for (const emote of emotes || []) {
+    const current = byName.get(emote.name) || [];
+    current.push(emote);
+    byName.set(emote.name, current);
+  }
+  const collisions = [];
+  for (const [name, entries] of byName) {
+    if (entries.length < 2) continue;
+    const winner = entries.at(-1);
+    collisions.push({
+      name,
+      winner,
+      shadowed: entries.slice(0, -1),
+      sets: entries.map((entry) => entry.setName),
+    });
+  }
+  return collisions.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---------------------------------------------------------------------------
+// Chat events
+// ---------------------------------------------------------------------------
+
+/** Kick's chat wire format, e.g. `[emote:37226:KEKW]`. */
+const EMOTE_TOKEN = /\[emote:(\d+):([^\]]*)\]/g;
+
+/**
+ * Split message content into text and emote segments.
+ *
+ * Kick's rendered DOM gives an `<img>` with an alt attribute; the wire format
+ * gives the emote *id*, which is what a usage counter and a rarity join both
+ * actually need. A name is not an identity on Kick — see `findShadowedNames`.
+ */
+function parseEmoteTokens(content) {
+  const text = String(content ?? '');
+  const segments = [];
+  let index = 0;
+  EMOTE_TOKEN.lastIndex = 0;
+  for (const match of text.matchAll(EMOTE_TOKEN)) {
+    if (match.index > index) segments.push({ type: 'text', value: text.slice(index, match.index) });
+    segments.push({ type: 'emote', id: match[1], name: match[2] });
+    index = match.index + match[0].length;
+  }
+  if (index < text.length) segments.push({ type: 'text', value: text.slice(index) });
+  return segments;
+}
+
+function normalizeChatMessage(event) {
+  const id = event?.id;
+  if (!id) return null;
+  const sender = event.sender || {};
+  const identity = sender.identity || {};
+  // badges_v2 supersedes badges: it carries image URLs and covers the global
+  // and collectible badges the legacy array omits entirely.
+  const badges = Array.isArray(identity.badges_v2) && identity.badges_v2.length
+    ? identity.badges_v2
+    : (Array.isArray(identity.badges) ? identity.badges : []);
+  const segments = parseEmoteTokens(event.content);
+  return {
+    id: String(id),
+    content: String(event.content ?? ''),
+    segments,
+    emotes: segments.filter((segment) => segment.type === 'emote'),
+    createdAt: event.created_at || '',
+    sender: {
+      id: sender.id == null ? '' : String(sender.id),
+      username: String(sender.username || ''),
+      slug: String(sender.slug || ''),
+      color: String(identity.color || ''),
+    },
+    badges: badges.map((badge) => ({
+      type: String(badge?.type || badge?.badge_type || ''),
+      text: String(badge?.text || badge?.name || ''),
+      image: String(badge?.image_url || ''),
+    })).filter((badge) => badge.type || badge.text),
+  };
+}
+
+/** Kick's own rule slugs, as they appear in `violatedRules`. */
+const RULE_LABELS = {
+  bullying: 'bullying',
+  harassment: 'harassment',
+  hate_speech: 'hate speech',
+  hateful_conduct: 'hateful conduct',
+  spam: 'spam',
+  self_harm: 'self-harm',
+  sexual_content: 'sexual content',
+  violence: 'violence',
+};
+
+/**
+ * Why a message disappeared.
+ *
+ * `MessageDeletedEvent` carries `{aiModerated, violatedRules}`, but the DOM only
+ * removes the node — so every DOM-scraping tool can see *that* a message went
+ * and none can see *why*. Kick's non-disableable AI moderation is among the
+ * loudest documented complaints about the platform, and this is the only place
+ * the reason is exposed at all.
+ */
+function normalizeDeletion(event) {
+  const id = event?.message?.id ?? event?.id;
+  if (!id) return null;
+  const rules = Array.isArray(event.violatedRules) ? event.violatedRules : [];
+  const labels = rules.map((rule) => RULE_LABELS[String(rule)] || String(rule).replace(/_/g, ' ')).filter(Boolean);
+  const aiModerated = Boolean(event.aiModerated);
+  let reason = 'Removed by a moderator.';
+  if (aiModerated && labels.length) reason = `Removed by Kick's automatic moderation for ${labels.join(', ')}.`;
+  else if (aiModerated) reason = "Removed by Kick's automatic moderation.";
+  else if (labels.length) reason = `Removed for ${labels.join(', ')}.`;
+  return { id: String(id), aiModerated, rules: labels, reason };
+}
+
+// ---------------------------------------------------------------------------
+// Emote usage
+// ---------------------------------------------------------------------------
+
+/**
+ * Kick's "Frequently Used" tab is a 50-entry MRU whose `timeUsed` is hardcoded
+ * to 1 and never incremented, so no real frequency ranking exists anywhere on
+ * the platform. Competitors count usage only for third-party providers
+ * (7TV/BTTV/FFZ), never for Kick's own emotes.
+ *
+ * Counts are keyed by emote id, not name: names collide across sets and Kick
+ * remaps them, while ids are stable. Storage is per channel plus a global
+ * rollup, both local-only and exported with the library.
+ */
+const USAGE_CHANNEL_LIMIT = 400;
+
+function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
+  if (!id) return counts || { global: {}, channels: {} };
+  const next = {
+    global: { ...(counts?.global || {}) },
+    channels: { ...(counts?.channels || {}) },
+  };
+  const globalEntry = next.global[id] || { name, count: 0, firstAt: at, lastAt: at };
+  next.global[id] = {
+    name: name || globalEntry.name,
+    count: globalEntry.count + 1,
+    firstAt: globalEntry.firstAt || at,
+    lastAt: at,
+  };
+  if (channel) {
+    const scope = { ...(next.channels[channel] || {}) };
+    const entry = scope[id] || { name, count: 0, firstAt: at, lastAt: at };
+    scope[id] = { name: name || entry.name, count: entry.count + 1, firstAt: entry.firstAt || at, lastAt: at };
+    next.channels[channel] = trimUsage(scope);
+  }
+  return next;
+}
+
+/** Keep the per-channel map bounded by dropping the least-used entries. */
+function trimUsage(scope) {
+  const entries = Object.entries(scope);
+  if (entries.length <= USAGE_CHANNEL_LIMIT) return scope;
+  entries.sort((a, b) => (b[1].count - a[1].count) || (b[1].lastAt - a[1].lastAt));
+  return Object.fromEntries(entries.slice(0, USAGE_CHANNEL_LIMIT));
+}
+
+/**
+ * Rank emotes by real usage. `channel` scopes to one chat and falls back to the
+ * global rollup for anything never used there, so a shelf is useful the first
+ * time a channel is opened rather than empty.
+ */
+function rankEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
+  const scope = (channel && counts?.channels?.[channel]) || {};
+  const global = counts?.global || {};
+  const merged = new Map();
+  for (const [id, entry] of Object.entries(global)) {
+    merged.set(id, { id, name: entry.name, count: 0, globalCount: entry.count, lastAt: entry.lastAt || 0 });
+  }
+  for (const [id, entry] of Object.entries(scope)) {
+    const current = merged.get(id) || { id, name: entry.name, count: 0, globalCount: 0, lastAt: 0 };
+    merged.set(id, { ...current, name: entry.name || current.name, count: entry.count, lastAt: entry.lastAt || current.lastAt });
+  }
+  return [...merged.values()]
+    .sort((a, b) => (b.count - a.count) || (b.globalCount - a.globalCount) || (b.lastAt - a.lastAt))
+    .slice(0, limit);
+}
+
+/** Emotes the user owns but has never sent — the inverse view nothing offers. */
+function unusedEmotes(counts, emotes, { channel = '' } = {}) {
+  const used = new Set([
+    ...Object.keys(counts?.global || {}),
+    ...Object.keys((channel && counts?.channels?.[channel]) || {}),
+  ]);
+  return (emotes || []).filter((emote) => !used.has(String(emote.id)));
+}
+
+// ---------------------------------------------------------------------------
+// Collectible rarity
+// ---------------------------------------------------------------------------
+
+const RARITY_ORDER = Object.freeze(['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic']);
+
+function rarityRank(rarity) {
+  const index = RARITY_ORDER.indexOf(String(rarity || '').toLowerCase());
+  return index < 0 ? -1 : index;
+}
+
+/** Strip the marketing prefix and casing so a name can be matched in a URL. */
+function joinToken(name) {
+  return String(name || '')
+    .replace(new RegExp(`^${COLLECTIBLE_PREFIX}`, 'i'), '')
+    .replace(/[^a-z0-9]/gi, '')
+    .toLowerCase();
+}
+
+/**
+ * Join collectible card art to emote identity.
+ *
+ * Kick exposes rarity only on the card (`{id: uuid, card_url, owned, rarity}`,
+ * no name) and identity only in the picker (`{id: int, name}`, no rarity). The
+ * two payloads share no key, which is why no client anywhere can currently tell
+ * a user what rarity an emote they own is.
+ *
+ * There is therefore no exact join, only evidence. Each strategy carries its own
+ * confidence, and anything below `minConfidence` is returned as unmatched with
+ * no label attached: a mislabelled Mythic is strictly worse than no label, and
+ * this join is the one place in the project where being wrong is worse than
+ * being silent.
+ */
+const RARITY_MIN_CONFIDENCE = 0.75;
+
+function joinCollectibleRarity(cards, emotes, { minConfidence = RARITY_MIN_CONFIDENCE } = {}) {
+  const collectibles = (emotes || []).filter((emote) => emote.collectible);
+  const matched = [];
+  const unmatched = [];
+  const claimed = new Set();
+
+  for (const emote of collectibles) {
+    const token = joinToken(emote.name);
+    let best = null;
+
+    for (const card of cards || []) {
+      if (!card || claimed.has(card.id)) continue;
+      const url = String(card.card_url || '').toLowerCase();
+      if (!url) continue;
+
+      let confidence = 0;
+      let basis = '';
+      // Strongest: the card art is addressed by the emote's own id.
+      if (new RegExp(`(^|[^0-9])${emote.id}([^0-9]|$)`).test(url)) {
+        confidence = 0.98;
+        basis = 'emote id in card URL';
+      } else if (token.length >= 4 && url.replace(/[^a-z0-9]/g, '').includes(token)) {
+        // Weaker: the name appears in the asset path. Short tokens match by
+        // accident far too easily, hence the length floor.
+        confidence = 0.85;
+        basis = 'emote name in card URL';
+      }
+      if (confidence && (!best || confidence > best.confidence)) best = { card, confidence, basis };
+    }
+
+    if (best && best.confidence >= minConfidence && rarityRank(best.card.rarity) >= 0) {
+      claimed.add(best.card.id);
+      matched.push({
+        emote,
+        rarity: String(best.card.rarity).toLowerCase(),
+        rank: rarityRank(best.card.rarity),
+        owned: Boolean(best.card.owned),
+        confidence: best.confidence,
+        basis: best.basis,
+      });
+    } else {
+      unmatched.push(emote);
+    }
+  }
+
+  const total = collectibles.length;
+  return {
+    matched,
+    unmatched,
+    total,
+    coverage: total ? matched.length / total : 0,
+    // The caller renders rarity only when this is true; otherwise the tab looks
+    // exactly as it does today.
+    usable: total > 0 && matched.length > 0,
+  };
 }
 
 /**
@@ -1129,6 +1824,7 @@ const CHANNEL_NOTES_KEY = 'kick-focus:channel-notes';
 const STICKER_PREFERENCES_KEY = 'kick-focus:sticker-preferences';
 const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
 const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
+const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 
 // Declared ahead of `state` because writes can happen while `state` is still in
@@ -1260,6 +1956,8 @@ const state = {
     provider: '',
   },
   emoteUsage: readEmoteUsage(),
+  multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
+  multistreamError: '',
   chatStickerScanTimer: 0,
   usagePersistTimer: 0,
   chatStickerPendingNodes: new Set(),
@@ -2978,6 +3676,191 @@ function liveStatusSummary() {
   if (state.live.collisions.length) parts.push(`${state.live.collisions.length} emote name${state.live.collisions.length === 1 ? '' : 's'} shadowed.`);
   if (state.live.catalogError) parts.push(state.live.catalogError);
   return parts.join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// Multi-stream
+//
+// A grid of Kick's own embedded players and chat, so playback, subscriptions
+// and entitlements all stay Kick's. Nothing here reimplements a player or
+// works around an entitlement; it arranges surfaces Kick already publishes.
+// ---------------------------------------------------------------------------
+
+function persistMultistream() {
+  gmSet(MULTISTREAM_KEY, state.multistream);
+}
+
+function openMultistream() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  if (!backdrop) return;
+  state.lastFocused = document.activeElement;
+  backdrop.hidden = false;
+  renderMultistream();
+  backdrop.querySelector('[data-kf-multistream-input]')?.focus();
+  announce(tr('Multi-stream opened'));
+}
+
+function closeMultistream() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  if (!backdrop || backdrop.hidden) return;
+  backdrop.hidden = true;
+  // Blanking the grid drops every embedded player, so closing the surface
+  // actually stops the decoding rather than leaving nine streams running.
+  const grid = backdrop.querySelector('[data-kf-multistream-grid]');
+  if (grid) grid.innerHTML = '';
+  const chat = backdrop.querySelector('[data-kf-multistream-chat]');
+  if (chat) chat.innerHTML = '';
+  state.lastFocused?.focus?.();
+}
+
+function multistreamOpen() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  return Boolean(backdrop && !backdrop.hidden);
+}
+
+/**
+ * Rebuild the grid.
+ *
+ * Tiles are keyed by slug and reused across renders: replacing an `<iframe>`
+ * restarts its stream from scratch, so adding a ninth channel must not
+ * interrupt the eight already playing.
+ */
+function renderMultistream() {
+  const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
+  if (!backdrop || backdrop.hidden) return;
+  const grid = backdrop.querySelector('[data-kf-multistream-grid]');
+  const { streams, focus, chat, showChat } = state.multistream;
+
+  backdrop.dataset.kfMultistreamChat = String(showChat && Boolean(chat));
+  grid.style.setProperty('--kf-multistream-columns', String(multistreamColumns(streams.length)));
+
+  const existing = new Map();
+  for (const tile of grid.querySelectorAll('[data-kf-multistream-tile]')) {
+    existing.set(tile.dataset.kfMultistreamTile, tile);
+  }
+
+  const ordered = [];
+  for (const slug of streams) {
+    let tile = existing.get(slug);
+    if (tile) {
+      existing.delete(slug);
+    } else {
+      tile = document.createElement('div');
+      tile.dataset.kfMultistreamTile = slug;
+      tile.className = 'kf-ms-tile';
+      const frame = document.createElement('iframe');
+      // Every tile starts muted; audio follows focus, so a nine-way grid is
+      // never nine simultaneous audio streams.
+      frame.src = playerEmbedUrl(slug, { muted: true, autoplay: true });
+      frame.title = `${slug} stream`;
+      frame.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media';
+      frame.referrerPolicy = 'origin';
+      frame.loading = 'eager';
+      tile.append(frame);
+      const bar = document.createElement('div');
+      bar.className = 'kf-ms-bar';
+      bar.innerHTML = `
+        <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
+        <span class="kf-ms-spacer"></span>
+        <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
+        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid" title="Remove">×</button>`;
+      tile.append(bar);
+    }
+    tile.dataset.kfMultistreamFocused = String(slug === focus);
+    ordered.push(tile);
+  }
+
+  // Anything still in `existing` was removed from the grid.
+  for (const stale of existing.values()) stale.remove();
+  for (const tile of ordered) grid.append(tile);
+
+  renderMultistreamChat(backdrop, chat, showChat);
+  renderMultistreamControls(backdrop);
+  applyMultistreamAudio(grid, focus);
+}
+
+/**
+ * Audio follows focus.
+ *
+ * The embedded player is cross-origin, so its `muted` state cannot be reached
+ * from here — the URL is the only control surface. Reloading a frame restarts
+ * its stream, so only the two frames whose audio state actually changed are
+ * touched, never the whole grid.
+ */
+function applyMultistreamAudio(grid, focus) {
+  for (const tile of grid.querySelectorAll('[data-kf-multistream-tile]')) {
+    const slug = tile.dataset.kfMultistreamTile;
+    const frame = tile.querySelector('iframe');
+    if (!frame) continue;
+    const wanted = playerEmbedUrl(slug, { muted: slug !== focus, autoplay: true });
+    if (frame.getAttribute('src') !== wanted) frame.setAttribute('src', wanted);
+  }
+}
+
+function renderMultistreamChat(backdrop, chat, showChat) {
+  const host = backdrop.querySelector('[data-kf-multistream-chat]');
+  if (!host) return;
+  if (!showChat || !chat) {
+    host.innerHTML = '';
+    return;
+  }
+  const current = host.querySelector('iframe');
+  if (current?.dataset.slug === chat) return;
+  host.innerHTML = '';
+  const frame = document.createElement('iframe');
+  frame.src = chatEmbedUrl(chat);
+  frame.dataset.slug = chat;
+  frame.title = `${chat} chat`;
+  frame.referrerPolicy = 'origin';
+  host.append(frame);
+}
+
+function renderMultistreamControls(backdrop) {
+  const { streams, chat, showChat, layouts } = state.multistream;
+  const count = backdrop.querySelector('[data-kf-multistream-count]');
+  if (count) {
+    count.textContent = streams.length
+      ? `${streams.length} of ${MULTISTREAM_MAX} streams`
+      : 'No streams yet — add a channel to start.';
+  }
+  const error = backdrop.querySelector('[data-kf-multistream-error]');
+  if (error) {
+    error.textContent = state.multistreamError;
+    error.hidden = !state.multistreamError;
+  }
+  const chatSelect = backdrop.querySelector('[data-kf-multistream-chat-select]');
+  if (chatSelect) {
+    chatSelect.innerHTML = streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join('');
+    chatSelect.disabled = !streams.length;
+  }
+  const chatToggle = backdrop.querySelector('[data-action="multistream-toggle-chat"]');
+  if (chatToggle) {
+    chatToggle.setAttribute('aria-pressed', String(showChat));
+    chatToggle.textContent = showChat ? 'Hide chat' : 'Show chat';
+  }
+  const savedList = backdrop.querySelector('[data-kf-multistream-layouts]');
+  if (savedList) {
+    savedList.innerHTML = layouts.length
+      ? layouts.map((layout) => `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} <small>${layout.streams.length}</small></button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`).join('')
+      : '<span class="kf-ms-empty">No saved layouts yet.</span>';
+  }
+}
+
+function addMultistream(raw) {
+  const slug = parseChannelInput(raw);
+  if (!slug) {
+    state.multistreamError = 'Enter a Kick channel name or a kick.com link.';
+    renderMultistream();
+    return;
+  }
+  const result = addMultistreamChannel(state.multistream, slug);
+  state.multistreamError = result.ok ? '' : result.error;
+  if (result.ok) {
+    state.multistream = result.value;
+    persistMultistream();
+    announce(`${slug} added to the multi-stream grid`);
+  }
+  renderMultistream();
 }
 
 function readRemoteBlocklist() {
@@ -5012,6 +5895,109 @@ const UI_CSS = `
   .kf-rarity[data-rarity="legendary"] { color: #ffb648; }
   .kf-rarity[data-rarity="mythic"] { color: #ff6b8b; }
 
+  /* Multi-stream: a grid of Kick's own embedded players. */
+  .kf-ms-backdrop { padding: 0; }
+  .kf-ms-shell {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    width: 100vw;
+    height: 100vh;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .kf-ms-head, .kf-ms-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: #121512;
+    flex-wrap: wrap;
+  }
+  .kf-ms-foot { border-bottom: 0; border-top: 1px solid var(--border); }
+  .kf-ms-spacer { flex: 1; }
+  .kf-ms-count { font-size: 11px; opacity: .75; }
+  .kf-ms-head input, .kf-ms-foot input {
+    min-width: 220px;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #0d0f0d;
+    color: var(--text);
+    font-size: 12px;
+  }
+  .kf-ms-head input:focus, .kf-ms-foot input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-ms-select { min-height: 32px; font-size: 12px; }
+  .kf-ms-error { padding: 8px 14px; border-bottom: 1px solid var(--danger); background: #2a1416; font-size: 12px; }
+  .kf-ms-error[hidden] { display: none; }
+
+  .kf-ms-body { display: grid; grid-template-columns: 1fr 0; min-height: 0; }
+  .kf-ms-backdrop[data-kf-multistream-chat="true"] .kf-ms-body { grid-template-columns: 1fr 340px; }
+  .kf-ms-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--kf-multistream-columns, 1), 1fr);
+    gap: 4px;
+    padding: 4px;
+    min-height: 0;
+    align-content: stretch;
+  }
+  .kf-ms-tile {
+    position: relative;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+  }
+  /* The focused tile owns the audio, so it has to be obvious which one that is. */
+  .kf-ms-tile[data-kf-multistream-focused="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .kf-ms-tile iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .kf-ms-bar {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    background: linear-gradient(180deg, rgba(0,0,0,.78), transparent);
+    opacity: 0;
+    transition: opacity .12s ease;
+    font-size: 11px;
+  }
+  .kf-ms-tile:hover .kf-ms-bar, .kf-ms-tile:focus-within .kf-ms-bar { opacity: 1; }
+  .kf-ms-bar button, .kf-ms-bar .kf-ms-link {
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 4px;
+    background: rgba(0,0,0,.55);
+    color: #fff;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); }
+  .kf-ms-chat iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .kf-ms-layouts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .kf-ms-layout { display: inline-flex; }
+  .kf-ms-layout button {
+    border: 1px solid var(--border);
+    background: #0d0f0d;
+    color: var(--text);
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .kf-ms-layout button:first-child { border-radius: 6px 0 0 6px; }
+  .kf-ms-layout button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+  .kf-ms-layout button:hover { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-layout small { opacity: .6; }
+  .kf-ms-empty { font-size: 11px; opacity: .6; }
+
   .kf-shadow-warning { display: grid; gap: 6px; }
   .kf-shadow-warning code { font-size: 11px; color: var(--accent); }
   .kf-command-list { max-height: 490px; overflow: auto; padding: 8px; }
@@ -5475,6 +6461,32 @@ function buildInterface() {
         <div class="kf-command-list" data-kf-command-list role="listbox"></div>
       </section>
     </div>
+    <div class="kf-backdrop kf-ms-backdrop" data-kf-multistream-backdrop hidden>
+      <section class="kf-ms-shell" role="dialog" aria-modal="true" aria-label="Kick Focus multi-stream">
+        <header class="kf-ms-head">
+          <strong>Multi-stream</strong>
+          <span class="kf-ms-count" data-kf-multistream-count></span>
+          <span class="kf-ms-spacer"></span>
+          <label class="kf-sr-only" for="kf-ms-input">Add a Kick channel</label>
+          <input id="kf-ms-input" data-kf-multistream-input type="search" autocomplete="off" placeholder="Add a channel or paste a kick.com link…">
+          <button type="button" class="kf-button kf-button-primary kf-button-small" data-action="multistream-add">Add</button>
+          <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
+          <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
+        </header>
+        <div class="kf-ms-error" role="alert" data-kf-multistream-error hidden></div>
+        <div class="kf-ms-body">
+          <div class="kf-ms-grid" data-kf-multistream-grid></div>
+          <aside class="kf-ms-chat" data-kf-multistream-chat></aside>
+        </div>
+        <footer class="kf-ms-foot">
+          <label class="kf-sr-only" for="kf-ms-layout-name">Layout name</label>
+          <input id="kf-ms-layout-name" data-kf-multistream-layout-name type="text" autocomplete="off" placeholder="Name this layout…">
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-save">Save layout</button>
+          <div class="kf-ms-layouts" data-kf-multistream-layouts></div>
+        </footer>
+      </section>
+    </div>
     <input type="file" accept="application/json,.json" data-kf-import hidden>
     <div class="kf-storage-alert" data-kf-storage-alert role="alert" hidden>
       <div class="kf-storage-alert-body">
@@ -5502,6 +6514,22 @@ function buildInterface() {
   state.commandInput.addEventListener('input', renderCommands);
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
+  // Enter is how anyone actually adds a channel; the button is the backup.
+  for (const [selector, action] of [
+    ['[data-kf-multistream-input]', 'multistream-add'],
+    ['[data-kf-multistream-layout-name]', 'multistream-save'],
+  ]) {
+    shadow.querySelector(selector)?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      shadow.querySelector(`[data-action="${action}"]`)?.click();
+    });
+  }
+  shadow.querySelector('[data-kf-multistream-chat-select]')?.addEventListener('change', (event) => {
+    state.multistream = normalizeMultistream({ ...state.multistream, chat: event.target.value });
+    persistMultistream();
+    renderMultistream();
+  });
   renderSettingsPage();
   // Writes can fail before the interface exists — startup reads and migrations
   // both persist. Replay whatever failed so it is not lost to mount ordering.
@@ -5873,6 +6901,7 @@ function renderAboutPage() {
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
       ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
+      <div class="kf-action-row"><div><h3>Multi-stream</h3><p>Watch up to ${MULTISTREAM_MAX} Kick channels in one grid, with audio and chat following whichever you focus. Uses Kick’s own embedded player, so subscriptions and entitlements are unchanged.${state.multistream.streams.length ? ` Currently holding ${state.multistream.streams.length}.` : ''}</p></div><button type="button" class="kf-button" data-action="open-multistream">Open multi-stream</button></div>
       <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
@@ -6111,6 +7140,70 @@ function onInterfaceClick(event) {
   else if (action === 'export') exportSettings();
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
   else if (action === 'copy-diagnostics') copyDiagnostics();
+  else if (action === 'open-multistream') openMultistream();
+  else if (action === 'close-multistream') closeMultistream();
+  else if (action === 'multistream-add') {
+    const input = state.shadow.querySelector('[data-kf-multistream-input]');
+    addMultistream(input?.value || '');
+    if (input) { input.value = ''; input.focus(); }
+  }
+  else if (action === 'multistream-remove') {
+    state.multistream = removeMultistreamChannel(state.multistream, actionTarget.dataset.slug);
+    state.multistreamError = '';
+    persistMultistream();
+    renderMultistream();
+  }
+  else if (action === 'multistream-focus') {
+    // Focus moves the audio and, unless the user picked a different chat, the
+    // chat with it — watching one stream while reading another's chat is a
+    // deliberate choice, not something to reset on every click.
+    const slug = actionTarget.dataset.slug;
+    const followChat = state.multistream.chat === state.multistream.focus;
+    state.multistream = normalizeMultistream({
+      ...state.multistream,
+      focus: slug,
+      chat: followChat ? slug : state.multistream.chat,
+    });
+    persistMultistream();
+    renderMultistream();
+    announce(`${slug} now has the audio`);
+  }
+  else if (action === 'multistream-toggle-chat') {
+    state.multistream = normalizeMultistream({ ...state.multistream, showChat: !state.multistream.showChat });
+    persistMultistream();
+    renderMultistream();
+  }
+  else if (action === 'multistream-save') {
+    const input = state.shadow.querySelector('[data-kf-multistream-layout-name]');
+    const result = saveMultistreamLayout(state.multistream, input?.value || '');
+    state.multistreamError = result.ok ? '' : result.error;
+    if (result.ok) {
+      state.multistream = result.value;
+      persistMultistream();
+      if (input) input.value = '';
+      showToast('Layout saved.');
+    }
+    renderMultistream();
+  }
+  else if (action === 'multistream-load') {
+    const layout = state.multistream.layouts.find((entry) => entry.name === actionTarget.dataset.layout);
+    if (layout) {
+      state.multistream = normalizeMultistream({ ...state.multistream, streams: layout.streams, focus: layout.streams[0], chat: layout.streams[0] });
+      state.multistreamError = '';
+      persistMultistream();
+      renderMultistream();
+      announce(`Loaded layout ${layout.name}`);
+    }
+  }
+  else if (action === 'multistream-delete-layout') {
+    const name = actionTarget.dataset.layout;
+    state.multistream = normalizeMultistream({
+      ...state.multistream,
+      layouts: state.multistream.layouts.filter((entry) => entry.name !== name),
+    });
+    persistMultistream();
+    renderMultistream();
+  }
   else if (action === 'dismiss-storage-alert') {
     // Acknowledging this exact set of failures; a different key failing later
     // raises the warning again rather than staying silent.
@@ -6485,6 +7578,7 @@ function commandDefinitions() {
     { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
     { id: 'density', label: tr(`Use ${state.settings.layout.density === 'compact' ? 'comfortable' : 'compact'} density`), description: tr('Change discovery spacing and save it'), key: 'D' },
     { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
+    { id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid'), key: '' },
     { id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access'), key: state.settings.shortcuts.settings },
   ];
 }
@@ -6513,6 +7607,12 @@ function closeCommandMenu() {
 }
 
 function executeCommand(id) {
+  if (id === 'multistream') {
+    closeCommandMenu();
+    if (multistreamOpen()) closeMultistream();
+    else openMultistream();
+    return;
+  }
   if (id === 'panic') {
     togglePanicSwitch();
     closeCommandMenu();
@@ -6622,6 +7722,11 @@ function onGlobalKeydown(event) {
     return;
   }
 
+  if (multistreamOpen() && event.key === 'Escape') {
+    event.preventDefault();
+    closeMultistream();
+    return;
+  }
   if (!state.modal.hidden && event.key === 'Escape') {
     event.preventDefault();
     closeSettings();

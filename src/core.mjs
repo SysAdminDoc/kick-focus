@@ -795,6 +795,121 @@ export function validateImportedSettings(jsonText) {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-stream
+// ---------------------------------------------------------------------------
+
+export const MULTISTREAM_SCHEMA = 1;
+/**
+ * Nine tiles is a hard ceiling, not a preference. Each tile is a real Kick
+ * player: an independent HLS decode plus its own socket. Past a 3×3 the grid
+ * stops being watchable and starts being a way to melt a laptop, so the limit
+ * is enforced in the data rather than suggested in the interface.
+ */
+export const MULTISTREAM_MAX = 9;
+export const MULTISTREAM_LAYOUT_LIMIT = 24;
+
+/** Column count per tile count, chosen so the last row is never a lone tile. */
+export function multistreamColumns(count) {
+  const total = Number(count) || 0;
+  if (total <= 1) return 1;
+  if (total <= 4) return 2;
+  if (total <= 6) return 3;
+  return 3;
+}
+
+function cleanSlugList(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const slugs = [];
+  for (const raw of input) {
+    const slug = typeof raw === 'string' ? raw.trim() : '';
+    if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
+    const key = slug.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    slugs.push(slug);
+    if (slugs.length >= MULTISTREAM_MAX) break;
+  }
+  return slugs;
+}
+
+export function normalizeMultistream(input) {
+  const source = isRecord(input) ? input : {};
+  const streams = cleanSlugList(source.streams);
+  const focusCandidate = typeof source.focus === 'string' ? source.focus : '';
+  // Audio follows focus, and focus must name a stream that is actually present
+  // or the grid ends up silent with no obvious way to fix it.
+  const focus = streams.some((slug) => slug.toLowerCase() === focusCandidate.toLowerCase())
+    ? streams.find((slug) => slug.toLowerCase() === focusCandidate.toLowerCase())
+    : (streams[0] || '');
+
+  const layouts = [];
+  if (Array.isArray(source.layouts)) {
+    const names = new Set();
+    for (const raw of source.layouts) {
+      if (!isRecord(raw)) continue;
+      const name = String(raw.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      const saved = cleanSlugList(raw.streams);
+      if (!name || !saved.length || names.has(name.toLowerCase())) continue;
+      names.add(name.toLowerCase());
+      layouts.push({ name, streams: saved });
+      if (layouts.length >= MULTISTREAM_LAYOUT_LIMIT) break;
+    }
+  }
+
+  return {
+    schema: MULTISTREAM_SCHEMA,
+    streams,
+    focus,
+    chat: streams.some((slug) => slug.toLowerCase() === String(source.chat ?? '').toLowerCase())
+      ? streams.find((slug) => slug.toLowerCase() === String(source.chat).toLowerCase())
+      : focus,
+    showChat: typeof source.showChat === 'boolean' ? source.showChat : true,
+    layouts,
+  };
+}
+
+/**
+ * Add a channel, reporting *why* nothing happened rather than failing silently
+ * — "I clicked add and nothing appeared" is the whole failure mode here.
+ */
+export function addMultistreamChannel(value, slug) {
+  const state = normalizeMultistream(value);
+  const cleaned = typeof slug === 'string' ? slug.trim() : '';
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(cleaned)) {
+    return { ok: false, error: 'That is not a Kick channel name.', value: state };
+  }
+  if (state.streams.some((entry) => entry.toLowerCase() === cleaned.toLowerCase())) {
+    return { ok: false, error: `${cleaned} is already in the grid.`, value: state };
+  }
+  if (state.streams.length >= MULTISTREAM_MAX) {
+    return { ok: false, error: `The grid holds ${MULTISTREAM_MAX} streams. Remove one first.`, value: state };
+  }
+  const streams = [...state.streams, cleaned];
+  return { ok: true, value: normalizeMultistream({ ...state, streams, focus: state.focus || cleaned }) };
+}
+
+export function removeMultistreamChannel(value, slug) {
+  const state = normalizeMultistream(value);
+  const streams = state.streams.filter((entry) => entry.toLowerCase() !== String(slug).toLowerCase());
+  // Focus and chat fall through to normalizeMultistream, which re-points them
+  // at a surviving stream rather than leaving the grid muted and chatless.
+  return normalizeMultistream({ ...state, streams });
+}
+
+export function saveMultistreamLayout(value, name) {
+  const state = normalizeMultistream(value);
+  const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!clean) return { ok: false, error: 'Name this layout first.', value: state };
+  if (!state.streams.length) return { ok: false, error: 'Add at least one stream before saving.', value: state };
+  const layouts = [
+    { name: clean, streams: state.streams },
+    ...state.layouts.filter((layout) => layout.name.toLowerCase() !== clean.toLowerCase()),
+  ];
+  return { ok: true, value: normalizeMultistream({ ...state, layouts }) };
+}
+
+// ---------------------------------------------------------------------------
 // Player loading
 // ---------------------------------------------------------------------------
 

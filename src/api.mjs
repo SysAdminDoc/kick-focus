@@ -46,6 +46,49 @@ export const endpoints = {
     `${KICK_WEB_ORIGIN}/api/v1/realtime/chat/${encodeURIComponent(chatroomId)}/client/${encodeURIComponent(clientId)}/connection`,
 };
 
+/**
+ * Kick's own embeddable surfaces, verified frameable on 2026-08-15 (200, and
+ * neither sends X-Frame-Options nor a frame-ancestors CSP).
+ *
+ * These are Kick's real player and chat, not a reimplementation: playback,
+ * subscriptions, and entitlements all stay Kick's, which is what keeps a
+ * multi-stream grid from becoming a workaround for anything.
+ */
+export function playerEmbedUrl(slug, { muted = true, autoplay = true } = {}) {
+  const params = new URLSearchParams({ muted: String(muted), autoplay: String(autoplay) });
+  return `https://player.kick.com/${encodeURIComponent(slug)}?${params}`;
+}
+
+export function chatEmbedUrl(slug) {
+  return `${KICK_ORIGIN}/popout/${encodeURIComponent(slug)}/chat`;
+}
+
+/** Kick channel slugs: what the site itself accepts in a path segment. */
+export function isValidSlug(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value);
+}
+
+/**
+ * Accept whatever a person is most likely to paste: a bare name, a kick.com
+ * URL, a URL with query or trailing path, or a name with stray whitespace.
+ */
+export function parseChannelInput(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  let candidate = text;
+  if (/^https?:\/\//i.test(text) || /^(?:www\.)?kick\.com\//i.test(text)) {
+    try {
+      const url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+      if (!/(^|\.)kick\.com$/i.test(url.hostname)) return '';
+      candidate = url.pathname.replace(/^\//, '').split('/')[0];
+    } catch {
+      return '';
+    }
+  }
+  candidate = candidate.replace(/^@/, '').split(/[?#/]/)[0];
+  return isValidSlug(candidate) ? candidate : '';
+}
+
 // ---------------------------------------------------------------------------
 // Realtime
 // ---------------------------------------------------------------------------

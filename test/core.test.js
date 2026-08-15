@@ -473,3 +473,52 @@ test('ad preflight scripts are matched exactly, not by hostname alone', () => {
   assert.equal(isAdPreflightScript(null, origin), false);
   assert.equal(isAdPreflightScript('not a url at all', 'also not a url'), false);
 });
+
+test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', async () => {
+  const {
+    MULTISTREAM_MAX, addMultistreamChannel, multistreamColumns,
+    normalizeMultistream, removeMultistreamChannel, saveMultistreamLayout,
+  } = await import('../src/core.mjs');
+
+  let grid = normalizeMultistream({ streams: ['xqc', 'XQC', 'trainwreck', 'bad slug!'] });
+  assert.deepEqual(grid.streams, ['xqc', 'trainwreck'], 'case-insensitive dedupe, invalid dropped');
+  // Audio and chat must always point at a stream that exists.
+  assert.equal(grid.focus, 'xqc');
+  assert.equal(grid.chat, 'xqc');
+
+  const added = addMultistreamChannel(grid, 'adin');
+  assert.equal(added.ok, true);
+  assert.deepEqual(added.value.streams, ['xqc', 'trainwreck', 'adin']);
+
+  // Failure says why. "I clicked add and nothing happened" is the failure mode.
+  assert.match(addMultistreamChannel(added.value, 'XQC').error, /already in the grid/);
+  assert.match(addMultistreamChannel(added.value, 'not valid!').error, /not a Kick channel/);
+
+  const full = normalizeMultistream({ streams: Array.from({ length: MULTISTREAM_MAX }, (_, i) => `chan${i}`) });
+  assert.equal(full.streams.length, MULTISTREAM_MAX);
+  assert.match(addMultistreamChannel(full, 'onemore').error, new RegExp(String(MULTISTREAM_MAX)));
+  // The cap holds even when the stored value was hand-edited past it.
+  assert.equal(normalizeMultistream({ streams: Array.from({ length: 40 }, (_, i) => `c${i}`) }).streams.length, MULTISTREAM_MAX);
+
+  // Removing the focused stream must not leave the grid silent and chatless.
+  const removed = removeMultistreamChannel(added.value, 'xqc');
+  assert.deepEqual(removed.streams, ['trainwreck', 'adin']);
+  assert.equal(removed.focus, 'trainwreck');
+  assert.equal(removed.chat, 'trainwreck');
+  assert.equal(removeMultistreamChannel(removed, 'trainwreck').focus, 'adin');
+  assert.equal(removeMultistreamChannel(normalizeMultistream({ streams: ['solo'] }), 'solo').focus, '');
+
+  const saved = saveMultistreamLayout(added.value, '  Sunday   crew  ');
+  assert.equal(saved.ok, true);
+  assert.equal(saved.value.layouts[0].name, 'Sunday crew');
+  // Saving the same name replaces rather than duplicating.
+  assert.equal(saveMultistreamLayout(saved.value, 'Sunday crew').value.layouts.length, 1);
+  assert.match(saveMultistreamLayout(added.value, '   ').error, /Name this layout/);
+  assert.match(saveMultistreamLayout(normalizeMultistream({}), 'Empty').error, /at least one stream/);
+
+  // A lone tile on the last row looks broken; these counts avoid it.
+  assert.equal(multistreamColumns(1), 1);
+  assert.equal(multistreamColumns(4), 2);
+  assert.equal(multistreamColumns(9), 3);
+  assert.equal(multistreamColumns(0), 1);
+});

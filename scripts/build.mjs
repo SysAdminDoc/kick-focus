@@ -26,7 +26,7 @@ const bundledCompatibility = compatibility.replace(/^export\s+/gm, '');
 const bundledRuntime = runtime
   .replaceAll('__KICK_FOCUS_ICON__', `data:image/png;base64,${renderIcon(32).toString('base64')}`)
   .replaceAll('__KICK_FOCUS_PREVIEW__', `data:image/jpeg;base64,${appearancePreview.toString('base64')}`);
-const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledCompatibility}\n${bundledRuntime}\n})();\n`;
+const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledRuntime}\n})();\n`;
 
 await mkdir(resolve(root, 'dist'), { recursive: true });
 const userscript = `${metadata.replaceAll('__VERSION__', VERSION)}${body}`;

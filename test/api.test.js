@@ -300,3 +300,26 @@ test('channel identity survives an offline or reshaped payload', () => {
   assert.equal(normalizeChannel(null), null);
   assert.equal(normalizeChannel({ slug: 'x' }), null, 'an id-less payload is not a channel');
 });
+
+test('channel input accepts whatever a person is likely to paste', async () => {
+  const { parseChannelInput, playerEmbedUrl, chatEmbedUrl, isValidSlug } = await import('../src/api.mjs');
+  assert.equal(parseChannelInput('xqc'), 'xqc');
+  assert.equal(parseChannelInput('  @xQc  '), 'xQc');
+  assert.equal(parseChannelInput('https://kick.com/xqc'), 'xqc');
+  assert.equal(parseChannelInput('https://www.kick.com/xqc?foo=1'), 'xqc');
+  assert.equal(parseChannelInput('kick.com/xqc/videos'), 'xqc');
+
+  // A lookalike host must not be read as a Kick channel.
+  assert.equal(parseChannelInput('https://kick.com.evil.net/xqc'), '');
+  assert.equal(parseChannelInput('https://twitch.tv/xqc'), '');
+  assert.equal(parseChannelInput(''), '');
+  assert.equal(parseChannelInput('has spaces'), '');
+
+  assert.equal(isValidSlug('-leading-dash'), false);
+  assert.equal(isValidSlug('a'.repeat(65)), false);
+
+  // Kick's real player and chat, so playback and entitlements stay Kick's.
+  assert.match(playerEmbedUrl('xqc'), /^https:\/\/player\.kick\.com\/xqc\?/);
+  assert.match(playerEmbedUrl('xqc', { muted: false }), /muted=false/);
+  assert.equal(chatEmbedUrl('xqc'), 'https://kick.com/popout/xqc/chat');
+});
