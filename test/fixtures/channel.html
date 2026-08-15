@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <div class="group/main" data-sidebar="true" data-chat="true">
+      <nav data-testid="top-nav"></nav>
+      <aside id="sidebar-wrapper"><button data-testid="sidebar-collapse" aria-controls="sidebar-wrapper" aria-expanded="true"></button></aside>
+      <main id="main-container">
+        <section data-testid="channel-player"><video controls></video></section>
+        <article data-testid="stream-card"><a href="https://kick.com/channel-name">Channel Name</a></article>
+      </main>
+      <aside>
+        <div role="separator" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="420" tabindex="0"></div>
+        <section id="channel-chatroom"><div id="chatroom-messages" contenteditable="true"></div></section>
+      </aside>
+    </div>
+  </body>
+</html>

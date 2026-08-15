@@ -10,8 +10,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks only out
 
 ## P1 — protect compatibility
 
-- Replace single chat/sidebar hooks with ordered locator probes and a visible compatibility self-test. (2026-08-14: use React `__reactProps$`/fiber anchors and `data-*`/`id` attributes rather than utility classes or English `aria-label` text, per 7TV's `src/site/kick.com/`; the current chat hook depends on the label "Resize chatroom" and so also breaks under localization.)
-- Add a small fixture suite for current Home, Browse, Category, Search, Channel, and chat DOM shapes. (2026-08-14: fixtures should fail the build when a hook stops matching, which is the failure mode that actually ships. Raw material already exists locally in the gitignored `page_examples/` — MHTML captures of Home, Browse, Following, and a live channel. Decode them and render headless rather than committing them; they are 151 MB and Chrome sandboxes `.mhtml` so they cannot simply be opened and scripted.)
 - Add a release checklist that re-runs 1440×900 and 1920×1080 screenshot comparison after Kick deployments.
 - Verify logged-in account, subscription, and moderation surfaces without altering their controls. (2026-08-14: also unblocks ad validation — subscribers reportedly still received ads during Kick's tests, and all auditing so far is logged-out.)
 

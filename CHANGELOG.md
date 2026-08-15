@@ -2,6 +2,13 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## Unreleased
+
+### Added
+
+- Ordered shell locator probes now prefer Kick's ids and data markers, fall back through structural and accessible anchors, and expose a visible compatibility self-test on the About page.
+- Committed lightweight Home, Browse, Category, Search, Channel, and localized chat fixtures with build-gating shape tests, without adding the large MHTML captures to history.
+
 ## 1.2.0 — 2026-08-14
 
 ### Fixed

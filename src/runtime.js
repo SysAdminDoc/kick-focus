@@ -78,6 +78,7 @@ const state = {
     wouldHide: 0,
     total: 0,
   },
+  compatibility: null,
 };
 
 /**
@@ -701,21 +702,24 @@ function applySettingsAttributes() {
 }
 
 function tagChatPanel() {
-  const separator = document.querySelector('[role="separator"][aria-label="Resize chatroom"]');
+  const separator = findProbe(document, 'chatSeparator').element;
   if (!separator) return;
   separator.dataset.kfChatSeparator = 'true';
   let panel = separator.nextElementSibling;
   if (!panel || panel === separator) {
-    panel = [...separator.parentElement.children].find((child) => child !== separator && child.querySelector?.('[aria-label*="chat" i], textarea, [contenteditable="true"]'));
+    panel = findProbe(document, 'chatPanel').element;
   }
-  if (panel) panel.dataset.kfChatPanel = 'true';
+  if (panel) {
+    const owner = ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]');
+    owner.dataset.kfChatPanel = 'true';
+  }
 }
 
 function syncNativeSidebar() {
   if (state.runtime.sidebarHidden || state.runtime.focus || state.runtime.theater) return;
   const mode = state.settings.layout.sidebar;
-  const collapse = document.querySelector('button[aria-label="Collapse sidebar"]');
-  const expand = document.querySelector('button[aria-label="Expand sidebar"]');
+  const collapse = findProbe(document, 'sidebarCollapse').element;
+  const expand = findProbe(document, 'sidebarExpand').element;
   if (mode === 'compact' && collapse) {
     document.documentElement.dataset.kfManagedSidebar = 'true';
     collapse.click();
@@ -726,12 +730,14 @@ function syncNativeSidebar() {
 }
 
 function cardCandidates() {
-  return document.querySelectorAll([
-    '#main-container [class*="group/card"]',
-    '#main-container article',
-    '#sidebar-wrapper button',
-    '#sidebar-wrapper a',
-  ].join(','));
+  const main = findProbe(document, 'main').element;
+  const cards = findAllProbe(main || document, 'card').elements;
+  const sidebar = findProbe(document, 'sidebar').element;
+  if (!sidebar) return cards;
+  return [...new Set([
+    ...cards,
+    ...sidebar.querySelectorAll?.('[data-testid^="sidebar-following-channel-"], a[href]') || [],
+  ])];
 }
 
 /**
@@ -857,6 +863,15 @@ function updateFilterNoticeInPlace() {
     : '';
 }
 
+function updateCompatibilityInPlace() {
+  const status = state.shadow?.querySelector('[data-kf-compatibility]');
+  const detail = state.shadow?.querySelector('[data-kf-compatibility-detail]');
+  if (!status || !detail || !state.compatibility) return;
+  status.textContent = state.compatibility.healthy ? 'Healthy' : 'Needs attention';
+  status.dataset.error = String(!state.compatibility.healthy);
+  detail.textContent = `${compatibilitySummary(state.compatibility)} Probes: ${Object.entries(state.compatibility.probes).filter(([, probe]) => probe).map(([name, probe]) => `${name}=${probe}`).join(', ') || 'none'}.`;
+}
+
 function removeAdShells() {
   if (!state.settings.content.removeAdContainers) return;
   for (const node of document.querySelectorAll(AD_SHELL_SELECTORS.join(','))) {
@@ -905,6 +920,8 @@ function scheduleApply(delay = 50) {
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
+    state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
+    updateCompatibilityInPlace();
     syncQuickButton();
   }, effective);
 }
@@ -935,7 +952,10 @@ function installDocumentObserver() {
 
 function rememberWatchedCard(event) {
   const actualTarget = event.composedPath?.()[0] || event.target;
-  const link = actualTarget.closest?.('#main-container [class*="group/card"] a[href], #sidebar-wrapper a[href]');
+  const link = actualTarget.closest?.('a[href]');
+  const main = findProbe(document, 'main').element;
+  const sidebar = findProbe(document, 'sidebar').element;
+  if (!link || (main && !main.contains(link) && sidebar && !sidebar.contains(link))) return;
   if (!link) return;
   try {
     const path = new URL(link.href, location.origin).pathname;
@@ -1557,11 +1577,12 @@ function renderAccessibilityPage() {
 function renderAboutPage() {
   return `
     <div class="kf-about-hero"><div><h2>Kick Focus <span style="color:var(--muted);font-weight:500">${VERSION}</span></h2><p>A desktop-first layout and control layer for Kick.</p></div></div>
-    <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong>Verified 2026-08-14</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
+    <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong data-kf-compatibility data-error="${String(Boolean(state.compatibility && !state.compatibility.healthy))}">${state.compatibility ? (state.compatibility.healthy ? 'Healthy' : 'Needs attention') : 'Checking…'}</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
       ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
+      <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move your preferences using a local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
@@ -1596,6 +1617,7 @@ function updateDiagnosticsInPlace() {
   if (shells) shells.textContent = String(state.diagnostics.shells);
   if (last) last.textContent = state.diagnostics.lastMatch;
   if (log) log.innerHTML = protectionRows();
+  updateCompatibilityInPlace();
 }
 
 function getSetting(path) {
@@ -1810,15 +1832,18 @@ async function copyDiagnostics() {
 }
 
 function runSelfCheck() {
+  state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
   const checks = [
     ['document-start marker', Boolean(pageWindow.__kickFocusNetworkDefenseV1)],
     ['SPA lifecycle hook', Boolean(pageWindow.__kickFocusSpaHooksV1)],
     ['interface mounted', Boolean(state.root?.isConnected)],
     ['route classified', state.route !== 'other' || location.pathname !== '/'],
     ['ad defense locked on', state.settings.content.blockAds === true],
+    ['compatibility probes', state.compatibility.healthy],
   ];
   const companion = companionInfo();
   const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
+  updateCompatibilityInPlace();
   // The companion is optional, so its absence is reported but never a failure.
   const layer = companion.active ? `network + page (companion v${companion.version})` : 'page only';
   const timing = `injected ${INJECTION.summary}`;

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <div class="group/main" data-sidebar="true" data-chat="true">
+      <nav data-testid="top-nav"></nav>
+      <aside id="sidebar-wrapper" data-nosnippet="true">
+        <button data-testid="sidebar-collapse" aria-controls="sidebar-wrapper" aria-expanded="true">Menu</button>
+        <a data-testid="sidebar-home" href="https://kick.com/">Home</a>
+      </aside>
+      <main id="main-container">
+        <section data-testid="featured-livestreams">
+          <div data-testid="livestream-results-card"><a href="https://kick.com/creator-one">Creator One</a></div>
+          <div data-testid="livestream-results-card"><a href="https://kick.com/creator-two">Creator Two</a></div>
+        </section>
+      </main>
+      <div>
+        <div role="separator" aria-valuemin="280" aria-valuemax="420" aria-valuenow="340"></div>
+        <section id="channel-chatroom"><div id="chatroom-messages"></div></section>
+      </div>
+    </div>
+  </body>
+</html>

@@ -531,6 +531,200 @@ function validateImportedSettings(jsonText) {
   return { ok: true, value, notes };
 }
 
+/**
+ * Ordered DOM probes for Kick's shell.
+ *
+ * The site changes utility classes often, so the runtime should anchor on
+ * stable ids and data attributes first, then use structural and accessible
+ * fallbacks. React props/fibers are deliberately the last probe: they are
+ * useful when Kick removes a public marker, but are not treated as a stable
+ * public API.
+ */
+
+const LOCATOR_PROBES = Object.freeze({
+  main: Object.freeze([
+    Object.freeze({ id: 'main-id', selector: '#main-container' }),
+    Object.freeze({ id: 'main-testid', selector: '[data-testid="main-container"]' }),
+    Object.freeze({ id: 'main-data', selector: '[data-kf-main], [data-kick-main]' }),
+    Object.freeze({ id: 'main-element', selector: 'main' }),
+  ]),
+  sidebar: Object.freeze([
+    Object.freeze({ id: 'sidebar-id', selector: '#sidebar-wrapper' }),
+    Object.freeze({ id: 'sidebar-testid', selector: '[data-testid="sidebar-wrapper"]' }),
+    Object.freeze({ id: 'sidebar-data', selector: '[data-kf-sidebar], [data-kick-sidebar]' }),
+    Object.freeze({ id: 'sidebar-owner', selector: '[data-sidebar] [data-testid^="sidebar-"]' }),
+  ]),
+  sidebarCollapse: Object.freeze([
+    Object.freeze({ id: 'sidebar-collapse-testid', selector: '[data-testid="sidebar-collapse"]' }),
+    Object.freeze({ id: 'sidebar-expanded-control', selector: '[aria-controls="sidebar-wrapper"][aria-expanded="true"]' }),
+    Object.freeze({ id: 'sidebar-collapse-label', selector: '[aria-label="Collapse sidebar"]' }),
+  ]),
+  sidebarExpand: Object.freeze([
+    Object.freeze({ id: 'sidebar-expand-testid', selector: '[data-testid="sidebar-expand"]' }),
+    Object.freeze({ id: 'sidebar-collapsed-control', selector: '[aria-controls="sidebar-wrapper"][aria-expanded="false"]' }),
+    Object.freeze({ id: 'sidebar-expand-label', selector: '[aria-label="Expand sidebar"]' }),
+  ]),
+  chatSeparator: Object.freeze([
+    Object.freeze({ id: 'chat-resizer-testid', selector: '[data-testid="chat-resizer"], [data-kf-chat-resizer]' }),
+    Object.freeze({ id: 'chat-resizer-values', selector: '[role="separator"][aria-valuemin][aria-valuemax]' }),
+    Object.freeze({ id: 'chat-resizer-label', selector: '[role="separator"][aria-label*="chat" i]' }),
+  ]),
+  chatPanel: Object.freeze([
+    Object.freeze({ id: 'chat-panel-id', selector: '#channel-chatroom' }),
+    Object.freeze({ id: 'chat-panel-testid', selector: '[data-testid="chatroom"], [data-kf-chat-panel]' }),
+    Object.freeze({ id: 'chat-messages-owner', selector: '[data-testid="chatroom-messages"], #chatroom-messages' }),
+  ]),
+  card: Object.freeze([
+    Object.freeze({ id: 'card-testid', selector: '[data-testid="livestream-results-card"], [data-testid="stream-card"]' }),
+    Object.freeze({ id: 'card-group', selector: '[class*="group/card"]' }),
+    Object.freeze({ id: 'card-article', selector: 'article' }),
+  ]),
+});
+
+function asRoot(root) {
+  return root && typeof root.querySelector === 'function' ? root : null;
+}
+
+function safeClosest(node, selector) {
+  try {
+    return node?.closest?.(selector) || null;
+  } catch {
+    return null;
+  }
+}
+
+function reactMetadata(node) {
+  if (!node || typeof Object.getOwnPropertyNames !== 'function') return [];
+  const names = Object.getOwnPropertyNames(node).filter((name) => /^__react(?:Props|Fiber)\$/.test(name));
+  const values = [];
+  for (const name of names) {
+    try {
+      const value = node[name];
+      if (value) values.push(value);
+    } catch {
+      // A framework-owned property may be a throwing getter.
+    }
+  }
+  return values;
+}
+
+function hasReactMarker(value, marker, depth = 0) {
+  if (depth > 2 || value == null) return false;
+  if (typeof value === 'string') return marker.test(value);
+  if (typeof value !== 'object') return false;
+  for (const [key, child] of Object.entries(value)) {
+    if (marker.test(key) || hasReactMarker(child, marker, depth + 1)) return true;
+  }
+  return false;
+}
+
+function reactProbe(root, kind) {
+  const marker = kind === 'chat' ? /chat|message|room/i : /sidebar|navigation|discovery/i;
+  let candidates = [];
+  try {
+    candidates = [...root.querySelectorAll('*')];
+  } catch {
+    return null;
+  }
+  for (const node of candidates) {
+    if (!reactMetadata(node).some((value) => hasReactMarker(value, marker))) continue;
+    if (kind === 'chat') {
+      return safeClosest(node, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]') || node;
+    }
+    return safeClosest(node, '#sidebar-wrapper, [data-testid="sidebar-wrapper"], [data-sidebar]') || node;
+  }
+  return null;
+}
+
+/** Return the first matching element and the probe that matched it. */
+function findProbe(root, name) {
+  const owner = asRoot(root);
+  if (!owner) return { element: null, probe: null };
+  for (const probe of LOCATOR_PROBES[name] || []) {
+    try {
+      const element = owner.querySelector(probe.selector);
+      if (!element) continue;
+      if (name === 'sidebar' && probe.id === 'sidebar-owner') {
+        return { element: safeClosest(element, '[data-sidebar]') || element.parentElement || element, probe: probe.id };
+      }
+      return { element, probe: probe.id };
+    } catch {
+      // A future selector must not take down the whole apply cycle.
+    }
+  }
+  if (name === 'chatPanel') {
+    const element = reactProbe(owner, 'chat');
+    if (element) return { element, probe: 'react-chat-anchor' };
+  }
+  if (name === 'sidebar') {
+    const element = reactProbe(owner, 'sidebar');
+    if (element) return { element, probe: 'react-sidebar-anchor' };
+  }
+  return { element: null, probe: null };
+}
+
+/** Return every matching element from the first probe that finds any. */
+function findAllProbe(root, name) {
+  const owner = asRoot(root);
+  if (!owner) return { elements: [], probe: null };
+  for (const probe of LOCATOR_PROBES[name] || []) {
+    try {
+      const elements = [...owner.querySelectorAll(probe.selector)];
+      if (elements.length) return { elements, probe: probe.id };
+    } catch {
+      // Keep trying the ordered fallbacks.
+    }
+  }
+  return { elements: [], probe: null };
+}
+
+function ownerFromChild(element, fallbackSelector) {
+  return safeClosest(element, fallbackSelector) || element.parentElement || element;
+}
+
+/**
+ * Snapshot the hooks the runtime depends on. `expectedChat` is route-aware so
+ * a browse page without an open chat is not reported as a compatibility failure
+ * while a channel page without chat is.
+ */
+function compatibilitySnapshot(root, options = {}) {
+  const owner = asRoot(root);
+  const main = findProbe(owner, 'main');
+  const sidebar = findProbe(owner, 'sidebar');
+  const separator = findProbe(owner, 'chatSeparator');
+  const panel = findProbe(owner, 'chatPanel');
+  const cards = findAllProbe(main.element || owner, 'card');
+  const expectedChat = options.expectedChat !== false;
+  const required = [
+    ['main', Boolean(main.element)],
+    ['sidebar', Boolean(sidebar.element)],
+    ...(expectedChat ? [['chat', Boolean(separator.element && panel.element)]] : []),
+  ];
+  return {
+    healthy: required.every(([, present]) => present),
+    expectedChat,
+    main: Boolean(main.element),
+    sidebar: Boolean(sidebar.element),
+    chat: Boolean(separator.element && panel.element),
+    cards: cards.elements.length,
+    probes: {
+      main: main.probe,
+      sidebar: sidebar.probe,
+      chatSeparator: separator.probe,
+      chatPanel: panel.probe,
+      card: cards.probe,
+    },
+    missing: required.filter(([, present]) => !present).map(([name]) => name),
+  };
+}
+
+function compatibilitySummary(snapshot) {
+  if (!snapshot || snapshot.healthy) {
+    return `Shell hooks matched${snapshot?.cards ? `; ${snapshot.cards} stream cards found` : ''}.`;
+  }
+  return `Compatibility needs attention: missing ${snapshot.missing.join(', ')}.`;
+}
+
 const STORAGE_KEY = 'kick-focus:settings';
 const CHANNEL_LAYOUT_KEY = 'kick-focus:channel-layouts';
 const WATCHED_KEY = 'kick-focus:watched-this-session';
@@ -611,6 +805,7 @@ const state = {
     wouldHide: 0,
     total: 0,
   },
+  compatibility: null,
 };
 
 /**
@@ -1234,21 +1429,24 @@ function applySettingsAttributes() {
 }
 
 function tagChatPanel() {
-  const separator = document.querySelector('[role="separator"][aria-label="Resize chatroom"]');
+  const separator = findProbe(document, 'chatSeparator').element;
   if (!separator) return;
   separator.dataset.kfChatSeparator = 'true';
   let panel = separator.nextElementSibling;
   if (!panel || panel === separator) {
-    panel = [...separator.parentElement.children].find((child) => child !== separator && child.querySelector?.('[aria-label*="chat" i], textarea, [contenteditable="true"]'));
+    panel = findProbe(document, 'chatPanel').element;
   }
-  if (panel) panel.dataset.kfChatPanel = 'true';
+  if (panel) {
+    const owner = ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]');
+    owner.dataset.kfChatPanel = 'true';
+  }
 }
 
 function syncNativeSidebar() {
   if (state.runtime.sidebarHidden || state.runtime.focus || state.runtime.theater) return;
   const mode = state.settings.layout.sidebar;
-  const collapse = document.querySelector('button[aria-label="Collapse sidebar"]');
-  const expand = document.querySelector('button[aria-label="Expand sidebar"]');
+  const collapse = findProbe(document, 'sidebarCollapse').element;
+  const expand = findProbe(document, 'sidebarExpand').element;
   if (mode === 'compact' && collapse) {
     document.documentElement.dataset.kfManagedSidebar = 'true';
     collapse.click();
@@ -1259,12 +1457,14 @@ function syncNativeSidebar() {
 }
 
 function cardCandidates() {
-  return document.querySelectorAll([
-    '#main-container [class*="group/card"]',
-    '#main-container article',
-    '#sidebar-wrapper button',
-    '#sidebar-wrapper a',
-  ].join(','));
+  const main = findProbe(document, 'main').element;
+  const cards = findAllProbe(main || document, 'card').elements;
+  const sidebar = findProbe(document, 'sidebar').element;
+  if (!sidebar) return cards;
+  return [...new Set([
+    ...cards,
+    ...sidebar.querySelectorAll?.('[data-testid^="sidebar-following-channel-"], a[href]') || [],
+  ])];
 }
 
 /**
@@ -1390,6 +1590,15 @@ function updateFilterNoticeInPlace() {
     : '';
 }
 
+function updateCompatibilityInPlace() {
+  const status = state.shadow?.querySelector('[data-kf-compatibility]');
+  const detail = state.shadow?.querySelector('[data-kf-compatibility-detail]');
+  if (!status || !detail || !state.compatibility) return;
+  status.textContent = state.compatibility.healthy ? 'Healthy' : 'Needs attention';
+  status.dataset.error = String(!state.compatibility.healthy);
+  detail.textContent = `${compatibilitySummary(state.compatibility)} Probes: ${Object.entries(state.compatibility.probes).filter(([, probe]) => probe).map(([name, probe]) => `${name}=${probe}`).join(', ') || 'none'}.`;
+}
+
 function removeAdShells() {
   if (!state.settings.content.removeAdContainers) return;
   for (const node of document.querySelectorAll(AD_SHELL_SELECTORS.join(','))) {
@@ -1438,6 +1647,8 @@ function scheduleApply(delay = 50) {
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
+    state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
+    updateCompatibilityInPlace();
     syncQuickButton();
   }, effective);
 }
@@ -1468,7 +1679,10 @@ function installDocumentObserver() {
 
 function rememberWatchedCard(event) {
   const actualTarget = event.composedPath?.()[0] || event.target;
-  const link = actualTarget.closest?.('#main-container [class*="group/card"] a[href], #sidebar-wrapper a[href]');
+  const link = actualTarget.closest?.('a[href]');
+  const main = findProbe(document, 'main').element;
+  const sidebar = findProbe(document, 'sidebar').element;
+  if (!link || (main && !main.contains(link) && sidebar && !sidebar.contains(link))) return;
   if (!link) return;
   try {
     const path = new URL(link.href, location.origin).pathname;
@@ -2090,11 +2304,12 @@ function renderAccessibilityPage() {
 function renderAboutPage() {
   return `
     <div class="kf-about-hero"><div><h2>Kick Focus <span style="color:var(--muted);font-weight:500">${VERSION}</span></h2><p>A desktop-first layout and control layer for Kick.</p></div></div>
-    <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong>Verified 2026-08-14</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
+    <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong data-kf-compatibility data-error="${String(Boolean(state.compatibility && !state.compatibility.healthy))}">${state.compatibility ? (state.compatibility.healthy ? 'Healthy' : 'Needs attention') : 'Checking…'}</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
       ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
+      <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move your preferences using a local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
@@ -2129,6 +2344,7 @@ function updateDiagnosticsInPlace() {
   if (shells) shells.textContent = String(state.diagnostics.shells);
   if (last) last.textContent = state.diagnostics.lastMatch;
   if (log) log.innerHTML = protectionRows();
+  updateCompatibilityInPlace();
 }
 
 function getSetting(path) {
@@ -2343,15 +2559,18 @@ async function copyDiagnostics() {
 }
 
 function runSelfCheck() {
+  state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
   const checks = [
     ['document-start marker', Boolean(pageWindow.__kickFocusNetworkDefenseV1)],
     ['SPA lifecycle hook', Boolean(pageWindow.__kickFocusSpaHooksV1)],
     ['interface mounted', Boolean(state.root?.isConnected)],
     ['route classified', state.route !== 'other' || location.pathname !== '/'],
     ['ad defense locked on', state.settings.content.blockAds === true],
+    ['compatibility probes', state.compatibility.healthy],
   ];
   const companion = companionInfo();
   const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
+  updateCompatibilityInPlace();
   // The companion is optional, so its absence is reported but never a failure.
   const layer = companion.active ? `network + page (companion v${companion.version})` : 'page only';
   const timing = `injected ${INJECTION.summary}`;
