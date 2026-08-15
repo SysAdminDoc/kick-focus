@@ -109,7 +109,11 @@ const checks = [
   ['Firefox network layer uses blocking listeners', firefoxBackground.includes('onBeforeRequest')
     && firefoxBackground.includes("['blocking']")
     && firefoxBackground.includes('return { cancel: true }')],
-  ['Firefox network layer is scoped to Kick initiators', firefoxBackground.includes('kickInitiator(details.initiator)')],
+  // Behaviour, not spelling: `test/companion.test.js` runs this background against a
+  // stubbed browser API with Firefox-shaped details. A gate asserting the field name
+  // is what previously kept the Chromium-only `details.initiator` bug alive.
+  ['Firefox network layer reads the Gecko initiator fields', firefoxBackground.includes('details?.originUrl')
+    && firefoxBackground.includes('details?.documentUrl')],
   ['Firefox host lists are generated', !firefoxBackground.includes('__AD_HOSTS__')
     && !firefoxBackground.includes('__TELEMETRY_HOSTS__')],
 ];

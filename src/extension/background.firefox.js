@@ -10,22 +10,38 @@ const BADGE_COLOR = '#53fc18';
 let telemetryEnabled = true;
 const blockedByTab = new Map();
 
-function hostMatches(rawUrl, hosts) {
+/**
+ * `blob:` and `filesystem:` URLs carry their real origin in the path, not the
+ * hostname — `new URL('blob:https://kick.com/…').hostname` is the empty string.
+ * Kick's player runs inside a blob: worker, so without this unwrap every
+ * worker-initiated request looks originless and escapes the filter.
+ */
+function originHostname(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl) return '';
   try {
-    const hostname = new URL(rawUrl).hostname;
-    return hosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol === 'blob:' || parsed.protocol === 'filesystem:') {
+      return originHostname(parsed.pathname);
+    }
+    return parsed.hostname;
   } catch {
-    return false;
+    return '';
   }
 }
 
-function kickInitiator(initiator) {
-  try {
-    const hostname = new URL(initiator).hostname;
-    return hostname === 'kick.com' || hostname === 'www.kick.com';
-  } catch {
-    return false;
-  }
+function hostMatches(rawUrl, hosts) {
+  const hostname = originHostname(rawUrl);
+  if (!hostname) return false;
+  return hosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+}
+
+/**
+ * Firefox populates `originUrl`/`documentUrl`; `initiator` is Chromium-only and
+ * is kept purely as a fallback so one file serves both engines.
+ */
+function kickInitiator(details) {
+  const hostname = originHostname(details?.originUrl || details?.documentUrl || details?.initiator);
+  return hostname === 'kick.com' || hostname === 'www.kick.com';
 }
 
 function paintBadge(tabId) {
@@ -35,7 +51,7 @@ function paintBadge(tabId) {
 }
 
 function beforeRequest(details) {
-  if (!kickInitiator(details.initiator)) return undefined;
+  if (!kickInitiator(details)) return undefined;
   const blocked = hostMatches(details.url, AD_HOSTS) || (telemetryEnabled && hostMatches(details.url, TELEMETRY_HOSTS));
   if (!blocked) return undefined;
   blockedByTab.set(details.tabId, (blockedByTab.get(details.tabId) || 0) + 1);
