@@ -117,6 +117,7 @@ const state = {
     chat: null,
     stickers: null,
     chatStickers: null,
+    multistream: null,
   },
   /**
    * Everything read from Kick's own API, kept apart from scraped state so a
@@ -143,6 +144,8 @@ const state = {
   emoteUsage: readEmoteUsage(),
   multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
   multistreamError: '',
+  multistreamSuspended: new Set(),
+  multistreamSuspensionInstalled: false,
   chatStickerScanTimer: 0,
   usagePersistTimer: 0,
   chatStickerPendingNodes: new Set(),
@@ -1935,6 +1938,7 @@ function openMultistream() {
   backdrop.hidden = false;
   // Someone asking the system for reduced motion should not be handed nine
   // autoplaying videos. They mount paused with a visible way to start.
+  installMultistreamSuspension();
   if (!state.multistream.paused && matchMedia('(prefers-reduced-motion: reduce)').matches) {
     state.multistream = normalizeMultistream({ ...state.multistream, paused: true });
   }
@@ -1953,7 +1957,68 @@ function closeMultistream() {
   if (grid) grid.innerHTML = '';
   const chat = backdrop.querySelector('[data-kf-multistream-chat]');
   if (chat) chat.innerHTML = '';
+  state.observers.multistream?.disconnect?.();
+  state.observers.multistream = null;
+  state.multistreamSuspended.clear();
   state.lastFocused?.focus?.();
+}
+
+/**
+ * Suspend tiles that are not being watched.
+ *
+ * A cross-origin embed cannot be paused or quality-capped, so unloading its
+ * document is the only control over decode cost — and it is the one that
+ * matters, since roughly four to six simultaneous 1080p60 decodes is the
+ * realistic ceiling on integrated graphics. The focused tile is exempt: it
+ * carries the audio, and cutting what someone is listening to because they
+ * switched tabs would cost more than it saves.
+ */
+function installMultistreamSuspension() {
+  if (state.multistreamSuspensionInstalled) return;
+  state.multistreamSuspensionInstalled = true;
+
+  document.addEventListener('visibilitychange', () => {
+    if (!multistreamOpen()) return;
+    if (document.hidden) {
+      for (const slug of state.multistream.streams) state.multistreamSuspended.add(slug);
+    } else {
+      state.multistreamSuspended.clear();
+    }
+    refreshMultistreamPlayback();
+  });
+}
+
+/**
+ * Watch tiles for visibility. Rebuilt per render because the tile set changes;
+ * the observer is cheap and holding a stale one would leak removed nodes.
+ */
+function observeMultistreamVisibility(grid) {
+  state.observers.multistream?.disconnect?.();
+  if (typeof IntersectionObserver !== 'function') return;
+  state.observers.multistream = new IntersectionObserver((entries) => {
+    let changed = false;
+    for (const entry of entries) {
+      const slug = entry.target.dataset.kfMultistreamTile;
+      if (!slug) continue;
+      // Hidden tabs report everything as non-intersecting; visibilitychange
+      // already owns that case, so ignore it here rather than fighting it.
+      if (document.hidden) continue;
+      const wasSuspended = state.multistreamSuspended.has(slug);
+      if (entry.isIntersecting) state.multistreamSuspended.delete(slug);
+      else state.multistreamSuspended.add(slug);
+      if (wasSuspended !== state.multistreamSuspended.has(slug)) changed = true;
+    }
+    if (changed) refreshMultistreamPlayback();
+  }, { root: grid, threshold: 0.05 });
+  for (const tile of grid.querySelectorAll('[data-kf-multistream-tile]')) {
+    state.observers.multistream.observe(tile);
+  }
+}
+
+/** Re-apply playback state without rebuilding the grid. */
+function refreshMultistreamPlayback() {
+  const grid = state.shadow?.querySelector('[data-kf-multistream-grid]');
+  if (grid) applyMultistreamAudio(grid);
 }
 
 function multistreamOpen() {
@@ -1976,6 +2041,7 @@ function renderMultistream() {
 
   backdrop.dataset.kfMultistreamShowChat = String(showChat && Boolean(chat));
   backdrop.dataset.kfMultistreamPaused = String(paused);
+  void muted;
   backdrop.dataset.kfMultistreamMuted = String(muted);
   grid.style.setProperty('--kf-multistream-columns', String(multistreamColumns(streams.length)));
 
@@ -1997,7 +2063,9 @@ function renderMultistream() {
       // Every tile starts muted; audio follows focus, so a nine-way grid is
       // never nine simultaneous audio streams. A paused grid mounts with no
       // src at all, which is the only way to stop a cross-origin player.
-      frame.src = paused ? 'about:blank' : playerEmbedUrl(slug, { muted: true, autoplay: true });
+      frame.src = multistreamTileActive(state.multistream, slug, state.multistreamSuspended)
+        ? playerEmbedUrl(slug, { muted: true, autoplay: true })
+        : 'about:blank';
       frame.title = `${slug} stream`;
       // Kick playback is Amazon IVS HLS with no DRM, so encrypted-media would
       // be a grant with no function.
@@ -2025,6 +2093,7 @@ function renderMultistream() {
   renderMultistreamChat(backdrop, chat, showChat);
   renderMultistreamControls(backdrop);
   applyMultistreamAudio(grid);
+  observeMultistreamVisibility(grid);
 }
 
 /**
@@ -2040,12 +2109,14 @@ function applyMultistreamAudio(grid) {
     const slug = tile.dataset.kfMultistreamTile;
     const frame = tile.querySelector('iframe');
     if (!frame) continue;
-    // Pausing means dropping the document: a cross-origin player cannot be
-    // paused from here, and leaving it loaded would keep decoding.
-    const wanted = state.multistream.paused
-      ? 'about:blank'
-      : playerEmbedUrl(slug, { muted: multistreamTileMuted(state.multistream, slug), autoplay: true });
+    // Dropping the document is the only lever a cross-origin embed leaves us:
+    // it cannot be paused, quality-capped, or inspected from here.
+    const wanted = multistreamTileActive(state.multistream, slug, state.multistreamSuspended)
+      ? playerEmbedUrl(slug, { muted: multistreamTileMuted(state.multistream, slug), autoplay: true })
+      : 'about:blank';
     if (frame.getAttribute('src') !== wanted) frame.setAttribute('src', wanted);
+    tile.dataset.kfMultistreamSuspended = String(!multistreamTileActive(state.multistream, slug, state.multistreamSuspended)
+      && !state.multistream.paused);
   }
 }
 

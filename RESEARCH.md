@@ -11,7 +11,7 @@ The highest-value direction is **making what shipped trustworthy before adding m
 Top opportunities in priority order:
 
 1. **The multi-stream grid fails WCAG 2.2.2 and 1.4.2** — nine autoplaying tiles with no pause-all, no mute-all, and no reduced-motion gate. No surveyed competitor does this correctly either, so it is both a defect and a differentiator.
-2. **Nine tiles at source quality is unusable on the hardware most people own** — ~4–6 simultaneous 1080p60 decodes is the realistic integrated-GPU ceiling. Nobody in the field caps non-focused tile quality or pauses occluded tiles.
+2. **Nine tiles at source quality is unusable on the hardware most people own** — ~4–6 simultaneous 1080p60 decodes is the realistic integrated-GPU ceiling. Quality capping turns out to be impossible across the origin boundary (see Rejected Ideas), so unloading unwatched tiles is the whole of the available lever — and nobody in the field does even that.
 3. **Most settings copy is untranslated and nothing detects it** — 76 of 112 settings label/description strings have no `es` or `pt` entry. Partly pre-existing, widened by v1.5.0; the i18n gate checks locale *parity*, not source coverage, so it passes throughout.
 4. **Export silently omits emote usage counts and multi-stream layouts** — the export/import round-trip is this project's unique differentiator and it no longer covers everything it stores.
 5. **Realtime transport is one vendor toggle from dying** — Pusher's Authorized Connections feature disconnects clients that never authenticate; Kick already runs a self-hosted replacement gateway speaking the same wire protocol.
@@ -92,6 +92,7 @@ Top opportunities in priority order:
 
 ## Rejected Ideas
 
+- **Per-tile quality capping** — settled 2026-08-15 and now closed. `player.kick.com` is a *different origin* from `kick.com`, so the `sessionStorage['stream_quality']` route v1.5.0 uses for the page player cannot reach an embed, and the embed's own document is unreachable for the same reason. destinygg/kickstiny controls quality by scripting the Amazon IVS worker, but it runs on Kick's own page, not inside a cross-origin iframe, so that technique does not transfer. The embed accepts only `muted`, `autoplay`, and `allowfullscreen`. Nothing short of Kick adding a quality parameter makes this possible. What remains achievable — and is now implemented — is unloading tiles nobody is watching, since the host owns the `<iframe>` element even when it cannot see inside it. This also resolves open question 1.
 - **Per-tile volume sliders** (MultiKick.com, StreamGrid) — `player.kick.com` exposes only `muted`, `autoplay`, and `allowfullscreen`; there is no volume parameter, and changing the URL restarts the stream. Would require IVS-worker scripting for a marginal gain over audio-follows-focus.
 - **Keyboard shortcuts for tile focus/mute** (multitwitch #47/#56, Worsttrumpet/MultiStream-Grid) — the project's conventions prohibit keyboard shortcuts. On-tile controls already cover it.
 - **`sandbox` attribute on player embeds** — a working player needs `allow-scripts allow-same-origin`, which restores full origin power; the attribute would only suppress popups. Permission policy (`allow=`) is the real lever.
@@ -131,6 +132,5 @@ Community signal (Arctic Shift archive, 2026-07-01→2026-08-15)
 
 ## Open Questions
 
-1. **Does `sessionStorage['stream_quality']` actually change what `player.kick.com` serves inside an iframe?** v1.5.0 writes it during bootstrap for the main page player, but the embed is a separate document with its own storage. Per-tile quality capping depends on the answer, and it can only be settled by live measurement. Needs live validation.
-2. **Is Kick's `websockets.kick.com/viewer/v1/connect` gateway reachable from a page-world content script, or only from an extension service worker?** kick-core reports Cloudflare and CORS block page-context access. If true, the userscript build cannot follow a forced transport migration and would fall back to DOM permanently — which changes how much the transport abstraction is worth. Needs live validation.
-3. **Which uBlock Origin filter is breaking Kick signup and follow?** Identifying the specific rule determines whether Kick Focus can detect the condition and tell the user what to unblock, or can only disclaim it. Needs live validation with a filtered profile.
+1. **Is Kick's `websockets.kick.com/viewer/v1/connect` gateway reachable from a page-world content script, or only from an extension service worker?** kick-core reports Cloudflare and CORS block page-context access. If true, the userscript build cannot follow a forced transport migration and would fall back to DOM permanently — which changes how much the transport abstraction is worth. Needs live validation.
+2. **Which uBlock Origin filter is breaking Kick signup and follow?** Identifying the specific rule determines whether Kick Focus can detect the condition and tell the user what to unblock, or can only disclaim it. Needs live validation with a filtered profile.

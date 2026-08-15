@@ -164,6 +164,12 @@ const checks = [
     && source.includes('data-kf-multistream-mute')
     && source.includes('multistreamTileMuted')
     && source.includes("matchMedia('(prefers-reduced-motion: reduce)').matches")],
+  // A cross-origin embed cannot be paused or quality-capped, so unloading its
+  // document is the only control over decode cost that exists.
+  ['multi-stream suspends tiles nobody is watching', source.includes('multistreamTileActive')
+    && source.includes('installMultistreamSuspension')
+    && source.includes('observeMultistreamVisibility')
+    && source.includes("document.addEventListener('visibilitychange'")],
   ['player embeds request no permission they do not use', source.includes("frame.allow = 'autoplay; fullscreen; picture-in-picture'")
     && !source.includes('picture-in-picture; encrypted-media')],
   ['multi-stream embeds only Kick origins', source.includes('https://player.kick.com/')

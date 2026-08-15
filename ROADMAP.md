@@ -116,13 +116,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
 
 ### P0
 
-- [ ] P0 — Cap non-focused tile quality and pause offscreen tiles
-  Why: nine tiles at source quality exceeds the hardware most viewers own, so the grid's headline capacity is unusable on a laptop — and this is the one axis no competitor has claimed.
-  Evidence: ~4–6 simultaneous 1080p60 decodes is the realistic integrated-GPU ceiling before dropped frames; bhamrick/multitwitch#59 is the same complaint against Twitch ("defaults to source, melts CPUs") and was never fixed. Chrome pauses muted video in backgrounded tabs and advises the Page Visibility API. destinygg/kickstiny#19 proves the Amazon IVS worker inside `player.kick.com` is scriptable for quality, which is the only available lever because the embed exposes no quality parameter.
-  Touches: `src/runtime.js` (multi-stream tile lifecycle), `src/api.mjs` (`playerEmbedUrl`), `src/core.mjs` (policy + tests).
-  Acceptance: non-focused tiles render at a capped quality while the focused tile is unrestricted; tiles scrolled out of view or in a hidden tab suspend and resume without losing grid position; the mechanism degrades to today's behaviour when quality cannot be controlled, and says which mode is in effect. Settle open question 1 in RESEARCH.md first — whether `sessionStorage['stream_quality']` reaches the embed's own document — since a negative answer forces the IVS-worker route.
-  Complexity: L
-
 ### P1
 
 - [ ] P1 — Carry emote usage counts and multi-stream layouts through export

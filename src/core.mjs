@@ -888,6 +888,27 @@ export function multistreamTileMuted(value, slug) {
 }
 
 /**
+ * Should this tile have a player document loaded at all?
+ *
+ * A cross-origin embed cannot be paused, quality-capped, or inspected from
+ * here — `player.kick.com` is a different origin from `kick.com`, it accepts no
+ * quality parameter, and its internals are unreachable. Dropping the document
+ * is therefore the only lever available over decode cost, and it is a real one:
+ * an unloaded tile decodes nothing.
+ *
+ * The focused tile is never suspended. It is the one carrying audio, and
+ * silencing what someone is actively listening to because they scrolled or
+ * switched tabs would be worse than the CPU it saves.
+ */
+export function multistreamTileActive(value, slug, suspended) {
+  const state = value || {};
+  if (state.paused) return false;
+  if (slug === state.focus) return true;
+  const set = suspended instanceof Set ? suspended : new Set(suspended || []);
+  return !set.has(slug);
+}
+
+/**
  * Add a channel, reporting *why* nothing happened rather than failing silently
  * — "I clicked add and nothing appeared" is the whole failure mode here.
  */

@@ -555,3 +555,28 @@ test('pausing and muting the grid are separate controls', async () => {
   assert.equal(junk.paused, false);
   assert.equal(junk.muted, false);
 });
+
+test('suspended tiles unload, but never the one carrying audio', async () => {
+  const { normalizeMultistream, multistreamTileActive } = await import('../src/core.mjs');
+  const grid = normalizeMultistream({ streams: ['a', 'b', 'c'], focus: 'b' });
+
+  // Nothing suspended: every tile is loaded.
+  assert.equal(grid.streams.every((s) => multistreamTileActive(grid, s, new Set())), true);
+
+  // A suspended tile unloads.
+  assert.equal(multistreamTileActive(grid, 'a', new Set(['a'])), false);
+  assert.equal(multistreamTileActive(grid, 'c', new Set(['a'])), true);
+
+  // The focused tile is exempt even when suspension covers everything —
+  // cutting the audio someone is listening to costs more than it saves.
+  assert.equal(multistreamTileActive(grid, 'b', new Set(['a', 'b', 'c'])), true);
+
+  // Pause-all outranks the exemption: an explicit stop means stop.
+  const paused = normalizeMultistream({ ...grid, paused: true });
+  assert.equal(paused.streams.every((s) => multistreamTileActive(paused, s, new Set())), false);
+
+  // Tolerates an array or nothing at all rather than throwing mid-render.
+  assert.equal(multistreamTileActive(grid, 'a', ['a']), false);
+  assert.equal(multistreamTileActive(grid, 'a', undefined), true);
+  assert.equal(multistreamTileActive(null, 'a', new Set()), true);
+});
