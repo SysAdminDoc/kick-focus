@@ -6,6 +6,30 @@ All notable changes are documented here. Dates use ISO 8601.
 
 _Nothing yet._
 
+## 1.6.0 — 2026-08-15
+
+Accessibility, data safety, and hardening pass over everything 1.5.0 shipped.
+
+### Fixed
+
+- **The multi-stream grid had no way to stop it.** Nine autoplaying tiles with no pause-all and the focused tile's audio with no mute-all are WCAG 2.2.2 and 1.4.2 failures — on a build that ships an accessibility page and so invites the standard. Both controls now sit before the grid in tab order, and a system request for reduced motion mounts the grid paused with a visible way to start, since `prefers-reduced-motion` is not accepted as a substitute for a real control. No surveyed competitor implements either.
+- **Nine tiles at source quality is more than most hardware can decode.** Tiles now unload when scrolled out of the grid or when the tab is hidden, and resume in place; the focused tile is never suspended because it carries the audio. Per-tile quality capping turned out to be impossible — `player.kick.com` is a different origin, so neither its storage nor its player internals are reachable, and the embed accepts no quality parameter.
+- **Most of the interface was untranslated and nothing detected it.** 78 rendered strings had no entry in any locale, so `es` and `pt` users read English for the majority of the settings interface. Roughly two thirds predated 1.5.0. The previous gate could not see it, because checking that locales agree with each other stays true when a string is absent from all of them equally.
+- **Export omitted two of the stores it promised to keep.** Emote usage counts and multi-stream layouts were listed in the About storage table but absent from the backup that page tells users to take. Both now round-trip, and import validates and reports them like everything else.
+- **Realtime frames were parsed without bounds.** The chat subscription is anonymous and public, so a frame is untrusted input by construction. Content and ids are now truncated, badge and rule arrays capped, sender colours accepted only as hex colours, and badge images only as https URLs on Kick hosts.
+- **Only the settings modal contained focus**, so keyboard users tabbed out of the command menu and the multi-stream grid onto a page they could not see — and in the grid the next stops are cross-origin frames that cannot be focus-managed at all.
+- Player embeds no longer request `encrypted-media`; Kick playback is Amazon IVS HLS with no DRM.
+
+### Added
+
+- **The two limitations users would otherwise hit blind are now stated.** Multi-stream chat is read-only because Kick's popout chat refuses to send from inside an iframe by design; and if Kick sign-in, sign-up, or Follow stops working, the cause is an ad-blocker filter list rather than this extension — Kick Focus blocks eleven third-party hosts and no kick.com host at all.
+- A translation-coverage gate that fails when any rendered string has no dictionary entry, verified red before being trusted.
+- The live harness now explains itself when run on a binary that cannot load extensions: Chrome 139 removed the flags it depends on from official builds.
+
+### Changed
+
+- Emote-usage counting moved from `src/api.mjs` to `src/core.mjs`. `core` owns the settings schema and the normalizers guarding import boundaries; `api` owns Kick's endpoints, and usage counts are local storage rather than a Kick surface.
+
 ## 1.5.0 — 2026-08-15
 
 Settings schema 3. Existing preferences migrate without loss.

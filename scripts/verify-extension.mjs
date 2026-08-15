@@ -101,6 +101,24 @@ const child = spawn(CHROME, [
 let stderr = '';
 child.stderr.on('data', (d) => { stderr += d.toString(); });
 
+/**
+ * Chrome 139 removed `--load-extension` and `--disable-extensions-except` from
+ * official builds, so this harness only works on a Chromium-for-Testing binary
+ * (which is what Playwright ships). On a stock Chrome the flags are ignored
+ * silently: the browser starts, the extension never loads, and every check
+ * either fails confusingly or attaches to a component extension instead. Say
+ * which it is rather than leaving the next person to guess.
+ */
+function unsupportedBinaryHint() {
+  if (/is not supported|Ignoring unsupported/i.test(stderr)) {
+    return 'the browser reported the extension-loading flags as unsupported';
+  }
+  if (/Google\Chrome|Google Chrome(?!.*for Testing)/i.test(CHROME)) {
+    return `${CHROME} looks like stock Google Chrome`;
+  }
+  return '';
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 const record = (label, ok, detail = '') => {
@@ -184,7 +202,14 @@ try {
     }
     if (!worker) await sleep(500);
   }
-  record('extension loaded (its own service worker is running)', Boolean(worker), worker?.url);
+  const hint = worker ? '' : unsupportedBinaryHint();
+  record(
+    'extension loaded (its own service worker is running)',
+    Boolean(worker),
+    worker?.url || (hint
+      ? `${hint}. This gate needs a Chromium-for-Testing build — Chrome 139 removed --load-extension and --disable-extensions-except from official builds. Set CHROME_PATH to Playwright's Chromium.`
+      : 'no service worker matching the built extension name'),
+  );
   if (!worker) throw new Error('no Kick Focus service worker; extension did not load');
 
   const extensionId = new URL(worker.url).host;

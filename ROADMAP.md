@@ -155,13 +155,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
   Acceptance: badges present in `badges_v2` render in the chat surface at their correct size, including collectible and global badges the legacy array omits; a missing or broken badge image degrades to text rather than an empty box.
   Complexity: S
 
-- [ ] P2 — Pin the live harness to its Chromium requirement
-  Why: the flags the live gate depends on no longer exist in official Chrome builds, and the next person to run it on the wrong binary will get a confusing failure rather than a clear one.
-  Evidence: Chrome 139 (2025-06-30) removed `--extensions-on-chrome-urls` and `--disable-extensions-except` from official builds; `scripts/verify-extension.mjs` passes the latter and survives only because it targets Playwright's Chromium-for-Testing. Compounding it, `--disable-extensions-except` never excluded component extensions anyway — already recorded in `CLAUDE.md`.
-  Touches: `scripts/verify-extension.mjs`, `CLAUDE.md`, `README.md`.
-  Acceptance: the harness detects a binary that ignores the flag and fails with a message naming the requirement, instead of attaching to the wrong extension or reporting a vacuous pass.
-  Complexity: S
-
 - [ ] P2 — Split the multi-stream and live-data surfaces out of `src/runtime.js`
   Why: the file is 6,179 lines carrying five unrelated concerns, and the two newest are the most testable and least entangled.
   Evidence: `src/runtime.js` now holds site styling, content filtering, the settings UI, the Kick live-data client, and the multi-stream surface. The build concatenates with `export` stripped, so extraction costs nothing at runtime, and the bundle-completeness gate in `scripts/check.mjs` covers any file added to its `moduleFiles` list.
