@@ -5868,7 +5868,14 @@ function confirmReset() {
 
 function exportSettings() {
   try {
-    const payload = { ...state.settings, stickers: stickerPreferencesValue() };
+    const payload = {
+      ...state.settings,
+      stickers: stickerPreferencesValue(),
+      // Everything the About page says is stored travels with the backup, or
+      // the backup is not one.
+      usage: state.emoteUsage,
+      multistream: state.multistream,
+    };
     const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -5879,7 +5886,8 @@ function exportSettings() {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast(`Settings and ${state.stickerPreferences.library.size} recorded stickers exported.`);
+    const counted = Object.keys(state.emoteUsage.global || {}).length;
+    showToast(`Exported settings, ${state.stickerPreferences.library.size} stickers, ${counted} usage counts, and ${state.multistream.layouts.length} layouts.`);
   } catch {
     showToast('Could not export settings.', true);
   }
@@ -5902,6 +5910,15 @@ async function onImportFile(event) {
       state.runtime.stickerCatalogDirty = true;
       state.runtime.stickerLibraryFilter = 'all';
       state.runtime.stickerLibraryQuery = '';
+    }
+    if (result.usage) {
+      state.emoteUsage = result.usage;
+      gmSet(EMOTE_USAGE_KEY, state.emoteUsage);
+    }
+    if (result.multistream) {
+      state.multistream = result.multistream;
+      persistMultistream();
+      if (multistreamOpen()) renderMultistream();
     }
     saveSettings('Imported');
     renderSettingsPage();

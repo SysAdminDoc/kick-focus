@@ -183,6 +183,10 @@ const checks = [
   ['multi-stream is reachable without opening settings', source.includes('data-kf-header-multi')
     && source.includes('kf-header-multi')],
 
+  ['export carries every store the About page lists', source.includes('usage: state.emoteUsage')
+    && source.includes('multistream: state.multistream')
+    && source.includes('normalizeEmoteUsage')],
+
   // Kick's own data, read read-only and same-origin
   ['reads the realtime provider from Kick instead of hardcoding it',
     source.includes('normalizeRealtimeConnection')

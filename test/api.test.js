@@ -12,12 +12,10 @@ import {
   normalizeRealtimeConnection,
   parseEmoteTokens,
   pusherSocketUrl,
-  rankEmoteUsage,
   realtimeChannels,
   realtimeHealth,
-  recordEmoteUse,
-  unusedEmotes,
 } from '../src/api.mjs';
+import { rankEmoteUsage, recordEmoteUse, unusedEmotes } from '../src/core.mjs';
 
 // Shapes below are from first-hand captures against the live site on 2026-08-15.
 

@@ -768,6 +768,12 @@ function validateImportedSettings(jsonText) {
   if (parsed.stickers != null && !isRecord(parsed.stickers)) {
     return { ok: false, error: 'The sticker library must be a JSON object.' };
   }
+  if (parsed.usage != null && !isRecord(parsed.usage)) {
+    return { ok: false, error: 'The emote usage counts must be a JSON object.' };
+  }
+  if (parsed.multistream != null && !isRecord(parsed.multistream)) {
+    return { ok: false, error: 'The multi-stream layouts must be a JSON object.' };
+  }
   if (parsed.stickers?.schema != null && Number(parsed.stickers.schema) > STICKER_PREFERENCES_SCHEMA) {
     return { ok: false, error: `Sticker schema ${parsed.stickers.schema} is newer than this build supports.` };
   }
@@ -776,9 +782,10 @@ function validateImportedSettings(jsonText) {
   const stickers = parsed.stickers == null ? null : normalizeStickerPreferences(parsed.stickers);
   const notes = [];
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
+  const known = new Set(['schema', 'stickers', 'usage', 'multistream']);
 
   for (const key of Object.keys(parsed)) {
-    if (key !== 'schema' && key !== 'stickers' && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
+    if (!known.has(key) && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
   }
   for (const section of sections) {
     const incoming = parsed[section];
@@ -813,7 +820,145 @@ function validateImportedSettings(jsonText) {
     }
   }
 
-  return { ok: true, value, stickers, notes };
+  // Usage counts and saved layouts are user-authored data the export promises
+  // to carry, so they are validated and reported like everything else rather
+  // than passed through or silently dropped.
+  const usage = parsed.usage == null ? null : normalizeEmoteUsage(parsed.usage);
+  if (usage) {
+    const kept = Object.keys(usage.global).length;
+    const offered = isRecord(parsed.usage.global) ? Object.keys(parsed.usage.global).length : 0;
+    if (offered !== kept) notes.push(`Adjusted emote usage counts to ${kept} supported entries.`);
+  }
+
+  const multistream = parsed.multistream == null ? null : normalizeMultistream(parsed.multistream);
+  if (multistream) {
+    const offeredStreams = Array.isArray(parsed.multistream.streams) ? parsed.multistream.streams.length : 0;
+    if (offeredStreams !== multistream.streams.length) {
+      notes.push(`Adjusted the multi-stream grid to ${multistream.streams.length} supported channels.`);
+    }
+    const offeredLayouts = Array.isArray(parsed.multistream.layouts) ? parsed.multistream.layouts.length : 0;
+    if (offeredLayouts !== multistream.layouts.length) {
+      notes.push(`Adjusted saved layouts to ${multistream.layouts.length} supported entries.`);
+    }
+  }
+
+  return { ok: true, value, stickers, usage, multistream, notes };
+}
+
+// ---------------------------------------------------------------------------
+// Emote usage
+// ---------------------------------------------------------------------------
+
+/**
+ * Kick's "Frequently Used" tab is a 50-entry MRU whose `timeUsed` is hardcoded
+ * to 1 and never incremented, so no real frequency ranking exists anywhere on
+ * the platform. Competitors count usage only for third-party providers
+ * (7TV/BTTV/FFZ), never for Kick's own emotes.
+ *
+ * Counts are keyed by emote id, not name: names collide across sets and Kick
+ * remaps them, while ids are stable. Storage is per channel plus a global
+ * rollup, both local-only and exported with the library.
+ */
+const USAGE_CHANNEL_LIMIT = 400;
+
+/**
+ * Rebuild a usage store from untrusted input.
+ *
+ * Counts travel through the settings export, so an imported file can contain
+ * anything. Everything is rebuilt from scratch with bounded shapes rather than
+ * merged in, and the per-channel cap is enforced here too so a hand-edited file
+ * cannot smuggle an unbounded map past the writer that normally trims it.
+ */
+function normalizeEmoteUsage(input) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const cleanScope = (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const entries = [];
+    for (const [id, value] of Object.entries(raw)) {
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) continue;
+      if (!value || typeof value !== 'object') continue;
+      const count = Number(value.count);
+      if (!Number.isFinite(count) || count < 0) continue;
+      entries.push([id, {
+        name: typeof value.name === 'string' ? value.name.slice(0, 80) : '',
+        count: Math.min(Math.floor(count), 1_000_000),
+        firstAt: Number.isFinite(Number(value.firstAt)) ? Number(value.firstAt) : 0,
+        lastAt: Number.isFinite(Number(value.lastAt)) ? Number(value.lastAt) : 0,
+      }]);
+    }
+    entries.sort((a, b) => (b[1].count - a[1].count) || (b[1].lastAt - a[1].lastAt));
+    return Object.fromEntries(entries.slice(0, USAGE_CHANNEL_LIMIT));
+  };
+
+  const channels = {};
+  const rawChannels = source.channels && typeof source.channels === 'object' ? source.channels : {};
+  for (const [channel, scope] of Object.entries(rawChannels)) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(channel)) continue;
+    const cleaned = cleanScope(scope);
+    if (Object.keys(cleaned).length) channels[channel] = cleaned;
+    if (Object.keys(channels).length >= 200) break;
+  }
+  return { global: cleanScope(source.global), channels };
+}
+
+function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
+  if (!id) return counts || { global: {}, channels: {} };
+  const next = {
+    global: { ...(counts?.global || {}) },
+    channels: { ...(counts?.channels || {}) },
+  };
+  const globalEntry = next.global[id] || { name, count: 0, firstAt: at, lastAt: at };
+  next.global[id] = {
+    name: name || globalEntry.name,
+    count: globalEntry.count + 1,
+    firstAt: globalEntry.firstAt || at,
+    lastAt: at,
+  };
+  if (channel) {
+    const scope = { ...(next.channels[channel] || {}) };
+    const entry = scope[id] || { name, count: 0, firstAt: at, lastAt: at };
+    scope[id] = { name: name || entry.name, count: entry.count + 1, firstAt: entry.firstAt || at, lastAt: at };
+    next.channels[channel] = trimUsage(scope);
+  }
+  return next;
+}
+
+/** Keep the per-channel map bounded by dropping the least-used entries. */
+function trimUsage(scope) {
+  const entries = Object.entries(scope);
+  if (entries.length <= USAGE_CHANNEL_LIMIT) return scope;
+  entries.sort((a, b) => (b[1].count - a[1].count) || (b[1].lastAt - a[1].lastAt));
+  return Object.fromEntries(entries.slice(0, USAGE_CHANNEL_LIMIT));
+}
+
+/**
+ * Rank emotes by real usage. `channel` scopes to one chat and falls back to the
+ * global rollup for anything never used there, so a shelf is useful the first
+ * time a channel is opened rather than empty.
+ */
+function rankEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
+  const scope = (channel && counts?.channels?.[channel]) || {};
+  const global = counts?.global || {};
+  const merged = new Map();
+  for (const [id, entry] of Object.entries(global)) {
+    merged.set(id, { id, name: entry.name, count: 0, globalCount: entry.count, lastAt: entry.lastAt || 0 });
+  }
+  for (const [id, entry] of Object.entries(scope)) {
+    const current = merged.get(id) || { id, name: entry.name, count: 0, globalCount: 0, lastAt: 0 };
+    merged.set(id, { ...current, name: entry.name || current.name, count: entry.count, lastAt: entry.lastAt || current.lastAt });
+  }
+  return [...merged.values()]
+    .sort((a, b) => (b.count - a.count) || (b.globalCount - a.globalCount) || (b.lastAt - a.lastAt))
+    .slice(0, limit);
+}
+
+/** Emotes the user owns but has never sent — the inverse view nothing offers. */
+function unusedEmotes(counts, emotes, { channel = '' } = {}) {
+  const used = new Set([
+    ...Object.keys(counts?.global || {}),
+    ...Object.keys((channel && counts?.channels?.[channel]) || {}),
+  ]);
+  return (emotes || []).filter((emote) => !used.has(String(emote.id)));
 }
 
 // ---------------------------------------------------------------------------
@@ -1505,82 +1650,6 @@ function normalizeDeletion(event) {
   else if (aiModerated) reason = "Removed by Kick's automatic moderation.";
   else if (labels.length) reason = `Removed for ${labels.join(', ')}.`;
   return { id: String(id), aiModerated, rules: labels, reason };
-}
-
-// ---------------------------------------------------------------------------
-// Emote usage
-// ---------------------------------------------------------------------------
-
-/**
- * Kick's "Frequently Used" tab is a 50-entry MRU whose `timeUsed` is hardcoded
- * to 1 and never incremented, so no real frequency ranking exists anywhere on
- * the platform. Competitors count usage only for third-party providers
- * (7TV/BTTV/FFZ), never for Kick's own emotes.
- *
- * Counts are keyed by emote id, not name: names collide across sets and Kick
- * remaps them, while ids are stable. Storage is per channel plus a global
- * rollup, both local-only and exported with the library.
- */
-const USAGE_CHANNEL_LIMIT = 400;
-
-function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
-  if (!id) return counts || { global: {}, channels: {} };
-  const next = {
-    global: { ...(counts?.global || {}) },
-    channels: { ...(counts?.channels || {}) },
-  };
-  const globalEntry = next.global[id] || { name, count: 0, firstAt: at, lastAt: at };
-  next.global[id] = {
-    name: name || globalEntry.name,
-    count: globalEntry.count + 1,
-    firstAt: globalEntry.firstAt || at,
-    lastAt: at,
-  };
-  if (channel) {
-    const scope = { ...(next.channels[channel] || {}) };
-    const entry = scope[id] || { name, count: 0, firstAt: at, lastAt: at };
-    scope[id] = { name: name || entry.name, count: entry.count + 1, firstAt: entry.firstAt || at, lastAt: at };
-    next.channels[channel] = trimUsage(scope);
-  }
-  return next;
-}
-
-/** Keep the per-channel map bounded by dropping the least-used entries. */
-function trimUsage(scope) {
-  const entries = Object.entries(scope);
-  if (entries.length <= USAGE_CHANNEL_LIMIT) return scope;
-  entries.sort((a, b) => (b[1].count - a[1].count) || (b[1].lastAt - a[1].lastAt));
-  return Object.fromEntries(entries.slice(0, USAGE_CHANNEL_LIMIT));
-}
-
-/**
- * Rank emotes by real usage. `channel` scopes to one chat and falls back to the
- * global rollup for anything never used there, so a shelf is useful the first
- * time a channel is opened rather than empty.
- */
-function rankEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
-  const scope = (channel && counts?.channels?.[channel]) || {};
-  const global = counts?.global || {};
-  const merged = new Map();
-  for (const [id, entry] of Object.entries(global)) {
-    merged.set(id, { id, name: entry.name, count: 0, globalCount: entry.count, lastAt: entry.lastAt || 0 });
-  }
-  for (const [id, entry] of Object.entries(scope)) {
-    const current = merged.get(id) || { id, name: entry.name, count: 0, globalCount: 0, lastAt: 0 };
-    merged.set(id, { ...current, name: entry.name || current.name, count: entry.count, lastAt: entry.lastAt || current.lastAt });
-  }
-  return [...merged.values()]
-    .sort((a, b) => (b.count - a.count) || (b.globalCount - a.globalCount) || (b.lastAt - a.lastAt))
-    .slice(0, limit);
-}
-
-/** Emotes the user owns but has never sent — the inverse view nothing offers. */
-function unusedEmotes(counts, emotes, { channel = '' } = {}) {
-  const used = new Set([
-    ...Object.keys(counts?.global || {}),
-    ...Object.keys((channel && counts?.channels?.[channel]) || {}),
-  ]);
-  return (emotes || []).filter((emote) => !used.has(String(emote.id)));
 }
 
 // ---------------------------------------------------------------------------
@@ -7739,7 +7808,14 @@ function confirmReset() {
 
 function exportSettings() {
   try {
-    const payload = { ...state.settings, stickers: stickerPreferencesValue() };
+    const payload = {
+      ...state.settings,
+      stickers: stickerPreferencesValue(),
+      // Everything the About page says is stored travels with the backup, or
+      // the backup is not one.
+      usage: state.emoteUsage,
+      multistream: state.multistream,
+    };
     const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -7750,7 +7826,8 @@ function exportSettings() {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast(`Settings and ${state.stickerPreferences.library.size} recorded stickers exported.`);
+    const counted = Object.keys(state.emoteUsage.global || {}).length;
+    showToast(`Exported settings, ${state.stickerPreferences.library.size} stickers, ${counted} usage counts, and ${state.multistream.layouts.length} layouts.`);
   } catch {
     showToast('Could not export settings.', true);
   }
@@ -7773,6 +7850,15 @@ async function onImportFile(event) {
       state.runtime.stickerCatalogDirty = true;
       state.runtime.stickerLibraryFilter = 'all';
       state.runtime.stickerLibraryQuery = '';
+    }
+    if (result.usage) {
+      state.emoteUsage = result.usage;
+      gmSet(EMOTE_USAGE_KEY, state.emoteUsage);
+    }
+    if (result.multistream) {
+      state.multistream = result.multistream;
+      persistMultistream();
+      if (multistreamOpen()) renderMultistream();
     }
     saveSettings('Imported');
     renderSettingsPage();

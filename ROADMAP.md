@@ -118,13 +118,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
 
 ### P1
 
-- [ ] P1 — Carry emote usage counts and multi-stream layouts through export
-  Why: the export/import round-trip is this project's unique differentiator, and it now silently omits two stores the About page tells users it is keeping.
-  Evidence: `exportSettings()` (`src/runtime.js:5586`) serializes `{...state.settings, stickers: stickerPreferencesValue()}` only; `kick-focus:emote-usage` and `kick-focus:multistream` are absent, and `validateImportedSettings()` in `src/core.mjs` has no branch for either. Both appear in `STORAGE_LABELS` and in the About storage table.
-  Touches: `src/core.mjs` (`validateImportedSettings`, normalizers), `src/runtime.js` (`exportSettings`, `onImportFile`), `test/core.test.js`.
-  Acceptance: export carries usage counts and saved layouts; import validates and reports them the way it reports settings and the library, including counts of anything dropped; a round-trip test asserts both survive.
-  Complexity: M
-
 - [ ] P1 — Make the realtime transport swappable before Kick forces it
   Why: the anonymous Pusher path can be switched off by a single vendor toggle, and Kick already runs a replacement gateway speaking the same protocol — so the migration is a question of when, not whether.
   Evidence: Pusher's Authorized Connections feature (out of beta) lets an app owner disconnect clients that never authenticate or join a private/presence channel — exactly our subscription shape. Kick's self-hosted `wss://websockets.kick.com/viewer/v1/connect` is live (Cloudflare-fronted 403 without a token) and speaks the same `pusher:subscribe` / `chatrooms.{id}.v2` / `App\Events\ChatMessageEvent` frames; its token flow is documented in Pkkls/kick-core. The broker's `provider` discriminator and `degraded` state are the migration scaffolding. Hosted Pusher verified still working by anonymous handshake 2026-08-15.

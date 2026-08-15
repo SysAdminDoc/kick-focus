@@ -580,3 +580,53 @@ test('suspended tiles unload, but never the one carrying audio', async () => {
   assert.equal(multistreamTileActive(grid, 'a', undefined), true);
   assert.equal(multistreamTileActive(null, 'a', new Set()), true);
 });
+
+test('export carries usage counts and layouts, and import validates them', async () => {
+  const { normalizeEmoteUsage } = await import('../src/core.mjs');
+
+  // A full round-trip of everything the About page claims is stored.
+  const payload = {
+    schema: SETTINGS_SCHEMA,
+    layout: { chatWidth: 410 },
+    usage: { global: { '37226': { name: 'KEKW', count: 4, firstAt: 1, lastAt: 9 } }, channels: { xqc: { '37226': { name: 'KEKW', count: 3, lastAt: 9 } } } },
+    multistream: { streams: ['a', 'b'], focus: 'b', layouts: [{ name: 'Crew', streams: ['a', 'b'] }] },
+  };
+  const result = validateImportedSettings(JSON.stringify(payload));
+  assert.equal(result.ok, true);
+  assert.equal(result.usage.global['37226'].count, 4);
+  assert.equal(result.usage.channels.xqc['37226'].count, 3);
+  assert.deepEqual(result.multistream.streams, ['a', 'b']);
+  assert.equal(result.multistream.layouts[0].name, 'Crew');
+
+  // Neither section is mistaken for junk any more.
+  assert.equal(result.notes.some((n) => /unknown section "usage"/.test(n)), false);
+  assert.equal(result.notes.some((n) => /unknown section "multistream"/.test(n)), false);
+
+  // Wrong types are rejected with a message rather than crashing the import.
+  assert.match(validateImportedSettings('{"usage":[]}').error, /usage counts must be a JSON object/);
+  assert.match(validateImportedSettings('{"multistream":5}').error, /layouts must be a JSON object/);
+
+  // Hostile counts are rebuilt, not merged: bad ids, negative and absurd
+  // counts, and prototype keys are all dropped.
+  const hostile = normalizeEmoteUsage({
+    global: {
+      'ok-1': { name: 'fine', count: 3 },
+      'bad id!': { name: 'x', count: 1 },
+      '__proto__': { name: 'x', count: 1 },
+      'neg': { name: 'x', count: -5 },
+      'huge': { name: 'x', count: 1e12 },
+    },
+    channels: { 'bad chan!': { a: { count: 1 } } },
+  });
+  assert.deepEqual(Object.keys(hostile.global).sort(), ['huge', 'ok-1']);
+  assert.equal(hostile.global.huge.count, 1_000_000, 'counts are clamped');
+  assert.deepEqual(Object.keys(hostile.channels), []);
+  assert.equal(({}).count, undefined, 'no prototype pollution');
+
+  // An import that drops entries says so instead of reporting a clean success.
+  const lossy = validateImportedSettings(JSON.stringify({
+    schema: SETTINGS_SCHEMA,
+    multistream: { streams: Array.from({ length: 40 }, (_, i) => `c${i}`) },
+  }));
+  assert.ok(lossy.notes.some((n) => /multi-stream grid to 9 supported channels/.test(n)));
+});
