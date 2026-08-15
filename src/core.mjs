@@ -300,10 +300,69 @@ export const CASINO_CATEGORY_SLUGS = Object.freeze([
  */
 // Ad SDK blocks Kick advertises in its playback payload. Removing them stops
 // the player initialising the SDKs at all, rather than blocking their requests
-// after the fact.
+// after the fact. These serve advertising and are always removed.
 const PLAYBACK_AD_SDK_KEYS = Object.freeze([
-  'google_ads_sdk', 'pal_sdk', 'datazoom_sdk', 'ima_sdk',
+  'google_ads_sdk', 'pal_sdk', 'ima_sdk',
 ]);
+
+// Analytics rather than advertising. Removing these is a privacy choice, not
+// an ad-blocking one, so it follows the telemetry setting instead of being
+// forced on everyone.
+const PLAYBACK_TELEMETRY_SDK_KEYS = Object.freeze([
+  'mux_sdk', 'datazoom_sdk',
+]);
+
+// The shape of Kick's ad stack as last confirmed by inspection. When the site
+// stops matching this, the ad defences may be aiming at something that no
+// longer exists, and silence would look identical to success.
+export const AD_STACK_BASELINE = Object.freeze({
+  date: '2026-08-14',
+  playbackSdkKeys: Object.freeze(['google_ads_sdk', 'pal_sdk', 'ima_sdk', 'mux_sdk', 'datazoom_sdk']),
+  sessionFlag: 'auto_ads_enabled',
+});
+
+/**
+ * Compare what was observed against the known ad stack.
+ *
+ * A zero in the protection log is ambiguous: it means either that nothing was
+ * served or that the defences no longer recognise what is being served. This
+ * turns the second case into something the user can see.
+ */
+export function assessAdStack(observed = {}) {
+  const seenKeys = Array.isArray(observed.playbackSdkKeys) ? observed.playbackSdkKeys : [];
+  const sawPlayback = Boolean(observed.sawPlayback);
+
+  if (!sawPlayback) {
+    return { status: 'unknown', drifted: false, summary: 'No playback response seen yet on this page.' };
+  }
+
+  const known = AD_STACK_BASELINE.playbackSdkKeys;
+  const unknownKeys = seenKeys.filter((key) => !known.includes(key));
+  const matched = seenKeys.filter((key) => known.includes(key));
+
+  if (unknownKeys.length > 0) {
+    return {
+      status: 'drifted',
+      drifted: true,
+      unknownKeys,
+      summary: `Kick's playback response carries ad keys this build does not know: ${unknownKeys.join(', ')}.`,
+    };
+  }
+  if (matched.length === 0) {
+    return {
+      status: 'absent',
+      drifted: true,
+      unknownKeys: [],
+      summary: `No known ad keys were present. Either Kick served no ads, or the ad stack changed since ${AD_STACK_BASELINE.date}.`,
+    };
+  }
+  return {
+    status: 'known',
+    drifted: false,
+    unknownKeys: [],
+    summary: `Matches the ad stack confirmed on ${AD_STACK_BASELINE.date}.`,
+  };
+}
 
 /**
  * Describe how early the script actually started.
@@ -347,7 +406,7 @@ export function isPlaybackUrl(rawUrl) {
  * look like a playback response, or already has nothing to disable — callers
  * rely on `changed` to avoid pointlessly rebuilding responses.
  */
-export function neutralizePlaybackPayload(rawText) {
+export function neutralizePlaybackPayload(rawText, options = {}) {
   const text = String(rawText ?? '');
   if (!text) return { changed: false, text, removed: [] };
 
@@ -373,7 +432,10 @@ export function neutralizePlaybackPayload(rawText) {
 
   const player = payload.video_player;
   if (isRecord(player)) {
-    for (const key of PLAYBACK_AD_SDK_KEYS) {
+    const targets = options.reduceTelemetry
+      ? [...PLAYBACK_AD_SDK_KEYS, ...PLAYBACK_TELEMETRY_SDK_KEYS]
+      : PLAYBACK_AD_SDK_KEYS;
+    for (const key of targets) {
       if (key in player) {
         delete player[key];
         removed.push(key);

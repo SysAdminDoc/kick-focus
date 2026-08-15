@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_SETTINGS,
   FILTER_MIN_SAMPLE,
+  assessAdStack,
   classifyRequest,
   describeInjection,
   detectContentLabels,
@@ -188,6 +189,15 @@ test('playback payloads have their ad flags cleared', () => {
   assert.equal('google_ads_sdk' in parsed.video_player, false);
   assert.equal('pal_sdk' in parsed.video_player, false);
 
+  // Analytics SDKs are a privacy choice, so they follow the telemetry setting
+  // rather than being removed from everyone.
+  const withMux = JSON.stringify({ video_player: { mux_sdk: {}, google_ads_sdk: {} } });
+  const adsOnly = JSON.parse(neutralizePlaybackPayload(withMux).text);
+  assert.equal('mux_sdk' in adsOnly.video_player, true);
+  assert.equal('google_ads_sdk' in adsOnly.video_player, false);
+  const alsoTelemetry = JSON.parse(neutralizePlaybackPayload(withMux, { reduceTelemetry: true }).text);
+  assert.equal('mux_sdk' in alsoTelemetry.video_player, false);
+
   // Playback itself must survive untouched, or the stream stops working.
   assert.equal(parsed.playback_url.live, 'https://stream.kick.com/x.m3u8');
   assert.equal(parsed.video_session.id, 'abc');
@@ -226,4 +236,25 @@ test('injection timing is described from what the page already contained', () =>
   assert.equal(describeInjection({ readyState: 'loading', scriptCount: 0, hasBody: true }).grade, 'late');
   assert.equal(describeInjection({ readyState: 'interactive' }).grade, 'late');
   assert.equal(describeInjection({}).grade, 'first');
+});
+
+test('ad stack drift is reported instead of passing silently', () => {
+  // Nothing seen yet says so, rather than implying health.
+  assert.equal(assessAdStack({ sawPlayback: false }).status, 'unknown');
+
+  // The shape this build was written against.
+  const known = assessAdStack({ sawPlayback: true, playbackSdkKeys: ['google_ads_sdk', 'pal_sdk', 'mux_sdk'] });
+  assert.equal(known.status, 'known');
+  assert.equal(known.drifted, false);
+
+  // A key we have never seen means Kick changed something.
+  const drifted = assessAdStack({ sawPlayback: true, playbackSdkKeys: ['google_ads_sdk', 'brand_new_sdk'] });
+  assert.equal(drifted.drifted, true);
+  assert.match(drifted.summary, /brand_new_sdk/);
+
+  // Playback with no known keys is the ambiguous case that must be surfaced,
+  // because it looks exactly like a clean page.
+  const absent = assessAdStack({ sawPlayback: true, playbackSdkKeys: [] });
+  assert.equal(absent.status, 'absent');
+  assert.equal(absent.drifted, true);
 });

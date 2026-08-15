@@ -68,6 +68,10 @@ const state = {
   resetPending: false,
   watched: new Set(readSessionArray(WATCHED_KEY)),
   casinoPaths: new Set(),
+  adStack: {
+    sawPlayback: false,
+    playbackSdkKeys: [],
+  },
   filter: {
     suspended: false,
     hidden: 0,
@@ -239,6 +243,33 @@ function simulateEmptySuccess(xhr, win) {
   }
 }
 
+/**
+ * Remember which ad-related keys a playback response carried, so the settings
+ * page can say whether Kick's ad stack still looks the way this build expects.
+ */
+function notePlaybackShape(rawText) {
+  try {
+    const payload = JSON.parse(String(rawText || ''));
+    if (!payload || typeof payload !== 'object') return;
+    state.adStack.sawPlayback = true;
+    const player = payload.video_player;
+    if (player && typeof player === 'object') {
+      state.adStack.playbackSdkKeys = Object.keys(player).filter((key) => /_sdk$/.test(key));
+    }
+    updateAdStackNoticeInPlace();
+  } catch {
+    // A non-JSON body tells us nothing about the ad stack.
+  }
+}
+
+function updateAdStackNoticeInPlace() {
+  const notice = state.shadow?.querySelector('[data-kf-adstack]');
+  if (!notice) return;
+  const assessment = assessAdStack(state.adStack);
+  notice.textContent = assessment.summary;
+  notice.dataset.drifted = String(assessment.drifted);
+}
+
 function installPlaybackRewrite(xhr, nativeText, nativeResponse, report) {
   let cache = null;
   let reported = false;
@@ -246,7 +277,8 @@ function installPlaybackRewrite(xhr, nativeText, nativeResponse, report) {
   const rewrite = (raw) => {
     if (typeof raw !== 'string' || raw === '') return raw;
     if (cache && cache.raw === raw) return cache.value;
-    const result = neutralizePlaybackPayload(raw);
+    notePlaybackShape(raw);
+    const result = neutralizePlaybackPayload(raw, { reduceTelemetry: state.settings.content.reduceTelemetry });
     cache = { raw, value: result.changed ? result.text : raw };
     if (result.changed && !reported) {
       reported = true;
@@ -278,7 +310,7 @@ function installPlaybackRewrite(xhr, nativeText, nativeResponse, report) {
           const type = this.responseType;
           if (type === '' || type === 'text') return rewrite(raw);
           if (type === 'json' && raw && typeof raw === 'object') {
-            const result = neutralizePlaybackPayload(JSON.stringify(raw));
+            const result = neutralizePlaybackPayload(JSON.stringify(raw), { reduceTelemetry: state.settings.content.reduceTelemetry });
             if (!result.changed) return raw;
             if (!reported) {
               reported = true;
@@ -342,7 +374,8 @@ function installNetworkDefense() {
         return nativeFetch(input, init).then((response) => {
           if (!response?.ok) return response;
           return response.clone().text().then((body) => {
-            const rewritten = neutralizePlaybackPayload(body);
+            notePlaybackShape(body);
+            const rewritten = neutralizePlaybackPayload(body, { reduceTelemetry: state.settings.content.reduceTelemetry });
             if (!rewritten.changed) return response;
             report('Playback', {
               category: 'advertising',
@@ -1206,6 +1239,8 @@ const UI_CSS = `
   .kf-conflict td { background: rgba(255,98,88,.055); border-top: 1px solid var(--danger); border-bottom: 1px solid var(--danger); }
   .kf-conflict-message { color: var(--danger); font-size: 11px; }
 
+  .kf-status-note { margin-top: 12px; padding: 9px 12px; border: 1px solid #2c3034; border-radius: 8px; background: rgba(255,255,255,.02); color: var(--muted); font-size: 12px; }
+  .kf-status-note[data-drifted="true"] { border-color: #7b5d20; background: rgba(246,185,67,.065); color: #e7c77e; }
   .kf-notice { margin-top: 12px; padding: 11px 13px; border: 1px solid #7b5d20; border-radius: 8px; background: rgba(246,185,67,.065); color: #e7c77e; font-size: 12px; }
   .kf-subsection { margin-top: 18px; }
   .kf-subsection-header { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
@@ -1472,6 +1507,7 @@ function renderContentPage() {
       ? `Browser network ruleset plus page hooks and shell cleanup. Companion extension v${escapeHtml(companion.version)}.`
       : 'Document-start page hooks and persistent shell cleanup. Install the companion extension for browser-level blocking.'}</p></div><div class="kf-active">${companion.active ? 'Network + page' : 'Page only'}</div></section>
     <div class="kf-stats"><div class="kf-stat"><span>Blocked this page</span><strong data-kf-stat="blocked">${state.diagnostics.blocked}</strong></div><div class="kf-stat"><span>Removed shells</span><strong data-kf-stat="shells">${state.diagnostics.shells}</strong></div><div class="kf-stat"><span>Last match</span><strong data-kf-stat="last">${escapeHtml(state.diagnostics.lastMatch)}</strong></div></div>
+    <div class="kf-status-note" data-kf-adstack data-drifted="${assessAdStack(state.adStack).drifted}">${escapeHtml(assessAdStack(state.adStack).summary)}</div>
     <div class="kf-notice" data-kf-filter-notice ${state.filter.suspended ? '' : 'hidden'}>${state.filter.suspended
       ? `Filtering is suspended on this page. It would have hidden ${state.filter.wouldHide} of ${state.filter.total} cards, which usually means Kick changed its labels rather than that the page is really that promotional. Everything is shown.`
       : ''}</div>

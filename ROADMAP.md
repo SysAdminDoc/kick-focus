@@ -71,13 +71,6 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 
 ### P2
 
-- [ ] P2 — Alarm on ad-stack drift
-  Why: when Kick changes its ad plumbing a silent zero in the protection log is indistinguishable from "no ads were served", so the arms race would be lost without notice.
-  Evidence: Pkkls/kick-ad-blocker fingerprints the ad stack against a baseline for this reason; this project's own live check records zero network matches on a normal load, which is expected and therefore unfalsifiable.
-  Touches: `src/runtime.js` (diagnostics), `src/core.mjs` (baseline shape), Content & Ads page.
-  Acceptance: settings show a dated "ad stack last matched the known shape on …" line and warn when the observed shape diverges.
-  Complexity: M
-
 - [ ] P2 — Optional remote blocklist subscriptions
   Why: the one filtering capability no other Kick project except uKick offers, and the only practical way for filters to keep pace between releases.
   Evidence: uKick ships subscriptions with auto-sync intervals, import/export, and merge.
