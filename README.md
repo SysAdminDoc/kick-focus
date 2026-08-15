@@ -14,7 +14,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 ## What it changes
 
 - Restyles Kick's current semantic desktop shell, navigation, discovery rail, content cards, player, chat, tabs, search results, and empty states with one restrained premium design system.
-- Reclaims the permanent discovery rail with Auto, Compact, and Hidden modes; Auto is the default so the live site can choose the appropriate desktop width.
+- Reclaims the permanent discovery rail with Auto, Compact, Dropdown, and Hidden modes; Auto is the default so the live site can choose the appropriate desktop width. Dropdown collapses the rail to a tab that expands on hover or keyboard focus.
 - Adds Standard, Theater, and Focus stream layouts, plus Right, Docked, and Hidden chat.
 - Widens browse grids and preserves a compact, sticky desktop top bar. Following and Drops are classified as first-class routes instead of being mistaken for channels.
 - Adds a searchable command menu (`Ctrl+K`) and configurable keyboard shortcuts.
@@ -24,6 +24,10 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - Adds sticky chat pause with an accessible resume state, per-channel keyword highlights and private notes, optional playback diagnostics, and a panic switch that restores Kick's native page without a reload.
 - Continuously records stickers seen in live chat and every sticker Kick exposes in the open picker, including locked metadata, with a larger three-row one-click favorites shelf, scroll-stable removals, portable favorites/removals, custom groups, and full JSON export/import from settings. Chat-only discoveries remain availability-unknown, and locked subscriber stickers are never sent without Kick authorization.
 - Clears the ad flags out of Kick's `/playback` response before the player reads them, so the ad SDKs are never started, and blocks known ad and optional telemetry requests through early page-realm `fetch`, XHR, beacon, and dynamic-element hooks. A persistent observer removes ad scripts, frames, and containers after reinsertion, and the Content & Ads page warns if Kick's ad stack stops matching what this build knows.
+- **Reads Kick's own API instead of scraping the page for it**, read-only and same-origin using the session you are already signed into. The emote catalog loads with real entitlement without the picker being opened; chat events come from whichever realtime provider Kick's own broker names; removed messages say why they were removed, which the page itself discards; emote usage is counted per channel and globally, which Kick does not do at all; collectible rarity is resolved and shown only where the match is confident; wide collectibles render un-squashed; and emote names shadowed across your sets are reported. Every one of these degrades to the previous DOM behaviour if the response changes shape, and each has its own switch.
+- **Multi-stream**: up to nine channels in one grid, built on Kick's own embedded player and popout chat, with audio and chat following the focused tile and named layouts you can save. Reachable from the header control, the command menu, or settings.
+- **Starts playback without waiting for blocked ad preflight scripts.** Kick waits on Google PAL, Datazoom, and OM before requesting playback, so blocking them — which this build does — otherwise leaves the player sitting out the full timeout.
+- Can freeze animated emotes and collectibles to a static frame, applied automatically when your system asks for reduced motion.
 - Stores settings and the recorded sticker library locally in the userscript manager. There is no analytics, network update code, `@require`, or remote executable code. An optional, off-by-default subscription accepts only user-supplied JSON data containing channels, categories, and keywords.
 
 ## Install
@@ -89,7 +93,26 @@ Kick Focus is deliberately honest about the userscript boundary:
 - **Ads are disabled at their source in the playback response.** Kick gates client-side ad behaviour on flags it sends with each stream; those are rewritten in flight, so the ad SDKs never initialise.
 - **Server-side stitched ads remain unverified and out of the current page-layer reach.** Measured on 2026-08-14: the HLS manifest is fetched inside the IVS WASM worker and never appears in page-realm traffic, so the existing page interceptor cannot inspect it. Safe worker-level instrumentation remains in [ROADMAP.md](ROADMAP.md); this project does not claim to remove media bytes it cannot observe.
 
+- **The Firefox companion really does block, as of 1.5.0.** Before that its listener gated on a Chromium-only field, so it cancelled nothing while reporting active rulesets.
+
 This boundary is reflected directly in the Content & Ads settings page and protection log, which report `Network + page` or `Page only` depending on what is actually installed.
+
+## What this project reads from Kick
+
+Since 1.5.0 Kick Focus calls Kick's own endpoints rather than only scraping the rendered page. The rules it holds to:
+
+- **Read-only.** No endpoint it calls changes anything on Kick.
+- **Same-origin, with your own session.** Requests inherit the cookies the page already has. Nothing handles, stores, or transmits a credential, and nothing is sent anywhere but Kick.
+- **Only what Kick's own client already calls.** No private or undocumented write paths, no automation, and nothing that bypasses an entitlement.
+- **Local only.** Emote usage counts, the library, and multi-stream layouts stay on your machine and travel only through the existing JSON export.
+- **Fails back, never fails open.** Every response is validated; an unexpected shape falls back to the DOM path and says so in diagnostics rather than showing an empty surface as success.
+
+Multi-stream embeds Kick's own player and popout chat, so playback, subscriptions, and entitlements remain entirely Kick's.
+
+## Credits
+
+- The blocked-preflight fix is adapted from [KickCX/KickFixPlayerLoading](https://github.com/KickCX/KickFixPlayerLoading) (MIT).
+- The dropdown sidebar concept comes from the "KICK Dropdown" userstyle by IamKoeda ([userstyles.world/style/29036](https://userstyles.world/style/29036), MIT), rebuilt here on this project's own design tokens.
 
 ## Desktop support
 

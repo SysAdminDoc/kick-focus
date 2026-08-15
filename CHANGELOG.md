@@ -6,6 +6,43 @@ All notable changes are documented here. Dates use ISO 8601.
 
 _Nothing yet._
 
+## 1.5.0 — 2026-08-15
+
+Settings schema 3. Existing preferences migrate without loss.
+
+### Fixed
+
+- **The Firefox companion blocked nothing.** Its request listener gated on `details.initiator`, which only Chromium populates, so `new URL(undefined)` threw and every request short-circuited to "allow" while the popup reported active rulesets. It now reads Gecko's `originUrl`/`documentUrl` with `initiator` kept as a Chromium fallback. `blob:` and `filesystem:` URLs carry their origin in the path rather than the hostname, so the player's worker requests were escaping the filter regardless.
+- **The build gate asserted the defective field name**, so it passed because of that bug and would have failed on the fix. Replaced with a behavioural test that runs the built background against a stubbed browser API using Firefox-shaped request details.
+- **`src/api.mjs` was never in the shipped bundle.** The build computed it and then omitted it from the concatenation, so every live feature would have thrown `ReferenceError` on first use. A new gate requires every module export to be *defined* in all three bundles, derives the symbol list from each module's own exports, and was verified red against a deliberately re-broken build.
+- **Failed storage writes lost data silently.** Twelve of thirteen persistence call sites discarded the result, so a full or denied storage backend dropped the emote library, channel notes, keyword filters, and layout memory with no message. Failures now raise a warning that stays until acknowledged, and About reports what each payload costs.
+- **Volume memory eventually locked streams silent.** Autoplay policy sets `muted = true` immediately after attach, and the resulting event persisted "muted" for that channel forever. A grace window discards mute-only changes, and a timer reconciles against the live element for players that route audio through a gain node and never fire the event.
+- **Quality memory was very likely inert**, driving a menu with plain clicks on selectors that appear nowhere in this project's verified DOM contract. Kick's player reads `stream_quality` from session storage once at init, so that is now written during bootstrap, with the menu kept as a fallback.
+- Windows High Contrast had no visible focus indicator on text inputs or the command search, because `forced-colors` suppresses `box-shadow`. A WCAG 2.4.7 failure on a build that ships an accessibility page.
+- Imported settings containing `__proto__`, `constructor`, or `toString` were treated as recognised and went unreported, because `in` walks the prototype chain.
+- A duplicate `es` dictionary key was silently discarding a translation, and `pt` was missing a string. A new gate parses the source rather than importing it, because a duplicate key is legal JavaScript and the evaluated object cannot show what was overwritten.
+
+### Added
+
+- **Kick's own API, read instead of scraped.** A new module covering the realtime broker, emote catalog, chat events, and collectibles — read-only, same-origin, using the session the page already has. Every normaliser reports a changed shape rather than throwing, and every path falls back to the existing DOM scraping.
+  - The emote catalog loads without the picker ever being opened, carrying real entitlement rather than a `disabled` attribute.
+  - Chat events come from whichever realtime provider Kick's broker names, so no key is written in this source and a provider switch degrades instead of breaking.
+  - **Removed messages now say why they were removed.** The page discards that; the realtime event carries it.
+  - **Emote usage is counted** per channel and globally. Kick's own "Frequently Used" hardcodes its counter and ranks nothing.
+  - **Collectible rarity is resolved.** Kick publishes rarity on card art and identity in the picker with no key joining them, so the join is evidence-scored and stays silent below a confidence floor — a mislabelled Mythic is worse than no label.
+  - Wide collectibles render at their measured aspect instead of squashed square.
+  - Shadowed emote names are reported with the set Kick will actually send.
+- **Multi-stream.** Up to nine channels in one grid, built on Kick's own embedded player and popout chat so playback, subscriptions, and entitlements are unchanged. Audio and chat follow the focused tile, layouts save by name, and closing the grid stops every player.
+- **Playback no longer waits on blocked ad preflight scripts.** Kick waits on Google PAL, Datazoom, and OM before requesting playback; blocking them — which this build does — left the dead script in the page and the player sat out the full timeout.
+- **Dropdown sidebar mode**, collapsing the discovery rail to a tab that expands on hover or keyboard focus.
+- Animated emotes and collectibles can be frozen to a static frame, honoured automatically under reduced motion.
+- The page-realm hooks no longer identify themselves through `name` or `toString`.
+
+### Credits
+
+- The preflight approach is adapted from [KickCX/KickFixPlayerLoading](https://github.com/KickCX/KickFixPlayerLoading) (MIT).
+- The dropdown sidebar concept comes from the "KICK Dropdown" userstyle by IamKoeda ([userstyles.world/style/29036](https://userstyles.world/style/29036), MIT), rebuilt here on this project's own tokens.
+
 ## 1.4.0 — 2026-08-15
 
 ### Fixed
