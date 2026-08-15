@@ -8205,10 +8205,32 @@ function isTypingTarget(target) {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
 }
 
+/**
+ * Keep Tab inside whichever overlay is on top.
+ *
+ * Every modal surface needs this, not just settings: tabbing out of a dialog
+ * lands on a page the user cannot see, and in the multi-stream grid the next
+ * stops are cross-origin player frames whose interiors cannot be focus-managed
+ * at all. Containment at the host is the only control available there.
+ */
+function topmostOverlayShell() {
+  if (multistreamOpen()) return state.shadow?.querySelector('.kf-ms-shell');
+  if (state.command && !state.command.hidden) return state.shadow?.querySelector('.kf-command-shell');
+  if (state.modal && !state.modal.hidden) return state.shadow?.querySelector('[data-kf-settings-shell]');
+  return null;
+}
+
 function trapFocus(event) {
-  if (event.key !== 'Tab' || state.modal.hidden) return false;
-  const shell = state.shadow.querySelector('[data-kf-settings-shell]');
-  const focusable = [...shell.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])')].filter((element) => !element.closest('[hidden]'));
+  if (event.key !== 'Tab') return false;
+  const shell = topmostOverlayShell();
+  if (!shell) return false;
+  const candidates = [...shell.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.closest('[hidden]'));
+  // Visibility filtering is a refinement, never a way to end up with nothing:
+  // a positioning quirk that emptied this list would silently switch the trap
+  // off, which is worse than trapping onto an offscreen control.
+  const visible = candidates.filter((element) => element.checkVisibility?.() ?? true);
+  const focusable = visible.length ? visible : candidates;
   if (!focusable.length) return false;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
@@ -8262,7 +8284,7 @@ function onGlobalKeydown(event) {
     closeSettings();
     return;
   }
-  if (!state.modal.hidden && trapFocus(event)) return;
+  if (trapFocus(event)) return;
   if (!state.command.hidden && event.key === 'Escape') {
     event.preventDefault();
     closeCommandMenu();

@@ -166,6 +166,10 @@ const checks = [
     && source.includes("matchMedia('(prefers-reduced-motion: reduce)').matches")],
   // A cross-origin embed cannot be paused or quality-capped, so unloading its
   // document is the only control over decode cost that exists.
+  ['focus is contained in whichever overlay is on top', source.includes('function topmostOverlayShell')
+    && source.includes('kf-ms-shell')
+    && source.includes('kf-command-shell')
+    && !source.includes('if (!state.modal.hidden && trapFocus(event)) return;')],
   ['multi-stream suspends tiles nobody is watching', source.includes('multistreamTileActive')
     && source.includes('installMultistreamSuspension')
     && source.includes('observeMultistreamVisibility')

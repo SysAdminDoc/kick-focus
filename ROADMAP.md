@@ -139,13 +139,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
   Acceptance: when a Kick account action fails in a way consistent with the known collision, the interface states that Kick Focus does not block the hosts involved and names what to check; the README carries the same note. Settle open question 3 in RESEARCH.md — which filter rule is responsible — before naming a specific fix, and disclaim only what is verified.
   Complexity: S
 
-- [ ] P1 — Contain focus in the multi-stream and command surfaces
-  Why: both are modal overlays, and only the settings modal traps focus, so keyboard users tab out of a dialog into a page they cannot see.
-  Evidence: `trapFocus` (`src/runtime.js:5927`) is invoked once, guarded on `state.modal` (`:5984`); the multi-stream backdrop and command backdrop have no equivalent. Cross-origin player frames cannot be focus-managed internally, which makes host-level containment the only control available.
-  Touches: `src/runtime.js` (`trapFocus`, key handling for both backdrops).
-  Acceptance: while either overlay is open, Tab and Shift+Tab cycle within it; Escape still closes the topmost surface; focus returns to the control that opened it.
-  Complexity: S
-
 ### P2
 
 - [ ] P2 — Make saved layouts shareable and show who is live
