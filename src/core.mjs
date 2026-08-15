@@ -1,5 +1,5 @@
 export const VERSION = '1.4.0';
-export const SETTINGS_SCHEMA = 2;
+export const SETTINGS_SCHEMA = 3;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
@@ -49,6 +49,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
     blocklistSubscription: false,
     blocklistUrl: '',
     blocklistRefreshHours: 24,
+    // Kick's own data, read the way Kick's own client reads it. Same-origin,
+    // read-only, inheriting the session the page already has.
+    liveEmoteCatalog: true,
+    liveChatEvents: true,
+    showModerationReasons: true,
+    countEmoteUsage: true,
+    showEmoteRarity: true,
+    warnShadowedEmotes: true,
+    staticEmotes: false,
   }),
   accessibility: Object.freeze({
     reduceMotion: true,
@@ -193,6 +202,13 @@ export function normalizeSettings(input) {
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
       blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
+      liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
+      liveChatEvents: bool(content.liveChatEvents, defaults.content.liveChatEvents),
+      showModerationReasons: bool(content.showModerationReasons, defaults.content.showModerationReasons),
+      countEmoteUsage: bool(content.countEmoteUsage, defaults.content.countEmoteUsage),
+      showEmoteRarity: bool(content.showEmoteRarity, defaults.content.showEmoteRarity),
+      warnShadowedEmotes: bool(content.warnShadowedEmotes, defaults.content.warnShadowedEmotes),
+      staticEmotes: bool(content.staticEmotes, defaults.content.staticEmotes),
     },
     accessibility: {
       reduceMotion: bool(accessibility.reduceMotion, defaults.accessibility.reduceMotion),

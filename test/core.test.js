@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_SETTINGS,
+  SETTINGS_SCHEMA,
   approximateStorageBytes,
   describeStorageFailures,
   formatBytes,
@@ -43,7 +44,9 @@ test('normalization clamps values and keeps core ad defense enabled', () => {
 
 test('v2 migrates the former desktop defaults without overwriting custom layout choices', () => {
   const migrated = normalizeSettings({ schema: 1, layout: { sidebar: 'compact', chatWidth: 380 } });
-  assert.equal(migrated.schema, 2);
+  // Track the constant, not a literal: this assertion is about the migration,
+  // and pinning the number makes every later schema bump look like a failure.
+  assert.equal(migrated.schema, SETTINGS_SCHEMA);
   assert.equal(migrated.layout.sidebar, 'auto');
   assert.equal(migrated.layout.chatWidth, 410);
 
@@ -163,7 +166,7 @@ test('settings import names whatever it could not keep', () => {
     .some((note) => /Upgraded from an unversioned file/.test(note)));
 
   // A clean, current file produces no noise.
-  const clean = validateImportedSettings(JSON.stringify({ schema: 2, layout: { chatWidth: 410 } }));
+  const clean = validateImportedSettings(JSON.stringify({ schema: SETTINGS_SCHEMA, layout: { chatWidth: 410 } }));
   assert.deepEqual(clean.notes, []);
 });
 

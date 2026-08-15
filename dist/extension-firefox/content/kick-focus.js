@@ -4,7 +4,7 @@
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
 const VERSION = '1.4.0';
-const SETTINGS_SCHEMA = 2;
+const SETTINGS_SCHEMA = 3;
 
 const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
@@ -54,6 +54,15 @@ const DEFAULT_SETTINGS = Object.freeze({
     blocklistSubscription: false,
     blocklistUrl: '',
     blocklistRefreshHours: 24,
+    // Kick's own data, read the way Kick's own client reads it. Same-origin,
+    // read-only, inheriting the session the page already has.
+    liveEmoteCatalog: true,
+    liveChatEvents: true,
+    showModerationReasons: true,
+    countEmoteUsage: true,
+    showEmoteRarity: true,
+    warnShadowedEmotes: true,
+    staticEmotes: false,
   }),
   accessibility: Object.freeze({
     reduceMotion: true,
@@ -198,6 +207,13 @@ function normalizeSettings(input) {
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
       blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
+      liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
+      liveChatEvents: bool(content.liveChatEvents, defaults.content.liveChatEvents),
+      showModerationReasons: bool(content.showModerationReasons, defaults.content.showModerationReasons),
+      countEmoteUsage: bool(content.countEmoteUsage, defaults.content.countEmoteUsage),
+      showEmoteRarity: bool(content.showEmoteRarity, defaults.content.showEmoteRarity),
+      warnShadowedEmotes: bool(content.warnShadowedEmotes, defaults.content.warnShadowedEmotes),
+      staticEmotes: bool(content.staticEmotes, defaults.content.staticEmotes),
     },
     accessibility: {
       reduceMotion: bool(accessibility.reduceMotion, defaults.accessibility.reduceMotion),
@@ -1182,7 +1198,31 @@ const state = {
     stickers: null,
     chatStickers: null,
   },
+  /**
+   * Everything read from Kick's own API, kept apart from scraped state so a
+   * failure here can never degrade what the DOM path already produced.
+   */
+  live: {
+    slug: '',
+    channel: null,
+    catalog: null,
+    catalogSource: 'dom',
+    catalogError: '',
+    collisions: [],
+    rarity: null,
+    socket: null,
+    socketState: 'offline',
+    lastFrameAt: 0,
+    unparsable: 0,
+    subscribed: [],
+    deletions: new Map(),
+    reconnectAt: 0,
+    reconnectAttempts: 0,
+    provider: '',
+  },
+  emoteUsage: readEmoteUsage(),
   chatStickerScanTimer: 0,
+  usagePersistTimer: 0,
   chatStickerPendingNodes: new Set(),
   mediaBound: new WeakSet(),
   mediaSaveTimers: new WeakMap(),
@@ -1464,6 +1504,34 @@ function installPlaybackRewrite(xhr, nativeText, nativeResponse, report) {
   }
 }
 
+/**
+ * Make an interceptor answer `name` and `toString()` the way the function it
+ * replaced does.
+ *
+ * The ad defense only works while the page cannot trivially detect it, and
+ * `window.fetch.name === 'kickFocusFetch'` alongside a non-native `toString()`
+ * is the cheapest possible probe. Kick gained a commercial reason to run one
+ * when it launched ads on 2026-08-06.
+ *
+ * This raises the cost of detection; it does not make it impossible, and it is
+ * not a claim of undetectability.
+ */
+function disguise(wrapper, original, name) {
+  try {
+    Object.defineProperty(wrapper, 'name', { value: name, configurable: true });
+    Object.defineProperty(wrapper, 'length', { value: original?.length ?? wrapper.length, configurable: true });
+    const native = `function ${name}() { [native code] }`;
+    Object.defineProperty(wrapper, 'toString', {
+      value: Object.defineProperty(() => native, 'name', { value: 'toString', configurable: true }),
+      writable: true,
+      configurable: true,
+    });
+  } catch {
+    // A frozen function object is still a working interceptor.
+  }
+  return wrapper;
+}
+
 function installNetworkDefense() {
   const marker = '__kickFocusNetworkDefenseV1';
   if (pageWindow[marker]) return;
@@ -1489,8 +1557,11 @@ function installNetworkDefense() {
 
   try {
     const nativeFetch = pageWindow.fetch?.bind(pageWindow);
+    // Our own API reads go through the unhooked original: routing them back
+    // through this interceptor would classify and log them as page traffic.
+    unhookedFetch = nativeFetch;
     if (nativeFetch) {
-      pageWindow.fetch = function kickFocusFetch(input, init) {
+      pageWindow.fetch = disguise(function kickFocusFetch(input, init) {
         if (state.runtime.suspended) return nativeFetch(input, init);
         const rawUrl = typeof input === 'string' || input instanceof URL ? input : input?.url;
         const result = classify(rawUrl);
@@ -1519,7 +1590,7 @@ function installNetworkDefense() {
             });
           }).catch(() => response);
         });
-      };
+      }, pageWindow.fetch, 'fetch');
     }
   } catch {
     // Some sandbox/page combinations expose a non-writable fetch binding.
@@ -1533,12 +1604,12 @@ function installNetworkDefense() {
       const nativeText = Object.getOwnPropertyDescriptor(xhrPrototype, 'responseText');
       const nativeResponse = Object.getOwnPropertyDescriptor(xhrPrototype, 'response');
 
-      xhrPrototype.open = function kickFocusOpen(method, url, ...rest) {
+      xhrPrototype.open = disguise(function kickFocusOpen(method, url, ...rest) {
         this.__kfRequest = state.runtime.suspended ? { blocked: false } : classify(url);
         this.__kfPlayback = !state.runtime.suspended && isPlaybackUrl(url);
         return nativeOpen.call(this, method, url, ...rest);
-      };
-      xhrPrototype.send = function kickFocusSend(...args) {
+      }, nativeOpen, 'open');
+      xhrPrototype.send = disguise(function kickFocusSend(...args) {
         if (this.__kfPlayback && nativeText?.get) installPlaybackRewrite(this, nativeText, nativeResponse, report);
         if (!this.__kfRequest?.blocked) return nativeSend.apply(this, args);
         report('XHR', this.__kfRequest);
@@ -1553,7 +1624,7 @@ function installNetworkDefense() {
           }
         });
         return undefined;
-      };
+      }, nativeSend, 'send');
     }
   } catch {
     // Continue with DOM and fetch protection.
@@ -2294,6 +2365,37 @@ const SITE_CSS = `
   }
 
   video::cue { background: rgba(0, 0, 0, var(--kf-caption-opacity)); }
+
+  /* Why a message disappeared. The DOM only removes the node; the realtime
+     event carries the reason, and no DOM-scraping tool can see it. */
+  .kf-deletion-note {
+    margin-top: 4px;
+    padding: 4px 8px;
+    border-left: 3px solid var(--kf-border-strong);
+    border-radius: 4px;
+    background: rgba(255,255,255,.04);
+    color: var(--kf-text-muted);
+    font-size: 11px;
+    font-style: italic;
+  }
+  [data-kf-ai-moderated="true"] .kf-deletion-note {
+    border-left-color: #d98b3a;
+    color: #e7b478;
+  }
+
+  /* Collectible emotes can be 2:1. The rule lives only in Kick's own client,
+     so every third-party renderer squashes them square. */
+  img[data-kf-emote-aspect="wide"] { width: auto !important; aspect-ratio: 2 / 1; object-fit: contain; }
+
+  /* An explicit accessibility request framed as seizure risk: animated emotes
+     rendered as a single static frame, everywhere they appear. */
+  html[data-kf-static-emotes="true"] img[src*="/emotes/" i],
+  html[data-kf-static-emotes="true"] img[data-src*="/emotes/" i] {
+    animation-play-state: paused !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html[data-kf-reduce-motion="true"] img[src*="/emotes/" i] { animation-play-state: paused !important; }
+  }
 `;
 
 function applySettingsAttributes() {
@@ -2320,6 +2422,10 @@ function applySettingsAttributes() {
   root.dataset.kfContrast = String(appearance.strongContrast || accessibility.highContrast);
   root.dataset.kfMatureBlur = String(content.blurMature && !state.runtime.matureVisible);
   root.dataset.kfReduceMotion = String(accessibility.reduceMotion);
+  // An explicit accessibility request framed as seizure risk. The system-level
+  // preference turns it on regardless of the switch.
+  root.dataset.kfStaticEmotes = String(content.staticEmotes
+    || (accessibility.reduceMotion && matchMedia('(prefers-reduced-motion: reduce)').matches));
   root.dataset.kfFocusVisible = String(accessibility.focusVisible);
   root.dataset.kfLargeTargets = String(accessibility.largeTargets);
   root.dataset.kfFocus = String(state.runtime.focus);
@@ -2412,6 +2518,385 @@ function persistStickerPreferences() {
   state.stickerPreferences = stickerPreferencesFromValue(value);
   gmSet(STICKER_PREFERENCES_KEY, value);
   return value;
+}
+
+// ---------------------------------------------------------------------------
+// Kick live data
+//
+// Read-only, same-origin requests to endpoints Kick's own client already calls,
+// inheriting the session the page already has. Nothing here writes to Kick,
+// handles a credential, or runs when the matching setting is off, and every
+// path falls back to the existing DOM scraping when it fails.
+// ---------------------------------------------------------------------------
+
+const LIVE_TIMEOUT_MS = 8000;
+const LIVE_MAX_BYTES = 4_000_000;
+const REALTIME_BACKOFF_MS = [2000, 5000, 15000, 45000];
+
+function readEmoteUsage() {
+  const stored = gmGet(EMOTE_USAGE_KEY, null);
+  if (!stored || typeof stored !== 'object') return { global: {}, channels: {} };
+  return {
+    global: stored.global && typeof stored.global === 'object' ? stored.global : {},
+    channels: stored.channels && typeof stored.channels === 'object' ? stored.channels : {},
+  };
+}
+
+/**
+ * Same-origin JSON with a deadline and a size ceiling.
+ *
+ * `credentials: 'include'` is what makes the session-gated reads (collectibles,
+ * the user's own inventory) work at all — those endpoints authenticate with
+ * cookies, not bearer tokens, which is exactly why a page context is the only
+ * client that can read them and why nothing here ever sees a token.
+ */
+async function kickFetchJson(url, { credentials = 'include' } = {}) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
+  try {
+    const response = await pageFetch(url, {
+      credentials,
+      signal: controller.signal,
+      headers: { accept: 'application/json' },
+    });
+    if (!response.ok) return { ok: false, status: response.status };
+    const text = await response.text();
+    if (text.length > LIVE_MAX_BYTES) return { ok: false, status: 'oversized' };
+    return { ok: true, status: response.status, body: JSON.parse(text) };
+  } catch (error) {
+    return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The unhooked `fetch`, captured before `installNetworkDefense` wraps it.
+ *
+ * Routing our own reads through our own interceptor would have them classified,
+ * logged as page traffic, and counted in the protection diagnostics.
+ */
+let unhookedFetch = null;
+function pageFetch(url, init) {
+  return unhookedFetch ? unhookedFetch(url, init) : window.fetch(url, init);
+}
+
+function currentChannelSlug() {
+  if (state.route !== 'channel') return '';
+  const [slug] = location.pathname.replace(/^\//, '').split('/');
+  return /^[A-Za-z0-9_-]{1,64}$/.test(slug || '') ? slug : '';
+}
+
+/**
+ * Pull channel identity and the emote catalog for the current channel.
+ *
+ * The catalog is the point: the organizer otherwise scrapes a lazy-rendered
+ * picker, which this project's own research names as its highest-drift surface,
+ * while `/emotes/{slug}` returns the same data plus entitlement as structured
+ * JSON without the picker ever being opened.
+ */
+async function refreshLiveChannel() {
+  const slug = currentChannelSlug();
+  if (!slug) {
+    teardownRealtime();
+    state.live.slug = '';
+    state.live.channel = null;
+    return;
+  }
+  if (state.live.slug === slug && state.live.channel) return;
+  teardownRealtime();
+  state.live.slug = slug;
+  state.live.channel = null;
+  state.live.catalog = null;
+  state.live.catalogSource = 'dom';
+  state.live.catalogError = '';
+  state.live.collisions = [];
+  state.live.rarity = null;
+
+  if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
+
+  const channelResponse = await kickFetchJson(endpoints.channel(slug));
+  if (state.live.slug !== slug) return; // navigated away mid-flight
+  if (!channelResponse.ok) {
+    state.live.catalogError = `Kick's channel API answered ${channelResponse.status}.`;
+    refreshLiveDiagnostics();
+    return;
+  }
+  state.live.channel = normalizeChannel(channelResponse.body);
+  if (!state.live.channel) {
+    state.live.catalogError = "Kick's channel payload no longer has the expected shape.";
+    refreshLiveDiagnostics();
+    return;
+  }
+
+  if (state.settings.content.liveEmoteCatalog) await refreshEmoteCatalog(slug);
+  if (state.settings.content.liveChatEvents) connectRealtime();
+  refreshLiveDiagnostics();
+}
+
+async function refreshEmoteCatalog(slug) {
+  const response = await kickFetchJson(endpoints.emoteSets(slug), { credentials: 'include' });
+  if (state.live.slug !== slug) return;
+  if (!response.ok) {
+    state.live.catalogError = `Kick's emote API answered ${response.status}; using the picker instead.`;
+    refreshLiveDiagnostics();
+    return;
+  }
+  const catalog = normalizeEmoteSets(response.body);
+  if (!catalog.ok) {
+    // A changed shape must not produce an empty organizer that looks like an
+    // account with no emotes. Keep scraping and say why.
+    state.live.catalogError = `Kick's emote payload changed shape (${catalog.reason}); using the picker instead.`;
+    refreshLiveDiagnostics();
+    return;
+  }
+  state.live.catalog = catalog;
+  state.live.catalogSource = 'api';
+  state.live.catalogError = '';
+  state.live.collisions = state.settings.content.warnShadowedEmotes ? findShadowedNames(catalog.emotes) : [];
+
+  // The catalog is the user's real entitlement, so it seeds the library without
+  // the picker ever being opened.
+  mergeStickerLibrary(catalog.emotes.map((emote) => ({
+    key: `id:${emote.id}`,
+    id: emote.id,
+    name: emote.name,
+    src: emote.url,
+    nativeGroups: [emote.kind === 'channel' ? emote.setName : emote.setName],
+    available: true,
+  })));
+
+  if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);
+  refreshLiveDiagnostics();
+}
+
+/**
+ * Join collectible card art to emote identity.
+ *
+ * Anonymous sessions get 403 here, which is expected and not an error worth
+ * reporting: the whole point is that this is the user's own inventory.
+ */
+async function refreshCollectibleRarity(slug) {
+  if (!state.live.catalog?.emotes.some((emote) => emote.collectible)) return;
+  const response = await kickFetchJson(endpoints.collectibles());
+  if (state.live.slug !== slug || !response.ok) return;
+  const cards = Array.isArray(response.body?.data) ? response.body.data
+    : (Array.isArray(response.body) ? response.body : []);
+  if (!cards.length) return;
+  const join = joinCollectibleRarity(cards, state.live.catalog.emotes);
+  state.live.rarity = join.usable ? join : null;
+  refreshLiveDiagnostics();
+}
+
+// ---------------------------------------------------------------------------
+// Realtime
+// ---------------------------------------------------------------------------
+
+function teardownRealtime() {
+  clearTimeout(state.live.reconnectAt);
+  state.live.reconnectAt = 0;
+  const socket = state.live.socket;
+  state.live.socket = null;
+  state.live.socketState = 'offline';
+  state.live.subscribed = [];
+  state.live.provider = '';
+  try { socket?.close(); } catch { /* already gone */ }
+}
+
+/**
+ * Ask Kick which realtime provider is in force, then connect to that.
+ *
+ * Kick returns connection credentials behind a `provider` discriminator and
+ * tracks a degraded state, so it can switch providers server-side. Anything
+ * hardcoding the Pusher app key keeps working right up until it silently does
+ * not — so the key is never written in this source, and an unrecognised
+ * provider degrades to the DOM path rather than guessing.
+ */
+async function connectRealtime() {
+  const channel = state.live.channel;
+  if (!channel?.chatroomId || state.live.socket) return;
+  const clientId = crypto.randomUUID();
+  const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId));
+  if (!response.ok || state.live.channel !== channel) return;
+
+  const connection = normalizeRealtimeConnection(response.body);
+  if (!connection.ok) {
+    state.live.socketState = 'unsupported';
+    state.live.catalogError = connection.reason === 'unsupported-provider'
+      ? `Kick switched realtime provider to ${connection.offered.join(', ')}; chat features fall back to the page.`
+      : 'Kick did not return usable realtime credentials; chat features fall back to the page.';
+    refreshLiveDiagnostics();
+    return;
+  }
+
+  state.live.provider = connection.provider;
+  let socket;
+  try {
+    socket = new WebSocket(pusherSocketUrl(connection));
+  } catch {
+    state.live.socketState = 'offline';
+    return;
+  }
+  state.live.socket = socket;
+  state.live.socketState = 'connecting';
+  state.live.unparsable = 0;
+
+  socket.addEventListener('open', () => {
+    state.live.socketState = 'open';
+    state.live.lastFrameAt = Date.now();
+    state.live.reconnectAttempts = 0;
+    for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
+      // Public channels need no auth; an empty auth string is what Kick's own
+      // client sends for them.
+      socket.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: name } }));
+      state.live.subscribed.push(name);
+    }
+    refreshLiveDiagnostics();
+  });
+  socket.addEventListener('message', onRealtimeFrame);
+  socket.addEventListener('close', () => {
+    if (state.live.socket !== socket) return;
+    state.live.socket = null;
+    state.live.socketState = 'offline';
+    scheduleRealtimeReconnect();
+  });
+  socket.addEventListener('error', () => { state.live.socketState = 'error'; });
+}
+
+function scheduleRealtimeReconnect() {
+  if (!state.settings.content.liveChatEvents || !currentChannelSlug()) return;
+  const delay = REALTIME_BACKOFF_MS[Math.min(state.live.reconnectAttempts, REALTIME_BACKOFF_MS.length - 1)];
+  state.live.reconnectAttempts += 1;
+  clearTimeout(state.live.reconnectAt);
+  state.live.reconnectAt = window.setTimeout(connectRealtime, delay);
+}
+
+function onRealtimeFrame(event) {
+  state.live.lastFrameAt = Date.now();
+  let frame;
+  try {
+    frame = JSON.parse(event.data);
+  } catch {
+    // A run of frames we cannot read means Kick changed its payload shape.
+    // That is a different problem from silence and deserves to be visible.
+    state.live.unparsable += 1;
+    refreshLiveDiagnostics();
+    return;
+  }
+  state.live.unparsable = 0;
+  if (frame.event === 'pusher:connection_established') { state.live.socketState = 'live'; refreshLiveDiagnostics(); return; }
+  if (frame.event === 'pusher_internal:subscription_succeeded') return;
+
+  let payload = frame.data;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { return; }
+  }
+  if (!payload || typeof payload !== 'object') return;
+
+  const name = String(frame.event || '');
+  if (name.endsWith('ChatMessageEvent')) onRealtimeChatMessage(payload);
+  else if (name.endsWith('MessageDeletedEvent')) onRealtimeDeletion(payload);
+}
+
+function onRealtimeChatMessage(payload) {
+  if (!state.settings.content.countEmoteUsage) return;
+  const message = normalizeChatMessage(payload);
+  if (!message?.emotes.length) return;
+  // Only the local user's own sends are counted. Counting everyone's would
+  // measure the channel, not the person, and the shelf exists to rank what
+  // *this* user actually reaches for.
+  if (!isLocalUser(message.sender)) return;
+  const channel = state.live.slug;
+  const at = Date.now();
+  for (const emote of message.emotes) {
+    state.emoteUsage = recordEmoteUse(state.emoteUsage, { channel, id: emote.id, name: emote.name, at });
+  }
+  queueUsagePersist();
+}
+
+/**
+ * The DOM only removes a deleted message, so *why* it went is invisible to every
+ * scraping tool. `MessageDeletedEvent` carries it, and Kick's non-disableable AI
+ * moderation is among the loudest documented complaints about the platform.
+ */
+function onRealtimeDeletion(payload) {
+  if (!state.settings.content.showModerationReasons) return;
+  const deletion = normalizeDeletion(payload);
+  if (!deletion) return;
+  state.live.deletions.set(deletion.id, deletion);
+  // Bounded: this is a live annotation, not a log.
+  if (state.live.deletions.size > 300) {
+    const oldest = state.live.deletions.keys().next().value;
+    state.live.deletions.delete(oldest);
+  }
+  annotateDeletedMessage(deletion);
+}
+
+function annotateDeletedMessage(deletion) {
+  const node = document.querySelector(`[data-index="${CSS.escape(deletion.id)}"], [data-message-id="${CSS.escape(deletion.id)}"], [data-chat-entry="${CSS.escape(deletion.id)}"]`);
+  if (!node || node.dataset.kfDeletionNoted === 'true') return;
+  node.dataset.kfDeletionNoted = 'true';
+  node.dataset.kfAiModerated = String(deletion.aiModerated);
+  const note = document.createElement('div');
+  note.className = 'kf-deletion-note';
+  note.dataset.kfDeletionNote = 'true';
+  note.textContent = deletion.reason;
+  node.append(note);
+}
+
+/**
+ * A deletion event can arrive before the message it refers to has rendered, and
+ * chat virtualisation can remount a node after we annotated it. Re-applying on
+ * the apply cycle is cheap and covers both.
+ */
+function replayPendingDeletions() {
+  if (!state.settings.content.showModerationReasons || !state.live.deletions.size) return;
+  for (const deletion of state.live.deletions.values()) annotateDeletedMessage(deletion);
+}
+
+function isLocalUser(sender) {
+  const own = document.querySelector('[data-testid="chat-input"], [contenteditable="true"][role="textbox"]');
+  if (!own) return false;
+  const username = localUsername();
+  if (!username) return false;
+  return sender.username.toLowerCase() === username || sender.slug.toLowerCase() === username;
+}
+
+function localUsername() {
+  const candidate = document.querySelector('[data-testid="user-menu"] [title], [data-testid="username"], header [data-testid="user-avatar"] img[alt]');
+  const raw = candidate?.getAttribute('title') || candidate?.getAttribute('alt') || candidate?.textContent || '';
+  return String(raw).trim().toLowerCase();
+}
+
+function queueUsagePersist() {
+  clearTimeout(state.usagePersistTimer);
+  state.usagePersistTimer = window.setTimeout(() => {
+    gmSet(EMOTE_USAGE_KEY, state.emoteUsage);
+  }, 1200);
+}
+
+function refreshLiveDiagnostics() {
+  if (!state.shadow || state.currentPage !== 'content') return;
+  const target = state.shadow.querySelector('[data-kf-live-status]');
+  if (target) target.textContent = liveStatusSummary();
+}
+
+function liveStatusSummary() {
+  const parts = [];
+  parts.push(state.live.catalogSource === 'api'
+    ? `Emote catalog from Kick's API (${state.live.catalog?.emotes.length || 0} emotes).`
+    : 'Emote catalog from the picker.');
+  const health = realtimeHealth({
+    connected: state.live.socketState === 'live' || state.live.socketState === 'open',
+    lastFrameAt: state.live.lastFrameAt,
+    unparsable: state.live.unparsable,
+    now: Date.now(),
+  });
+  parts.push(`Chat events: ${health.state}${health.detail ? ` — ${health.detail}` : ''}`);
+  if (state.live.rarity) parts.push(`Rarity resolved for ${state.live.rarity.matched.length} of ${state.live.rarity.total} collectibles.`);
+  if (state.live.collisions.length) parts.push(`${state.live.collisions.length} emote name${state.live.collisions.length === 1 ? '' : 's'} shadowed.`);
+  if (state.live.catalogError) parts.push(state.live.catalogError);
+  return parts.join(' ');
 }
 
 function readRemoteBlocklist() {
@@ -3142,13 +3627,50 @@ function stickerDescriptors(picker) {
   return [...descriptors.values()];
 }
 
+/**
+ * The rarity of a collectible, when the join was confident enough to say.
+ *
+ * Returns an empty string otherwise, so a tile with unresolved rarity renders
+ * exactly as it did before this feature existed.
+ */
+function rarityBadge(descriptor) {
+  if (!state.settings.content.showEmoteRarity || !state.live.rarity) return '';
+  const match = state.live.rarity.matched.find((entry) => entry.emote.id === descriptor.id);
+  if (!match) return '';
+  return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="Kick rarity, matched by ${escapeHtml(match.basis)}">${escapeHtml(match.rarity)}</span>`;
+}
+
+/**
+ * Collectible emotes can be 2:1 and every third-party renderer squashes them,
+ * because the aspect rule lives only in Kick's own client. Measured from the
+ * loaded image rather than assumed from the name, since the prefix alone would
+ * stretch ordinary square collectibles.
+ */
+function emoteImageAttrs(descriptor) {
+  return isCollectibleEmote(descriptor.name)
+    ? ' data-kf-emote-measure="true"'
+    : '';
+}
+
+function measureEmoteAspect(scope) {
+  for (const image of scope?.querySelectorAll?.('img[data-kf-emote-measure="true"]') || []) {
+    if (image.dataset.kfEmoteAspect) continue;
+    const apply = () => {
+      const aspect = emoteAspect(image.getAttribute('alt') || '', image.naturalWidth, image.naturalHeight);
+      if (aspect === 'wide') image.dataset.kfEmoteAspect = 'wide';
+    };
+    if (image.complete && image.naturalWidth) apply();
+    else image.addEventListener('load', apply, { once: true });
+  }
+}
+
 function stickerProxyMarkup(descriptor) {
   const pinned = state.stickerPreferences.pinned.has(descriptor.key);
   const hidden = state.stickerPreferences.hidden.has(descriptor.key);
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
   return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}">
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <div data-kf-sticker-tools>
       <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Remove favorite' : 'Favorite'} ${safeName}" title="${pinned ? 'Remove favorite' : 'Favorite'}">${pinned ? '★' : '☆'}</button>
       <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${hidden ? 'Restore' : 'Remove'} ${safeName}" title="${hidden ? 'Restore' : 'Remove'}">${hidden ? '↶' : '×'}</button>
@@ -3325,6 +3847,7 @@ function renderStickerOrganizer() {
     <div data-kf-sticker-secondary-actions><button type="button" data-kf-sticker-reset="true">Reset changes</button></div>
     ${list}`;
   restoreStickerGridScroll(organizer, previousGridScrollTop);
+  measureEmoteAspect(organizer);
 }
 
 function resetStickerPreferences(options = {}) {
@@ -3698,6 +4221,10 @@ function scheduleApply(delay = 50) {
     applyPlayerResilience();
     applyChatPause();
     observeChatStickerDiscovery();
+    // Fire-and-forget: every live path already falls back to the DOM, so a
+    // rejected promise here must never interrupt the apply cycle.
+    refreshLiveChannel().catch(() => {});
+    replayPendingDeletions();
     renderStickerOrganizer();
     applyChatHighlights();
     applyPlaybackDiagnostics();
@@ -4304,6 +4831,49 @@ const UI_CSS = `
     outline: 0;
   }
   .kf-command-head input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+
+  /* Windows High Contrast suppresses box-shadow outright, so every control
+     whose focus ring is a shadow had no visible focus at all — a WCAG 2.4.7
+     failure on a build that ships an accessibility page. Buttons were already
+     safe because they use a real outline. */
+  @media (forced-colors: active) {
+    .kf-text:focus,
+    .kf-textarea:focus,
+    .kf-command-head input:focus,
+    .kf-select:focus,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    button:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 3px solid Highlight;
+      outline-offset: 2px;
+    }
+    .kf-panel, .kf-settings-shell, .kf-command-shell { border: 1px solid CanvasText; }
+    .kf-storage-alert { border: 2px solid CanvasText; }
+  }
+
+  /* Rarity is shown only when the join is confident; see joinCollectibleRarity. */
+  .kf-rarity {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+  .kf-rarity[data-rarity="common"] { color: #9ba59f; }
+  .kf-rarity[data-rarity="uncommon"] { color: #6fd47a; }
+  .kf-rarity[data-rarity="rare"] { color: #57b6ff; }
+  .kf-rarity[data-rarity="epic"] { color: #b184ff; }
+  .kf-rarity[data-rarity="legendary"] { color: #ffb648; }
+  .kf-rarity[data-rarity="mythic"] { color: #ff6b8b; }
+
+  .kf-shadow-warning { display: grid; gap: 6px; }
+  .kf-shadow-warning code { font-size: 11px; color: var(--accent); }
   .kf-command-list { max-height: 490px; overflow: auto; padding: 8px; }
   .kf-command-item { width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 12px; border: 0; border-left: 2px solid transparent; border-radius: 2px; background: transparent; text-align: left; cursor: pointer; }
   .kf-command-item:hover, .kf-command-item[data-active="true"] { border-left-color: var(--accent); background: rgba(255,255,255,.035); }
@@ -5026,6 +5596,34 @@ function applyStickerLibrarySearch(value = state.runtime.stickerLibraryQuery) {
   if (count) count.textContent = `${visible} shown`;
 }
 
+/**
+ * The settings surface for everything read from Kick's own API.
+ *
+ * Every switch here is on by default and every one degrades to the existing DOM
+ * behaviour when turned off, so the section can be read as "how much of Kick's
+ * own data should this use" rather than "which features work".
+ */
+function renderLiveDataSection(value) {
+  const collisions = state.live.collisions;
+  const rarity = state.live.rarity;
+  return `
+    <section class="kf-subsection kf-content-section">
+      <div class="kf-subsection-header"><div><h3>Kick data</h3><p>Read Kick’s own endpoints instead of scraping the page. Same-origin, read-only, using the session you are already signed into. Nothing is sent anywhere.</p></div></div>
+      <div class="kf-panel">
+        <div class="kf-status-note" data-kf-live-status>${escapeHtml(liveStatusSummary())}</div>
+        ${row('Load the emote catalog from Kick', 'Read the full channel, global, and emoji sets with their real entitlement, instead of scraping the picker. Falls back to the picker if the response changes shape.', toggle('content.liveEmoteCatalog', value.liveEmoteCatalog, { label: 'Load the emote catalog from Kick' }))}
+        ${row('Follow live chat events', 'Subscribe to the same realtime chat feed Kick’s own client uses. The provider is read from Kick rather than hardcoded.', toggle('content.liveChatEvents', value.liveChatEvents, { label: 'Follow live chat events' }))}
+        ${row('Explain removed messages', 'Kick’s automatic moderation removes messages without saying why. The realtime event carries the reason; the page does not.', toggle('content.showModerationReasons', value.showModerationReasons, { label: 'Explain removed messages' }))}
+        ${row('Count emote usage', 'Kick’s own “Frequently Used” never counts anything, so no real ranking exists. This one is yours, stored locally and exported with your library.', toggle('content.countEmoteUsage', value.countEmoteUsage, { label: 'Count emote usage' }))}
+        ${row('Show collectible rarity', 'Kick publishes rarity on card art and identity in the picker, with no key joining them. Rarity is shown only where the match is confident.', toggle('content.showEmoteRarity', value.showEmoteRarity, { label: 'Show collectible rarity' }))}
+        ${row('Warn about shadowed emote names', 'Subscriber emotes work in every chat and Kick resolves typed names through one map, so two channels sharing a name means one silently sends the other’s.', toggle('content.warnShadowedEmotes', value.warnShadowedEmotes, { label: 'Warn about shadowed emote names' }))}
+        ${row('Freeze animated emotes', 'Render animated emotes and collectibles as a single static frame, in chat and in the picker. Applied automatically when your system asks for reduced motion.', toggle('content.staticEmotes', value.staticEmotes, { label: 'Freeze animated emotes' }))}
+      </div>
+      ${rarity ? `<div class="kf-panel"><div class="kf-action-row"><div><h3>Collectible rarity</h3><p>Resolved ${rarity.matched.length} of ${rarity.total} collectible emotes. ${rarity.unmatched.length ? `${rarity.unmatched.length} could not be matched confidently and are shown without a rarity — a wrong label is worse than none.` : 'Every collectible in this channel was matched.'}</p></div></div></div>` : ''}
+      ${collisions.length ? `<div class="kf-panel"><div class="kf-action-row"><div class="kf-shadow-warning"><h3>Shadowed emote names</h3><p>These names exist in more than one of your sets. Kick sends the last one loaded, so typing the name may not send what you expect.</p>${collisions.slice(0, 12).map((collision) => `<p><code>${escapeHtml(collision.name)}</code> — sends <strong>${escapeHtml(collision.winner.setName)}</strong>, shadowing ${escapeHtml(collision.shadowed.map((entry) => entry.setName).join(', '))}</p>`).join('')}${collisions.length > 12 ? `<p>…and ${collisions.length - 12} more.</p>` : ''}</div></div></div>` : ''}
+    </section>`;
+}
+
 function renderContentPage() {
   const value = state.settings.content;
   const companion = companionInfo();
@@ -5062,6 +5660,7 @@ function renderContentPage() {
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
       </div>
     </section>
+    ${renderLiveDataSection(value)}
     <div class="kf-tool-grid">
       <section class="kf-tool-card"><div><h3>Sticker library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><button type="button" class="kf-button kf-button-small" data-action="export">Export library</button></section>
       <section class="kf-tool-card"><div><h3>Local discovery choices</h3><p>Favorites and not-interested choices stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear hidden</button></div></section>

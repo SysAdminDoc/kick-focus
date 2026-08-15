@@ -100,6 +100,35 @@ const checks = [
     && source.includes('data-kf-storage-alert')
     && source.includes('renderStorageHealthPanel')],
 
+  // Kick's own data, read read-only and same-origin
+  ['reads the realtime provider from Kick instead of hardcoding it',
+    source.includes('normalizeRealtimeConnection')
+    && source.includes('endpoints.realtimeChat')
+    // The app key must never be written in this source; it is read at runtime.
+    && !source.includes('32cbd69e4b950bf97679')],
+  ['sources the emote catalog from the API but keeps the DOM fallback',
+    source.includes('refreshEmoteCatalog')
+    && source.includes('normalizeEmoteSets')
+    && source.includes("state.live.catalogSource = 'api'")
+    && source.includes('observeStickerPicker')],
+  ['explains removed messages the DOM cannot', source.includes('normalizeDeletion')
+    && source.includes('annotateDeletedMessage')
+    && source.includes('kf-deletion-note')],
+  ['counts real emote usage', source.includes('recordEmoteUse')
+    && source.includes('kick-focus:emote-usage')],
+  ['shows collectible rarity only when the join is confident', source.includes('joinCollectibleRarity')
+    && source.includes('rarityBadge')
+    && source.includes('state.live.rarity = join.usable ? join : null')],
+  ['renders wide collectibles at their measured aspect', source.includes('measureEmoteAspect')
+    && source.includes('data-kf-emote-aspect="wide"')],
+  // The trailing slash matters: without it the lookahead accepts a lookalike
+  // host like kick.com.evil.net, and this gate would pass on exfiltration.
+  ['every API endpoint stays on kick.com', !/https:\/\/(?!(?:web\.|files\.|ext\.cdn\.)?kick\.com\/)[a-z0-9.-]+\/api\//i.test(source)],
+  ['gives High Contrast a real focus outline', source.includes('forced-colors: active')
+    && source.includes('outline: 3px solid Highlight')],
+  ['page-realm hooks do not announce themselves', source.includes('function disguise(')
+    && source.includes('[native code]')],
+
   // Firefox companion shape
   ['Firefox manifest version matches', firefoxManifest.version === VERSION],
   ['Firefox manifest is v2', firefoxManifest.manifest_version === 2],
