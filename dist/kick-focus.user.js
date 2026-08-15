@@ -1405,10 +1405,10 @@ const SITE_CSS = `
   :root {
     --kf-accent: #7cff2b;
     --kf-accent-rgb: 124, 255, 43;
-    --kf-panel: #111517;
-    --kf-panel-raised: #171c1f;
-    --kf-border: #343b40;
-    --kf-radius: 12px;
+    --kf-panel: #0d100e;
+    --kf-panel-raised: #151917;
+    --kf-border: #303632;
+    --kf-radius: 9px;
     --kf-chat-width: 380px;
     --kf-thumb-saturation: 1.03;
     --kf-caption-opacity: .72;
@@ -1421,9 +1421,15 @@ const SITE_CSS = `
   html[data-kf-radius="subtle"] { --kf-radius: 7px; }
   html[data-kf-radius="rounded"] { --kf-radius: 18px; }
   html[data-kf-theme="oled"] { --kf-panel: #050606; --kf-panel-raised: #0a0c0d; --kf-border: #24282b; }
-  html[data-kf-theme="slate"] { --kf-panel: #15191f; --kf-panel-raised: #1d232a; --kf-border: #3a454f; }
+  html[data-kf-theme="slate"] { --kf-panel: #141817; --kf-panel-raised: #1b211f; --kf-border: #3a454f; }
+
+  body { background: #080a09 !important; }
 
   @media (min-width: 1024px) {
+    #main-container { background: #090b0a !important; }
+    #sidebar-wrapper { border-right: 1px solid var(--kf-border) !important; background: var(--kf-panel) !important; }
+    [data-kf-chat-panel], #channel-chatroom { border-left-color: var(--kf-border) !important; background: var(--kf-panel) !important; }
+
     html[data-kf-sidebar="hidden"] #sidebar-wrapper,
     html[data-kf-focus="true"] #sidebar-wrapper,
     html[data-kf-theater="true"] #sidebar-wrapper { display: none !important; }
@@ -1471,22 +1477,23 @@ const SITE_CSS = `
 
     html[data-kf-sticky="true"] nav {
       min-height: 56px !important;
-      backdrop-filter: blur(14px) !important;
-      background: rgba(8, 10, 11, .94) !important;
-      border-bottom: 1px solid rgba(255,255,255,.08) !important;
+      backdrop-filter: none !important;
+      background: #0b0e0c !important;
+      border-bottom: 1px solid var(--kf-border) !important;
     }
 
     #main-container { font-size: calc(1rem * var(--kf-text-scale)); }
 
     #main-container [class*="group/card"] {
       border-radius: var(--kf-radius) !important;
-      transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease !important;
+      outline: 1px solid transparent;
+      outline-offset: 3px;
+      transition: filter 150ms ease, outline-color 150ms ease !important;
     }
 
     #main-container [class*="group/card"]:hover,
     #main-container [class*="group/card"]:focus-within {
-      transform: translateY(-2px);
-      box-shadow: 0 14px 36px rgba(0,0,0,.30);
+      outline-color: rgba(var(--kf-accent-rgb), .46);
     }
 
     #main-container [class*="group/card"] img {
@@ -1540,8 +1547,8 @@ const SITE_CSS = `
       min-height: 30px !important;
       padding: 0 7px !important;
       border: 1px solid rgba(255,255,255,.24) !important;
-      border-radius: 6px !important;
-      background: rgba(8, 10, 11, .88) !important;
+      border-radius: 4px !important;
+      background: #0d100e !important;
       color: #f7f9fa !important;
       cursor: pointer !important;
       font-size: 11px !important;
@@ -1566,8 +1573,8 @@ const SITE_CSS = `
       min-height: 30px !important;
       padding: 0 9px !important;
       border: 1px solid rgba(255,255,255,.25) !important;
-      border-radius: 6px !important;
-      background: rgba(8, 10, 11, .88) !important;
+      border-radius: 4px !important;
+      background: #0d100e !important;
       color: #f7f9fa !important;
       cursor: pointer !important;
       font-size: 11px !important;
@@ -1578,8 +1585,8 @@ const SITE_CSS = `
       position: absolute !important;
       z-index: 7 !important;
       border: 1px solid rgba(255,255,255,.18) !important;
-      border-radius: 6px !important;
-      background: rgba(8, 10, 11, .84) !important;
+      border-radius: 4px !important;
+      background: #0d100e !important;
       color: #f7f9fa !important;
       font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace !important;
     }
@@ -1588,7 +1595,7 @@ const SITE_CSS = `
     [data-kf-playback-diagnostics] { right: 12px !important; bottom: 12px !important; padding: 6px 8px !important; pointer-events: none !important; }
 
     [data-kf-search-meta] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; margin: 0 0 14px !important; color: var(--kf-accent) !important; font-size: 13px !important; font-weight: 720 !important; }
-    [data-kf-search-meta] button { min-height: 30px !important; padding: 0 10px !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: var(--kf-panel) !important; color: inherit !important; cursor: pointer !important; }
+    [data-kf-search-meta] button { min-height: 30px !important; padding: 0 10px !important; border: 1px solid var(--kf-border) !important; border-radius: 4px !important; background: var(--kf-panel) !important; color: inherit !important; cursor: pointer !important; }
 
     [data-kf-sticker-organizer] {
       margin: 4px 10px 10px !important;
@@ -1611,7 +1618,7 @@ const SITE_CSS = `
       min-height: 28px !important;
       padding: 0 7px !important;
       border: 1px solid rgba(255,255,255,.18) !important;
-      border-radius: 6px !important;
+      border-radius: 4px !important;
       background: rgba(255,255,255,.05) !important;
       color: inherit !important;
       cursor: pointer !important;
@@ -1637,7 +1644,7 @@ const SITE_CSS = `
       aspect-ratio: 1 !important;
       padding: 5px !important;
       border: 1px solid rgba(255,255,255,.12) !important;
-      border-radius: 7px !important;
+      border-radius: 4px !important;
       background: rgba(255,255,255,.045) !important;
       cursor: pointer !important;
     }
@@ -2881,16 +2888,17 @@ const UI_CSS = `
     color-scheme: dark;
     --accent: var(--kf-accent, #7cff2b);
     --accent-rgb: var(--kf-accent-rgb, 124, 255, 43);
-    --surface-0: #080a0b;
-    --surface-1: #101416;
-    --surface-2: #171c1f;
-    --surface-3: #20262a;
-    --border: #343b40;
-    --text: #f7f9fa;
-    --muted: #aab2b8;
+    --surface-0: #070908;
+    --surface-1: #101311;
+    --surface-2: #151917;
+    --surface-3: #1c211e;
+    --border: #353b37;
+    --border-subtle: #272c29;
+    --text: #f4f7f5;
+    --muted: #929b96;
     --danger: #ff6258;
     --warning: #f6b943;
-    --radius: var(--kf-radius, 12px);
+    --radius: var(--kf-radius, 9px);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px;
     line-height: 1.45;
@@ -2906,19 +2914,21 @@ const UI_CSS = `
     left: 18px;
     bottom: 18px;
     z-index: 2147483000;
-    min-width: 72px;
-    height: 40px;
-    padding: 0 15px;
-    border: 1px solid rgba(var(--accent-rgb), .58);
-    border-radius: 999px;
-    background: #111516;
+    min-width: 76px;
+    height: 38px;
+    padding: 0 16px;
+    border: 1px solid #3a413d;
+    border-radius: 7px;
+    background: #111412;
     color: var(--text);
-    box-shadow: 0 12px 32px rgba(0,0,0,.46);
+    box-shadow: 0 14px 38px rgba(0,0,0,.5);
     cursor: pointer;
-    font-weight: 760;
-    letter-spacing: .01em;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
   }
-  .kf-quick:hover { border-color: var(--accent); background: #171d1f; }
+  .kf-quick:hover { border-color: var(--accent); color: var(--accent); }
 
   .kf-backdrop {
     position: fixed;
@@ -2927,123 +2937,140 @@ const UI_CSS = `
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgba(2, 3, 4, .80);
+    background: rgba(2, 3, 3, .86);
   }
 
   .kf-settings {
-    width: min(1080px, calc(100vw - 48px));
-    height: min(804px, calc(100vh - 48px));
-    min-width: 960px;
-    min-height: 680px;
+    position: relative;
+    width: min(1000px, calc(100vw - 48px));
+    height: min(920px, calc(100vh - 48px));
+    min-width: 820px;
+    min-height: 660px;
     display: grid;
-    grid-template-rows: 72px minmax(0, 1fr) 72px;
+    grid-template-rows: 88px minmax(0, 1fr) 80px;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface-1);
-    box-shadow: 0 36px 100px rgba(0,0,0,.70);
+    box-shadow: 0 42px 120px rgba(0,0,0,.78);
     color: var(--text);
     font-size: calc(14px * var(--kf-interface-scale, 1));
   }
 
   .kf-header {
     display: grid;
-    grid-template-columns: 260px 1fr auto auto;
+    grid-template-columns: 240px 1fr auto auto;
     align-items: center;
-    gap: 22px;
-    padding: 0 18px 0 24px;
-    border-bottom: 1px solid var(--border);
-    background: #13181b;
+    gap: 24px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: #121512;
   }
-  .kf-brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; }
-  .kf-badge { padding: 2px 7px; border-radius: 5px; background: var(--accent); color: #071004; font-size: 10px; font-weight: 900; text-transform: uppercase; }
-  .kf-title { font-size: 18px; font-weight: 760; }
-  .kf-save { color: #b9c1c6; font-size: 13px; }
-  .kf-save::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--accent); }
+  .kf-brand { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 16px; font-weight: 820; letter-spacing: -.02em; }
+  .kf-brand-mark { width: 28px; height: 28px; display: block; object-fit: contain; }
+  .kf-badge { padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .68); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+  .kf-title { font-size: 15px; font-weight: 760; }
+  .kf-save { display: flex; align-items: center; color: #b7bfba; font-size: 12px; }
+  .kf-save::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border: 1px solid var(--accent); border-radius: 50%; box-shadow: inset 0 0 0 2px #121512; background: var(--accent); }
   .kf-save[data-error="true"] { color: var(--danger); }
-  .kf-save[data-error="true"]::before { background: var(--danger); }
+  .kf-save[data-error="true"]::before { border-color: var(--danger); background: var(--danger); }
 
   .kf-icon-button {
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
     border: 1px solid transparent;
-    border-radius: 8px;
-    background: var(--surface-3);
+    border-radius: 5px;
+    background: transparent;
     color: var(--text);
     cursor: pointer;
-    font-size: 22px;
     line-height: 1;
   }
-  .kf-icon-button:hover { border-color: var(--border); background: #2a3136; }
+  .kf-icon-button:hover { border-color: var(--border); background: #1a1f1c; }
+  .kf-icon { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  .kf-body { min-height: 0; display: grid; grid-template-columns: 274px minmax(0, 1fr); }
-  .kf-nav { padding: 18px 14px; border-right: 1px solid var(--border); background: #0d1113; }
+  .kf-body { min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+  .kf-nav { padding: 18px 0; border-right: 1px solid var(--border); background: #0d100e; }
   .kf-nav button {
+    position: relative;
     width: 100%;
     display: grid;
-    gap: 2px;
-    padding: 12px 14px;
-    margin-bottom: 5px;
-    border: 1px solid transparent;
-    border-radius: 8px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: center;
+    gap: 13px;
+    min-height: 62px;
+    padding: 0 24px;
+    border: 0;
     background: transparent;
     text-align: left;
     cursor: pointer;
   }
-  .kf-nav button:hover { background: rgba(255,255,255,.035); }
-  .kf-nav button[aria-current="page"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .055); }
-  .kf-nav strong { font-size: 14px; }
-  .kf-nav span { color: var(--muted); font-size: 12px; }
+  .kf-nav button::before { content: ''; position: absolute; inset: 13px auto 13px 0; width: 3px; background: transparent; }
+  .kf-nav button:hover { background: rgba(255,255,255,.025); }
+  .kf-nav button[aria-current="page"]::before { background: var(--accent); box-shadow: 0 0 14px rgba(var(--accent-rgb), .35); }
+  .kf-nav button[aria-current="page"] { color: #fff; }
+  .kf-nav .kf-icon { width: 20px; height: 20px; color: #bbc2be; }
+  .kf-nav button[aria-current="page"] .kf-icon { color: var(--accent); }
+  .kf-nav-copy { display: grid; gap: 2px; min-width: 0; }
+  .kf-nav strong { font-size: 13px; font-weight: 720; }
+  .kf-nav span { overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 
-  .kf-page { min-width: 0; overflow: auto; padding: 22px 26px 30px; scrollbar-color: #445057 transparent; }
-  .kf-page-header { margin-bottom: 16px; }
-  .kf-page-header h2 { margin: 0 0 3px; font-size: 22px; line-height: 1.2; }
-  .kf-page-header p { margin: 0; color: var(--muted); }
+  .kf-page { min-width: 0; overflow: auto; padding: 22px 30px 38px 34px; scrollbar-color: #3a423d transparent; scrollbar-width: thin; }
+  .kf-page:focus { outline: 0; }
+  .kf-page-header { min-height: 82px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .kf-page-header h2 { margin: 0 0 4px; font-size: 27px; line-height: 1.05; letter-spacing: -.035em; text-transform: uppercase; }
+  .kf-page-header p { margin: 0; color: var(--muted); font-size: 12px; }
+  .kf-page-meta { display: grid; gap: 3px; min-width: 140px; text-align: right; }
+  .kf-page-meta span { color: #747d78; font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+  .kf-page-meta strong { color: #dce2de; font-size: 11px; font-weight: 700; }
+  .kf-page-meta-control { min-width: 118px; justify-items: end; }
 
-  .kf-panel { border: 1px solid var(--border); border-radius: 10px; background: #121719; overflow: hidden; }
+  .kf-panel { border: 0; border-radius: 0; background: transparent; overflow: visible; }
   .kf-row {
-    min-height: 64px;
+    min-height: 78px;
     display: grid;
-    grid-template-columns: minmax(250px, 1fr) auto;
+    grid-template-columns: minmax(230px, 1fr) minmax(300px, auto);
     align-items: center;
-    gap: 20px;
-    padding: 12px 15px;
-    border-top: 1px solid #2b3236;
+    gap: 26px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-subtle);
   }
-  .kf-row:first-child { border-top: 0; }
-  .kf-row h3 { margin: 0 0 2px; font-size: 14px; font-weight: 720; }
-  .kf-row p { margin: 0; color: var(--muted); font-size: 12px; }
-  .kf-row-wide { grid-template-columns: 1fr; gap: 9px; }
-  .kf-control { min-width: 250px; display: flex; justify-content: flex-end; }
+  .kf-row h3 { margin: 0 0 3px; font-size: 12px; font-weight: 790; letter-spacing: .025em; }
+  .kf-row p { max-width: 390px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.38; }
+  .kf-row-wide { grid-template-columns: minmax(210px, .82fr) minmax(340px, 1.18fr); }
+  .kf-control { min-width: 300px; display: flex; justify-content: flex-end; }
 
-  .kf-segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: #0d1012; }
+  .kf-segmented { display: inline-flex; border: 1px solid #444b46; border-radius: 3px; overflow: hidden; background: #0c0f0d; }
   .kf-segmented button {
-    min-width: 72px;
-    height: 36px;
-    padding: 0 12px;
+    min-width: 78px;
+    height: 40px;
+    padding: 0 13px;
     border: 0;
-    border-left: 1px solid var(--border);
+    border-left: 1px solid #444b46;
     background: transparent;
-    color: #d5dade;
+    color: #d4dad6;
     cursor: pointer;
+    font-size: 12px;
+    font-weight: 680;
   }
   .kf-segmented button:first-child { border-left: 0; }
-  .kf-segmented button[aria-pressed="true"] { background: rgba(var(--accent-rgb), .14); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+  .kf-segmented button[aria-pressed="true"] { background: rgba(var(--accent-rgb), .055); color: #fff; box-shadow: inset 0 0 0 1px var(--accent); }
 
   .kf-switch {
     width: 42px;
-    height: 24px;
+    height: 22px;
     position: relative;
     border: 0;
     border-radius: 999px;
-    background: #465057;
+    background: #424944;
     cursor: pointer;
   }
   .kf-switch::after {
     content: '';
     position: absolute;
-    top: 4px;
-    left: 4px;
+    top: 3px;
+    left: 3px;
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -3051,115 +3078,175 @@ const UI_CSS = `
     transition: left 120ms ease;
   }
   .kf-switch[aria-checked="true"] { background: var(--accent); }
-  .kf-switch[aria-checked="true"]::after { left: 22px; background: #071004; }
+  .kf-switch[aria-checked="true"]::after { left: 23px; background: #071004; }
   .kf-switch:disabled { opacity: .76; cursor: not-allowed; }
 
-  .kf-lock { display: inline-block; margin-left: 7px; padding: 2px 6px; border-radius: 5px; background: rgba(var(--accent-rgb), .12); color: var(--accent); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+  .kf-lock { display: inline-block; margin-left: 7px; padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .5); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 850; text-transform: uppercase; }
 
-  .kf-range { display: grid; grid-template-columns: 48px minmax(220px, 1fr) 48px; align-items: center; gap: 10px; width: 100%; }
+  .kf-range { display: grid; grid-template-columns: 48px minmax(220px, 1fr) 48px; align-items: end; gap: 10px; width: 100%; }
   .kf-range span { color: var(--muted); font-size: 11px; }
   .kf-range span:last-child { text-align: right; }
   .kf-range-wrap { position: relative; display: grid; gap: 4px; }
-  .kf-range output { justify-self: center; min-width: 52px; padding: 2px 7px; border-radius: 5px; background: #2a3136; color: var(--text); text-align: center; font-size: 11px; }
-  .kf-range input { width: 100%; accent-color: var(--accent); }
+  .kf-range output { justify-self: center; min-width: 52px; padding: 2px 7px; color: var(--text); text-align: center; font-size: 10px; font-weight: 750; }
+  .kf-range input { width: 100%; height: 16px; accent-color: var(--accent); }
 
   .kf-text, .kf-textarea {
     width: 100%;
-    min-height: 38px;
-    padding: 8px 10px;
-    border: 1px solid #465057;
-    border-radius: 7px;
-    background: #0b0e10;
+    min-height: 40px;
+    padding: 9px 11px;
+    border: 1px solid #444b46;
+    border-radius: 4px;
+    background: #0b0e0c;
     color: var(--text);
   }
   .kf-textarea { min-height: 86px; resize: vertical; }
   .kf-text:focus, .kf-textarea:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-select { min-width: 118px; height: 32px; padding: 0 28px 0 9px; border: 1px solid #444b46; border-radius: 3px; background: #0b0e0c; color: var(--text); font-size: 11px; }
+  .kf-select:focus { border-color: var(--accent); outline: 0; }
 
-  .kf-theme-grid, .kf-swatch-grid { display: grid; grid-template-columns: repeat(4, minmax(92px, 1fr)); gap: 10px; }
-  .kf-theme-grid { grid-template-columns: repeat(3, minmax(125px, 1fr)); }
+  .kf-theme-grid, .kf-swatch-grid { display: grid; grid-template-columns: repeat(4, minmax(76px, 1fr)); gap: 8px; }
+  .kf-theme-grid { grid-template-columns: repeat(3, minmax(104px, 1fr)); }
   .kf-choice-card {
-    min-height: 88px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: #0e1214;
+    min-height: 86px;
+    padding: 11px;
+    border: 1px solid #3b423d;
+    border-radius: 4px;
+    background: #0d100e;
     cursor: pointer;
     text-align: left;
   }
-  .kf-choice-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .25); }
-  .kf-choice-card strong { display: block; margin-top: 9px; }
-  .kf-theme-sample { display: grid; grid-template-columns: 24px 1fr; gap: 7px; height: 32px; padding: 5px; border-radius: 4px; background: #1b2124; }
-  .kf-theme-sample::before { content: ''; border-radius: 2px; background: var(--accent); opacity: .7; }
-  .kf-theme-sample::after { content: ''; border-radius: 2px; background: #556168; }
-  .kf-swatch { width: 32px; height: 32px; border-radius: 7px; border: 1px solid rgba(255,255,255,.25); }
+  .kf-choice-card:hover { border-color: #555f58; }
+  .kf-choice-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .15); }
+  .kf-choice-card strong { display: block; margin-top: 8px; font-size: 11px; }
+  .kf-theme-sample { height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px; border: 1px solid #303632; border-radius: 2px; background: #171b18; color: #9ca59f; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+  .kf-theme-sample b { color: var(--accent); font-size: 8px; }
+  .kf-swatch { width: 28px; height: 28px; border-radius: 3px; border: 1px solid rgba(255,255,255,.24); }
   .kf-swatch[data-color="kick"] { background: #7cff2b; }
   .kf-swatch[data-color="cyan"] { background: #38d7d0; }
   .kf-swatch[data-color="violet"] { background: #9667ff; }
   .kf-swatch[data-color="gold"] { background: #ffbe2e; }
 
-  .kf-preview { margin-top: 14px; display: grid; grid-template-columns: 160px 1fr; gap: 14px; padding: 13px; border: 1px solid var(--border); border-radius: 9px; background: #0c1012; }
-  .kf-preview-media { min-height: 86px; border-radius: 7px; background: #232a2e; display: grid; place-items: center; color: var(--accent); font-weight: 900; letter-spacing: .06em; }
-  .kf-preview h3 { margin: 5px 0 5px; font-size: 15px; }
-  .kf-preview p { margin: 0; color: var(--muted); font-size: 12px; }
+  .kf-appearance-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 22px; }
+  .kf-appearance-controls { min-width: 0; }
+  .kf-appearance-controls .kf-row, .kf-appearance-controls .kf-row-wide { min-height: 0; grid-template-columns: 1fr; gap: 7px; padding: 9px 0; }
+  .kf-appearance-controls .kf-row:has(.kf-control) { min-height: 56px; grid-template-columns: minmax(150px, 1fr) minmax(190px, auto); align-items: center; gap: 10px; }
+  .kf-appearance-controls .kf-row:has(.kf-control) p { max-width: 175px; }
+  .kf-appearance-controls .kf-control { width: 190px; min-width: 0; justify-content: flex-end; }
+  .kf-appearance-controls .kf-segmented { width: 100%; }
+  .kf-appearance-controls .kf-segmented button { min-width: 0; flex: 1; padding-inline: 8px; }
+  .kf-appearance-controls .kf-range { grid-template-columns: 38px minmax(90px, 1fr) 34px; gap: 6px; }
+  .kf-appearance-controls .kf-choice-card { min-height: 64px; padding: 8px; }
+  .kf-appearance-controls .kf-theme-sample { height: 25px; padding-inline: 6px; }
+  .kf-appearance-controls .kf-choice-card strong { margin-top: 5px; font-size: 10px; }
 
-  .kf-status-card { display: grid; grid-template-columns: 1fr auto; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: #151b1e; }
-  .kf-status-card h3 { margin: 0 0 3px; font-size: 17px; }
-  .kf-status-card p { margin: 0; color: var(--muted); }
+  .kf-preview { position: sticky; top: 0; align-self: start; min-width: 0; padding-left: 20px; border-left: 1px solid var(--border); }
+  .kf-preview-kicker { color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+  .kf-preview-intro { margin: 3px 0 14px; color: var(--muted); font-size: 10px; }
+  .kf-preview-surface { overflow: hidden; border: 1px solid var(--border); border-radius: 4px; background: #0b0e0c; }
+  .kf-preview-surface header { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); font-size: 9px; }
+  .kf-preview-surface header strong { margin-right: auto; color: var(--accent); font-size: 12px; }
+  .kf-preview-surface header span { color: var(--muted); }
+  .kf-preview-image { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-bottom: 1px solid var(--border-subtle); filter: saturate(var(--kf-thumb-saturation, 1.03)); }
+  .kf-preview-feature { padding: 18px 14px; border-bottom: 1px solid var(--border-subtle); }
+  .kf-preview-feature h3 { margin: 7px 0 3px; font-size: 15px; line-height: 1.2; }
+  .kf-preview-feature p { margin: 0; color: var(--muted); font-size: 10px; }
+  .kf-preview-live { display: inline-flex; align-items: center; gap: 7px; color: #dce3de; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .kf-preview-live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .kf-preview-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; color: var(--muted); font-size: 9px; }
+  .kf-preview-action b { padding: 7px 10px; border: 1px solid var(--accent); border-radius: 3px; color: var(--accent); font-size: 9px; }
+  .kf-preview-list { display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); font-size: 9px; }
+  .kf-preview-list:last-child { border-bottom: 0; }
+  .kf-preview-list span { color: var(--muted); }
+  .kf-preview-list strong { text-align: right; }
+
+  .kf-status-card { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 18px; padding: 18px 0; border-bottom: 1px solid var(--border-subtle); }
+  .kf-status-card h3 { margin: 0 0 3px; font-size: 15px; }
+  .kf-status-card p { max-width: 520px; margin: 0; color: var(--muted); font-size: 11px; }
   .kf-active { color: var(--accent); font-weight: 800; }
-  .kf-stats { margin-top: 12px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
-  .kf-stat { padding: 11px; border-left: 1px solid var(--border); background: #101416; text-align: center; }
+  .kf-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--border-subtle); }
+  .kf-stat { padding: 15px 12px; border-left: 1px solid var(--border-subtle); text-align: left; }
   .kf-stat:first-child { border-left: 0; }
-  .kf-stat span { display: block; color: var(--muted); font-size: 11px; }
-  .kf-stat strong { display: block; margin-top: 3px; color: var(--accent); font-size: 16px; }
+  .kf-stat span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+  .kf-stat strong { display: block; margin-top: 4px; color: var(--accent); font-size: 15px; }
+
+  .kf-defense-overview { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); border-bottom: 1px solid var(--border); }
+  .kf-defense-overview .kf-status-card, .kf-defense-overview .kf-stats { border-bottom: 0; }
+  .kf-defense-overview .kf-status-card { padding-right: 18px; }
+  .kf-defense-overview .kf-status-card > .kf-active { display: none; }
+  .kf-defense-overview .kf-stats { border-left: 1px solid var(--border-subtle); }
+  .kf-content-section { margin-top: 18px; }
+  .kf-content-section .kf-subsection-header { margin-bottom: 0; padding-bottom: 9px; }
+  [data-kf-current-page="content"] .kf-row { min-height: 54px; padding: 8px 0; }
+  [data-kf-current-page="content"] .kf-row h3 { margin-bottom: 1px; font-size: 11px; }
+  [data-kf-current-page="content"] .kf-row p { font-size: 10px; }
+  [data-kf-current-page="content"] .kf-subsection { margin-top: 20px; }
+  [data-kf-current-page="content"] .kf-status-note { font-size: 10px; }
+  .kf-tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
+  .kf-tool-card { min-height: 92px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
+  .kf-tool-card h3 { margin: 0 0 3px; font-size: 11px; }
+  .kf-tool-card p { margin: 0; color: var(--muted); font-size: 10px; }
 
   .kf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .kf-table th, .kf-table td { padding: 8px 10px; border-bottom: 1px solid #2a3135; text-align: left; vertical-align: middle; }
-  .kf-table th { color: #cfd5d9; background: #20262a; font-size: 11px; }
+  .kf-table th, .kf-table td { padding: 11px 9px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; }
+  .kf-table th { color: #aeb7b1; background: transparent; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
   .kf-table tr:last-child td { border-bottom: 0; }
   .kf-table .kf-table-actions { text-align: right; }
-  .kf-shortcut { display: inline-flex; min-width: 58px; justify-content: center; padding: 4px 8px; border: 1px solid #465057; border-radius: 5px; background: #20262a; font-weight: 700; }
+  .kf-shortcut { display: inline-flex; min-width: 62px; justify-content: center; padding: 4px 8px; border: 1px solid #434a45; border-radius: 3px; background: #171b18; font-weight: 700; }
   .kf-conflict td { background: rgba(255,98,88,.055); border-top: 1px solid var(--danger); border-bottom: 1px solid var(--danger); }
   .kf-conflict-message { color: var(--danger); font-size: 11px; }
 
-  .kf-status-note { margin-top: 12px; padding: 9px 12px; border: 1px solid #2c3034; border-radius: 8px; background: rgba(255,255,255,.02); color: var(--muted); font-size: 12px; }
+  .kf-status-note { margin-top: 12px; padding: 10px 12px; border-left: 2px solid #4b534e; background: rgba(255,255,255,.018); color: var(--muted); font-size: 11px; }
   .kf-status-note[data-drifted="true"] { border-color: #7b5d20; background: rgba(246,185,67,.065); color: #e7c77e; }
-  .kf-notice { margin-top: 12px; padding: 11px 13px; border: 1px solid #7b5d20; border-radius: 8px; background: rgba(246,185,67,.065); color: #e7c77e; font-size: 12px; }
-  .kf-subsection { margin-top: 18px; }
-  .kf-subsection-header { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-  .kf-subsection h3 { margin: 0; font-size: 16px; }
-  .kf-subsection p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+  .kf-notice { margin-top: 12px; padding: 11px 13px; border-left: 2px solid #997326; background: rgba(246,185,67,.055); color: #e7c77e; font-size: 11px; }
+  .kf-subsection { margin-top: 26px; }
+  .kf-subsection-header { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 10px; padding-bottom: 11px; border-bottom: 1px solid var(--border); }
+  .kf-subsection h3 { margin: 0; font-size: 13px; letter-spacing: .02em; }
+  .kf-subsection p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
 
-  .kf-about-hero { display: flex; align-items: center; gap: 18px; margin-bottom: 20px; }
-  .kf-about-hero h2 { margin: 0 0 4px; font-size: 27px; }
-  .kf-about-hero p { margin: 0; color: var(--muted); }
-  .kf-about-status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-  .kf-mini-card { padding: 14px; border: 1px solid var(--border); border-radius: 9px; background: #121719; }
-  .kf-mini-card span { display: block; color: var(--muted); font-size: 11px; }
+  .kf-about-status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 18px 0; border-bottom: 1px solid var(--border-subtle); }
+  .kf-mini-card { padding: 14px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
+  .kf-mini-card span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
   .kf-mini-card strong { display: block; margin-top: 4px; color: var(--accent); }
-  .kf-action-row { min-height: 72px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 18px; padding: 13px 15px; border-top: 1px solid #2b3236; }
-  .kf-action-row:first-child { border-top: 0; }
-  .kf-action-row h3 { margin: 0 0 2px; font-size: 14px; }
-  .kf-action-row p { margin: 0; color: var(--muted); font-size: 12px; }
+  .kf-action-row { min-height: 78px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
+  .kf-action-row h3 { margin: 0 0 3px; font-size: 12px; }
+  .kf-action-row p { max-width: 520px; margin: 0; color: var(--muted); font-size: 11px; }
   .kf-danger { border-color: rgba(255,98,88,.65) !important; color: #ff8a82 !important; }
 
+  [data-kf-current-page="accessibility"] { padding-top: 14px; }
+  [data-kf-current-page="accessibility"] .kf-page-header { min-height: 70px; padding-bottom: 12px; }
+  [data-kf-current-page="accessibility"] .kf-row { min-height: 48px; padding: 6px 0; }
+  [data-kf-current-page="accessibility"] .kf-subsection { margin-top: 14px; }
+  [data-kf-current-page="accessibility"] .kf-subsection-header { margin-bottom: 0; padding-bottom: 8px; }
+  [data-kf-current-page="accessibility"] .kf-table th, [data-kf-current-page="accessibility"] .kf-table td { padding-block: 4px; }
+  [data-kf-current-page="accessibility"] .kf-button-small { min-height: 28px; }
+  [data-kf-current-page="about"] .kf-action-row { min-height: 70px; padding-block: 11px; }
+  [data-kf-current-page="about"] .kf-subsection { margin-top: 18px; }
+  [data-kf-current-page="about"] .kf-subsection > .kf-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 4px; }
+
   .kf-button {
-    min-height: 38px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     padding: 0 14px;
-    border: 1px solid #414a50;
-    border-radius: 7px;
-    background: #242b2f;
+    border: 1px solid #414843;
+    border-radius: 4px;
+    background: #171b18;
     color: var(--text);
     cursor: pointer;
-    font-weight: 680;
+    font-size: 12px;
+    font-weight: 700;
   }
-  .kf-button:hover { border-color: #5a666d; background: #2d353a; }
+  .kf-button:hover { border-color: #5a645d; background: #1d221e; }
   .kf-button-primary { border-color: var(--accent); background: var(--accent); color: #071004; }
   .kf-button-primary:hover { background: #91ff55; border-color: #91ff55; }
   .kf-button:disabled { opacity: .38; cursor: not-allowed; }
-  .kf-button-small { min-height: 30px; padding-inline: 10px; font-size: 12px; }
+  .kf-button-small { min-height: 32px; padding-inline: 10px; font-size: 11px; }
+  .kf-button .kf-icon { width: 16px; height: 16px; }
   .kf-button-group { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
-  .kf-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 20px; border-top: 1px solid var(--border); background: #13181b; }
+  .kf-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; border-top: 1px solid var(--border); background: #121512; }
   .kf-footer-left, .kf-footer-right { display: flex; align-items: center; gap: 10px; }
 
   .kf-confirm {
@@ -3170,7 +3257,7 @@ const UI_CSS = `
     place-items: center;
     background: rgba(2,3,4,.76);
   }
-  .kf-confirm-card { width: 430px; padding: 22px; border: 1px solid var(--border); border-radius: 11px; background: #151a1d; box-shadow: 0 24px 70px rgba(0,0,0,.62); }
+  .kf-confirm-card { width: 430px; padding: 24px; border: 1px solid var(--border); border-radius: 6px; background: #151917; box-shadow: 0 24px 70px rgba(0,0,0,.62); }
   .kf-confirm-card h2 { margin: 0 0 8px; font-size: 19px; }
   .kf-confirm-card p { margin: 0 0 18px; color: var(--muted); }
 
@@ -3182,8 +3269,8 @@ const UI_CSS = `
     max-width: 430px;
     padding: 11px 14px;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    background: #1b2225;
+    border-radius: 4px;
+    background: #171c19;
     box-shadow: 0 18px 48px rgba(0,0,0,.5);
     color: var(--text);
   }
@@ -3194,26 +3281,26 @@ const UI_CSS = `
     max-height: min(620px, calc(100vh - 80px));
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    background: #111618;
+    border-radius: 7px;
+    background: #101411;
     box-shadow: 0 32px 90px rgba(0,0,0,.72);
     color: var(--text);
   }
-  .kf-command-head { padding: 12px; border-bottom: 1px solid var(--border); }
+  .kf-command-head { padding: 14px; border-bottom: 1px solid var(--border); }
   .kf-command-head input {
     width: 100%;
     height: 44px;
     padding: 0 13px;
     border: 1px solid #465057;
-    border-radius: 8px;
-    background: #0b0e10;
+    border-radius: 4px;
+    background: #0b0e0c;
     color: var(--text);
     outline: 0;
   }
   .kf-command-head input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
-  .kf-command-list { max-height: 490px; overflow: auto; padding: 7px; }
-  .kf-command-item { width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 11px 12px; border: 0; border-radius: 7px; background: transparent; text-align: left; cursor: pointer; }
-  .kf-command-item:hover, .kf-command-item[data-active="true"] { background: #22292d; }
+  .kf-command-list { max-height: 490px; overflow: auto; padding: 8px; }
+  .kf-command-item { width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 12px; border: 0; border-left: 2px solid transparent; border-radius: 2px; background: transparent; text-align: left; cursor: pointer; }
+  .kf-command-item:hover, .kf-command-item[data-active="true"] { border-left-color: var(--accent); background: rgba(255,255,255,.035); }
   .kf-command-item strong { display: block; margin-bottom: 2px; }
   .kf-command-item span { color: var(--muted); font-size: 12px; }
   .kf-command-empty { padding: 28px; color: var(--muted); text-align: center; }
@@ -3222,18 +3309,100 @@ const UI_CSS = `
 
   :is(button, input):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
+  @media (max-width: 920px) {
+    .kf-settings { width: calc(100vw - 28px); height: calc(100vh - 28px); min-width: 0; min-height: 620px; }
+    .kf-header { grid-template-columns: 188px 1fr auto auto; gap: 14px; padding-inline: 18px; }
+    .kf-body { grid-template-columns: 188px minmax(0, 1fr); }
+    .kf-nav button { grid-template-columns: 21px minmax(0, 1fr); gap: 10px; padding-inline: 18px; }
+    .kf-nav .kf-nav-copy { overflow: visible; white-space: normal; }
+    .kf-nav-copy > strong { line-height: 1.15; white-space: normal; }
+    .kf-nav-copy > span { display: none; }
+    .kf-page { padding-inline: 24px 20px; }
+    .kf-row, .kf-row-wide { grid-template-columns: 1fr; gap: 10px; }
+    .kf-control { min-width: 0; justify-content: flex-start; }
+    .kf-range { max-width: 420px; }
+    .kf-defense-overview { grid-template-columns: 1fr; }
+    .kf-defense-overview .kf-stats { border-left: 0; border-top: 1px solid var(--border-subtle); }
+    .kf-tool-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 700px) {
+    .kf-backdrop { padding: 0; }
+    .kf-settings { width: 100vw; height: 100vh; min-height: 0; grid-template-rows: 66px minmax(0, 1fr) 68px; border: 0; border-radius: 0; }
+    .kf-header { grid-template-columns: 1fr auto auto; padding-inline: 14px; }
+    .kf-header .kf-title { display: none; }
+    .kf-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+    .kf-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; overscroll-behavior-inline: contain; }
+    .kf-nav::-webkit-scrollbar { display: none; }
+    .kf-nav button { width: auto; min-width: max-content; min-height: 54px; padding-inline: 16px; }
+    .kf-nav button::before { inset: auto 14px 0; width: auto; height: 3px; }
+    .kf-page { padding: 18px 18px 32px; }
+    .kf-page-header { min-height: 72px; }
+    .kf-page-header h2 { font-size: 23px; }
+    .kf-page-meta { display: none; }
+    .kf-theme-grid, .kf-swatch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kf-appearance-layout { grid-template-columns: 1fr; }
+    .kf-preview { position: static; padding: 18px 0 0; border-top: 1px solid var(--border); border-left: 0; }
+    .kf-about-status, .kf-stats { grid-template-columns: 1fr; }
+    .kf-mini-card, .kf-stat { border-left: 0; border-top: 1px solid var(--border-subtle); }
+    .kf-action-row { grid-template-columns: 1fr; }
+    .kf-button-group { justify-content: flex-start; }
+    .kf-footer { padding-inline: 14px; }
+    .kf-footer [data-action="export"] { display: none; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   }
 `;
 
 const NAV_ITEMS = [
-  ['layout', 'Layout', 'Structure and positioning'],
-  ['appearance', 'Appearance', 'Themes, colors, and style'],
-  ['content', 'Content & Ads', 'Filter and hide elements'],
-  ['accessibility', 'Accessibility & Shortcuts', 'Shortcuts and accessibility'],
-  ['about', 'About', 'Version, diagnostics, and privacy'],
+  ['layout', 'Layout', 'Structure and positioning', 'layout'],
+  ['appearance', 'Appearance', 'Themes, colors, and style', 'sliders'],
+  ['content', 'Content & Ads', 'Filter and hide elements', 'shield'],
+  ['accessibility', 'Accessibility & Shortcuts', 'Shortcuts and accessibility', 'keyboard'],
+  ['about', 'About', 'Version, diagnostics, and privacy', 'info'],
 ];
+
+/*
+ * Feather Icons v4.29.0 — https://feathericons.com
+ * Copyright (c) 2013-2017 Cole Bemis
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * Paths stay inline so the userscript remains dependency-free.
+ */
+const FEATHER_ICONS = Object.freeze({
+  layout: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="9" y1="9" x2="21" y2="9"></line>',
+  sliders: '<line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',
+  keyboard: '<rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6" y2="8"></line><line x1="10" y1="8" x2="10" y2="8"></line><line x1="14" y1="8" x2="14" y2="8"></line><line x1="18" y1="8" x2="18" y2="8"></line><line x1="6" y1="12" x2="6" y2="12"></line><line x1="10" y1="12" x2="10" y2="12"></line><line x1="14" y1="12" x2="14" y2="12"></line><line x1="18" y1="12" x2="18" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line>',
+  info: '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>',
+  close: '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>',
+  reset: '<polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 .49-9.5L1 10"></path>',
+  export: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>',
+  check: '<polyline points="20 6 9 17 4 12"></polyline>',
+});
+
+function uiIcon(name) {
+  return `<svg class="kf-icon" aria-hidden="true" viewBox="0 0 24 24">${FEATHER_ICONS[name] || FEATHER_ICONS.info}</svg>`;
+}
 
 const TRANSLATIONS = {
   es: {
@@ -3551,23 +3720,23 @@ function buildInterface() {
     <div class="kf-backdrop" data-kf-settings-backdrop hidden>
       <section class="kf-settings" data-kf-settings-shell role="dialog" aria-modal="true" aria-labelledby="kf-settings-title">
         <header class="kf-header">
-          <div class="kf-brand"><span>Kick Focus</span><span class="kf-badge">Premium</span></div>
+          <div class="kf-brand"><img class="kf-brand-mark" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt=""><span>Kick Focus</span><span class="kf-badge">Premium</span></div>
           <div class="kf-title" id="kf-settings-title">Settings</div>
           <div class="kf-save" data-kf-save-status data-error="false">Autosaved</div>
-          <button class="kf-icon-button" type="button" data-action="close-settings" aria-label="Close settings">×</button>
+          <button class="kf-icon-button" type="button" data-action="close-settings" aria-label="Close settings">${uiIcon('close')}</button>
         </header>
         <div class="kf-body">
           <nav class="kf-nav" aria-label="Kick Focus settings">
-            ${NAV_ITEMS.map(([id, title, description]) => `<button type="button" data-page="${id}"><strong>${title}</strong><span>${description}</span></button>`).join('')}
+            ${NAV_ITEMS.map(([id, title, description, icon]) => `<button type="button" data-page="${id}">${uiIcon(icon)}<span class="kf-nav-copy"><strong>${title}</strong><span>${description}</span></span></button>`).join('')}
           </nav>
           <main class="kf-page" data-kf-page tabindex="-1"></main>
         </div>
         <footer class="kf-footer">
           <div class="kf-footer-left">
-            <button type="button" class="kf-button" data-action="reset-page">Reset page</button>
-            <button type="button" class="kf-button" data-action="export">Export settings</button>
+            <button type="button" class="kf-button" data-action="reset-page">${uiIcon('reset')}Reset page</button>
+            <button type="button" class="kf-button" data-action="export">${uiIcon('export')}Export settings</button>
           </div>
-          <div class="kf-footer-right"><button type="button" class="kf-button kf-button-primary" data-action="close-settings">Done</button></div>
+          <div class="kf-footer-right"><button type="button" class="kf-button kf-button-primary" data-action="close-settings">${uiIcon('check')}Done</button></div>
         </footer>
         <div class="kf-confirm" data-kf-confirm hidden>
           <div class="kf-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="kf-confirm-title" aria-describedby="kf-confirm-copy">
@@ -3642,10 +3811,18 @@ function range(path, current, minimum, maximum, left, right, suffix = '') {
   return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" aria-label="${escapeHtml(path)}"></div><span>${escapeHtml(right)}</span></div>`;
 }
 
+function selectControl(path, current, choices, label) {
+  return `<select class="kf-select" data-set="${escapeHtml(path)}" aria-label="${escapeHtml(label)}">${choices.map(([value, optionLabel]) => `<option value="${escapeHtml(value)}"${selected(current, value) ? ' selected' : ''}>${escapeHtml(optionLabel)}</option>`).join('')}</select>`;
+}
+
+function pageHeader(title, description, metaLabel, metaValue) {
+  return `<div class="kf-page-header"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><div class="kf-page-meta"><span>${escapeHtml(metaLabel)}</span><strong>${escapeHtml(metaValue)}</strong></div></div>`;
+}
+
 function renderLayoutPage() {
   const value = state.settings.layout;
   return `
-    <div class="kf-page-header"><h2>Layout</h2><p>Control how Kick is arranged across your desktop.</p></div>
+    ${pageHeader('Layout', 'Control how Kick is arranged across your desktop.', 'Current setup', `${value.sidebar} sidebar · ${value.chat} chat`)}
     <section class="kf-panel">
       ${row('Sidebar mode', 'Choose how the left discovery rail behaves.', segmented('layout.sidebar', value.sidebar, [['auto','Auto'],['compact','Compact'],['hidden','Hidden']]))}
       ${row('Chat layout', 'Keep chat on the right, float it as a dock, or hide it.', segmented('layout.chat', value.chat, [['right','Right'],['docked','Docked'],['hidden','Hidden']]))}
@@ -3669,19 +3846,34 @@ function renderAppearancePage() {
   const themes = [['studio','Studio'],['oled','OLED'],['slate','Slate']];
   const accents = [['kick','Kick Green'],['cyan','Cyan'],['violet','Violet'],['gold','Gold']];
   return `
-    <div class="kf-page-header"><h2>Appearance</h2><p>Set a premium visual style without replacing Kick’s identity.</p></div>
-    <section class="kf-panel">
-      <div class="kf-row kf-row-wide"><div><h3>Theme</h3><p>Choose the overall surface treatment.</p></div><div class="kf-theme-grid">${themes.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.theme" data-value="${id}" aria-pressed="${selected(value.theme,id)}"><span class="kf-theme-sample" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
-      <div class="kf-row kf-row-wide"><div><h3>Accent color</h3><p>Use one clear accent for highlights and controls.</p></div><div class="kf-swatch-grid">${accents.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.accent" data-value="${id}" aria-pressed="${selected(value.accent,id)}"><span class="kf-swatch" data-color="${id}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
-      ${row('Language', 'Choose the language for Kick Focus settings and commands.', segmented('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']]))}
-      ${row('Corner radius', 'Adjust the roundness of enhanced UI.', segmented('appearance.radius', value.radius, [['subtle','Subtle'],['balanced','Balanced'],['rounded','Rounded']]))}
-      ${row('Thumbnail treatment', 'Adjust stream-card color intensity.', range('appearance.thumbnail', value.thumbnail, 0, 100, 'Natural', 'Vivid', '%'), { wide: true })}
-      ${row('Interface scale', 'Set the size of Kick Focus controls.', segmented('appearance.interfaceScale', value.interfaceScale, [[90,'90%'],[100,'100%'],[110,'110%']]))}
-      ${row('Dim watched cards', 'Reduce emphasis on streams you have already opened.', toggle('appearance.dimWatched', value.dimWatched, { label: 'Dim watched cards' }))}
-      ${row('Strengthen text contrast', 'Increase legibility on muted surfaces.', toggle('appearance.strongContrast', value.strongContrast, { label: 'Strengthen text contrast' }))}
-      ${row('Colorize live indicators', 'Use the selected accent for live-state emphasis.', toggle('appearance.colorizeLive', value.colorizeLive, { label: 'Colorize live indicators' }))}
-    </section>
-    <div class="kf-preview" aria-label="Live style preview"><div class="kf-preview-media">LIVE</div><div><h3>Premium stream card preview</h3><p>Clear hierarchy, restrained motion, and one consistent accent.</p></div></div>`;
+    <div class="kf-page-header"><div><h2>Appearance</h2><p>Set a premium visual style without replacing Kick’s identity.</p></div><div class="kf-page-meta kf-page-meta-control"><span>Language</span>${selectControl('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']], 'Interface language')}</div></div>
+    <div class="kf-appearance-layout">
+      <section class="kf-panel kf-appearance-controls">
+        <div class="kf-row kf-row-wide"><div><h3>Theme</h3><p>Choose the overall surface treatment.</p></div><div class="kf-theme-grid">${themes.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.theme" data-value="${id}" aria-pressed="${selected(value.theme,id)}"><span class="kf-theme-sample" aria-hidden="true"><span>Surface</span><b>Active</b></span><strong>${label}</strong></button>`).join('')}</div></div>
+        <div class="kf-row kf-row-wide"><div><h3>Accent color</h3><p>Use one clear accent for highlights and controls.</p></div><div class="kf-swatch-grid">${accents.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.accent" data-value="${id}" aria-pressed="${selected(value.accent,id)}"><span class="kf-swatch" data-color="${id}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
+        ${row('Corner radius', 'Adjust the roundness of enhanced UI.', segmented('appearance.radius', value.radius, [['subtle','Subtle'],['balanced','Balanced'],['rounded','Rounded']]))}
+        ${row('Thumbnail treatment', 'Adjust stream-card color intensity.', range('appearance.thumbnail', value.thumbnail, 0, 100, 'Natural', 'Vivid', '%'), { wide: true })}
+        ${row('Interface scale', 'Set the size of Kick Focus controls.', segmented('appearance.interfaceScale', value.interfaceScale, [[90,'90%'],[100,'100%'],[110,'110%']]))}
+        ${row('Dim watched cards', 'Reduce emphasis on streams you have already opened.', toggle('appearance.dimWatched', value.dimWatched, { label: 'Dim watched cards' }))}
+        ${row('Strengthen text contrast', 'Increase legibility on muted surfaces.', toggle('appearance.strongContrast', value.strongContrast, { label: 'Strengthen text contrast' }))}
+        ${row('Colorize live indicators', 'Use the selected accent for live-state emphasis.', toggle('appearance.colorizeLive', value.colorizeLive, { label: 'Colorize live indicators' }))}
+      </section>
+      <aside class="kf-preview" aria-label="Live style preview">
+        <div><div class="kf-preview-kicker">Live preview</div><p class="kf-preview-intro">Updates as you tune the controls.</p></div>
+        <div class="kf-preview-surface">
+          <header><strong>Kick Focus</strong><span>Browse</span><span>Following</span></header>
+          <img class="kf-preview-image" src="data:image/jpeg;base64,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" alt="">
+          <section class="kf-preview-feature">
+            <div class="kf-preview-live">Live now</div>
+            <h3>Creative tools and workflows</h3>
+            <p>Studio Live · Design & Technology</p>
+            <div class="kf-preview-action"><span>2.4K watching</span><b>Follow</b></div>
+          </section>
+          <div class="kf-preview-list"><span>Recommended</span><strong>Three calm, focused rows</strong></div>
+          <div class="kf-preview-list"><span>Interface</span><strong>${escapeHtml(value.interfaceScale)}% · ${escapeHtml(value.radius)}</strong></div>
+        </div>
+      </aside>
+    </div>`;
 }
 
 function protectionRows() {
@@ -3723,34 +3915,43 @@ function renderContentPage() {
   const value = state.settings.content;
   const companion = companionInfo();
   return `
-    <div class="kf-page-header"><h2>Content & Ads</h2><p>Keep the page calm, private, and focused on streams.</p></div>
-    <section class="kf-status-card"><div><h3>Ad defense active</h3><p>${companion.active
-      ? `Browser network ruleset plus page hooks and shell cleanup. Companion extension v${escapeHtml(companion.version)}.`
-      : 'Document-start page hooks and persistent shell cleanup. Install the companion extension for browser-level blocking.'}</p></div><div class="kf-active">${companion.active ? 'Network + page' : 'Page only'}</div></section>
-    <div class="kf-stats"><div class="kf-stat"><span>Blocked this page</span><strong data-kf-stat="blocked">${state.diagnostics.blocked}</strong></div><div class="kf-stat"><span>Removed shells</span><strong data-kf-stat="shells">${state.diagnostics.shells}</strong></div><div class="kf-stat"><span>Last match</span><strong data-kf-stat="last">${escapeHtml(state.diagnostics.lastMatch)}</strong></div></div>
+    ${pageHeader('Content & Ads', 'Keep the page calm, private, and focused on streams.', 'Protection', companion.active ? 'Network + page' : 'Page only')}
+    <div class="kf-defense-overview">
+      <section class="kf-status-card"><div><h3>Ad defense active</h3><p>${companion.active
+        ? `Browser network ruleset plus page hooks and shell cleanup. Companion extension v${escapeHtml(companion.version)}.`
+        : 'Document-start page hooks and persistent shell cleanup. Install the companion extension for browser-level blocking.'}</p></div><div class="kf-active">${companion.active ? 'Network + page' : 'Page only'}</div></section>
+      <div class="kf-stats"><div class="kf-stat"><span>Blocked this page</span><strong data-kf-stat="blocked">${state.diagnostics.blocked}</strong></div><div class="kf-stat"><span>Removed shells</span><strong data-kf-stat="shells">${state.diagnostics.shells}</strong></div><div class="kf-stat"><span>Last match</span><strong data-kf-stat="last">${escapeHtml(state.diagnostics.lastMatch)}</strong></div></div>
+    </div>
     <div class="kf-status-note" data-kf-adstack data-drifted="${assessAdStack(state.adStack).drifted}">${escapeHtml(assessAdStack(state.adStack).summary)}</div>
     <div class="kf-notice" data-kf-filter-notice ${state.filter.suspended ? '' : 'hidden'}>${state.filter.suspended
       ? `Filtering is suspended on this page. It would have hidden ${state.filter.wouldHide} of ${state.filter.total} cards, which usually means Kick changed its labels rather than that the page is really that promotional. Everything is shown.`
       : ''}</div>
-    <section class="kf-panel kf-subsection">
-      ${row('Block separable ad requests', 'Intercept known ad hosts at the earliest userscript-supported page layer.', toggle('content.blockAds', true, { locked: true, label: 'Core ad protection is on' }), { locked: true })}
-      ${row('Remove ad containers', 'Remove empty ad containers and reinjected ad frames.', toggle('content.removeAdContainers', value.removeAdContainers, { label: 'Remove ad containers' }))}
-      ${row('Suppress sponsored and promoted cards', 'Hide clearly labeled promotional cards and modules.', toggle('content.suppressPromoted', value.suppressPromoted, { label: 'Suppress promoted cards' }))}
-      ${row('Pause home-page autoplay', 'Pause autoplaying previews once; manual playback remains available.', toggle('content.pauseHomeAutoplay', value.pauseHomeAutoplay, { label: 'Pause home-page autoplay' }))}
-      ${row('Hide Slots & Casino content', 'Hide cards and sidebar entries clearly labeled as casino content.', toggle('content.hideCasino', value.hideCasino, { label: 'Hide Slots and Casino content' }))}
-      ${row('Blur mature thumbnails', 'Blur marked mature cards until hover or keyboard focus.', toggle('content.blurMature', value.blurMature, { label: 'Blur mature thumbnails' }))}
-      ${row('Hide Drops and gambling promotions', 'Hide clearly labeled Drops and gambling promotion modules.', toggle('content.hideDropsPromotions', value.hideDropsPromotions, { label: 'Hide Drops and gambling promotions' }))}
-      ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
-      ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
-      ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
-      ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
-      ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
-      ${row('Organize chat stickers', 'Add a local shelf for pins, removals, search, and one grouped sticker view.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
-      ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
-      ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
+    <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Filtering & ad defense</h3><p>Requests, promotional modules, and sensitive content.</p></div></div><div class="kf-panel">
+        ${row('Block separable ad requests', 'Intercept known ad hosts at the earliest userscript-supported page layer.', toggle('content.blockAds', true, { locked: true, label: 'Core ad protection is on' }), { locked: true })}
+        ${row('Remove ad containers', 'Remove empty ad containers and reinjected ad frames.', toggle('content.removeAdContainers', value.removeAdContainers, { label: 'Remove ad containers' }))}
+        ${row('Suppress sponsored and promoted cards', 'Hide clearly labeled promotional cards and modules.', toggle('content.suppressPromoted', value.suppressPromoted, { label: 'Suppress promoted cards' }))}
+        ${row('Pause home-page autoplay', 'Pause autoplaying previews once; manual playback remains available.', toggle('content.pauseHomeAutoplay', value.pauseHomeAutoplay, { label: 'Pause home-page autoplay' }))}
+        ${row('Hide Slots & Casino content', 'Hide cards and sidebar entries clearly labeled as casino content.', toggle('content.hideCasino', value.hideCasino, { label: 'Hide Slots and Casino content' }))}
+        ${row('Blur mature thumbnails', 'Blur marked mature cards until hover or keyboard focus.', toggle('content.blurMature', value.blurMature, { label: 'Blur mature thumbnails' }))}
+        ${row('Hide Drops and gambling promotions', 'Hide clearly labeled Drops and gambling promotion modules.', toggle('content.hideDropsPromotions', value.hideDropsPromotions, { label: 'Hide Drops and gambling promotions' }))}
+        ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
+      </div>
     </section>
-    <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Sticker organization</h3><p>${state.stickerPreferences.pinned.size} pinned · ${state.stickerPreferences.hidden.size} removed. Choices stay in this browser and can be cleared independently.</p></div><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset sticker changes</button></div></section>
-    <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Local channel tools</h3><p>Favorites, not-interested choices, keywords, and notes stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear not-interested</button></div></div>${localChannelTools()}</section>
+    <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, stickers, and diagnostics.</p></div></div><div class="kf-panel">
+        ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
+        ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
+        ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
+        ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
+        ${row('Organize chat stickers', 'Add a local shelf for pins, removals, search, and one grouped sticker view.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
+        ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
+        ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
+      </div>
+    </section>
+    <div class="kf-tool-grid">
+      <section class="kf-tool-card"><div><h3>Sticker organization</h3><p>${state.stickerPreferences.pinned.size} pinned · ${state.stickerPreferences.hidden.size} removed. Choices stay in this browser.</p></div><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset stickers</button></section>
+      <section class="kf-tool-card"><div><h3>Local discovery choices</h3><p>Favorites and not-interested choices stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear hidden</button></div></section>
+    </div>
+    <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Local channel tools</h3><p>Channel keywords and private notes stay on this device.</p></div></div>${localChannelTools()}</section>
     ${remoteBlocklistControls()}
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Protection log</h3><p>Sanitized in-memory diagnostics; query strings are never retained.</p></div></div><div class="kf-panel"><table class="kf-table"><thead><tr><th>Time</th><th>Layer</th><th>Match</th><th>Action</th></tr></thead><tbody data-kf-protection-log>${protectionRows()}</tbody></table></div></section>
     <div class="kf-notice">${companion.active
@@ -3766,7 +3967,7 @@ function renderAccessibilityPage() {
     ['sidebar','Toggle sidebar'],['settings','Open settings'],['mature','Reveal mature thumbnails'],
   ];
   return `
-    <div class="kf-page-header"><h2>Accessibility & Shortcuts</h2><p>Improve comfort and keep core actions within reach.</p></div>
+    ${pageHeader('Accessibility & Shortcuts', 'Improve comfort and keep core actions within reach.', 'Text scale', `${value.textSize}%`)}
     <section class="kf-panel">
       ${row('Reduce motion', 'Minimize non-essential animations and transitions.', toggle('accessibility.reduceMotion', value.reduceMotion, { label: 'Reduce motion' }))}
       ${row('High-contrast controls', 'Increase separation for controls, borders, and surfaces.', toggle('accessibility.highContrast', value.highContrast, { label: 'High-contrast controls' }))}
@@ -3787,7 +3988,7 @@ function renderAccessibilityPage() {
 
 function renderAboutPage() {
   return `
-    <div class="kf-about-hero"><div><h2>Kick Focus <span style="color:var(--muted);font-weight:500">${VERSION}</span></h2><p>A desktop-first layout and control layer for Kick.</p></div></div>
+    ${pageHeader('About', 'A desktop-first layout and control layer for Kick.', 'Version', VERSION)}
     <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong data-kf-compatibility data-error="${String(Boolean(state.compatibility && !state.compatibility.healthy))}">${state.compatibility ? (state.compatibility.healthy ? 'Healthy' : 'Needs attention') : 'Checking…'}</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
@@ -3804,6 +4005,7 @@ function renderAboutPage() {
 function renderSettingsPage() {
   if (!state.shadow) return;
   const page = state.shadow.querySelector('[data-kf-page]');
+  const previousPage = page.dataset.kfCurrentPage;
   const renderer = {
     layout: renderLayoutPage,
     appearance: renderAppearancePage,
@@ -3812,6 +4014,9 @@ function renderSettingsPage() {
     about: renderAboutPage,
   }[state.currentPage] || renderLayoutPage;
   page.innerHTML = renderer();
+  page.dataset.kfCurrentPage = state.currentPage;
+  state.shadow.querySelector('[data-kf-settings-shell]').dataset.kfCurrentPage = state.currentPage;
+  if (previousPage && previousPage !== state.currentPage) page.scrollTop = 0;
   for (const button of state.shadow.querySelectorAll('[data-page]')) {
     button.setAttribute('aria-current', button.dataset.page === state.currentPage ? 'page' : 'false');
   }
@@ -3965,7 +4170,7 @@ function onInterfaceClick(event) {
 }
 
 function onInterfaceChange(event) {
-  const input = event.target.closest('input[data-set]');
+  const input = event.target.closest('input[data-set], select[data-set]');
   if (!input) return;
   updateSetting(input.dataset.set, coerceSetting(input.dataset.set, input.value));
 }

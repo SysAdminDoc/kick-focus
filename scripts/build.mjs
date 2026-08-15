@@ -8,11 +8,12 @@ import { createZip } from './zip.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative) => readFile(resolve(root, relative), 'utf8');
 
-const [metadata, core, compatibility, runtime] = await Promise.all([
+const [metadata, core, compatibility, runtime, appearancePreview] = await Promise.all([
   read('src/metadata.txt'),
   read('src/core.mjs'),
   read('src/compatibility.mjs'),
   read('src/runtime.js'),
+  readFile(resolve(root, 'src/assets/appearance-preview.jpg')),
 ]);
 
 // One instance owns the page. Whichever target loads first wins, so having both
@@ -20,7 +21,10 @@ const [metadata, core, compatibility, runtime] = await Promise.all([
 const GUARD = `if (window.__kickFocusBooted) return;\nwindow.__kickFocusBooted = true;\n`;
 const bundledCore = core.replace(/^export\s+/gm, '');
 const bundledCompatibility = compatibility.replace(/^export\s+/gm, '');
-const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledCompatibility}\n${runtime}\n})();\n`;
+const bundledRuntime = runtime
+  .replaceAll('__KICK_FOCUS_ICON__', `data:image/png;base64,${renderIcon(32).toString('base64')}`)
+  .replaceAll('__KICK_FOCUS_PREVIEW__', `data:image/jpeg;base64,${appearancePreview.toString('base64')}`);
+const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledCompatibility}\n${bundledRuntime}\n})();\n`;
 
 await mkdir(resolve(root, 'dist'), { recursive: true });
 const userscript = `${metadata.replaceAll('__VERSION__', VERSION)}${body}`;

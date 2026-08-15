@@ -29,6 +29,10 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  ['keeps page state separate from navigation actions', source.includes('dataset.kfCurrentPage')
+    && !source.includes('page.dataset.page =')],
+  ['embeds the local product icon', source.includes('data:image/png;base64,') && !source.includes('__KICK_FOCUS_ICON__')],
+  ['embeds the local appearance preview', source.includes('data:image/jpeg;base64,') && !source.includes('__KICK_FOCUS_PREVIEW__')],
   ['ships SPA lifecycle hook', source.includes('kick-focus:routechange')],
   ['ships ad request classification', source.includes('classifyRequest')],
   ['guards against double boot', source.includes('__kickFocusBooted')],

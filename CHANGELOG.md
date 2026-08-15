@@ -8,6 +8,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - Chat sticker organization with a local grouped shelf, pinned favorites, removable stickers, search-aware views, native-group fallback, and independent reset controls.
 
+### Changed
+
+- Reimagined all five settings pages with a premium matte shell, clearer page hierarchy, responsive navigation, an embedded live appearance preview, and browser-backed visual parity checks.
+
 ## 1.3.0 — 2026-08-14
 
 ### Added

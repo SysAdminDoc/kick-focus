@@ -4,6 +4,9 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# Chromium writes compiled rules beside an unpacked extension during local QA.
+dist/extension/_metadata/
+
 # Local agent working files
 CLAUDE.md
 CODEX_CHANGELOG.md
