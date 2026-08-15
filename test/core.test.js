@@ -11,6 +11,7 @@ import {
   isPlaybackUrl,
   neutralizePlaybackPayload,
   nextApplyDelay,
+  normalizeStickerPreferences,
   normalizeSettings,
   routeKind,
   sanitizeDiagnosticUrl,
@@ -29,10 +30,28 @@ test('normalization clamps values and keeps core ad defense enabled', () => {
   assert.equal(value.content.blockAds, true);
   assert.equal(value.content.rememberVolume, true);
   assert.equal(value.content.rememberVodPosition, true);
+  assert.equal(value.content.organizeChatStickers, true);
   assert.equal(value.layout.playerContainVideo, true);
   assert.equal(value.appearance.language, 'auto');
   assert.equal(normalizeSettings({ appearance: { language: 'xx' } }).appearance.language, 'auto');
   assert.equal(value.accessibility.captionOpacity, 0);
+});
+
+test('sticker preferences keep pins, removals, and view modes bounded and local', () => {
+  const value = normalizeStickerPreferences({
+    pinned: ['id:1', ' id:1 ', 'id:2', ''],
+    hidden: ['id:2', 'id:3'],
+    view: 'pinned',
+    showHidden: true,
+  });
+  assert.deepEqual(value.pinned, ['id:1']);
+  assert.deepEqual(value.hidden, ['id:2', 'id:3']);
+  assert.equal(value.view, 'pinned');
+  assert.equal(value.showHidden, true);
+
+  assert.equal(normalizeStickerPreferences({ view: 'unexpected' }).view, 'all');
+  assert.equal(normalizeStickerPreferences(null).showHidden, false);
+  assert.equal(normalizeStickerPreferences({ pinned: Array.from({ length: 801 }, (_, index) => `id:${index}`) }).pinned.length, 800);
 });
 
 test('route classifier covers every audited desktop surface', () => {

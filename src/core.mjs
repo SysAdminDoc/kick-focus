@@ -44,6 +44,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     rememberVodPosition: true,
     stickyChatPause: false,
     chatHighlights: false,
+    organizeChatStickers: true,
     playbackDiagnostics: false,
     blocklistSubscription: false,
     blocklistUrl: '',
@@ -177,6 +178,7 @@ export function normalizeSettings(input) {
       rememberVodPosition: bool(content.rememberVodPosition, defaults.content.rememberVodPosition),
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
+      organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
       blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
@@ -505,6 +507,36 @@ export function detectContentLabels(text, context = {}) {
     drops: hasBadges
       ? badgeMatches(/^(drops?|drops enabled|kick drops)$/)
       : /\b(?:kick\s+drops?|drops\s+enabled)\b/.test(normalized),
+  };
+}
+
+export const STICKER_PREFERENCES_SCHEMA = 1;
+
+function cleanStickerKeys(input, limit = 800) {
+  if (!Array.isArray(input)) return [];
+  const values = [];
+  const seen = new Set();
+  for (const raw of input) {
+    if (typeof raw !== 'string' || raw.length > 320) continue;
+    const value = raw.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    values.push(value);
+    if (values.length >= limit) break;
+  }
+  return values;
+}
+
+export function normalizeStickerPreferences(input) {
+  const source = isRecord(input) ? input : {};
+  const hidden = cleanStickerKeys(source.hidden);
+  const hiddenSet = new Set(hidden);
+  return {
+    schema: STICKER_PREFERENCES_SCHEMA,
+    pinned: cleanStickerKeys(source.pinned).filter((key) => !hiddenSet.has(key)),
+    hidden,
+    view: enumValue(source.view, ['all', 'pinned', 'native'], 'all'),
+    showHidden: bool(source.showHidden, false),
   };
 }
 

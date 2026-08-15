@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## Unreleased
+
+### Added
+
+- Chat sticker organization with a local grouped shelf, pinned favorites, removable stickers, search-aware views, native-group fallback, and independent reset controls.
+
 ## 1.3.0 — 2026-08-14
 
 ### Added

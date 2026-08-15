@@ -6,6 +6,7 @@ const FAVORITES_KEY = 'kick-focus:favorite-channels';
 const DISMISSED_KEY = 'kick-focus:not-interested-channels';
 const CHAT_KEYWORDS_KEY = 'kick-focus:chat-keywords';
 const CHANNEL_NOTES_KEY = 'kick-focus:channel-notes';
+const STICKER_PREFERENCES_KEY = 'kick-focus:sticker-preferences';
 const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 const ROUTE_EVENT = 'kick-focus:routechange';
@@ -81,6 +82,8 @@ const state = {
   mediaPreferences: readPersistentRecord(MEDIA_PREFERENCES_KEY),
   chatKeywords: readPersistentRecord(CHAT_KEYWORDS_KEY),
   channelNotes: readPersistentRecord(CHANNEL_NOTES_KEY),
+  stickerPreferences: readStickerPreferences(),
+  stickerCatalog: new Map(),
   remoteBlocklist: readRemoteBlocklist(),
   casinoPaths: new Set(),
   adStack: {
@@ -717,6 +720,81 @@ const SITE_CSS = `
     [data-kf-search-meta] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; margin: 0 0 14px !important; color: var(--kf-accent) !important; font-size: 13px !important; font-weight: 720 !important; }
     [data-kf-search-meta] button { min-height: 30px !important; padding: 0 10px !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: var(--kf-panel) !important; color: inherit !important; cursor: pointer !important; }
 
+    [data-kf-sticker-organizer] {
+      margin: 4px 10px 10px !important;
+      padding: 8px 0 10px !important;
+      border-bottom: 1px solid rgba(255,255,255,.12) !important;
+      color: #f7f9fa !important;
+    }
+
+    [data-kf-sticker-toolbar] {
+      display: flex !important;
+      align-items: center !important;
+      flex-wrap: wrap !important;
+      gap: 5px !important;
+      font-size: 11px !important;
+    }
+
+    [data-kf-sticker-toolbar] strong { margin-right: 2px !important; color: var(--kf-accent) !important; font-size: 12px !important; }
+    [data-kf-sticker-count], [data-kf-sticker-note] { color: rgba(247,249,250,.62) !important; }
+    [data-kf-sticker-toolbar] button {
+      min-height: 28px !important;
+      padding: 0 7px !important;
+      border: 1px solid rgba(255,255,255,.18) !important;
+      border-radius: 6px !important;
+      background: rgba(255,255,255,.05) !important;
+      color: inherit !important;
+      cursor: pointer !important;
+      font: inherit !important;
+    }
+    [data-kf-sticker-toolbar] button:hover,
+    [data-kf-sticker-toolbar] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-note] { margin: 5px 0 7px !important; font-size: 10px !important; }
+    [data-kf-sticker-grid] {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)) !important;
+      gap: 6px !important;
+      max-height: 190px !important;
+      overflow: auto !important;
+      padding: 2px 1px 4px !important;
+    }
+    [data-kf-sticker-item] { min-width: 0 !important; text-align: center !important; }
+    [data-kf-sticker-proxy] {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+      aspect-ratio: 1 !important;
+      padding: 5px !important;
+      border: 1px solid rgba(255,255,255,.12) !important;
+      border-radius: 7px !important;
+      background: rgba(255,255,255,.045) !important;
+      cursor: pointer !important;
+    }
+    [data-kf-sticker-proxy]:hover, [data-kf-sticker-proxy]:focus-visible { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .12) !important; }
+    [data-kf-sticker-proxy] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+    [data-kf-sticker-tools] { display: flex !important; justify-content: center !important; gap: 2px !important; margin-top: 2px !important; }
+    [data-kf-sticker-tools] button {
+      min-width: 20px !important;
+      min-height: 20px !important;
+      padding: 0 3px !important;
+      border: 0 !important;
+      border-radius: 4px !important;
+      background: transparent !important;
+      color: rgba(247,249,250,.65) !important;
+      cursor: pointer !important;
+      font-size: 13px !important;
+      line-height: 1 !important;
+    }
+    [data-kf-sticker-tools] button:hover, [data-kf-sticker-tools] button:focus-visible { background: rgba(255,255,255,.12) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-empty] { padding: 10px 2px 4px !important; color: rgba(247,249,250,.62) !important; font-size: 11px !important; }
+    html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
+    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; }
+    html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
+    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; }
+    #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
+    html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; }
+
     html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; }
 
     html[data-kf-contrast="true"] #main-container :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
@@ -792,6 +870,13 @@ function applySettingsAttributes() {
   root.dataset.kfFocus = String(state.runtime.focus);
   root.dataset.kfTheater = String(state.runtime.theater);
   root.dataset.kfChatPaused = String(state.runtime.chatPaused);
+  if (content.organizeChatStickers) {
+    root.dataset.kfStickerView = state.stickerPreferences.view;
+    root.dataset.kfStickersShowHidden = String(state.stickerPreferences.showHidden);
+  } else {
+    delete root.dataset.kfStickerView;
+    delete root.dataset.kfStickersShowHidden;
+  }
   root.style.setProperty('--kf-chat-width', `${layout.chatWidth}px`);
   root.style.setProperty('--kf-thumb-saturation', String(.7 + appearance.thumbnail * .006));
   root.style.setProperty('--kf-caption-opacity', String(accessibility.captionOpacity / 100));
@@ -834,6 +919,33 @@ function readPersistentArray(key) {
 function readPersistentRecord(key) {
   const value = gmGet(key, {});
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function readStickerPreferences() {
+  const value = normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {}));
+  return {
+    pinned: new Set(value.pinned),
+    hidden: new Set(value.hidden),
+    view: value.view,
+    showHidden: value.showHidden,
+  };
+}
+
+function persistStickerPreferences() {
+  const value = normalizeStickerPreferences({
+    schema: STICKER_PREFERENCES_SCHEMA,
+    pinned: [...state.stickerPreferences.pinned],
+    hidden: [...state.stickerPreferences.hidden],
+    view: state.stickerPreferences.view,
+    showHidden: state.stickerPreferences.showHidden,
+  });
+  state.stickerPreferences = {
+    pinned: new Set(value.pinned),
+    hidden: new Set(value.hidden),
+    view: value.view,
+    showHidden: value.showHidden,
+  };
+  gmSet(STICKER_PREFERENCES_KEY, value);
 }
 
 function readRemoteBlocklist() {
@@ -1211,6 +1323,260 @@ function applyChatPause() {
   }
 }
 
+function stickerPicker() {
+  return document.querySelector('#chat-emotes-picker-panel, [data-testid="chat-emotes-picker-panel"], [data-testid*="emotes-picker-panel" i]');
+}
+
+function stickerScrollContainer(picker) {
+  return picker.querySelector('.overflow-y-auto, [class*="overflow-y-auto" i]')
+    || picker.querySelector('[id^="emote-picker-section-name-"]')?.parentElement
+    || picker;
+}
+
+function stickerSearchInput(picker) {
+  return picker.querySelector('#search-emotes-input, input[placeholder*="Search emotes" i], input[data-testid*="emote-search" i]');
+}
+
+function stickerButtonInfo(button) {
+  if (button.closest?.('[data-kf-sticker-organizer]')) return null;
+  const image = button.querySelector('img[src*="/emotes/" i], img[data-src*="/emotes/" i]');
+  if (!image) return null;
+  const rawSrc = image.getAttribute('src') || image.getAttribute('data-src') || image.currentSrc || image.src || '';
+  if (!/\/emotes\//i.test(rawSrc)) return null;
+  const alt = image.getAttribute('alt') || button.getAttribute('aria-label') || button.dataset.emoteName || 'Sticker';
+  if (alt.trim().toLowerCase() === 'emotes') return null;
+  const src = image.currentSrc || image.src || rawSrc;
+  const rawId = button.dataset.emoteId
+    || image.dataset.emoteId
+    || button.getAttribute('data-emote-id')
+    || image.getAttribute('data-emote-id')
+    || rawSrc.match(/\/emotes\/(\d+)/i)?.[1]
+    || '';
+  const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+  const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Sticker';
+  const key = (id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320);
+  return { key, id, name, src, button };
+}
+
+function stickerNativeGroup(label, picker) {
+  const parent = label.parentElement;
+  if (!parent || parent === picker) return null;
+  const labels = parent.querySelectorAll('[id^="emote-picker-section-name-"]');
+  const buttons = [...parent.querySelectorAll('button')].filter((button) => stickerButtonInfo(button));
+  if (labels.length === 1 && buttons.length) return parent;
+  const section = label.closest?.('section, [data-emote-section], [role="group"]');
+  if (!section || section === picker) return null;
+  const sectionLabels = section.querySelectorAll('[id^="emote-picker-section-name-"]');
+  const sectionButtons = [...section.querySelectorAll('button')].filter((button) => stickerButtonInfo(button));
+  return sectionLabels.length === 1 && sectionButtons.length ? section : null;
+}
+
+function stickerDescriptors(picker) {
+  for (const node of picker.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group]')) {
+    if (node.closest('[data-kf-sticker-organizer]')) continue;
+    node.removeAttribute('data-kf-sticker-key');
+    node.removeAttribute('data-kf-sticker-hidden');
+    node.removeAttribute('data-kf-sticker-pinned');
+    node.removeAttribute('data-kf-sticker-native');
+    node.removeAttribute('data-kf-sticker-native-group');
+  }
+
+  const descriptors = new Map();
+  for (const button of [...picker.querySelectorAll('button')].filter((candidate) => !candidate.closest('[data-kf-sticker-organizer]'))) {
+    const info = stickerButtonInfo(button);
+    if (!info) continue;
+    const existing = descriptors.get(info.key);
+    if (existing) existing.originals.push(button);
+    else descriptors.set(info.key, {
+      key: info.key,
+      id: info.id,
+      name: info.name,
+      src: info.src,
+      originals: [button],
+    });
+  }
+
+  for (const label of picker.querySelectorAll('[id^="emote-picker-section-name-"]')) {
+    const group = stickerNativeGroup(label, picker);
+    if (group) group.dataset.kfStickerNativeGroup = 'true';
+  }
+
+  for (const descriptor of descriptors.values()) {
+    const hidden = state.stickerPreferences.hidden.has(descriptor.key);
+    const pinned = state.stickerPreferences.pinned.has(descriptor.key);
+    for (const original of descriptor.originals) {
+      original.dataset.kfStickerKey = descriptor.key;
+      original.dataset.kfStickerHidden = String(hidden);
+      original.dataset.kfStickerPinned = String(pinned);
+      original.dataset.kfStickerNative = 'true';
+    }
+  }
+  state.stickerCatalog = descriptors;
+  return [...descriptors.values()];
+}
+
+function stickerProxyMarkup(descriptor) {
+  const pinned = state.stickerPreferences.pinned.has(descriptor.key);
+  const hidden = state.stickerPreferences.hidden.has(descriptor.key);
+  const safeKey = escapeHtml(descriptor.key);
+  const safeName = escapeHtml(descriptor.name);
+  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}">
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
+    <div data-kf-sticker-tools>
+      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Unpin' : 'Pin'} ${safeName}" title="${pinned ? 'Unpin' : 'Pin'}">${pinned ? '★' : '☆'}</button>
+      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${hidden ? 'Restore' : 'Remove'} ${safeName}" title="${hidden ? 'Restore' : 'Remove'}">${hidden ? '↶' : '×'}</button>
+    </div>
+  </div>`;
+}
+
+function removeStickerOrganizer() {
+  for (const organizer of document.querySelectorAll('[data-kf-sticker-organizer]')) organizer.remove();
+}
+
+function clearStickerUI() {
+  removeStickerOrganizer();
+  for (const node of document.querySelectorAll('[data-kf-sticker-key], [data-kf-sticker-native-group]')) {
+    if (node.closest('[data-kf-sticker-organizer]')) continue;
+    node.removeAttribute('data-kf-sticker-key');
+    node.removeAttribute('data-kf-sticker-hidden');
+    node.removeAttribute('data-kf-sticker-pinned');
+    node.removeAttribute('data-kf-sticker-native');
+    node.removeAttribute('data-kf-sticker-native-group');
+  }
+  delete document.documentElement.dataset.kfStickerView;
+  delete document.documentElement.dataset.kfStickersShowHidden;
+  state.stickerCatalog = new Map();
+}
+
+function renderStickerOrganizer() {
+  if (!state.settings.content.organizeChatStickers) {
+    clearStickerUI();
+    return;
+  }
+  const picker = stickerPicker();
+  if (!picker) {
+    state.stickerCatalog = new Map();
+    return;
+  }
+  const scroll = stickerScrollContainer(picker);
+  if (!scroll) return;
+  const descriptors = stickerDescriptors(picker);
+  if (!descriptors.length) {
+    removeStickerOrganizer();
+    return;
+  }
+  const search = stickerSearchInput(picker);
+  if (search && search.dataset.kfStickerSearchBound !== 'true') {
+    search.dataset.kfStickerSearchBound = 'true';
+    search.addEventListener('input', () => renderStickerOrganizer());
+  }
+  let organizer = picker.querySelector('[data-kf-sticker-organizer]');
+  if (!organizer) {
+    organizer = document.createElement('section');
+    organizer.dataset.kfStickerOrganizer = 'true';
+  }
+  if (organizer.parentElement !== scroll) scroll.prepend(organizer);
+
+  const query = String(search?.value || '').trim().toLowerCase();
+  const showHidden = state.stickerPreferences.showHidden;
+  const matches = (descriptor) => (!query || descriptor.name.toLowerCase().includes(query))
+    && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
+  const allVisible = descriptors.filter(matches);
+  const visible = state.stickerPreferences.view === 'pinned'
+    ? allVisible.filter((descriptor) => state.stickerPreferences.pinned.has(descriptor.key))
+    : allVisible;
+  const signature = [
+    state.stickerPreferences.view,
+    String(showHidden),
+    query,
+    descriptors.map((descriptor) => descriptor.key).join(','),
+    [...state.stickerPreferences.pinned].join(','),
+    [...state.stickerPreferences.hidden].join(','),
+  ].join('\u0001');
+  if (organizer.dataset.kfStickerSignature === signature) return;
+  organizer.dataset.kfStickerSignature = signature;
+  const view = state.stickerPreferences.view;
+  const countLabel = `${visible.length} ${visible.length === 1 ? 'sticker' : 'stickers'}`;
+  const list = view === 'native'
+    ? '<div data-kf-sticker-empty>Kick’s native sticker groups are shown below.</div>'
+    : visible.length
+      ? `<div data-kf-sticker-grid>${visible.map(stickerProxyMarkup).join('')}</div>`
+      : `<div data-kf-sticker-empty>${view === 'pinned' ? 'Pin stickers here to build your shelf.' : 'No stickers match this search.'}</div>`;
+  organizer.innerHTML = `
+    <div data-kf-sticker-toolbar>
+      <strong>Sticker shelf</strong>
+      <span data-kf-sticker-count>${escapeHtml(countLabel)}</span>
+      <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Pinned (${state.stickerPreferences.pinned.size})</button>
+      <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All stickers (${allVisible.length})</button>
+      <button type="button" data-kf-sticker-view="native" data-active="${view === 'native'}" aria-pressed="${view === 'native'}">Native groups</button>
+      <button type="button" data-kf-sticker-show-hidden="true" aria-pressed="${showHidden}">${showHidden ? 'Hide removed' : 'Show removed'}</button>
+      <button type="button" data-kf-sticker-reset="true">Reset changes</button>
+    </div>
+    <div data-kf-sticker-note>Pin with ☆, remove with ×. These choices stay on this device.</div>
+    ${list}`;
+}
+
+function resetStickerPreferences() {
+  gmDelete(STICKER_PREFERENCES_KEY);
+  state.stickerPreferences = {
+    pinned: new Set(),
+    hidden: new Set(),
+    view: 'all',
+    showHidden: false,
+  };
+}
+
+function clearStickerPreferences() {
+  resetStickerPreferences();
+  renderSettingsPage();
+  scheduleApply(0);
+  showToast('Sticker pins and removals reset.');
+}
+
+function handleStickerAction(event) {
+  const target = event.target.closest?.('[data-kf-sticker-action], [data-kf-sticker-view], [data-kf-sticker-show-hidden], [data-kf-sticker-reset]');
+  if (!target || !target.closest?.('[data-kf-sticker-organizer]')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const key = target.dataset.kfStickerKey;
+  const action = target.dataset.kfStickerAction;
+  if (action === 'send') {
+    const original = state.stickerCatalog.get(key)?.originals?.find((button) => button.isConnected);
+    original?.click?.();
+    return;
+  }
+  if (action === 'pin' && key) {
+    if (state.stickerPreferences.pinned.has(key)) state.stickerPreferences.pinned.delete(key);
+    else {
+      state.stickerPreferences.pinned.add(key);
+      state.stickerPreferences.hidden.delete(key);
+    }
+    persistStickerPreferences();
+    announce(state.stickerPreferences.pinned.has(key) ? 'Sticker pinned' : 'Sticker unpinned');
+  } else if (action === 'hide' && key) {
+    if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
+    else {
+      state.stickerPreferences.hidden.add(key);
+      state.stickerPreferences.pinned.delete(key);
+    }
+    persistStickerPreferences();
+    announce(state.stickerPreferences.hidden.has(key) ? 'Sticker removed' : 'Sticker restored');
+  } else if (target.dataset.kfStickerView) {
+    state.stickerPreferences.view = target.dataset.kfStickerView;
+    persistStickerPreferences();
+  } else if (target.dataset.kfStickerShowHidden) {
+    state.stickerPreferences.showHidden = !state.stickerPreferences.showHidden;
+    persistStickerPreferences();
+  } else if (target.dataset.kfStickerReset) {
+    resetStickerPreferences();
+    announce('Sticker changes reset');
+  } else {
+    return;
+  }
+  applySettingsAttributes();
+  scheduleApply(0);
+}
+
 function chatKeywordsForChannel() {
   const value = state.chatKeywords[channelPath()];
   return Array.isArray(value) ? value.filter((item) => typeof item === 'string').slice(0, 20) : [];
@@ -1494,6 +1860,7 @@ function scheduleApply(delay = 50) {
     applyMediaMemory();
     applyPlayerResilience();
     applyChatPause();
+    renderStickerOrganizer();
     applyChatHighlights();
     applyPlaybackDiagnostics();
     state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
@@ -1532,6 +1899,7 @@ function installRuntimeInteractions() {
   pageWindow.__kickFocusRuntimeInteractionsV1 = true;
   document.addEventListener('click', handleCardAction, true);
   document.addEventListener('click', handleSearchAction, true);
+  document.addEventListener('click', handleStickerAction, true);
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('[data-kf-chat-pause]');
     if (!button) return;
@@ -2507,9 +2875,11 @@ function renderContentPage() {
       ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
       ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
       ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
+      ${row('Organize chat stickers', 'Add a local shelf for pins, removals, search, and one grouped sticker view.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
       ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
       ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
     </section>
+    <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Sticker organization</h3><p>${state.stickerPreferences.pinned.size} pinned · ${state.stickerPreferences.hidden.size} removed. Choices stay in this browser and can be cleared independently.</p></div><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset sticker changes</button></div></section>
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Local channel tools</h3><p>Favorites, not-interested choices, keywords, and notes stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear not-interested</button></div></div>${localChannelTools()}</section>
     ${remoteBlocklistControls()}
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Protection log</h3><p>Sanitized in-memory diagnostics; query strings are never retained.</p></div></div><div class="kf-panel"><table class="kf-table"><thead><tr><th>Time</th><th>Layer</th><th>Match</th><th>Action</th></tr></thead><tbody data-kf-protection-log>${protectionRows()}</tbody></table></div></section>
@@ -2712,6 +3082,8 @@ function onInterfaceClick(event) {
     renderSettingsPage();
     scheduleApply(0);
     showToast('Not-interested channels restored.');
+  } else if (action === 'clear-sticker-preferences') {
+    clearStickerPreferences();
   }
   else if (action === 'cancel-shortcut') {
     state.shortcutCapture = null;
@@ -2770,6 +3142,7 @@ function confirmReset() {
   if (scope === 'all') {
     state.settings = normalizeSettings(DEFAULT_SETTINGS);
     gmDelete(STORAGE_KEY);
+    resetStickerPreferences();
     saveSettings('All settings reset');
   } else {
     const section = { layout: 'layout', appearance: 'appearance', content: 'content', accessibility: 'accessibility' }[state.currentPage];
@@ -2899,6 +3272,7 @@ function restoreShortcuts() {
 
 function clearEnhancedPage() {
   const root = document.documentElement;
+  clearStickerUI();
   if (root.dataset.kfManagedSidebar === 'true') {
     findProbe(document, 'sidebarExpand').element?.click?.();
   }
