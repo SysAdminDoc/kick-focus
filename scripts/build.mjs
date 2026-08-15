@@ -8,9 +8,10 @@ import { createZip } from './zip.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative) => readFile(resolve(root, relative), 'utf8');
 
-const [metadata, core, compatibility, runtime, appearancePreview] = await Promise.all([
+const [metadata, core, api, compatibility, runtime, appearancePreview] = await Promise.all([
   read('src/metadata.txt'),
   read('src/core.mjs'),
+  read('src/api.mjs'),
   read('src/compatibility.mjs'),
   read('src/runtime.js'),
   readFile(resolve(root, 'src/assets/appearance-preview.jpg')),
@@ -20,6 +21,7 @@ const [metadata, core, compatibility, runtime, appearancePreview] = await Promis
 // the userscript and the companion extension installed cannot mount two UIs.
 const GUARD = `if (window.__kickFocusBooted) return;\nwindow.__kickFocusBooted = true;\n`;
 const bundledCore = core.replace(/^export\s+/gm, '');
+const bundledApi = api.replace(/^export\s+/gm, '');
 const bundledCompatibility = compatibility.replace(/^export\s+/gm, '');
 const bundledRuntime = runtime
   .replaceAll('__KICK_FOCUS_ICON__', `data:image/png;base64,${renderIcon(32).toString('base64')}`)
