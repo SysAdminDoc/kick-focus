@@ -161,6 +161,14 @@ const checks = [
   ['multi-stream embeds only Kick origins', source.includes('https://player.kick.com/')
     && !/https:\/\/(?!(?:player\.|web\.|files\.|ext\.cdn\.)?kick\.com\/)[a-z0-9.-]+\/(?:popout|embed)\//i.test(source)],
 
+  ['offers a hover-expanding dropdown sidebar mode', source.includes('data-kf-sidebar="dropdown"')
+    && source.includes('[aria-controls="sidebar-wrapper"]')
+    && source.includes('min-width: 1280px')
+    // A panel that slides out under the pointer must honour reduced motion.
+    && source.includes('prefers-reduced-motion: reduce')],
+  ['multi-stream is reachable without opening settings', source.includes('data-kf-header-multi')
+    && source.includes('kf-header-multi')],
+
   // Kick's own data, read read-only and same-origin
   ['reads the realtime provider from Kick instead of hardcoding it',
     source.includes('normalizeRealtimeConnection')

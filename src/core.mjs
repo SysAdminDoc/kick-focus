@@ -149,7 +149,7 @@ export function normalizeSettings(input) {
   // the new readable desktop baseline for existing installations.
   const sidebar = sourceSchema < 2 && (layout.sidebar == null || layout.sidebar === 'compact')
     ? defaults.layout.sidebar
-    : enumValue(layout.sidebar, ['auto', 'compact', 'hidden'], defaults.layout.sidebar);
+    : enumValue(layout.sidebar, ['auto', 'compact', 'dropdown', 'hidden'], defaults.layout.sidebar);
   const chatWidth = sourceSchema < 2 && (layout.chatWidth == null || Number(layout.chatWidth) === 380)
     ? defaults.layout.chatWidth
     : Math.round(clamp(layout.chatWidth, 320, 520, defaults.layout.chatWidth));

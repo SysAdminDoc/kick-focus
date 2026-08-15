@@ -154,7 +154,7 @@ function normalizeSettings(input) {
   // the new readable desktop baseline for existing installations.
   const sidebar = sourceSchema < 2 && (layout.sidebar == null || layout.sidebar === 'compact')
     ? defaults.layout.sidebar
-    : enumValue(layout.sidebar, ['auto', 'compact', 'hidden'], defaults.layout.sidebar);
+    : enumValue(layout.sidebar, ['auto', 'compact', 'dropdown', 'hidden'], defaults.layout.sidebar);
   const chatWidth = sourceSchema < 2 && (layout.chatWidth == null || Number(layout.chatWidth) === 380)
     ? defaults.layout.chatWidth
     : Math.round(clamp(layout.chatWidth, 320, 520, defaults.layout.chatWidth));
@@ -3143,6 +3143,59 @@ const SITE_CSS = `
 
   video::cue { background: rgba(0, 0, 0, var(--kf-caption-opacity)); }
 
+  /* Sidebar "dropdown" mode: the discovery rail collapses to a labelled tab and
+     expands over the page on hover or keyboard focus, so the grid keeps the
+     full width without losing one-move access to channels.
+
+     Concept from the MIT-licensed "KICK Dropdown" userstyle by IamKoeda
+     (userstyles.world/style/29036), rebuilt here on this project's own tokens
+     and wired to the existing sidebar setting.
+
+     Desktop-only by design: below 1280px the expanded panel would cover the
+     content it is meant to navigate. */
+  @media (min-width: 1280px) {
+    html[data-kf-sidebar="dropdown"] #sidebar-wrapper {
+      position: absolute;
+      z-index: 60;
+      width: var(--kf-sidebar-dropdown-width, 240px);
+      max-width: 88vw;
+      overflow: hidden;
+      border: 1px solid var(--kf-border);
+      border-radius: var(--kf-radius);
+      background: var(--kf-panel);
+      box-shadow: 0 18px 46px rgba(0,0,0,.55);
+      transform: translateX(calc(-100% + var(--kf-sidebar-dropdown-tab, 34px)));
+      transition: transform .28s ease, border-color .28s ease;
+    }
+    html[data-kf-sidebar="dropdown"] #sidebar-wrapper::after {
+      content: "";
+      position: absolute;
+      inset-block: 0;
+      right: 0;
+      width: var(--kf-sidebar-dropdown-tab, 34px);
+      border-left: 1px solid var(--kf-border);
+      background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .10), transparent);
+      pointer-events: none;
+    }
+    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:hover,
+    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:focus-within {
+      transform: translateX(0);
+      border-color: rgba(var(--kf-accent-rgb), .45);
+    }
+    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:hover::after,
+    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:focus-within::after { opacity: 0; }
+    /* Kick's own collapse control would fight this mode. */
+    html[data-kf-sidebar="dropdown"] [aria-controls="sidebar-wrapper"] { display: none !important; }
+    /* Reclaim the space the rail no longer occupies. */
+    html[data-kf-sidebar="dropdown"] :is(main, #main-container) { margin-left: var(--kf-sidebar-dropdown-tab, 34px); }
+    /* A panel that slides out under the pointer is exactly what reduced-motion
+       is asking us not to animate. It still expands — it just does it at once. */
+    html[data-kf-sidebar="dropdown"][data-kf-reduce-motion="true"] #sidebar-wrapper { transition: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html[data-kf-sidebar="dropdown"] #sidebar-wrapper { transition: none; }
+  }
+
   /* Why a message disappeared. The DOM only removes the node; the realtime
      event carries the reason, and no DOM-scraping tool can see it. */
   .kf-deletion-note {
@@ -3731,7 +3784,7 @@ function renderMultistream() {
   const grid = backdrop.querySelector('[data-kf-multistream-grid]');
   const { streams, focus, chat, showChat } = state.multistream;
 
-  backdrop.dataset.kfMultistreamChat = String(showChat && Boolean(chat));
+  backdrop.dataset.kfMultistreamShowChat = String(showChat && Boolean(chat));
   grid.style.setProperty('--kf-multistream-columns', String(multistreamColumns(streams.length)));
 
   const existing = new Map();
@@ -3901,6 +3954,17 @@ function cardPath(node) {
 function syncNativeSidebar() {
   if (state.runtime.sidebarHidden || state.runtime.focus || state.runtime.theater) return;
   const mode = state.settings.layout.sidebar;
+  // Dropdown mode owns the rail through CSS. Driving Kick's own collapse
+  // control here as well would collapse the panel the moment it expands.
+  if (mode === 'dropdown') {
+    // Leave Kick's rail expanded so the dropdown has its full contents.
+    const expand = findProbe(document, 'sidebarExpand').element;
+    if (expand && document.documentElement.dataset.kfManagedSidebar === 'true') {
+      delete document.documentElement.dataset.kfManagedSidebar;
+      expand.click();
+    }
+    return;
+  }
   const collapse = findProbe(document, 'sidebarCollapse').element;
   const expand = findProbe(document, 'sidebarExpand').element;
   if (mode === 'compact' && collapse) {
@@ -5933,7 +5997,7 @@ const UI_CSS = `
   .kf-ms-error[hidden] { display: none; }
 
   .kf-ms-body { display: grid; grid-template-columns: 1fr 0; min-height: 0; }
-  .kf-ms-backdrop[data-kf-multistream-chat="true"] .kf-ms-body { grid-template-columns: 1fr 340px; }
+  .kf-ms-backdrop[data-kf-multistream-show-chat="true"] .kf-ms-body { grid-template-columns: 1fr 340px; }
   .kf-ms-grid {
     display: grid;
     grid-template-columns: repeat(var(--kf-multistream-columns, 1), 1fr);
@@ -6583,7 +6647,7 @@ function renderLayoutPage() {
   return `
     ${pageHeader('Layout', 'Control how Kick is arranged across your desktop.', 'Current setup', `${value.sidebar} sidebar · ${value.chat} chat`)}
     <section class="kf-panel">
-      ${row('Sidebar mode', 'Choose how the left discovery rail behaves.', segmented('layout.sidebar', value.sidebar, [['auto','Auto'],['compact','Compact'],['hidden','Hidden']]))}
+      ${row('Sidebar mode', 'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.', segmented('layout.sidebar', value.sidebar, [['auto','Auto'],['compact','Compact'],['dropdown','Dropdown'],['hidden','Hidden']]))}
       ${row('Chat layout', 'Keep chat on the right, float it as a dock, or hide it.', segmented('layout.chat', value.chat, [['right','Right'],['docked','Docked'],['hidden','Hidden']]))}
       ${row('Chat width', 'Set the width of the live chat column.', range('layout.chatWidth', value.chatWidth, 320, 520, '320 px', '520 px', ' px'), { wide: true })}
       ${row('Content density', 'Adjust spacing and padding across discovery pages.', segmented('layout.density', value.density, [['comfortable','Comfortable'],['compact','Compact']]))}
@@ -7774,7 +7838,7 @@ function ensureHeaderQuickControl() {
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = `
       <style>
-        :host { display: inline-flex; flex: 0 0 auto; color-scheme: dark; }
+        :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
         * { box-sizing: border-box; }
         button {
           display: inline-flex;
@@ -7798,21 +7862,34 @@ function ensureHeaderQuickControl() {
         button:active { transform: scale(.97); }
         button:focus-visible { outline: 2px solid #f4f7f5; outline-offset: 2px; }
         img { display: block; width: 18px; height: 18px; object-fit: contain; }
+        .kf-header-multi svg { width: 15px; height: 15px; fill: currentColor; opacity: .9; }
         @media (max-width: 960px) {
           button { width: 36px; padding: 0; }
           span { display: none; }
         }
       </style>
-      <button type="button" aria-label="Open Kick Focus command menu" title="Kick Focus">
+      <button type="button" data-kf-header-focus aria-label="Open Kick Focus command menu" title="Kick Focus">
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt="">
         <span data-kf-header-control-label>Focus</span>
+      </button>
+      <button type="button" data-kf-header-multi class="kf-header-multi" aria-label="Open Kick Focus multi-stream" title="Multi-stream">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2.5" y="3.5" width="8.5" height="7" rx="1.5"/><rect x="13" y="3.5" width="8.5" height="7" rx="1.5"/><rect x="2.5" y="13" width="8.5" height="7" rx="1.5"/><rect x="13" y="13" width="8.5" height="7" rx="1.5"/></svg>
+        <span>Multi</span>
       </button>`;
-    const button = shadow.querySelector('button');
+    const button = shadow.querySelector('[data-kf-header-focus]');
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
       if (state.runtime.suspended) togglePanicSwitch();
       else openCommandMenu();
+    });
+    // Multi-stream is a headline feature; burying it in a settings page is not
+    // "easily add multiple streams".
+    shadow.querySelector('[data-kf-header-multi]').addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (multistreamOpen()) closeMultistream();
+      else openMultistream();
     });
     state.headerControlHost = host;
     state.headerControlButton = button;
@@ -7877,6 +7954,12 @@ function installCompanionBridge() {
   document.addEventListener('kick-focus:request-settings', () => publishSettingsState());
   document.addEventListener('kick-focus:open-settings', () => openSettings());
   document.addEventListener('kick-focus:open-commands', () => openCommandMenu());
+  // Reachable without depending on Kick's header markup, which the header
+  // control does. The companion popup uses this too.
+  document.addEventListener('kick-focus:open-multistream', () => {
+    if (multistreamOpen()) closeMultistream();
+    else openMultistream();
+  });
   document.addEventListener('kick-focus:set-telemetry', (event) => {
     updateSetting('content.reduceTelemetry', Boolean(event.detail?.enabled));
   });

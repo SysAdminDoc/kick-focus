@@ -81,6 +81,11 @@ api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+  if (message?.type === 'kick-focus:open-multistream') {
+    document.dispatchEvent(new CustomEvent('kick-focus:open-multistream'));
+    sendResponse({ ok: true });
+    return true;
+  }
   if (message?.type === 'kick-focus:open-commands') {
     document.dispatchEvent(new CustomEvent('kick-focus:open-commands'));
     sendResponse({ ok: true });
