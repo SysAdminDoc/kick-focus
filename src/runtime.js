@@ -197,6 +197,76 @@ function blockedResponse(win) {
   }
 }
 
+/**
+ * Rewrite a playback response read through XHR.
+ *
+ * The player reads `responseText` repeatedly as readyState advances, so the
+ * result is cached against the raw body: transforming on every read would be
+ * wasteful, and reporting on every read would flood the protection log.
+ */
+function installPlaybackRewrite(xhr, nativeText, nativeResponse, report) {
+  let cache = null;
+  let reported = false;
+
+  const rewrite = (raw) => {
+    if (typeof raw !== 'string' || raw === '') return raw;
+    if (cache && cache.raw === raw) return cache.value;
+    const result = neutralizePlaybackPayload(raw);
+    cache = { raw, value: result.changed ? result.text : raw };
+    if (result.changed && !reported) {
+      reported = true;
+      report('Playback', {
+        category: 'advertising',
+        label: `playback ad flags cleared (${result.removed.join(', ')})`,
+      });
+    }
+    return cache.value;
+  };
+
+  try {
+    Object.defineProperty(xhr, 'responseText', {
+      configurable: true,
+      get() {
+        try {
+          return rewrite(nativeText.get.call(this));
+        } catch {
+          return nativeText.get.call(this);
+        }
+      },
+    });
+
+    if (nativeResponse?.get) {
+      Object.defineProperty(xhr, 'response', {
+        configurable: true,
+        get() {
+          const raw = nativeResponse.get.call(this);
+          const type = this.responseType;
+          if (type === '' || type === 'text') return rewrite(raw);
+          if (type === 'json' && raw && typeof raw === 'object') {
+            const result = neutralizePlaybackPayload(JSON.stringify(raw));
+            if (!result.changed) return raw;
+            if (!reported) {
+              reported = true;
+              report('Playback', {
+                category: 'advertising',
+                label: `playback ad flags cleared (${result.removed.join(', ')})`,
+              });
+            }
+            try {
+              return JSON.parse(result.text);
+            } catch {
+              return raw;
+            }
+          }
+          return raw;
+        },
+      });
+    }
+  } catch {
+    // Without the override the request still succeeds unmodified.
+  }
+}
+
 function installNetworkDefense() {
   const marker = '__kickFocusNetworkDefenseV1';
   if (pageWindow[marker]) return;
@@ -230,7 +300,26 @@ function installNetworkDefense() {
           report('Fetch', result);
           return blockedResponse(pageWindow);
         }
-        return nativeFetch(input, init);
+        if (!isPlaybackUrl(rawUrl)) return nativeFetch(input, init);
+
+        // Playback is first-party and must be delivered, but the ad flags it
+        // carries are rewritten on the way through.
+        return nativeFetch(input, init).then((response) => {
+          if (!response?.ok) return response;
+          return response.clone().text().then((body) => {
+            const rewritten = neutralizePlaybackPayload(body);
+            if (!rewritten.changed) return response;
+            report('Playback', {
+              category: 'advertising',
+              label: `playback ad flags cleared (${rewritten.removed.join(', ')})`,
+            });
+            return new pageWindow.Response(rewritten.text, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            });
+          }).catch(() => response);
+        });
       };
     }
   } catch {
@@ -242,11 +331,16 @@ function installNetworkDefense() {
     const nativeOpen = xhrPrototype?.open;
     const nativeSend = xhrPrototype?.send;
     if (nativeOpen && nativeSend) {
+      const nativeText = Object.getOwnPropertyDescriptor(xhrPrototype, 'responseText');
+      const nativeResponse = Object.getOwnPropertyDescriptor(xhrPrototype, 'response');
+
       xhrPrototype.open = function kickFocusOpen(method, url, ...rest) {
         this.__kfRequest = classify(url);
+        this.__kfPlayback = isPlaybackUrl(url);
         return nativeOpen.call(this, method, url, ...rest);
       };
       xhrPrototype.send = function kickFocusSend(...args) {
+        if (this.__kfPlayback && nativeText?.get) installPlaybackRewrite(this, nativeText, nativeResponse, report);
         if (!this.__kfRequest?.blocked) return nativeSend.apply(this, args);
         report('XHR', this.__kfRequest);
         queueMicrotask(() => {

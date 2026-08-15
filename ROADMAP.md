@@ -45,15 +45,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks only out
 
 Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 
-### P0
-
-- [ ] P0 — Neutralize ads in the `/playback` API response
-  Why: Kick launched ads commercially on 2026-08-06 and gates them on flags in this JSON, making it the only in-page point that affects server-side stitched ads, which no host blocklist can reach.
-  Evidence: Pkkls/kick-ad-blocker `dist/hls-proxy.js`; community-verified uBO filters pruning `video_player.google_ads_sdk` / `pal_sdk` / `datazoom_sdk` and setting `video_session.auto_ads_enabled=false` (r/uBlockOrigin 1tm85mt); these flags were observed live in this project's own 2026-08-14 audit.
-  Touches: `src/runtime.js` (`installNetworkDefense`, which currently blocks but never rewrites responses), `src/core.mjs` (response-transform helper plus tests), Content & Ads settings copy.
-  Acceptance: on a channel serving `auto_ads_enabled: true`, the response delivered to the page reports it false with the ad SDK blocks pruned, playback still starts, and the protection log records the rewrite.
-  Complexity: M
-
 ### P1
 
 - [ ] P1 — Scrub stitched ad ranges from the HLS manifest

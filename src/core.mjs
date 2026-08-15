@@ -298,6 +298,74 @@ export const CASINO_CATEGORY_SLUGS = Object.freeze([
  * @param {{categories?: string[], badges?: string[]}} [context] Structured
  *   evidence read from the card: category slugs and short badge texts.
  */
+// Ad SDK blocks Kick advertises in its playback payload. Removing them stops
+// the player initialising the SDKs at all, rather than blocking their requests
+// after the fact.
+const PLAYBACK_AD_SDK_KEYS = Object.freeze([
+  'google_ads_sdk', 'pal_sdk', 'datazoom_sdk', 'ima_sdk',
+]);
+
+export function isPlaybackUrl(rawUrl) {
+  const value = String(rawUrl || '');
+  // Kick versions this endpoint, so the version segment is not pinned.
+  return /\/api\/v\d+\/[^?#]*\/playback(?:[/?#]|$)/.test(value)
+    || /\/stream\/[^/?#]+\/playback(?:[/?#]|$)/.test(value);
+}
+
+/**
+ * Turn off ads in a playback payload.
+ *
+ * Kick decides client-side ad behaviour from flags in this response: a session
+ * flag that enables automatic ads, and per-SDK blocks that tell the player
+ * which ad SDKs to bootstrap. Reporting the flag false and removing the SDK
+ * blocks stops ad initialisation at its source.
+ *
+ * This does not remove ads already spliced into the media stream itself; those
+ * are stitched server-side and are not described by this payload.
+ *
+ * Returns the original text unchanged when the payload is not JSON, does not
+ * look like a playback response, or already has nothing to disable — callers
+ * rely on `changed` to avoid pointlessly rebuilding responses.
+ */
+export function neutralizePlaybackPayload(rawText) {
+  const text = String(rawText ?? '');
+  if (!text) return { changed: false, text, removed: [] };
+
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    return { changed: false, text, removed: [] };
+  }
+  if (!isRecord(payload)) return { changed: false, text, removed: [] };
+
+  const removed = [];
+  let changed = false;
+
+  const session = payload.video_session;
+  if (isRecord(session) && session.auto_ads_enabled !== false) {
+    if ('auto_ads_enabled' in session) {
+      session.auto_ads_enabled = false;
+      removed.push('auto_ads_enabled');
+      changed = true;
+    }
+  }
+
+  const player = payload.video_player;
+  if (isRecord(player)) {
+    for (const key of PLAYBACK_AD_SDK_KEYS) {
+      if (key in player) {
+        delete player[key];
+        removed.push(key);
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) return { changed: false, text, removed: [] };
+  return { changed: true, text: JSON.stringify(payload), removed };
+}
+
 export function detectContentLabels(text, context = {}) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const categories = (Array.isArray(context.categories) ? context.categories : [])

@@ -6,6 +6,8 @@ import {
   classifyRequest,
   detectContentLabels,
   filterDecision,
+  isPlaybackUrl,
+  neutralizePlaybackPayload,
   nextApplyDelay,
   normalizeSettings,
   routeKind,
@@ -165,4 +167,46 @@ test('the ceiling yields to an explicit category page', () => {
   // The same ratio anywhere else still suspends.
   assert.equal(filterDecision(24, 24, { route: 'browse' }).apply, false);
   assert.equal(filterDecision(24, 24).apply, false);
+});
+
+test('playback payloads have their ad flags cleared', () => {
+  const payload = JSON.stringify({
+    playback_url: { live: 'https://stream.kick.com/x.m3u8' },
+    video_session: { auto_ads_enabled: true, id: 'abc' },
+    video_player: {
+      google_ads_sdk: { initiate_sdk: true },
+      pal_sdk: { initiate_sdk: true },
+      player: { player_name: 'ivs' },
+    },
+  });
+
+  const result = neutralizePlaybackPayload(payload);
+  assert.equal(result.changed, true);
+  const parsed = JSON.parse(result.text);
+  assert.equal(parsed.video_session.auto_ads_enabled, false);
+  assert.equal('google_ads_sdk' in parsed.video_player, false);
+  assert.equal('pal_sdk' in parsed.video_player, false);
+
+  // Playback itself must survive untouched, or the stream stops working.
+  assert.equal(parsed.playback_url.live, 'https://stream.kick.com/x.m3u8');
+  assert.equal(parsed.video_session.id, 'abc');
+  assert.equal(parsed.video_player.player.player_name, 'ivs');
+});
+
+test('playback rewriting leaves unrelated or clean payloads alone', () => {
+  assert.equal(neutralizePlaybackPayload('not json').changed, false);
+  assert.equal(neutralizePlaybackPayload('').changed, false);
+  assert.equal(neutralizePlaybackPayload('[1,2,3]').changed, false);
+  // Already ad-free: nothing to do, so the body is not rebuilt.
+  assert.equal(neutralizePlaybackPayload('{"video_session":{"auto_ads_enabled":false}}').changed, false);
+  assert.equal(neutralizePlaybackPayload('{"video_player":{"player":{}}}').changed, false);
+});
+
+test('playback URLs are recognised across endpoint shapes', () => {
+  assert.equal(isPlaybackUrl('https://web.kick.com/api/v1/stream/abc-123/playback'), true);
+  assert.equal(isPlaybackUrl('https://web.kick.com/api/v2/channels/x/playback?foo=1'), true);
+  assert.equal(isPlaybackUrl('/stream/abc/playback'), true);
+  assert.equal(isPlaybackUrl('https://kick.com/api/v1/channels/xqc'), false);
+  assert.equal(isPlaybackUrl('https://stream.kick.com/playbackish/x.m3u8'), false);
+  assert.equal(isPlaybackUrl(''), false);
 });
