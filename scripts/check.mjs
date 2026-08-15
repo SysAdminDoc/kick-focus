@@ -100,6 +100,12 @@ const checks = [
     && source.includes('data-kf-storage-alert')
     && source.includes('renderStorageHealthPanel')],
 
+  ['restores quality where the player actually reads it', source.includes("const QUALITY_SESSION_KEY = 'stream_quality'")
+    && source.includes('applyQualitySessionKey')
+    && source.includes('[role="menuitemradio"]')],
+  ['volume memory ignores the autoplay-policy mute', source.includes('VOLUME_GRACE_MS')
+    && source.includes('elapsed < VOLUME_GRACE_MS && video.muted')],
+
   // Kick's own data, read read-only and same-origin
   ['reads the realtime provider from Kick instead of hardcoding it',
     source.includes('normalizeRealtimeConnection')

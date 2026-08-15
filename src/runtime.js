@@ -1451,6 +1451,8 @@ function persistStickerPreferences() {
 const LIVE_TIMEOUT_MS = 8000;
 const LIVE_MAX_BYTES = 4_000_000;
 const REALTIME_BACKOFF_MS = [2000, 5000, 15000, 45000];
+// Long enough to outlast the autoplay-policy mute that fires right after attach.
+const VOLUME_GRACE_MS = 1500;
 
 function readEmoteUsage() {
   const stored = gmGet(EMOTE_USAGE_KEY, null);
@@ -2133,7 +2135,34 @@ function bindMediaElement(video) {
     }
     video.dataset.kfMediaRestored = 'true';
   };
-  const saveVolume = () => saveMediaPreference('volume', { volume: video.volume, muted: video.muted });
+  /**
+   * Browser autoplay policy sets `muted = true` immediately after attach, which
+   * fires volumechange. Recording that persisted "muted" for the channel
+   * forever, so the feature eventually locked every stream silent. Ignore
+   * changes during the grace window, and specifically never persist a
+   * mute-only change inside it.
+   */
+  const boundAt = Date.now();
+  const saveVolume = () => {
+    const elapsed = Date.now() - boundAt;
+    if (elapsed < VOLUME_GRACE_MS && video.muted) return;
+    saveMediaPreference('volume', { volume: video.volume, muted: video.muted });
+  };
+
+  /**
+   * Some players route audio through a gain node and never fire volumechange,
+   * so the event alone is not enough to keep the stored value truthful.
+   * Reconcile against the live element on a timer as well.
+   */
+  const reconcile = () => {
+    if (!video.isConnected) { clearInterval(timer); return; }
+    if (Date.now() - boundAt < VOLUME_GRACE_MS) return;
+    const saved = state.mediaPreferences[volumeKey];
+    if (saved && Math.abs(Number(saved.volume) - video.volume) < 0.01 && saved.muted === video.muted) return;
+    saveMediaPreference('volume', { volume: video.volume, muted: video.muted });
+  };
+  const timer = window.setInterval(reconcile, 5000);
+  video.addEventListener('emptied', () => clearInterval(timer), { once: true });
   const savePosition = () => {
     if (state.settings.content.rememberVodPosition && Number.isFinite(video.duration) && video.duration > 0) {
       saveMediaPreference('position', video.currentTime);
@@ -2149,12 +2178,44 @@ function bindMediaElement(video) {
   if (video.readyState >= 1) restore();
 }
 
-function applyQualityMemory() {
+/**
+ * Restore quality where the player actually reads it.
+ *
+ * Driving Kick's menu with a plain `.click()` is very likely inert: none of the
+ * selectors this used appear in the project's verified DOM contract, and Kick's
+ * menu is reported to ignore synthetic clicks that are not a full pointer
+ * sequence. Kick's player reads its starting quality from
+ * `sessionStorage['stream_quality']` at init, so writing that before the player
+ * initialises is the path that works, with the menu kept only as a fallback.
+ *
+ * Deliberately not restored from "whatever the player had a moment ago" — that
+ * is how an ad-break or bandwidth downgrade becomes a permanent setting.
+ */
+const QUALITY_SESSION_KEY = 'stream_quality';
+
+function applyQualitySessionKey() {
   if (!state.settings.content.rememberQuality) return;
   const key = mediaPreferenceKey('quality');
   if (!key) return;
   const saved = state.mediaPreferences[key];
-  const controls = document.querySelectorAll('[data-quality], [data-resolution], [data-testid*="quality" i], [aria-label*="quality" i], select[data-kf-quality]');
+  if (!saved || typeof saved !== 'string') return;
+  try {
+    if (sessionStorage.getItem(QUALITY_SESSION_KEY) === saved) return;
+    sessionStorage.setItem(QUALITY_SESSION_KEY, saved);
+  } catch {
+    // Session storage can be denied; the menu fallback below still applies.
+  }
+}
+
+function applyQualityMemory() {
+  if (!state.settings.content.rememberQuality) return;
+  applyQualitySessionKey();
+  const key = mediaPreferenceKey('quality');
+  if (!key) return;
+  const saved = state.mediaPreferences[key];
+  // `[role="menuitemradio"]` is what Kick's own quality menu actually renders;
+  // the rest are legacy guesses kept only so an older shell still works.
+  const controls = document.querySelectorAll('[role="menuitemradio"], [data-quality], [data-resolution], [data-testid*="quality" i], [aria-label*="quality" i], select[data-kf-quality]');
   for (const control of controls) {
     const value = control.value || control.dataset.quality || control.dataset.resolution || control.textContent;
     if (!value) continue;
@@ -3978,7 +4039,6 @@ const TRANSLATIONS = {
     'Clear favorites': 'Borrar favoritos',
     'Clear not-interested': 'Borrar no me interesa',
     'Protection log': 'Registro de protección',
-    'Accessibility & Shortcuts': 'Accesibilidad y atajos',
     'Reduce motion': 'Reducir movimiento',
     'High-contrast controls': 'Controles de alto contraste',
     'Always show keyboard focus': 'Mostrar siempre el foco del teclado',
@@ -4066,6 +4126,7 @@ const TRANSLATIONS = {
     'Choose the overall surface treatment.': 'Escolha o tratamento geral das superfícies.',
     'Set a premium visual style without replacing Kick’s identity.': 'Defina um estilo visual premium sem substituir a identidade do Kick.',
     'Keep the page calm, private, and focused on streams.': 'Mantenha a página calma, privada e focada nas transmissões.',
+    'Choose how the left discovery rail behaves.': 'Escolha como a barra lateral de descoberta se comporta.',
     'Improve comfort and keep core actions within reach.': 'Melhore o conforto e mantenha as ações principais ao alcance.',
     'A desktop-first layout and control layer for Kick.': 'Uma camada de layout e controle para Kick pensada para desktop.',
     'Language': 'Idioma',
@@ -5531,6 +5592,9 @@ installNetworkDefense();
 installSpaHooks();
 installCompanionBridge();
 applySettingsAttributes();
+// Must run before Kick's player initialises, because the player reads its
+// starting quality once at init and never looks again.
+applyQualitySessionKey();
 
 /**
  * Wire up the optional companion extension.
