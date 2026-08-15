@@ -7,7 +7,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks only out
 ## P0 — harden the zero-ad boundary
 
 - Add a repeatable cold-load test under installed Tampermonkey and Violentmonkey on current Chrome/Edge and Firefox. (2026-08-14: the extension half now exists as `npm run verify:extension`; the userscript-under-a-real-manager half is still unverified. Chrome 138+ also gates managers behind a per-extension "Allow user scripts" toggle, which the test must set or account for.)
-- Add worker-target network capture and a longer timed mid-roll observation run. (2026-08-14: raised to a blocker for manifest scrubbing — see Open Question 2 in RESEARCH.md.)
 
 ## P1 — protect compatibility
 
@@ -52,8 +51,8 @@ Added 2026-08-14 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Evidence: markers `#EXT-X-CUE-OUT`/`#EXT-X-CUE-IN`, `#EXT-X-DATERANGE ... stitched-ad-break-start/-end`, and segment ids `stitched-ad-<type>-<n>-<durationNs>`; technique documented in Pkkls/kick-ad-blocker and TwitchAdSolutions m3u8 processing.
   Touches: `src/runtime.js` (fetch hook and an `XMLHttpRequest.responseText` property hook — the player re-reads `responseText` across readyState changes, so the scrub must be cached per body).
   Acceptance: manifests delivered to the player carry no ad ranges or their fencing discontinuities, playback continues without stalling, and any residual break falls back to mute-and-seek.
-  Complexity: L
-  Depends on: the worker-target capture in P0, which decides whether the page-realm hooks can see the manifest at all.
+  Complexity: XL
+  Blocked on technique, not effort (measured 2026-08-14): the page realm cannot see the manifest at all. On a live channel, zero `.m3u8` requests appear in page-target network events or in `performance.getEntriesByType('resource')`, while two worker targets attach — `https://kick.com/ivs/<ver>/amazon-ivs-wasmworker.min.js` and a `blob:` worker. The existing `fetch`/XHR hooks therefore cannot reach it. Doing this needs a `Worker`-constructor hook that injects into the IVS worker before it runs (the TwitchAdSolutions/vaft technique), and the player is WASM, so confirm the manifest is fetched by JS inside the worker before committing to it. Treat any attempt as playback-critical and gate it behind a setting that is off by default.
 
 - [ ] P1 — Harden the player against resize, monitor moves, and ultrawide
   Why: three widely reported breakages that make the site feel broken — controls vanish on window resize, moving the window to another monitor reloads the stream and resets VOD position, and ultrawide or 2K crops the video and kills hotkeys.
