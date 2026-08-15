@@ -14,6 +14,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Changed
 
+- Enlarged the organized sticker shelf, excluded Kick-disabled subscriber stickers from its usable catalog, and kept locked stickers visible in the native groups for clarity.
 - Reimagined all five settings pages with a premium matte shell, clearer page hierarchy, responsive navigation, an embedded live appearance preview, and browser-backed visual parity checks.
 
 ## 1.3.0 — 2026-08-14

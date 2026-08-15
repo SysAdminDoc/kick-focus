@@ -43,8 +43,9 @@
           button.type = 'button';
           button.dataset.emoteId = String(9000 + index);
           button.setAttribute('aria-label', `Sticker ${index}`);
+          if (index === 121) button.disabled = true;
           const image = document.createElement('img');
-          image.src = '/emotes/../dist/extension/icons/icon32.png';
+          image.src = `/dist/extension/icons/icon-32.png?fixture=/emotes/${index}`;
           image.alt = `Sticker ${index}`;
           button.append(image);
           grid.append(button);

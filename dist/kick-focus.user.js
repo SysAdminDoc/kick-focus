@@ -1614,7 +1614,8 @@ const SITE_CSS = `
     }
 
     [data-kf-sticker-toolbar] strong { margin-right: 2px !important; color: var(--kf-accent) !important; font-size: 12px !important; }
-    [data-kf-sticker-count], [data-kf-sticker-note] { color: rgba(247,249,250,.62) !important; }
+    [data-kf-sticker-count], [data-kf-sticker-note], [data-kf-sticker-locked] { color: rgba(247,249,250,.62) !important; }
+    [data-kf-sticker-locked] { margin-left: auto !important; }
     [data-kf-sticker-toolbar] button {
       min-height: 28px !important;
       padding: 0 7px !important;
@@ -1630,11 +1631,12 @@ const SITE_CSS = `
     [data-kf-sticker-note] { margin: 5px 0 7px !important; font-size: 10px !important; }
     [data-kf-sticker-grid] {
       display: grid !important;
-      grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)) !important;
-      gap: 6px !important;
-      max-height: 190px !important;
+      grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)) !important;
+      gap: 7px !important;
+      max-height: min(320px, 38vh) !important;
       overflow: auto !important;
-      padding: 2px 1px 4px !important;
+      scrollbar-gutter: stable !important;
+      padding: 3px 2px 6px !important;
     }
     [data-kf-sticker-item] { min-width: 0 !important; text-align: center !important; }
     [data-kf-sticker-proxy] {
@@ -1643,7 +1645,7 @@ const SITE_CSS = `
       justify-content: center !important;
       width: 100% !important;
       aspect-ratio: 1 !important;
-      padding: 5px !important;
+      padding: 6px !important;
       border: 1px solid rgba(255,255,255,.12) !important;
       border-radius: 4px !important;
       background: rgba(255,255,255,.045) !important;
@@ -2215,8 +2217,15 @@ function stickerSearchInput(picker) {
   return picker.querySelector('#search-emotes-input, input[placeholder*="Search emotes" i], input[data-testid*="emote-search" i]');
 }
 
-function stickerButtonInfo(button) {
+function stickerButtonUnavailable(button) {
+  return button.disabled
+    || button.hasAttribute('disabled')
+    || button.getAttribute('aria-disabled') === 'true';
+}
+
+function stickerButtonInfo(button, options = {}) {
   if (button.closest?.('[data-kf-sticker-organizer]')) return null;
+  if (!options.includeUnavailable && stickerButtonUnavailable(button)) return null;
   const image = button.querySelector('img[src*="/emotes/" i], img[data-src*="/emotes/" i]');
   if (!image) return null;
   const rawSrc = image.getAttribute('src') || image.getAttribute('data-src') || image.currentSrc || image.src || '';
@@ -2240,12 +2249,14 @@ function stickerNativeGroup(label, picker) {
   const parent = label.parentElement;
   if (!parent || parent === picker) return null;
   const labels = parent.querySelectorAll('[id^="emote-picker-section-name-"]');
-  const buttons = [...parent.querySelectorAll('button')].filter((button) => stickerButtonInfo(button));
+  const buttons = [...parent.querySelectorAll('button')]
+    .filter((button) => stickerButtonInfo(button, { includeUnavailable: true }));
   if (labels.length === 1 && buttons.length) return parent;
   const section = label.closest?.('section, [data-emote-section], [role="group"]');
   if (!section || section === picker) return null;
   const sectionLabels = section.querySelectorAll('[id^="emote-picker-section-name-"]');
-  const sectionButtons = [...section.querySelectorAll('button')].filter((button) => stickerButtonInfo(button));
+  const sectionButtons = [...section.querySelectorAll('button')]
+    .filter((button) => stickerButtonInfo(button, { includeUnavailable: true }));
   return sectionLabels.length === 1 && sectionButtons.length ? section : null;
 }
 
@@ -2305,6 +2316,16 @@ function stickerProxyMarkup(descriptor) {
       <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${hidden ? 'Restore' : 'Remove'} ${safeName}" title="${hidden ? 'Restore' : 'Remove'}">${hidden ? '↶' : '×'}</button>
     </div>
   </div>`;
+}
+
+function unavailableStickerCount(picker, availableDescriptors) {
+  const availableKeys = new Set(availableDescriptors.map((descriptor) => descriptor.key));
+  const keys = new Set();
+  for (const button of picker.querySelectorAll('button:disabled, button[aria-disabled="true"]')) {
+    const info = stickerButtonInfo(button, { includeUnavailable: true });
+    if (info && !availableKeys.has(info.key)) keys.add(info.key);
+  }
+  return keys.size;
 }
 
 function removeStickerOrganizer() {
@@ -2383,11 +2404,13 @@ function renderStickerOrganizer() {
   const visible = state.stickerPreferences.view === 'pinned'
     ? allVisible.filter((descriptor) => state.stickerPreferences.pinned.has(descriptor.key))
     : allVisible;
+  const unavailableCount = unavailableStickerCount(picker, descriptors);
   const signature = [
     state.stickerPreferences.view,
     String(showHidden),
     query,
     descriptors.map((descriptor) => descriptor.key).join(','),
+    String(unavailableCount),
     [...state.stickerPreferences.pinned].join(','),
     [...state.stickerPreferences.hidden].join(','),
   ].join('\u0001');
@@ -2395,6 +2418,9 @@ function renderStickerOrganizer() {
   organizer.dataset.kfStickerSignature = signature;
   const view = state.stickerPreferences.view;
   const countLabel = `${visible.length} ${visible.length === 1 ? 'sticker' : 'stickers'}`;
+  const unavailableLabel = unavailableCount
+    ? `<span data-kf-sticker-locked>${unavailableCount} locked by Kick</span>`
+    : '';
   const list = view === 'native'
     ? '<div data-kf-sticker-empty>Kick’s native sticker groups are shown below.</div>'
     : visible.length
@@ -2405,12 +2431,13 @@ function renderStickerOrganizer() {
       <strong>Sticker shelf</strong>
       <span data-kf-sticker-count>${escapeHtml(countLabel)}</span>
       <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Pinned (${state.stickerPreferences.pinned.size})</button>
-      <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All stickers (${allVisible.length})</button>
+      <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All available (${allVisible.length})</button>
       <button type="button" data-kf-sticker-view="native" data-active="${view === 'native'}" aria-pressed="${view === 'native'}">Native groups</button>
       <button type="button" data-kf-sticker-show-hidden="true" aria-pressed="${showHidden}">${showHidden ? 'Hide removed' : 'Show removed'}</button>
       <button type="button" data-kf-sticker-reset="true">Reset changes</button>
+      ${unavailableLabel}
     </div>
-    <div data-kf-sticker-note>Pin with ☆, remove with ×. These choices stay on this device.</div>
+    <div data-kf-sticker-note>Kick supplies the enabled stickers this account can use. Pin with ☆, remove with ×; locked stickers remain visible in Native groups.</div>
     ${list}`;
   restoreStickerGridScroll(organizer, previousGridScrollTop);
 }

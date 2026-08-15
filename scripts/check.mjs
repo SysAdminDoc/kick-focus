@@ -33,6 +33,9 @@ const checks = [
     && !source.includes('page.dataset.page =')],
   ['preserves sticker shelf scroll across organizer rerenders', source.includes('restoreStickerGridScroll')
     && source.includes('rememberStickerGridScroll')],
+  ['labels the sticker shelf as account-authorized', source.includes('Kick supplies the enabled stickers this account can use')
+    && source.includes('max-height: min(320px, 38vh)')
+    && source.includes('stickerButtonUnavailable')],
   ['embeds the local product icon', source.includes('data:image/png;base64,') && !source.includes('__KICK_FOCUS_ICON__')],
   ['embeds the local appearance preview', source.includes('data:image/jpeg;base64,') && !source.includes('__KICK_FOCUS_PREVIEW__')],
   ['ships SPA lifecycle hook', source.includes('kick-focus:routechange')],
