@@ -20,6 +20,7 @@
   </head>
   <body>
     <button id="add-late-sticker" type="button" style="position:fixed;top:16px;right:16px">Simulate new sticker</button>
+    <button id="fill-quick-favorites" type="button" style="position:fixed;top:48px;right:16px">Fill quick favorites</button>
     <main id="main-container">
       <section id="chat-emotes-picker-panel" aria-label="Sticker picker">
         <input id="search-emotes-input" type="search" placeholder="Search emotes" aria-label="Search emotes">
@@ -65,6 +66,20 @@
         image.alt = 'Sticker 145';
         button.append(image);
         scroll.querySelector('.native-grid:last-of-type')?.append(button);
+      });
+      document.getElementById('fill-quick-favorites').addEventListener('click', async () => {
+        for (let index = 1; index <= 24; index += 1) {
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            const candidate = [...document.querySelectorAll('[data-kf-sticker-action="pin"]')]
+              .find((button) => button.getAttribute('aria-label') === `Favorite Sticker ${index}`);
+            if (candidate) {
+              candidate.click();
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }
       });
     </script>
     <script src="/dist/kick-focus.user.js"></script>

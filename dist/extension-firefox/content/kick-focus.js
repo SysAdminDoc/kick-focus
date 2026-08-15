@@ -1724,6 +1724,55 @@ const SITE_CSS = `
     [data-kf-sticker-toolbar] button:hover,
     [data-kf-sticker-toolbar] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
     [data-kf-sticker-note] { margin: 5px 0 7px !important; font-size: 10px !important; }
+    [data-kf-sticker-quick-shelf] {
+      margin: 0 0 9px !important;
+      padding: 7px !important;
+      border: 1px solid rgba(var(--kf-accent-rgb), .32) !important;
+      border-radius: 5px !important;
+      background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .09), rgba(255,255,255,.025)) !important;
+    }
+    [data-kf-sticker-quick-header] { display: flex !important; align-items: center !important; gap: 7px !important; margin-bottom: 6px !important; }
+    [data-kf-sticker-quick-header] strong { color: #f7f9fa !important; font-size: 11px !important; }
+    [data-kf-sticker-quick-count] { color: rgba(247,249,250,.58) !important; font-size: 9px !important; }
+    [data-kf-sticker-quick-header] button {
+      margin-left: auto !important;
+      min-height: 23px !important;
+      padding: 0 7px !important;
+      border: 1px solid rgba(255,255,255,.18) !important;
+      border-radius: 4px !important;
+      background: rgba(255,255,255,.05) !important;
+      color: rgba(247,249,250,.78) !important;
+      cursor: pointer !important;
+      font-size: 9px !important;
+      font-weight: 720 !important;
+    }
+    [data-kf-sticker-quick-header] button:hover,
+    [data-kf-sticker-quick-header] button:focus-visible { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-quick-grid] {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)) !important;
+      grid-auto-rows: 48px !important;
+      gap: 6px !important;
+      max-height: 156px !important;
+      overflow-y: auto !important;
+      scrollbar-gutter: stable !important;
+    }
+    [data-kf-sticker-quick-item] { min-width: 0 !important; }
+    [data-kf-sticker-quick-item] button {
+      display: grid !important;
+      place-items: center !important;
+      width: 100% !important;
+      height: 48px !important;
+      padding: 5px !important;
+      border: 1px solid rgba(255,255,255,.13) !important;
+      border-radius: 4px !important;
+      background: rgba(5,8,6,.76) !important;
+      cursor: pointer !important;
+    }
+    [data-kf-sticker-quick-item] button:hover,
+    [data-kf-sticker-quick-item] button:focus-visible { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .14) !important; }
+    [data-kf-sticker-quick-item] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+    [data-kf-sticker-quick-empty] { color: rgba(247,249,250,.6) !important; font-size: 10px !important; line-height: 1.35 !important; }
     [data-kf-sticker-grid] {
       display: grid !important;
       grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)) !important;
@@ -2509,6 +2558,14 @@ function stickerProxyMarkup(descriptor) {
   </div>`;
 }
 
+function stickerQuickProxyMarkup(descriptor) {
+  const safeKey = escapeHtml(descriptor.key);
+  const safeName = escapeHtml(descriptor.name);
+  return `<div data-kf-sticker-quick-item="true">
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" aria-label="Use favorite sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
+  </div>`;
+}
+
 function unavailableStickerCount(picker, availableDescriptors) {
   const availableKeys = new Set(availableDescriptors.map((descriptor) => descriptor.key));
   const keys = new Set();
@@ -2594,6 +2651,8 @@ function renderStickerOrganizer() {
   const matches = (descriptor) => (!query || descriptor.name.toLowerCase().includes(query))
     && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
   const allVisible = descriptors.filter(matches);
+  const quickFavorites = descriptors.filter((descriptor) => state.stickerPreferences.pinned.has(descriptor.key)
+    && !state.stickerPreferences.hidden.has(descriptor.key));
   const visible = state.stickerPreferences.view === 'pinned'
     ? allVisible.filter((descriptor) => state.stickerPreferences.pinned.has(descriptor.key))
     : state.stickerPreferences.view === 'group'
@@ -2619,6 +2678,9 @@ function renderStickerOrganizer() {
   const unavailableLabel = unavailableCount
     ? `<span data-kf-sticker-locked>${unavailableCount} locked by Kick</span>`
     : '';
+  const quickShelf = quickFavorites.length
+    ? `<div data-kf-sticker-quick-grid role="group" aria-label="Three-row one-click favorite stickers">${quickFavorites.map(stickerQuickProxyMarkup).join('')}</div>`
+    : '<div data-kf-sticker-quick-empty>Favorite stickers with ☆ to fill up to three rows of one-click shortcuts.</div>';
   const list = view === 'native'
     ? '<div data-kf-sticker-empty>Kick’s native sticker groups are shown below.</div>'
     : visible.length
@@ -2641,7 +2703,11 @@ function renderStickerOrganizer() {
       <button type="button" data-kf-sticker-reset="true">Reset changes</button>
       ${unavailableLabel}
     </div>
-    <div data-kf-sticker-note>New Kick stickers are saved automatically. Favorite with ☆, remove with ×, and manage custom groups in Kick Focus settings.</div>
+    <div data-kf-sticker-note>New Kick stickers are saved automatically. Favorite with ☆ for a one-click shortcut, remove with ×, and manage custom groups in Kick Focus settings.</div>
+    <section data-kf-sticker-quick-shelf="true">
+      <div data-kf-sticker-quick-header><strong>Quick favorites</strong><span data-kf-sticker-quick-count>${quickFavorites.length} available · 3 rows</span><button type="button" data-kf-sticker-view="pinned" aria-pressed="${view === 'pinned'}">Manage</button></div>
+      ${quickShelf}
+    </section>
     ${list}`;
   restoreStickerGridScroll(organizer, previousGridScrollTop);
 }

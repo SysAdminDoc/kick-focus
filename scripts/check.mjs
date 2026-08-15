@@ -40,6 +40,9 @@ const checks = [
     && source.includes('observeStickerPicker')
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
+  ['offers a three-row one-click favorites shelf', source.includes('stickerQuickProxyMarkup')
+    && source.includes('data-kf-sticker-quick-grid')
+    && source.includes('max-height: 156px')],
   ['embeds the local product icon', source.includes('data:image/png;base64,') && !source.includes('__KICK_FOCUS_ICON__')],
   ['embeds the local appearance preview', source.includes('data:image/jpeg;base64,') && !source.includes('__KICK_FOCUS_PREVIEW__')],
   ['ships SPA lifecycle hook', source.includes('kick-focus:routechange')],
