@@ -1,12 +1,12 @@
-export const VERSION = '1.3.0';
-export const SETTINGS_SCHEMA = 1;
+export const VERSION = '1.4.0';
+export const SETTINGS_SCHEMA = 2;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
   layout: Object.freeze({
-    sidebar: 'compact',
+    sidebar: 'auto',
     chat: 'right',
-    chatWidth: 380,
+    chatWidth: 410,
     density: 'comfortable',
     streamStart: 'standard',
     rememberPerChannel: true,
@@ -133,13 +133,23 @@ export function normalizeSettings(input) {
   const accessibility = isRecord(source.accessibility) ? source.accessibility : {};
   const shortcuts = isRecord(source.shortcuts) ? source.shortcuts : {};
   const defaults = clone(DEFAULT_SETTINGS);
+  const sourceSchema = Number(source.schema) || 0;
+  // v2 aligns the effective defaults with the site redesign. Preserve any
+  // clearly intentional custom value, while moving the two old defaults to
+  // the new readable desktop baseline for existing installations.
+  const sidebar = sourceSchema < 2 && (layout.sidebar == null || layout.sidebar === 'compact')
+    ? defaults.layout.sidebar
+    : enumValue(layout.sidebar, ['auto', 'compact', 'hidden'], defaults.layout.sidebar);
+  const chatWidth = sourceSchema < 2 && (layout.chatWidth == null || Number(layout.chatWidth) === 380)
+    ? defaults.layout.chatWidth
+    : Math.round(clamp(layout.chatWidth, 320, 520, defaults.layout.chatWidth));
 
   return {
     schema: SETTINGS_SCHEMA,
     layout: {
-      sidebar: enumValue(layout.sidebar, ['auto', 'compact', 'hidden'], defaults.layout.sidebar),
+      sidebar,
       chat: enumValue(layout.chat, ['right', 'docked', 'hidden'], defaults.layout.chat),
-      chatWidth: Math.round(clamp(layout.chatWidth, 320, 520, defaults.layout.chatWidth)),
+      chatWidth,
       density: enumValue(layout.density, ['comfortable', 'compact'], defaults.layout.density),
       streamStart: enumValue(layout.streamStart, ['standard', 'theater', 'focus'], defaults.layout.streamStart),
       rememberPerChannel: bool(layout.rememberPerChannel, defaults.layout.rememberPerChannel),
@@ -212,6 +222,8 @@ export function routeKind(input) {
   if (segments[0] === 'browse' && segments[1] === 'categories') return 'categories';
   if (segments[0] === 'browse' && segments[1] === 'clips') return 'clips';
   if (segments[0] === 'browse') return 'browse';
+  if (segments[0] === 'following') return 'following';
+  if (segments[0] === 'drops') return 'drops';
   if (segments[0] === 'category') return 'category';
   if (segments[0] === 'search') return 'search';
   if (RESERVED_ROUTES.has(segments[0])) return 'other';

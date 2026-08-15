@@ -33,8 +33,8 @@ const checks = [
     && !source.includes('page.dataset.page =')],
   ['preserves sticker shelf scroll across organizer rerenders', source.includes('restoreStickerGridScroll')
     && source.includes('rememberStickerGridScroll')],
-  ['labels the sticker shelf as account-authorized', source.includes('New Kick stickers are saved automatically')
-    && source.includes('max-height: min(320px, 38vh)')
+  ['labels the sticker shelf as account-authorized', source.includes('New Kick stickers save automatically')
+    && source.includes('max-height: min(720px, 76vh)')
     && source.includes('stickerButtonUnavailable')],
   ['persists and exports the complete sticker library', source.includes('mergeStickerLibrary')
     && source.includes('observeStickerPicker')
@@ -43,6 +43,14 @@ const checks = [
   ['offers a three-row one-click favorites shelf', source.includes('stickerQuickProxyMarkup')
     && source.includes('data-kf-sticker-quick-grid')
     && source.includes('max-height: 156px')],
+  ['styles the current semantic Kick shell', source.includes(':is(main, #main-container)')
+    && source.includes('[data-testid="livestream-results-card"]')
+    && source.includes('#channel-chatroom')],
+  ['ships route-specific search and Drops recovery', source.includes('applySearchEnhancements')
+    && source.includes('applyDropsEnhancements')
+    && source.includes('data-kf-drops-empty')],
+  ['lets explicit home preview playback override autoplay suppression', source.includes("video.dataset.kfManualPlayback = 'true'")
+    && source.includes("if (video.dataset.kfManualPlayback !== 'true') video.pause()")],
   ['embeds the local product icon', source.includes('data:image/png;base64,') && !source.includes('__KICK_FOCUS_ICON__')],
   ['embeds the local appearance preview', source.includes('data:image/jpeg;base64,') && !source.includes('__KICK_FOCUS_PREVIEW__')],
   ['ships SPA lifecycle hook', source.includes('kick-focus:routechange')],

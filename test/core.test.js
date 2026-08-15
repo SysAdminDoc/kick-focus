@@ -37,6 +37,17 @@ test('normalization clamps values and keeps core ad defense enabled', () => {
   assert.equal(value.accessibility.captionOpacity, 0);
 });
 
+test('v2 migrates the former desktop defaults without overwriting custom layout choices', () => {
+  const migrated = normalizeSettings({ schema: 1, layout: { sidebar: 'compact', chatWidth: 380 } });
+  assert.equal(migrated.schema, 2);
+  assert.equal(migrated.layout.sidebar, 'auto');
+  assert.equal(migrated.layout.chatWidth, 410);
+
+  const custom = normalizeSettings({ schema: 1, layout: { sidebar: 'hidden', chatWidth: 455 } });
+  assert.equal(custom.layout.sidebar, 'hidden');
+  assert.equal(custom.layout.chatWidth, 455);
+});
+
 test('sticker preferences keep pins, removals, and view modes bounded and local', () => {
   const value = normalizeStickerPreferences({
     pinned: ['id:1', ' id:1 ', 'id:2', ''],
@@ -90,6 +101,9 @@ test('route classifier covers every audited desktop surface', () => {
   assert.equal(routeKind('/browse'), 'browse');
   assert.equal(routeKind('/browse/categories'), 'categories');
   assert.equal(routeKind('/browse/clips'), 'clips');
+  assert.equal(routeKind('/following'), 'following');
+  assert.equal(routeKind('/following/channels'), 'following');
+  assert.equal(routeKind('/drops/campaigns'), 'drops');
   assert.equal(routeKind('/category/just-chatting'), 'category');
   assert.equal(routeKind('/search?query=music'), 'search');
   assert.equal(routeKind('/lordkebun'), 'channel');
@@ -143,7 +157,7 @@ test('settings import names whatever it could not keep', () => {
     .some((note) => /Upgraded from an unversioned file/.test(note)));
 
   // A clean, current file produces no noise.
-  const clean = validateImportedSettings(JSON.stringify({ schema: 1, layout: { chatWidth: 410 } }));
+  const clean = validateImportedSettings(JSON.stringify({ schema: 2, layout: { chatWidth: 410 } }));
   assert.deepEqual(clean.notes, []);
 });
 

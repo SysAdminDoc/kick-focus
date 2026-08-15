@@ -70,6 +70,7 @@ const state = {
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
     stickerPickerTarget: null,
+    stickerCatalogDirty: true,
   },
   diagnostics: {
     blocked: 0,
@@ -540,11 +541,16 @@ const SITE_CSS = `
   :root {
     --kf-accent: #7cff2b;
     --kf-accent-rgb: 124, 255, 43;
-    --kf-panel: #0d100e;
-    --kf-panel-raised: #151917;
-    --kf-border: #303632;
-    --kf-radius: 9px;
-    --kf-chat-width: 380px;
+    --kf-canvas: #080b09;
+    --kf-panel: #0d120f;
+    --kf-panel-raised: #121814;
+    --kf-panel-high: #171e19;
+    --kf-border: #29312b;
+    --kf-border-strong: #3a453d;
+    --kf-text: #f4f7f5;
+    --kf-text-muted: #9ba59f;
+    --kf-radius: 10px;
+    --kf-chat-width: 410px;
     --kf-thumb-saturation: 1.03;
     --kf-caption-opacity: .72;
     --kf-text-scale: 1;
@@ -558,11 +564,206 @@ const SITE_CSS = `
   html[data-kf-theme="oled"] { --kf-panel: #050606; --kf-panel-raised: #0a0c0d; --kf-border: #24282b; }
   html[data-kf-theme="slate"] { --kf-panel: #141817; --kf-panel-raised: #1b211f; --kf-border: #3a454f; }
 
-  body { background: #080a09 !important; }
+  body {
+    background: var(--kf-canvas) !important;
+    color: var(--kf-text) !important;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    text-rendering: optimizeLegibility;
+  }
 
   @media (min-width: 1024px) {
-    #main-container { background: #090b0a !important; }
-    #sidebar-wrapper { border-right: 1px solid var(--kf-border) !important; background: var(--kf-panel) !important; }
+    /* Premium Kick shell shared by Home, Browse, Following, Drops, Search,
+       category pages, and channels. Stable ids/test ids are preferred over
+       utility-class names so a Tailwind rebuild does not erase the design. */
+    body > [class~="group/main"],
+    body > [data-sidebar][data-chat] { background: var(--kf-canvas) !important; }
+
+    nav {
+      min-height: 56px !important;
+      border-bottom: 1px solid var(--kf-border) !important;
+      background: rgba(8, 11, 9, .98) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .22) !important;
+    }
+
+    nav form > div > div,
+    nav [data-testid="search"]:is(input) {
+      border-color: var(--kf-border-strong) !important;
+      background: #0b0f0c !important;
+    }
+
+    nav form > div > div {
+      min-height: 38px !important;
+      border-radius: 9px !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important;
+    }
+
+    nav form > div > div:focus-within {
+      border-color: rgba(var(--kf-accent-rgb), .72) !important;
+      box-shadow: 0 0 0 3px rgba(var(--kf-accent-rgb), .12) !important;
+    }
+
+    main,
+    #main-container { background: var(--kf-canvas) !important; }
+
+    main > div:first-child:not(#channel-content) {
+      width: min(100%, 1536px) !important;
+      margin-inline: auto !important;
+    }
+
+    main h1,
+    main h2,
+    main h3 {
+      color: var(--kf-text) !important;
+      letter-spacing: -.018em !important;
+    }
+
+    main h2 { font-weight: 760 !important; }
+
+    #sidebar-wrapper {
+      border-right: 1px solid var(--kf-border) !important;
+      background: #0a0f0c !important;
+      box-shadow: 12px 0 32px rgba(0,0,0,.12) !important;
+    }
+
+    #sidebar-wrapper > ul {
+      gap: 3px !important;
+      padding: 8px 10px 10px !important;
+    }
+
+    #sidebar-wrapper a[data-testid^="sidebar-"] {
+      min-height: 44px !important;
+      border: 1px solid transparent !important;
+      border-radius: 9px !important;
+      color: #dce2de !important;
+    }
+
+    #sidebar-wrapper a[data-testid^="sidebar-"][data-state="active"] {
+      border-color: rgba(var(--kf-accent-rgb), .18) !important;
+      background: rgba(var(--kf-accent-rgb), .075) !important;
+      color: var(--kf-accent) !important;
+      box-shadow: inset 2px 0 0 rgba(var(--kf-accent-rgb), .78) !important;
+    }
+
+    #sidebar-wrapper a[data-testid^="sidebar-"]:hover {
+      border-color: var(--kf-border) !important;
+      background: rgba(255,255,255,.045) !important;
+    }
+
+    #sidebar-wrapper :is(button, a):focus-visible,
+    main :is(button, a, input, select, textarea):focus-visible {
+      outline: 2px solid var(--kf-accent) !important;
+      outline-offset: 2px !important;
+    }
+
+    main [data-testid="livestream-results-card"] {
+      gap: 0 !important;
+      padding: 0 0 6px !important;
+      border: 1px solid transparent !important;
+      border-radius: var(--kf-radius) !important;
+      background: linear-gradient(180deg, rgba(18,24,20,.82), rgba(10,14,11,.58)) !important;
+      overflow: visible !important;
+    }
+
+    main [data-testid="livestream-results-card"]:hover,
+    main [data-testid="livestream-results-card"]:focus-within {
+      border-color: rgba(var(--kf-accent-rgb), .48) !important;
+      background: var(--kf-panel-raised) !important;
+      box-shadow: 0 12px 28px rgba(0,0,0,.24) !important;
+    }
+
+    main [data-testid="media-card-thumbnail"] {
+      border: 1px solid var(--kf-border) !important;
+      border-radius: var(--kf-radius) !important;
+      background: #050806 !important;
+      overflow: hidden !important;
+    }
+
+    main [data-testid="media-card-thumbnail"] > :is(div, img) {
+      border-radius: inherit !important;
+    }
+
+    main [data-testid="media-card-thumbnail"] [class*="top-1.5"],
+    main [data-testid="media-card-thumbnail"] [class*="bottom-1.5"] {
+      border: 1px solid rgba(255,255,255,.12) !important;
+      border-radius: 5px !important;
+      background: rgba(4,7,5,.9) !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,.32) !important;
+    }
+
+    main section[class*="grid"] {
+      column-gap: 16px !important;
+      row-gap: 20px !important;
+    }
+
+    main [data-testid^="tab-"][data-state="active"],
+    main a[data-state="active"][href*="/following"],
+    main a[data-state="active"][href*="/drops"],
+    main a[data-state="active"][href*="/category"] {
+      color: var(--kf-accent) !important;
+      border-color: transparent !important;
+    }
+
+    main [data-testid^="tab-"][data-state="active"] > div,
+    main a[data-state="active"] > div[class*="bottom-"] {
+      background: var(--kf-accent) !important;
+    }
+
+    main :is([role="combobox"], select),
+    main button:not([data-kf-card-action]):not([data-kf-sticker-action]) {
+      border-radius: 8px !important;
+    }
+
+    html[data-kf-route="category"] main > div:first-child,
+    html[data-kf-route="categories"] main > div:first-child,
+    html[data-kf-route="browse"] main > div:first-child,
+    html[data-kf-route="following"] main > div:first-child,
+    html[data-kf-route="drops"] main > div:first-child,
+    html[data-kf-route="search"] main > div:first-child {
+      padding-top: 22px !important;
+    }
+
+    html[data-kf-route="channel"] #channel-content {
+      gap: 18px !important;
+      padding: 18px 24px 28px !important;
+      background: var(--kf-canvas) !important;
+    }
+
+    html[data-kf-route="channel"] #injected-channel-player {
+      border: 1px solid var(--kf-border) !important;
+      border-radius: 11px !important;
+      box-shadow: 0 18px 44px rgba(0,0,0,.34) !important;
+      overflow: hidden !important;
+    }
+
+    html[data-kf-route="channel"] #channel-content > :is(div, section, article) {
+      border-color: var(--kf-border) !important;
+    }
+
+    [data-kf-chat-panel],
+    #channel-chatroom {
+      border-left: 1px solid var(--kf-border) !important;
+      background: #0a0f0c !important;
+      box-shadow: -12px 0 32px rgba(0,0,0,.14) !important;
+    }
+
+    #channel-chatroom > div > div:first-child {
+      border-bottom-color: var(--kf-border) !important;
+      background: #0c110e !important;
+    }
+
+    #channel-chatroom [data-testid="pinned-message-modal"] > div {
+      border-width: 1px !important;
+      border-color: var(--kf-border-strong) !important;
+      border-radius: 8px !important;
+      background: var(--kf-panel-raised) !important;
+    }
+
+    #channel-chatroom :is(textarea, input, [contenteditable="true"]) {
+      border-radius: 8px !important;
+      border-color: var(--kf-border-strong) !important;
+      background: #090d0a !important;
+    }
+
     [data-kf-chat-panel], #channel-chatroom { border-left-color: var(--kf-border) !important; background: var(--kf-panel) !important; }
 
     html[data-kf-sidebar="hidden"] #sidebar-wrapper,
@@ -596,19 +797,19 @@ const SITE_CSS = `
       background: var(--kf-panel) !important;
     }
 
-    html[data-kf-wide-grid="true"] #main-container section[class*="grid"],
-    html[data-kf-wide-grid="true"] #main-container [class*="group/grid"] {
+    html[data-kf-wide-grid="true"] :is(main, #main-container) section[class*="grid"],
+    html[data-kf-wide-grid="true"] :is(main, #main-container) [class*="group/grid"] {
       grid-template-columns: repeat(auto-fit, minmax(min(272px, 100%), 1fr)) !important;
       gap: 20px !important;
     }
 
-    html[data-kf-following-rail="false"] #main-container [data-testid*="following" i],
-    html[data-kf-following-rail="false"] #main-container [data-kf-following-rail],
-    html[data-kf-recommended-rail="false"] #main-container [data-testid*="recommended" i],
-    html[data-kf-recommended-rail="false"] #main-container [data-kf-recommended-rail] { display: none !important; }
+    html[data-kf-following-rail="false"] :is(main, #main-container) [data-testid*="following" i],
+    html[data-kf-following-rail="false"] :is(main, #main-container) [data-kf-following-rail],
+    html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-testid*="recommended" i],
+    html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-kf-recommended-rail] { display: none !important; }
 
-    html[data-kf-density="compact"] #main-container section[class*="grid"],
-    html[data-kf-density="compact"] #main-container [class*="group/grid"] { gap: 12px !important; }
+    html[data-kf-density="compact"] :is(main, #main-container) section[class*="grid"],
+    html[data-kf-density="compact"] :is(main, #main-container) [class*="group/grid"] { gap: 12px !important; }
 
     html[data-kf-sticky="true"] nav {
       min-height: 56px !important;
@@ -617,31 +818,31 @@ const SITE_CSS = `
       border-bottom: 1px solid var(--kf-border) !important;
     }
 
-    #main-container { font-size: calc(1rem * var(--kf-text-scale)); }
+    :is(main, #main-container) { font-size: calc(1rem * var(--kf-text-scale)); }
 
-    #main-container [class*="group/card"] {
+    :is(main, #main-container) [class*="group/card"] {
       border-radius: var(--kf-radius) !important;
       outline: 1px solid transparent;
       outline-offset: 3px;
       transition: filter 150ms ease, outline-color 150ms ease !important;
     }
 
-    #main-container [class*="group/card"]:hover,
-    #main-container [class*="group/card"]:focus-within {
+    :is(main, #main-container) [class*="group/card"]:hover,
+    :is(main, #main-container) [class*="group/card"]:focus-within {
       outline-color: rgba(var(--kf-accent-rgb), .46);
     }
 
-    #main-container [class*="group/card"] img {
+    :is(main, #main-container) [class*="group/card"] img {
       filter: saturate(var(--kf-thumb-saturation));
       transition: filter 160ms ease, opacity 160ms ease !important;
     }
 
-    html[data-kf-dim-watched="true"] #main-container [data-kf-watched="true"] {
+    html[data-kf-dim-watched="true"] :is(main, #main-container) [data-kf-watched="true"] {
       opacity: .64;
       filter: grayscale(.14);
     }
 
-    html[data-kf-live-color="true"] #main-container [data-kf-live-card="true"] {
+    html[data-kf-live-color="true"] :is(main, #main-container) [data-kf-live-card="true"] {
       box-shadow: inset 0 2px 0 rgba(var(--kf-accent-rgb), .72);
     }
 
@@ -729,39 +930,112 @@ const SITE_CSS = `
     [data-kf-chat-status] { top: 44px !important; right: 8px !important; padding: 5px 8px !important; }
     [data-kf-playback-diagnostics] { right: 12px !important; bottom: 12px !important; padding: 6px 8px !important; pointer-events: none !important; }
 
-    [data-kf-search-meta] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; margin: 0 0 14px !important; color: var(--kf-accent) !important; font-size: 13px !important; font-weight: 720 !important; }
-    [data-kf-search-meta] button { min-height: 30px !important; padding: 0 10px !important; border: 1px solid var(--kf-border) !important; border-radius: 4px !important; background: var(--kf-panel) !important; color: inherit !important; cursor: pointer !important; }
+    [data-kf-search-meta] {
+      box-sizing: border-box !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 18px !important;
+      margin: 0 0 14px !important;
+      padding: 15px 16px !important;
+      border: 1px solid var(--kf-border) !important;
+      border-radius: var(--kf-radius) !important;
+      background: var(--kf-panel) !important;
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    [data-kf-search-meta] > div { display: flex !important; align-items: baseline !important; flex-wrap: wrap !important; gap: 9px !important; }
+    [data-kf-search-meta] strong { color: var(--kf-text) !important; font-size: 20px !important; line-height: 1.25 !important; }
+    [data-kf-search-meta] span { color: var(--kf-text-muted) !important; font-size: 12px !important; font-weight: 650 !important; }
+    [data-kf-search-meta] button { min-height: 34px !important; padding: 0 11px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 7px !important; background: var(--kf-panel-raised) !important; color: var(--kf-accent) !important; cursor: pointer !important; font-weight: 720 !important; }
+
+    [data-kf-native-drops-empty="true"] > [data-testid="empty-state-root"] { display: none !important; }
+    [data-kf-drops-empty] {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) 260px !important;
+      gap: 16px !important;
+      width: 100% !important;
+      margin-top: 8px !important;
+    }
+    [data-kf-drops-primary], [data-kf-drops-activity], [data-kf-drops-steps] {
+      border: 1px solid var(--kf-border) !important;
+      border-radius: var(--kf-radius) !important;
+      background: linear-gradient(180deg, var(--kf-panel-raised), var(--kf-panel)) !important;
+      box-shadow: 0 16px 36px rgba(0,0,0,.18) !important;
+    }
+    [data-kf-drops-primary] { display: flex !important; min-height: 272px !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; padding: 34px !important; text-align: center !important; }
+    [data-kf-drops-eyebrow] { margin-bottom: 10px !important; color: var(--kf-accent) !important; font-size: 11px !important; font-weight: 800 !important; letter-spacing: .08em !important; text-transform: uppercase !important; }
+    [data-kf-drops-primary] h3 { margin: 0 !important; color: var(--kf-text) !important; font-size: 24px !important; }
+    [data-kf-drops-primary] p { max-width: 520px !important; margin: 8px 0 20px !important; color: var(--kf-text-muted) !important; font-size: 14px !important; line-height: 1.55 !important; }
+    [data-kf-drops-actions] { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; gap: 10px !important; }
+    [data-kf-drops-actions] a { display: inline-flex !important; min-height: 42px !important; align-items: center !important; justify-content: center !important; padding: 0 15px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 8px !important; color: var(--kf-text) !important; font-size: 13px !important; font-weight: 760 !important; text-decoration: none !important; }
+    [data-kf-drops-actions] a:first-child { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: #071005 !important; }
+    [data-kf-drops-activity] { grid-column: 2 !important; grid-row: 1 / span 2 !important; padding: 20px !important; }
+    [data-kf-drops-activity] > strong { display: block !important; margin-bottom: 16px !important; font-size: 16px !important; }
+    [data-kf-drops-activity] dl { display: grid !important; gap: 0 !important; margin: 0 !important; }
+    [data-kf-drops-activity] dl > div { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; min-height: 56px !important; border-bottom: 1px solid var(--kf-border) !important; }
+    [data-kf-drops-activity] dt { color: var(--kf-text-muted) !important; font-size: 12px !important; }
+    [data-kf-drops-activity] dd { margin: 0 !important; color: var(--kf-text) !important; font-weight: 800 !important; }
+    [data-kf-drops-activity] a { color: var(--kf-accent) !important; text-decoration: none !important; }
+    [data-kf-drops-steps] { display: grid !important; grid-template-columns: repeat(3, minmax(0,1fr)) !important; gap: 0 !important; margin: 0 !important; padding: 14px 10px !important; list-style: none !important; }
+    [data-kf-drops-steps] li { display: flex !important; align-items: center !important; gap: 10px !important; min-height: 70px !important; padding: 8px 16px !important; border-right: 1px solid var(--kf-border) !important; }
+    [data-kf-drops-steps] li:last-child { border-right: 0 !important; }
+    [data-kf-drops-steps] li > span { display: grid !important; width: 25px !important; height: 25px !important; flex: 0 0 25px !important; place-items: center !important; border-radius: 50% !important; background: var(--kf-accent) !important; color: #071005 !important; font-size: 12px !important; font-weight: 900 !important; }
+    [data-kf-drops-steps] strong, [data-kf-drops-steps] small { display: block !important; }
+    [data-kf-drops-steps] strong { color: var(--kf-text) !important; font-size: 12px !important; }
+    [data-kf-drops-steps] small { margin-top: 3px !important; color: var(--kf-text-muted) !important; font-size: 10px !important; line-height: 1.35 !important; }
 
     [data-kf-sticker-organizer] {
-      margin: 4px 10px 10px !important;
-      padding: 8px 0 10px !important;
-      border-bottom: 1px solid rgba(255,255,255,.12) !important;
+      margin: 6px 8px 12px !important;
+      padding: 10px !important;
+      border: 1px solid var(--kf-border) !important;
+      border-radius: 9px !important;
+      background: #0b100d !important;
       color: #f7f9fa !important;
     }
+
+    #chat-emotes-picker-panel > div[style]:not([style*="max-height: 0"]) {
+      max-height: min(720px, 76vh) !important;
+      border-top: 1px solid var(--kf-border) !important;
+      border-radius: 10px 10px 0 0 !important;
+      background: var(--kf-panel) !important;
+      box-shadow: 0 -18px 48px rgba(0,0,0,.42) !important;
+    }
+
+    #chat-emotes-picker-panel #search-emotes-input { min-height: 40px !important; border-color: var(--kf-border-strong) !important; border-radius: 8px !important; background: #080c09 !important; }
+
+    [data-kf-sticker-topline] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 10px !important; margin-bottom: 8px !important; }
+    [data-kf-sticker-topline] > div { display: flex !important; align-items: baseline !important; flex-wrap: wrap !important; gap: 6px !important; }
+    [data-kf-sticker-topline] strong { color: var(--kf-text) !important; font-size: 13px !important; }
+    [data-kf-sticker-topline] button { min-height: 28px !important; padding: 0 8px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; color: var(--kf-accent) !important; cursor: pointer !important; font-size: 10px !important; font-weight: 760 !important; }
 
     [data-kf-sticker-toolbar] {
       display: flex !important;
       align-items: center !important;
       flex-wrap: wrap !important;
-      gap: 5px !important;
+      gap: 6px !important;
+      padding-bottom: 8px !important;
+      border-bottom: 1px solid var(--kf-border) !important;
       font-size: 11px !important;
     }
 
-    [data-kf-sticker-toolbar] strong { margin-right: 2px !important; color: var(--kf-accent) !important; font-size: 12px !important; }
     [data-kf-sticker-count], [data-kf-sticker-note], [data-kf-sticker-locked] { color: rgba(247,249,250,.62) !important; }
-    [data-kf-sticker-locked] { margin-left: auto !important; }
     [data-kf-sticker-toolbar] button {
-      min-height: 28px !important;
-      padding: 0 7px !important;
+      min-height: 30px !important;
+      padding: 0 9px !important;
       border: 1px solid rgba(255,255,255,.18) !important;
-      border-radius: 4px !important;
+      border-radius: 7px !important;
       background: rgba(255,255,255,.05) !important;
       color: inherit !important;
       cursor: pointer !important;
       font: inherit !important;
     }
     [data-kf-sticker-toolbar] button:hover,
-    [data-kf-sticker-toolbar] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-toolbar] button[data-active="true"] { border-color: rgba(var(--kf-accent-rgb), .62) !important; background: rgba(var(--kf-accent-rgb), .12) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-groups] { display: flex !important; align-items: center !important; flex-wrap: wrap !important; gap: 5px !important; padding-top: 8px !important; }
+    [data-kf-sticker-groups] > span { margin-right: 2px !important; color: var(--kf-text-muted) !important; font-size: 10px !important; font-weight: 760 !important; text-transform: uppercase !important; }
+    [data-kf-sticker-groups] button { min-height: 25px !important; padding: 0 7px !important; border: 1px solid var(--kf-border) !important; border-radius: 999px !important; background: rgba(255,255,255,.045) !important; color: #d8dfda !important; cursor: pointer !important; font-size: 9px !important; }
+    [data-kf-sticker-groups] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
     [data-kf-sticker-note] { margin: 5px 0 7px !important; font-size: 10px !important; }
     [data-kf-sticker-quick-shelf] {
       margin: 0 0 9px !important;
@@ -797,6 +1071,7 @@ const SITE_CSS = `
       scrollbar-gutter: stable !important;
     }
     [data-kf-sticker-quick-item] { min-width: 0 !important; }
+    [data-kf-sticker-quick-item] { position: relative !important; }
     [data-kf-sticker-quick-item] button {
       display: grid !important;
       place-items: center !important;
@@ -811,12 +1086,16 @@ const SITE_CSS = `
     [data-kf-sticker-quick-item] button:hover,
     [data-kf-sticker-quick-item] button:focus-visible { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .14) !important; }
     [data-kf-sticker-quick-item] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+    [data-kf-sticker-quick-tools] { position: absolute !important; top: 2px !important; right: 2px !important; z-index: 2 !important; opacity: 0 !important; transition: opacity 100ms ease !important; }
+    [data-kf-sticker-quick-item]:hover [data-kf-sticker-quick-tools], [data-kf-sticker-quick-item]:focus-within [data-kf-sticker-quick-tools] { opacity: 1 !important; }
+    [data-kf-sticker-quick-tools] button { display: grid !important; width: 20px !important; height: 20px !important; min-height: 20px !important; padding: 0 !important; place-items: center !important; border: 1px solid rgba(255,255,255,.24) !important; border-radius: 5px !important; background: #080c09 !important; color: #f7f9fa !important; cursor: pointer !important; font-size: 12px !important; }
+    [data-kf-sticker-quick-tools] button:hover { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
     [data-kf-sticker-quick-empty] { color: rgba(247,249,250,.6) !important; font-size: 10px !important; line-height: 1.35 !important; }
     [data-kf-sticker-grid] {
       display: grid !important;
       grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)) !important;
       gap: 7px !important;
-      max-height: min(320px, 38vh) !important;
+      max-height: min(360px, 42vh) !important;
       overflow: auto !important;
       scrollbar-gutter: stable !important;
       padding: 3px 2px 6px !important;
@@ -851,6 +1130,9 @@ const SITE_CSS = `
     }
     [data-kf-sticker-tools] button:hover, [data-kf-sticker-tools] button:focus-visible { background: rgba(255,255,255,.12) !important; color: var(--kf-accent) !important; }
     [data-kf-sticker-empty] { padding: 10px 2px 4px !important; color: rgba(247,249,250,.62) !important; font-size: 11px !important; }
+    [data-kf-sticker-secondary-actions] { display: flex !important; justify-content: flex-end !important; margin: -3px 0 5px !important; }
+    [data-kf-sticker-secondary-actions] button { min-height: 24px !important; padding: 0 6px !important; border: 0 !important; background: transparent !important; color: var(--kf-text-muted) !important; cursor: pointer !important; font-size: 9px !important; }
+    [data-kf-sticker-secondary-actions] button:hover { color: var(--kf-accent) !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; }
@@ -862,19 +1144,19 @@ const SITE_CSS = `
 
     html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; }
 
-    html[data-kf-contrast="true"] #main-container :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
+    html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
 
     html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible {
       outline: 3px solid var(--kf-accent) !important;
       outline-offset: 3px !important;
     }
 
-    html[data-kf-focus="true"] #main-container {
+    html[data-kf-focus="true"] :is(main, #main-container) {
       width: 100% !important;
       max-width: none !important;
     }
 
-    html[data-kf-route="category"] #main-container > div:first-child {
+    html[data-kf-route="category"] :is(main, #main-container) > div:first-child {
       max-width: 1680px;
       margin-inline: auto;
     }
@@ -950,7 +1232,7 @@ function applySettingsAttributes() {
     kick: '#7cff2b', cyan: '#38d7d0', violet: '#9667ff', gold: '#ffbe2e',
   }[appearance.accent]);
   const surfaces = {
-    studio: ['#171a1c', '#232629', '#0b0b0c'],
+    studio: ['#101512', '#171e19', '#080b09'],
     oled: ['#050606', '#0a0c0d', '#000000'],
     slate: ['#161b22', '#202832', '#0e1217'],
   }[appearance.theme];
@@ -1104,15 +1386,27 @@ function quietHomeAutoplay() {
     try {
       video.muted = true;
       video.volume = 0;
-      if (!video.paused) video.pause();
+      if (video.dataset.kfManualPlayback !== 'true' && !video.paused) video.pause();
       if (video.dataset.kfAutoplayHandled === 'true') continue;
       video.dataset.kfAutoplayHandled = 'true';
+      const markManualPlayback = () => {
+        if (state.route === 'home' && state.settings.content.pauseHomeAutoplay) {
+          video.dataset.kfManualPlayback = 'true';
+        }
+      };
+      video.addEventListener('pointerdown', markManualPlayback, true);
+      video.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ' || String(event.key).toLowerCase() === 'k') markManualPlayback();
+      }, true);
+      video.addEventListener('pause', () => { delete video.dataset.kfManualPlayback; });
+      video.addEventListener('ended', () => { delete video.dataset.kfManualPlayback; });
       video.addEventListener('play', () => {
-        // Leave manual playback alone: only the home rail is silenced, and only
-        // while the setting is on.
         if (state.route !== 'home' || !state.settings.content.pauseHomeAutoplay) return;
         video.muted = true;
-        video.pause();
+        // A trusted pointer/keyboard gesture marks this media element before
+        // the play event. Keep that explicit preview running until the user
+        // pauses it; background restarts never receive the marker.
+        if (video.dataset.kfManualPlayback !== 'true') video.pause();
       });
     } catch {
       // A detached or cross-origin media element is skipped.
@@ -1215,30 +1509,80 @@ function applySearchEnhancements() {
     return;
   }
   const count = findAllProbe(main, 'card').elements.length;
-  const input = main.querySelector?.('[data-testid="search"], input[type="search"]');
+  const input = document.querySelector('[data-testid="search"], input[aria-label="Search"], input[type="search"]');
+  let query = String(input?.value || '').trim();
+  if (!input) {
+    try { query = new URL(location.href).searchParams.get('query') || ''; } catch { /* noop */ }
+  }
   let meta = existing;
   if (!meta) {
     meta = document.createElement('div');
     meta.dataset.kfSearchMeta = 'true';
     meta.setAttribute('role', 'status');
-    const anchor = main.querySelector?.('h1, h2, [data-testid="search-results"]') || main.firstElementChild;
-    if (anchor?.parentElement) anchor.parentElement.insertBefore(meta, anchor);
-    else main.prepend(meta);
+    const first = main.firstElementChild;
+    const container = first && !first.matches?.('input, select, textarea, button, img, video') ? first : main;
+    container.prepend(meta);
   }
-  meta.innerHTML = `<span>${count} ${count === 1 ? 'result' : 'results'}</span>${input?.value ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`;
+  meta.innerHTML = `<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${count === 1 ? 'result' : 'results'} loaded</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`;
 }
 
 function handleSearchAction(event) {
   const button = event.target.closest?.('[data-kf-clear-search]');
   if (!button) return;
-  const main = findProbe(document, 'main').element;
-  const input = main?.querySelector?.('[data-testid="search"], input[type="search"]');
+  const input = document.querySelector('[data-testid="search"], input[aria-label="Search"], input[type="search"]');
   if (!input) return;
   event.preventDefault();
   input.value = '';
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.focus();
   scheduleApply(0);
+}
+
+function applyDropsEnhancements() {
+  const existing = document.querySelector('[data-kf-drops-empty]');
+  const nativeOwner = document.querySelector('[data-kf-native-drops-empty]');
+  if (state.route !== 'drops') {
+    existing?.remove();
+    nativeOwner?.removeAttribute('data-kf-native-drops-empty');
+    return;
+  }
+  const empty = document.querySelector('[data-testid="empty-state-root"]');
+  if (!empty) {
+    existing?.remove();
+    nativeOwner?.removeAttribute('data-kf-native-drops-empty');
+    return;
+  }
+  const owner = empty.parentElement;
+  if (!owner) return;
+  owner.dataset.kfNativeDropsEmpty = 'true';
+  if (existing?.parentElement === owner) return;
+  existing?.remove();
+  const enhanced = document.createElement('section');
+  enhanced.dataset.kfDropsEmpty = 'true';
+  enhanced.innerHTML = `
+    <div data-kf-drops-primary>
+      <span data-kf-drops-eyebrow>Campaign status</span>
+      <h3>No open campaigns</h3>
+      <p>New campaigns will appear here automatically. Browse eligible streams now or check what is coming next.</p>
+      <div data-kf-drops-actions>
+        <a href="/browse">Browse eligible streams</a>
+        <a href="/drops/coming-soon">View coming soon</a>
+      </div>
+    </div>
+    <aside data-kf-drops-activity aria-label="Reward activity">
+      <strong>Reward activity</strong>
+      <dl>
+        <div><dt>Active campaigns</dt><dd>0</dd></div>
+        <div><dt>Claimed rewards</dt><dd><a href="/drops/claimed">View</a></dd></div>
+        <div><dt>Expired campaigns</dt><dd><a href="/drops/expired">View</a></dd></div>
+      </dl>
+    </aside>
+    <ol data-kf-drops-steps aria-label="How drops work">
+      <li><span>1</span><div><strong>Watch eligible streams</strong><small>Choose a stream with an active campaign.</small></div></li>
+      <li><span>2</span><div><strong>Track progress</strong><small>Progress updates while you watch.</small></div></li>
+      <li><span>3</span><div><strong>Claim your reward</strong><small>Claim before the campaign ends.</small></div></li>
+    </ol>`;
+  owner.append(enhanced);
 }
 
 function mediaPreferenceKey(kind) {
@@ -1501,14 +1845,17 @@ function disconnectStickerObserver() {
   state.observers.stickers?.disconnect?.();
   state.observers.stickers = null;
   state.runtime.stickerPickerTarget = null;
+  state.runtime.stickerCatalogDirty = true;
 }
 
 function observeStickerPicker(picker) {
   if (state.runtime.stickerPickerTarget === picker && state.observers.stickers) return;
   disconnectStickerObserver();
   state.runtime.stickerPickerTarget = picker;
+  state.runtime.stickerCatalogDirty = true;
   state.observers.stickers = new MutationObserver((mutations) => {
     if (mutations.every((mutation) => mutation.target.closest?.('[data-kf-sticker-organizer]'))) return;
+    state.runtime.stickerCatalogDirty = true;
     scheduleApply(35);
   });
   state.observers.stickers.observe(picker, {
@@ -1602,6 +1949,7 @@ function stickerQuickProxyMarkup(descriptor) {
   const safeName = escapeHtml(descriptor.name);
   return `<div data-kf-sticker-quick-item="true">
     <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" aria-label="Use favorite sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
+    <div data-kf-sticker-quick-tools><button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-label="Remove ${safeName} from quick favorites" title="Remove from quick favorites">×</button></div>
   </div>`;
 }
 
@@ -1650,6 +1998,7 @@ function clearStickerUI() {
   delete document.documentElement.dataset.kfStickerView;
   delete document.documentElement.dataset.kfStickersShowHidden;
   state.stickerCatalog = new Map();
+  state.runtime.stickerCatalogDirty = true;
 }
 
 function renderStickerOrganizer() {
@@ -1659,11 +2008,18 @@ function renderStickerOrganizer() {
     state.stickerCatalog = new Map();
     return;
   }
-  observeStickerPicker(picker);
-  const descriptors = stickerDescriptors(picker);
   if (!state.settings.content.organizeChatStickers) {
+    disconnectStickerObserver();
     clearStickerUI();
     return;
+  }
+  observeStickerPicker(picker);
+  let descriptors;
+  if (state.runtime.stickerCatalogDirty) {
+    descriptors = stickerDescriptors(picker);
+    state.runtime.stickerCatalogDirty = false;
+  } else {
+    descriptors = [...state.stickerCatalog.values()];
   }
   const scroll = stickerScrollContainer(picker);
   if (!scroll) return;
@@ -1730,23 +2086,29 @@ function renderStickerOrganizer() {
     const active = view === 'group' && state.stickerPreferences.activeGroup === group.id;
     return `<button type="button" data-kf-sticker-view="group" data-kf-sticker-group="${escapeHtml(group.id)}" data-active="${active}" aria-pressed="${active}">${escapeHtml(group.name)} (${count})</button>`;
   }).join('');
+  const firstGroup = state.stickerPreferences.groups[0];
+  const groupsTab = firstGroup
+    ? `<button type="button" data-kf-sticker-view="group" data-kf-sticker-group="${escapeHtml(state.stickerPreferences.activeGroup || firstGroup.id)}" data-active="${view === 'group'}" aria-pressed="${view === 'group'}">Groups</button>`
+    : '<button type="button" data-kf-sticker-manage="true">Groups</button>';
   organizer.innerHTML = `
-    <div data-kf-sticker-toolbar>
-      <strong>Sticker shelf</strong>
-      <span data-kf-sticker-count>${escapeHtml(countLabel)}</span>
-      <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Favorites (${state.stickerPreferences.pinned.size})</button>
-      <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All available (${allVisible.length})</button>
-      ${customGroups}
-      <button type="button" data-kf-sticker-view="native" data-active="${view === 'native'}" aria-pressed="${view === 'native'}">Native groups</button>
-      <button type="button" data-kf-sticker-show-hidden="true" aria-pressed="${showHidden}">${showHidden ? 'Hide removed' : 'Show removed'}</button>
-      <button type="button" data-kf-sticker-reset="true">Reset changes</button>
-      ${unavailableLabel}
+    <div data-kf-sticker-topline>
+      <div><strong>Sticker shelf</strong><span data-kf-sticker-count>${escapeHtml(countLabel)}</span>${unavailableLabel}</div>
+      <button type="button" data-kf-sticker-manage="true">Manage</button>
     </div>
-    <div data-kf-sticker-note>New Kick stickers are saved automatically. Favorite with ☆ for a one-click shortcut, remove with ×, and manage custom groups in Kick Focus settings.</div>
+    <div data-kf-sticker-toolbar role="group" aria-label="Sticker views and filters">
+      <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Quick (${state.stickerPreferences.pinned.size})</button>
+      <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All (${allVisible.length})</button>
+      ${groupsTab}
+      <button type="button" data-kf-sticker-view="native" data-active="${view === 'native'}" aria-pressed="${view === 'native'}">Native</button>
+      <button type="button" data-kf-sticker-show-hidden="true" aria-pressed="${showHidden}">${showHidden ? 'Hide removed' : 'Removed'}</button>
+    </div>
+    ${customGroups ? `<div data-kf-sticker-groups><span>Groups</span>${customGroups}<button type="button" data-kf-sticker-manage="true">Edit groups</button></div>` : ''}
+    <div data-kf-sticker-note>New Kick stickers save automatically. Pin with ☆, remove with ×, and organize groups from Manage.</div>
     <section data-kf-sticker-quick-shelf="true">
-      <div data-kf-sticker-quick-header><strong>Quick favorites</strong><span data-kf-sticker-quick-count>${quickFavorites.length} available · 3 rows</span><button type="button" data-kf-sticker-view="pinned" aria-pressed="${view === 'pinned'}">Manage</button></div>
+      <div data-kf-sticker-quick-header><strong>Quick favorites</strong><span data-kf-sticker-quick-count>${quickFavorites.length} available · 3 rows</span><button type="button" data-kf-sticker-view="pinned" aria-pressed="${view === 'pinned'}">Edit shelf</button></div>
       ${quickShelf}
     </section>
+    <div data-kf-sticker-secondary-actions><button type="button" data-kf-sticker-reset="true">Reset changes</button></div>
     ${list}`;
   restoreStickerGridScroll(organizer, previousGridScrollTop);
 }
@@ -1766,6 +2128,7 @@ function resetStickerPreferences(options = {}) {
     assignments: new Map(),
     library,
   };
+  state.runtime.stickerCatalogDirty = true;
   if (keepLibrary) persistStickerPreferences();
   else gmDelete(STICKER_PREFERENCES_KEY);
 }
@@ -1778,12 +2141,17 @@ function clearStickerPreferences() {
 }
 
 function handleStickerAction(event) {
-  const target = event.target.closest?.('[data-kf-sticker-action], [data-kf-sticker-view], [data-kf-sticker-show-hidden], [data-kf-sticker-reset]');
+  const target = event.target.closest?.('[data-kf-sticker-action], [data-kf-sticker-view], [data-kf-sticker-show-hidden], [data-kf-sticker-reset], [data-kf-sticker-manage]');
   if (!target || !target.closest?.('[data-kf-sticker-organizer]')) return;
   event.preventDefault();
   event.stopPropagation();
   const key = target.dataset.kfStickerKey;
   const action = target.dataset.kfStickerAction;
+  if (target.dataset.kfStickerManage) {
+    state.currentPage = 'content';
+    openSettings();
+    return;
+  }
   if (action === 'send') {
     const original = state.stickerCatalog.get(key)?.originals?.find((button) => button.isConnected);
     original?.click?.();
@@ -1818,6 +2186,13 @@ function handleStickerAction(event) {
     announce('Sticker changes reset');
   } else {
     return;
+  }
+  if (key) {
+    const descriptor = state.stickerCatalog.get(key);
+    for (const original of descriptor?.originals || []) {
+      original.dataset.kfStickerHidden = String(state.stickerPreferences.hidden.has(key));
+      original.dataset.kfStickerPinned = String(state.stickerPreferences.pinned.has(key));
+    }
   }
   applySettingsAttributes();
   scheduleApply(0);
@@ -1978,7 +2353,8 @@ function applyContentFilters() {
     delete node.dataset.kfFiltered;
     delete node.dataset.kfMature;
     delete node.dataset.kfDismissed;
-    const labels = detectContentLabels(node.textContent, cardContext(node));
+    const context = cardContext(node);
+    const labels = detectContentLabels(node.textContent, context);
     const link = node.matches?.('a[href]') ? node : node.querySelector?.('a[href]');
     let path = '';
     try { path = link ? new URL(link.href, location.origin).pathname : ''; } catch { /* noop */ }
@@ -1987,7 +2363,7 @@ function applyContentFilters() {
     node.dataset.kfWatched = String(Boolean(path && state.watched.has(path)));
     node.dataset.kfLiveCard = String(/(^|\s)live(?:\s|$)/i.test(node.textContent || ''));
     node.dataset.kfDismissed = String(Boolean(path && state.dismissed.has(path)));
-    const remoteBlocked = remoteBlocklistMatches(path, cardContext(node), node.textContent);
+    const remoteBlocked = remoteBlocklistMatches(path, context, node.textContent);
     const hide = remoteBlocked
       || (settings.hideCasino && labels.casino)
       || (settings.suppressPromoted && labels.promoted)
@@ -2103,6 +2479,7 @@ function scheduleApply(delay = 50) {
     syncNativeSidebar();
     applyRailVisibility();
     applySearchEnhancements();
+    applyDropsEnhancements();
     applyMediaMemory();
     applyPlayerResilience();
     applyChatPause();
@@ -3413,7 +3790,7 @@ function renderContentPage() {
         ${row('Block separable ad requests', 'Intercept known ad hosts at the earliest userscript-supported page layer.', toggle('content.blockAds', true, { locked: true, label: 'Core ad protection is on' }), { locked: true })}
         ${row('Remove ad containers', 'Remove empty ad containers and reinjected ad frames.', toggle('content.removeAdContainers', value.removeAdContainers, { label: 'Remove ad containers' }))}
         ${row('Suppress sponsored and promoted cards', 'Hide clearly labeled promotional cards and modules.', toggle('content.suppressPromoted', value.suppressPromoted, { label: 'Suppress promoted cards' }))}
-        ${row('Pause home-page autoplay', 'Pause autoplaying previews once; manual playback remains available.', toggle('content.pauseHomeAutoplay', value.pauseHomeAutoplay, { label: 'Pause home-page autoplay' }))}
+        ${row('Pause home-page autoplay', 'Keep background Home previews silent and paused; deliberate playback remains available.', toggle('content.pauseHomeAutoplay', value.pauseHomeAutoplay, { label: 'Pause home-page autoplay' }))}
         ${row('Hide Slots & Casino content', 'Hide cards and sidebar entries clearly labeled as casino content.', toggle('content.hideCasino', value.hideCasino, { label: 'Hide Slots and Casino content' }))}
         ${row('Blur mature thumbnails', 'Blur marked mature cards until hover or keyboard focus.', toggle('content.blurMature', value.blurMature, { label: 'Blur mature thumbnails' }))}
         ${row('Hide Drops and gambling promotions', 'Hide clearly labeled Drops and gambling promotion modules.', toggle('content.hideDropsPromotions', value.hideDropsPromotions, { label: 'Hide Drops and gambling promotions' }))}
@@ -3865,6 +4242,7 @@ async function onImportFile(event) {
     if (result.stickers) {
       state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
       gmSet(STICKER_PREFERENCES_KEY, result.stickers);
+      state.runtime.stickerCatalogDirty = true;
       state.runtime.stickerLibraryFilter = 'all';
       state.runtime.stickerLibraryQuery = '';
     }
@@ -3966,8 +4344,8 @@ function clearEnhancedPage() {
   for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
     root.style.removeProperty(property);
   }
-  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta]')) {
-    if (node.matches?.('[data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta]')) node.remove();
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty]')) {
+    if (node.matches?.('[data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
     else {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
     }

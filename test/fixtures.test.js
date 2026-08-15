@@ -11,6 +11,7 @@ const fixtures = {
   search: ['id="main-container"', 'id="sidebar-wrapper"', 'data-testid="search"', 'search-results'],
   channel: ['id="main-container"', 'id="sidebar-wrapper"', 'data-testid="channel-player"', 'channel-chatroom', 'aria-valuemin'],
   chat: ['id="main-container"', 'id="sidebar-wrapper"', 'chat-resizer', 'data-testid="chatroom"', 'chatroom-messages'],
+  drops: ['data-testid="sidebar-drops"', 'Drops &amp; rewards', 'data-testid="empty-state-root"', '/drops/coming-soon'],
   'sticker-scroll': ['chat-emotes-picker-panel', 'data-testid="sticker-scroll"', 'dataset.emoteId', 'overflow-y-auto'],
 };
 

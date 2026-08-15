@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kick Focus drops fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { min-height: 100%; margin: 0; }
+      body { color: #f4f7f5; background: #080b09; }
+      .group\/main { min-height: 100vh; }
+      nav { height: 56px; }
+      .shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100vh - 56px); }
+      #sidebar-wrapper { padding: 10px; }
+      #sidebar-wrapper a { display: flex; align-items: center; min-height: 44px; padding: 0 14px; color: inherit; text-decoration: none; }
+      main { padding: 30px 38px; }
+      main > div { max-width: 1240px; margin: auto; }
+      .tabs { display: flex; gap: 20px; border-bottom: 1px solid #29312b; }
+      .tabs a { min-height: 46px; color: inherit; text-decoration: none; }
+      .copy { max-width: 760px; color: #a6aea9; }
+    </style>
+  </head>
+  <body>
+    <div class="group/main" data-sidebar="true" data-chat="true">
+      <nav data-testid="top-nav"></nav>
+      <div class="shell">
+        <aside id="sidebar-wrapper">
+          <a data-testid="sidebar-home" data-state="inactive" href="/">Home</a>
+          <a data-testid="sidebar-browse" data-state="inactive" href="/browse">Browse</a>
+          <a data-testid="sidebar-following" data-state="inactive" href="/following">Following</a>
+          <a data-testid="sidebar-drops" data-state="active" href="/drops/campaigns">Drops</a>
+        </aside>
+        <main>
+          <div>
+            <h2>Drops &amp; rewards</h2>
+            <div class="tabs">
+              <a data-state="active" href="/drops/campaigns"><div class="bottom-indicator"></div>Campaigns</a>
+              <a href="/drops/coming-soon">Coming soon</a>
+              <a href="/drops/claimed">Claimed</a>
+              <a href="/drops/expired">Expired</a>
+            </div>
+            <p class="copy">Drops are automatically available across eligible streams. Viewers can earn rewards by watching.</p>
+            <div class="empty-owner">
+              <div data-testid="empty-state-root">No open campaigns</div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script>history.replaceState(null, '', '/drops/campaigns');</script>
+    <script src="/dist/kick-focus.user.js"></script>
+  </body>
+</html>

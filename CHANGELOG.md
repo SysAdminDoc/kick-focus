@@ -4,20 +4,39 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+_Nothing yet._
+
+## 1.4.0 — 2026-08-15
+
 ### Fixed
 
 - Removing or pinning a sticker now preserves the grouped shelf's nested scroll position instead of jumping back to the first row.
+- Following and Drops URLs now resolve to their own route kinds instead of silently receiving channel-only behavior.
+- Premium site styling now targets Kick's current semantic `<main>` shell and stable card, player, chat, and navigation markers rather than depending on the retired `#main-container` wrapper.
+- Clearing the search summary no longer restores the old query from the URL while the live search input is empty.
+- Explicit pointer or keyboard playback on a Home preview is no longer immediately paused by the autoplay guard; background autoplay remains silent and paused.
+- Live visual verification now applies an exact CSS viewport before measuring or capturing; the old `--window-size`-only path mislabeled browser outer-window dimensions as 1440×900/1920×1080 viewports.
 
 ### Added
 
 - A compact three-row Quick favorites shelf for keeping substantially more one-click chat stickers visible at once.
 - Chat sticker organization with a local grouped shelf, pinned favorites, removable stickers, search-aware views, native-group fallback, and independent reset controls.
 - A persistent sticker library continuously merges every enabled or locked sticker Kick exposes, records native groups, supports custom group assignment in settings, and round-trips the complete catalog and configuration through JSON export/import.
+- Seven ImageGen-led Kick-site references for Home, Browse, Following, Drops, Category, Search, and Channel/chat, saved in `design/mockups/` and implemented as one graphite, charcoal, and Kick-lime desktop system.
+- Route-specific Search context and a useful Drops empty state with direct, non-mutating navigation to eligible streams, upcoming campaigns, and reward activity.
+- The live extension gate now asserts that known ad creatives and empty ad shells are absent from the settled Kick DOM in addition to proving browser-level request blocking.
 
 ### Changed
 
 - Enlarged the organized sticker shelf, excluded Kick-disabled subscriber stickers from its usable catalog, and kept locked stickers visible in the native groups for clarity.
 - Reimagined all five settings pages with a premium matte shell, clearer page hierarchy, responsive navigation, an embedded live appearance preview, and browser-backed visual parity checks.
+- Restyled the current Kick desktop shell, nav search, sidebar states, stream cards, route tabs, player/chat frame, and sticker picker with denser geometry and stronger hierarchy at 1440×900 and 1920×1080.
+- The default sidebar mode is Auto and the default chat width is 410 px; schema-1 settings migrate without overwriting explicit custom values.
+- Sticker catalog rescans are now mutation-driven instead of repeating on every chat apply cycle, reducing work on high-volume channels.
+
+### Security
+
+- Subscriber-only stickers are cataloged for organization and export but stay unavailable unless Kick marks them enabled. Copying a sticker name is not treated as an entitlement bypass.
 
 ## 1.3.0 — 2026-08-14
 

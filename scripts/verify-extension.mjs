@@ -71,6 +71,10 @@ if (!CHROME) {
 const EXT = resolve('dist/extension');
 const PORT = Number(process.env.KF_DEBUG_PORT || 9411);
 const WINDOW_SIZE = process.env.KF_WINDOW_SIZE || '1440,900';
+const [VIEWPORT_WIDTH, VIEWPORT_HEIGHT] = WINDOW_SIZE.split(',').map((value) => Number(value));
+if (!Number.isInteger(VIEWPORT_WIDTH) || !Number.isInteger(VIEWPORT_HEIGHT) || VIEWPORT_WIDTH < 1024 || VIEWPORT_HEIGHT < 600) {
+  throw new Error(`KF_WINDOW_SIZE must be a desktop CSS viewport such as 1440,900; received ${WINDOW_SIZE}`);
+}
 const TARGET_URL = process.argv[2] || 'https://kick.com/';
 const EXPECTED_VERSION = JSON.parse(
   await (await import('node:fs/promises')).readFile('package.json', 'utf8'),
@@ -212,6 +216,19 @@ try {
   const pageClient = cdp(page.webSocketDebuggerUrl);
   await pageClient.ready;
   await pageClient.send('Runtime.enable');
+  await pageClient.send('Emulation.setDeviceMetricsOverride', {
+    width: VIEWPORT_WIDTH,
+    height: VIEWPORT_HEIGHT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await sleep(500);
+
+  const viewport = await evaluate(pageClient, '({ width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio })');
+  const viewportExact = viewport.value?.width === VIEWPORT_WIDTH
+    && viewport.value?.height === VIEWPORT_HEIGHT
+    && Math.abs(Number(viewport.value?.dpr) - 1) < 0.001;
+  record(`exact CSS viewport applied`, viewportExact, JSON.stringify(viewport.value));
 
   // Kick serves automated browsers a JSON error instead of the site. Every
   // DOM assertion below would pass trivially against that 79-byte body, so the
@@ -251,6 +268,27 @@ try {
 
     const filtered = await evaluate(pageClient, 'document.querySelectorAll("[data-kf-filtered]").length');
     console.log(`INFO  cards hidden by filters: ${filtered.value} of ${cards.value}`);
+
+    const adShells = await evaluate(pageClient, `document.querySelectorAll(${JSON.stringify([
+      'iframe[src*="doubleclick.net"]',
+      'iframe[src*="googlesyndication.com"]',
+      'iframe[src*="googleadservices.com"]',
+      'script[src*="imasdk.googleapis.com"]',
+      'script[src*="googlesyndication.com"]',
+      'script[src*="doubleclick.net"]',
+      'script[src*="googleadservices.com"]',
+      '[id^="google_ads_"]',
+      '[id^="div-gpt-ad"]',
+      '[data-ad-slot]',
+      '[data-ad-unit]',
+      '[data-testid="ad-banner"]',
+      '[data-testid*="advertisement"]',
+      '[aria-label="Advertisement"]',
+      '[aria-label="advertisement"]',
+      '[class~="ad-slot"]',
+      '[class*="advertisement"]',
+    ].join(','))}).length`);
+    record('no ad creative or empty ad shell remains in the Kick DOM', Number(adShells.value) === 0, `${adShells.value} matching nodes`);
   } else {
     console.log('SKIP  layout, card detection, and filter checks need the real Kick DOM');
     console.log('      Run with a non-headless browser, or use the offline DOM fixtures.');
