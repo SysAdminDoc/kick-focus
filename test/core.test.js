@@ -14,6 +14,7 @@ import {
   normalizeSettings,
   routeKind,
   sanitizeDiagnosticUrl,
+  validateRemoteBlocklist,
   validateImportedSettings,
 } from '../src/core.mjs';
 
@@ -26,6 +27,11 @@ test('normalization clamps values and keeps core ad defense enabled', () => {
   assert.equal(value.layout.chatWidth, 520);
   assert.equal(value.layout.sidebar, DEFAULT_SETTINGS.layout.sidebar);
   assert.equal(value.content.blockAds, true);
+  assert.equal(value.content.rememberVolume, true);
+  assert.equal(value.content.rememberVodPosition, true);
+  assert.equal(value.layout.playerContainVideo, true);
+  assert.equal(value.appearance.language, 'auto');
+  assert.equal(normalizeSettings({ appearance: { language: 'xx' } }).appearance.language, 'auto');
   assert.equal(value.accessibility.captionOpacity, 0);
 });
 
@@ -89,6 +95,21 @@ test('settings import names whatever it could not keep', () => {
   // A clean, current file produces no noise.
   const clean = validateImportedSettings(JSON.stringify({ schema: 1, layout: { chatWidth: 410 } }));
   assert.deepEqual(clean.notes, []);
+});
+
+test('remote blocklists accept data-only entries and reject executable or unknown fields', () => {
+  const valid = validateRemoteBlocklist({
+    schema: 1,
+    channels: ['https://kick.com/Creator-One/', '/creator-two'],
+    categories: ['Slots & Casino', 'just-chatting'],
+    keywords: ['giveaway', '  raid  '],
+  });
+  assert.equal(valid.ok, true);
+  assert.deepEqual(valid.value.channels, ['/creator-one', '/creator-two']);
+  assert.deepEqual(valid.value.categories, ['slots-casino', 'just-chatting']);
+  assert.deepEqual(valid.value.keywords, ['giveaway', 'raid']);
+  assert.equal(validateRemoteBlocklist({ channels: [], execute: 'nope' }).ok, false);
+  assert.equal(validateRemoteBlocklist({ channels: [42] }).ok, false);
 });
 
 test('filtering fails open when it would hide most of a grid', () => {

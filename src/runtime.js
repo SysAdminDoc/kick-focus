@@ -1,6 +1,12 @@
 const STORAGE_KEY = 'kick-focus:settings';
 const CHANNEL_LAYOUT_KEY = 'kick-focus:channel-layouts';
 const WATCHED_KEY = 'kick-focus:watched-this-session';
+const MEDIA_PREFERENCES_KEY = 'kick-focus:media-preferences';
+const FAVORITES_KEY = 'kick-focus:favorite-channels';
+const DISMISSED_KEY = 'kick-focus:not-interested-channels';
+const CHAT_KEYWORDS_KEY = 'kick-focus:chat-keywords';
+const CHANNEL_NOTES_KEY = 'kick-focus:channel-notes';
+const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 const ROUTE_EVENT = 'kick-focus:routechange';
 const AD_SHELL_SELECTORS = [
@@ -40,6 +46,7 @@ const state = {
   route: routeKind(location.href),
   root: null,
   shadow: null,
+  siteStyle: null,
   modal: null,
   command: null,
   commandInput: null,
@@ -56,6 +63,8 @@ const state = {
     chatHidden: false,
     sidebarHidden: false,
     matureVisible: false,
+    chatPaused: false,
+    suspended: false,
   },
   diagnostics: {
     blocked: 0,
@@ -67,6 +76,12 @@ const state = {
   shortcutError: '',
   resetPending: false,
   watched: new Set(readSessionArray(WATCHED_KEY)),
+  favorites: new Set(readPersistentArray(FAVORITES_KEY)),
+  dismissed: new Set(readPersistentArray(DISMISSED_KEY)),
+  mediaPreferences: readPersistentRecord(MEDIA_PREFERENCES_KEY),
+  chatKeywords: readPersistentRecord(CHAT_KEYWORDS_KEY),
+  channelNotes: readPersistentRecord(CHANNEL_NOTES_KEY),
+  remoteBlocklist: readRemoteBlocklist(),
   casinoPaths: new Set(),
   adStack: {
     sawPlayback: false,
@@ -79,6 +94,16 @@ const state = {
     total: 0,
   },
   compatibility: null,
+  observers: {
+    document: null,
+    body: null,
+    chat: null,
+  },
+  mediaBound: new WeakSet(),
+  mediaSaveTimers: new WeakMap(),
+  playbackDiagnosticsTimer: 0,
+  remoteSyncTimer: 0,
+  remoteSyncInFlight: false,
 };
 
 /**
@@ -174,18 +199,13 @@ function setSaveStatus(message, isError = false) {
 }
 
 function addStyle(cssText) {
-  try {
-    if (typeof GM_addStyle === 'function') {
-      GM_addStyle(cssText);
-      return;
-    }
-  } catch {
-    // Fall through to a regular style element.
-  }
+  state.siteStyle?.remove?.();
   const style = document.createElement('style');
-  style.id = 'kick-focus-critical-style';
+  style.id = 'kick-focus-site-style';
+  style.dataset.kickFocus = 'true';
   style.textContent = cssText;
   (document.head || document.documentElement).append(style);
+  state.siteStyle = style;
 }
 
 function recordProtection(layer, classification) {
@@ -362,6 +382,7 @@ function installNetworkDefense() {
     const nativeFetch = pageWindow.fetch?.bind(pageWindow);
     if (nativeFetch) {
       pageWindow.fetch = function kickFocusFetch(input, init) {
+        if (state.runtime.suspended) return nativeFetch(input, init);
         const rawUrl = typeof input === 'string' || input instanceof URL ? input : input?.url;
         const result = classify(rawUrl);
         if (result.blocked) {
@@ -404,8 +425,8 @@ function installNetworkDefense() {
       const nativeResponse = Object.getOwnPropertyDescriptor(xhrPrototype, 'response');
 
       xhrPrototype.open = function kickFocusOpen(method, url, ...rest) {
-        this.__kfRequest = classify(url);
-        this.__kfPlayback = isPlaybackUrl(url);
+        this.__kfRequest = state.runtime.suspended ? { blocked: false } : classify(url);
+        this.__kfPlayback = !state.runtime.suspended && isPlaybackUrl(url);
         return nativeOpen.call(this, method, url, ...rest);
       };
       xhrPrototype.send = function kickFocusSend(...args) {
@@ -437,6 +458,7 @@ function installNetworkDefense() {
         configurable: true,
         writable: true,
         value(url, data) {
+          if (state.runtime.suspended) return nativeBeacon.call(this, url, data);
           const result = classify(url);
           if (result.blocked) {
             report('Beacon', result);
@@ -454,6 +476,7 @@ function installNetworkDefense() {
     const nativeSetAttribute = pageWindow.Element?.prototype?.setAttribute;
     if (nativeSetAttribute) {
       pageWindow.Element.prototype.setAttribute = function kickFocusSetAttribute(name, value) {
+        if (state.runtime.suspended) return nativeSetAttribute.call(this, name, value);
         if (String(name).toLowerCase() === 'src') {
           const result = classify(value);
           if (result.blocked) {
@@ -486,6 +509,7 @@ function installNetworkDefense() {
         enumerable: descriptor.enumerable,
         get: descriptor.get,
         set(value) {
+          if (state.runtime.suspended) return descriptor.set.call(this, value);
           const result = classify(value);
           if (result.blocked) {
             try { this.dataset.kfBlockedSrc = result.label; } catch { /* noop */ }
@@ -564,6 +588,11 @@ const SITE_CSS = `
       gap: 20px !important;
     }
 
+    html[data-kf-following-rail="false"] #main-container [data-testid*="following" i],
+    html[data-kf-following-rail="false"] #main-container [data-kf-following-rail],
+    html[data-kf-recommended-rail="false"] #main-container [data-testid*="recommended" i],
+    html[data-kf-recommended-rail="false"] #main-container [data-kf-recommended-rail] { display: none !important; }
+
     html[data-kf-density="compact"] #main-container section[class*="grid"],
     html[data-kf-density="compact"] #main-container [class*="group/grid"] { gap: 12px !important; }
 
@@ -612,7 +641,81 @@ const SITE_CSS = `
     }
 
     [data-kf-filtered="true"],
+    [data-kf-dismissed="true"],
     [data-kf-ad-shell="true"] { display: none !important; }
+
+    [data-kf-card-actions] {
+      position: absolute !important;
+      top: 8px !important;
+      right: 8px !important;
+      z-index: 6 !important;
+      display: flex !important;
+      gap: 5px !important;
+      opacity: 0 !important;
+      transition: opacity 120ms ease !important;
+    }
+
+    [class*="group/card"]:hover [data-kf-card-actions],
+    [class*="group/card"]:focus-within [data-kf-card-actions],
+    [data-testid="livestream-results-card"]:hover [data-kf-card-actions],
+    [data-testid="livestream-results-card"]:focus-within [data-kf-card-actions],
+    [data-testid="stream-card"]:hover [data-kf-card-actions],
+    [data-testid="stream-card"]:focus-within [data-kf-card-actions] { opacity: 1 !important; }
+
+    [data-kf-card-actions] button {
+      min-width: 30px !important;
+      min-height: 30px !important;
+      padding: 0 7px !important;
+      border: 1px solid rgba(255,255,255,.24) !important;
+      border-radius: 6px !important;
+      background: rgba(8, 10, 11, .88) !important;
+      color: #f7f9fa !important;
+      cursor: pointer !important;
+      font-size: 11px !important;
+      font-weight: 760 !important;
+    }
+
+    [data-kf-card-actions] button:hover,
+    [data-kf-card-actions] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
+
+    [data-kf-highlighted="true"] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .07) !important; }
+
+    html[data-kf-mini-player-collision="true"] #injected-embedded-channel-player { bottom: 82px !important; }
+
+    html[data-kf-player-contain="true"] #main-container video,
+    html[data-kf-player-contain="true"] [data-kf-player] video { object-fit: contain !important; max-width: 100% !important; max-height: 100% !important; }
+
+    [data-kf-chat-pause] {
+      position: absolute !important;
+      top: 8px !important;
+      right: 8px !important;
+      z-index: 7 !important;
+      min-height: 30px !important;
+      padding: 0 9px !important;
+      border: 1px solid rgba(255,255,255,.25) !important;
+      border-radius: 6px !important;
+      background: rgba(8, 10, 11, .88) !important;
+      color: #f7f9fa !important;
+      cursor: pointer !important;
+      font-size: 11px !important;
+      font-weight: 760 !important;
+    }
+
+    [data-kf-chat-status], [data-kf-playback-diagnostics] {
+      position: absolute !important;
+      z-index: 7 !important;
+      border: 1px solid rgba(255,255,255,.18) !important;
+      border-radius: 6px !important;
+      background: rgba(8, 10, 11, .84) !important;
+      color: #f7f9fa !important;
+      font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace !important;
+    }
+
+    [data-kf-chat-status] { top: 44px !important; right: 8px !important; padding: 5px 8px !important; }
+    [data-kf-playback-diagnostics] { right: 12px !important; bottom: 12px !important; padding: 6px 8px !important; pointer-events: none !important; }
+
+    [data-kf-search-meta] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; margin: 0 0 14px !important; color: var(--kf-accent) !important; font-size: 13px !important; font-weight: 720 !important; }
+    [data-kf-search-meta] button { min-height: 30px !important; padding: 0 10px !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: var(--kf-panel) !important; color: inherit !important; cursor: pointer !important; }
 
     html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; }
 
@@ -671,6 +774,11 @@ function applySettingsAttributes() {
   root.dataset.kfDensity = layout.density;
   root.dataset.kfSticky = String(layout.stickyTopbar);
   root.dataset.kfWideGrid = String(layout.wideGrid);
+  root.dataset.kfFollowingRail = String(layout.showFollowingRail);
+  root.dataset.kfRecommendedRail = String(layout.showRecommendedRail);
+  root.dataset.kfMiniPlayerCollision = String(layout.miniPlayerCollision && layout.quickButton);
+  root.dataset.kfPlayerResize = String(layout.playerResizeRecovery);
+  root.dataset.kfPlayerContain = String(layout.playerContainVideo);
   root.dataset.kfTheme = appearance.theme;
   root.dataset.kfAccent = appearance.accent;
   root.dataset.kfRadius = appearance.radius;
@@ -683,6 +791,7 @@ function applySettingsAttributes() {
   root.dataset.kfLargeTargets = String(accessibility.largeTargets);
   root.dataset.kfFocus = String(state.runtime.focus);
   root.dataset.kfTheater = String(state.runtime.theater);
+  root.dataset.kfChatPaused = String(state.runtime.chatPaused);
   root.style.setProperty('--kf-chat-width', `${layout.chatWidth}px`);
   root.style.setProperty('--kf-thumb-saturation', String(.7 + appearance.thumbnail * .006));
   root.style.setProperty('--kf-caption-opacity', String(accessibility.captionOpacity / 100));
@@ -712,6 +821,53 @@ function tagChatPanel() {
   if (panel) {
     const owner = ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]');
     owner.dataset.kfChatPanel = 'true';
+  }
+}
+
+function readPersistentArray(key) {
+  const value = gmGet(key, []);
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === 'string' && item.length <= 320).slice(-200)
+    : [];
+}
+
+function readPersistentRecord(key) {
+  const value = gmGet(key, {});
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function readRemoteBlocklist() {
+  const stored = gmGet(REMOTE_BLOCKLIST_KEY, null);
+  const result = validateRemoteBlocklist(stored?.payload);
+  if (!stored || !result.ok || typeof stored.source !== 'string') {
+    return { source: '', fetchedAt: 0, attemptedAt: 0, channels: new Set(), categories: new Set(), keywords: new Set(), status: 'off' };
+  }
+  return {
+    source: stored.source,
+    fetchedAt: Number(stored.fetchedAt) || 0,
+    attemptedAt: Number(stored.attemptedAt) || 0,
+    channels: new Set(result.value.channels),
+    categories: new Set(result.value.categories),
+    keywords: new Set(result.value.keywords),
+    status: 'ready',
+  };
+}
+
+function persistSet(key, value) {
+  gmSet(key, [...value].filter((item) => typeof item === 'string').slice(-200));
+}
+
+function channelPath() {
+  return state.route === 'channel' ? location.pathname.split(/[?#]/, 1)[0] : '';
+}
+
+function cardPath(node) {
+  const link = node?.matches?.('a[href]') ? node : node?.querySelector?.('a[href]');
+  try {
+    const path = link ? new URL(link.href, location.origin).pathname : '';
+    return path && path !== '/' ? path : '';
+  } catch {
+    return '';
   }
 }
 
@@ -795,8 +951,412 @@ function cardContext(node) {
   return { categories, badges };
 }
 
+function mainCardCandidates() {
+  const main = findProbe(document, 'main').element;
+  return findAllProbe(main || document, 'card').elements;
+}
+
+function cardLabel(node) {
+  const image = node.querySelector?.('img[alt]');
+  const label = image?.getAttribute?.('alt') || node.querySelector?.('a[href]')?.textContent || '';
+  return String(label).replace(/\s+/g, ' ').trim().slice(0, 80) || 'this channel';
+}
+
+function applyCardActions(node) {
+  const path = cardPath(node);
+  if (!path) return;
+  node.dataset.kfFavorite = String(state.favorites.has(path));
+  node.dataset.kfDismissed = String(state.dismissed.has(path));
+  let actions = node.querySelector?.('[data-kf-card-actions]');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.dataset.kfCardActions = 'true';
+    node.append(actions);
+  }
+  const favorite = state.favorites.has(path);
+  const dismissed = state.dismissed.has(path);
+  actions.innerHTML = `
+    <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(cardLabel(node))}">${favorite ? '★' : '☆'}</button>
+    <button type="button" data-kf-card-action="dismiss" aria-label="${dismissed ? 'Restore' : 'Not interested'} ${escapeHtml(cardLabel(node))}">${dismissed ? '↶' : '×'}</button>`;
+}
+
+function handleCardAction(event) {
+  const button = event.target.closest?.('[data-kf-card-action]');
+  if (!button) return;
+  const card = button.closest?.('[data-testid="livestream-results-card"], [data-testid="stream-card"], [class*="group/card"], article');
+  const path = cardPath(card);
+  if (!path) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (button.dataset.kfCardAction === 'favorite') {
+    if (state.favorites.has(path)) state.favorites.delete(path);
+    else state.favorites.add(path);
+    persistSet(FAVORITES_KEY, state.favorites);
+    announce(state.favorites.has(path) ? `Added ${cardLabel(card)} to favorites` : `Removed ${cardLabel(card)} from favorites`);
+  } else {
+    if (state.dismissed.has(path)) state.dismissed.delete(path);
+    else state.dismissed.add(path);
+    persistSet(DISMISSED_KEY, state.dismissed);
+    announce(state.dismissed.has(path) ? `${cardLabel(card)} marked not interested` : `${cardLabel(card)} restored`);
+  }
+  scheduleApply(0);
+}
+
+function applyRailVisibility() {
+  const main = findProbe(document, 'main').element;
+  if (!main) return;
+  for (const node of main.querySelectorAll?.('[data-testid*="following" i], [data-testid*="recommended" i], [data-kick-rail]') || []) {
+    const text = `${node.getAttribute?.('data-testid') || ''} ${node.getAttribute?.('data-kick-rail') || ''}`.toLowerCase();
+    if (text.includes('following')) node.dataset.kfFollowingRail = 'true';
+    if (text.includes('recommended')) node.dataset.kfRecommendedRail = 'true';
+  }
+  for (const heading of main.querySelectorAll?.('h1, h2, h3, [role="heading"]') || []) {
+    const text = (heading.textContent || '').trim().toLowerCase();
+    const rail = text.includes('following') ? 'following' : text.includes('recommended') ? 'recommended' : '';
+    if (!rail) continue;
+    const owner = heading.closest?.('section, [data-kick-rail], div') || heading.parentElement;
+    if (owner) owner.dataset[`kf${rail[0].toUpperCase()}${rail.slice(1)}Rail`] = 'true';
+  }
+}
+
+function applySearchEnhancements() {
+  const main = findProbe(document, 'main').element;
+  const existing = document.querySelector('[data-kf-search-meta]');
+  if (state.route !== 'search' || !main) {
+    existing?.remove();
+    return;
+  }
+  const count = findAllProbe(main, 'card').elements.length;
+  const input = main.querySelector?.('[data-testid="search"], input[type="search"]');
+  let meta = existing;
+  if (!meta) {
+    meta = document.createElement('div');
+    meta.dataset.kfSearchMeta = 'true';
+    meta.setAttribute('role', 'status');
+    const anchor = main.querySelector?.('h1, h2, [data-testid="search-results"]') || main.firstElementChild;
+    if (anchor?.parentElement) anchor.parentElement.insertBefore(meta, anchor);
+    else main.prepend(meta);
+  }
+  meta.innerHTML = `<span>${count} ${count === 1 ? 'result' : 'results'}</span>${input?.value ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`;
+}
+
+function handleSearchAction(event) {
+  const button = event.target.closest?.('[data-kf-clear-search]');
+  if (!button) return;
+  const main = findProbe(document, 'main').element;
+  const input = main?.querySelector?.('[data-testid="search"], input[type="search"]');
+  if (!input) return;
+  event.preventDefault();
+  input.value = '';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+  scheduleApply(0);
+}
+
+function mediaPreferenceKey(kind) {
+  const path = channelPath();
+  return path ? `${kind}:${path}` : '';
+}
+
+function saveMediaPreference(kind, value) {
+  if (!state.settings.content[{ volume: 'rememberVolume', quality: 'rememberQuality', position: 'rememberVodPosition' }[kind]]) return;
+  const key = mediaPreferenceKey(kind);
+  if (!key) return;
+  state.mediaPreferences[key] = value;
+  const keys = Object.keys(state.mediaPreferences).slice(-240);
+  state.mediaPreferences = Object.fromEntries(keys.map((entry) => [entry, state.mediaPreferences[entry]]));
+  gmSet(MEDIA_PREFERENCES_KEY, state.mediaPreferences);
+}
+
+function bindMediaElement(video) {
+  if (state.mediaBound.has(video)) return;
+  state.mediaBound.add(video);
+  const path = channelPath();
+  if (!path) return;
+  const volumeKey = `volume:${path}`;
+  const positionKey = `position:${path}`;
+  const restore = () => {
+    if (state.settings.content.rememberVolume && state.mediaPreferences[volumeKey]) {
+      const saved = state.mediaPreferences[volumeKey];
+      if (Number.isFinite(saved.volume)) video.volume = Math.min(1, Math.max(0, saved.volume));
+      if (typeof saved.muted === 'boolean') video.muted = saved.muted;
+    }
+    if (state.settings.content.rememberVodPosition && Number.isFinite(video.duration) && video.duration > 0) {
+      const saved = Number(state.mediaPreferences[positionKey]);
+      if (Number.isFinite(saved) && saved > 0 && saved < video.duration - 3) {
+        try { video.currentTime = saved; } catch { /* player may not be seekable yet */ }
+      }
+    }
+    video.dataset.kfMediaRestored = 'true';
+  };
+  const saveVolume = () => saveMediaPreference('volume', { volume: video.volume, muted: video.muted });
+  const savePosition = () => {
+    if (state.settings.content.rememberVodPosition && Number.isFinite(video.duration) && video.duration > 0) {
+      saveMediaPreference('position', video.currentTime);
+    }
+  };
+  video.addEventListener('loadedmetadata', restore, { once: true });
+  video.addEventListener('volumechange', saveVolume);
+  video.addEventListener('pause', savePosition);
+  video.addEventListener('timeupdate', () => {
+    clearTimeout(state.mediaSaveTimers.get(video));
+    state.mediaSaveTimers.set(video, window.setTimeout(savePosition, 1500));
+  });
+  if (video.readyState >= 1) restore();
+}
+
+function applyQualityMemory() {
+  if (!state.settings.content.rememberQuality) return;
+  const key = mediaPreferenceKey('quality');
+  if (!key) return;
+  const saved = state.mediaPreferences[key];
+  const controls = document.querySelectorAll('[data-quality], [data-resolution], [data-testid*="quality" i], [aria-label*="quality" i], select[data-kf-quality]');
+  for (const control of controls) {
+    const value = control.value || control.dataset.quality || control.dataset.resolution || control.textContent;
+    if (!value) continue;
+    if (control.dataset.kfQualityBound !== 'true') {
+      control.dataset.kfQualityBound = 'true';
+      control.addEventListener('change', () => saveMediaPreference('quality', control.value || control.dataset.quality || control.dataset.resolution || control.textContent.trim()));
+      control.addEventListener('click', () => saveMediaPreference('quality', control.value || control.dataset.quality || control.dataset.resolution || control.textContent.trim()));
+    }
+    if (saved && control.dataset.kfQualityRestored !== 'true' && String(value).toLowerCase() === String(saved).toLowerCase() && control instanceof HTMLElement && control.tagName === 'BUTTON') {
+      control.click();
+      control.dataset.kfQualityRestored = 'true';
+    } else if (saved && control.dataset.kfQualityRestored !== 'true' && control instanceof HTMLSelectElement && [...control.options].some((option) => option.value === saved)) {
+      control.value = saved;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+      control.dataset.kfQualityRestored = 'true';
+    }
+  }
+}
+
+function applyMediaMemory() {
+  if (state.route !== 'channel') return;
+  for (const video of document.querySelectorAll('video')) bindMediaElement(video);
+  applyQualityMemory();
+}
+
+function applyPlayerResilience() {
+  const videos = [...document.querySelectorAll('video')];
+  if (state.settings.layout.playerContainVideo) {
+    for (const video of videos) {
+      const owner = video.closest?.('[data-testid*="player" i], [data-player], [id*="player" i]');
+      if (owner) owner.dataset.kfPlayer = 'true';
+    }
+  }
+  if (!state.settings.layout.playerResizeRecovery) return;
+  const main = findProbe(document, 'main').element;
+  if (main) main.dataset.kfPlayerResizeReady = 'true';
+}
+
+function applyChatPause() {
+  const panel = findProbe(document, 'chatPanel').element;
+  const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
+  if (!panel || !messages) return;
+  const owner = ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"]');
+  owner.dataset.kfChatPaused = String(state.runtime.chatPaused);
+  let button = owner.querySelector?.('[data-kf-chat-pause]');
+  if (state.settings.content.stickyChatPause && !button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.kfChatPause = 'true';
+    owner.append(button);
+  }
+  if (!state.settings.content.stickyChatPause && button) button.remove();
+  if (!state.settings.content.stickyChatPause) {
+    state.runtime.chatPaused = false;
+    state.observers.chat?.disconnect?.();
+    state.observers.chat = null;
+    const previousAriaLive = messages.dataset.kfPreviousAriaLive;
+    if (previousAriaLive && previousAriaLive !== '__none__') messages.setAttribute('aria-live', previousAriaLive);
+    else messages.removeAttribute('aria-live');
+    delete messages.dataset.kfPreviousAriaLive;
+    delete owner.dataset.kfChatPaused;
+    delete messages.dataset.kfChatPaused;
+    return;
+  }
+  button.textContent = state.runtime.chatPaused ? 'Resume chat' : 'Pause chat';
+  button.setAttribute('aria-pressed', String(state.runtime.chatPaused));
+  button.setAttribute('aria-label', state.runtime.chatPaused ? 'Resume chat updates' : 'Pause chat updates');
+  let status = owner.querySelector?.('[data-kf-chat-status]');
+  if (!status) {
+    status = document.createElement('div');
+    status.dataset.kfChatStatus = 'true';
+    status.setAttribute('role', 'status');
+    owner.append(status);
+  }
+  status.textContent = state.runtime.chatPaused ? 'Chat updates paused' : '';
+  if (state.runtime.chatPaused) {
+    if (!Object.prototype.hasOwnProperty.call(messages.dataset, 'kfPreviousAriaLive')) {
+      messages.dataset.kfPreviousAriaLive = messages.getAttribute('aria-live') || '__none__';
+    }
+    if (!state.observers.chat) {
+      const restoreScroll = () => {
+        if (Number.isFinite(state.runtime.chatScrollTop)) messages.scrollTop = state.runtime.chatScrollTop;
+      };
+      state.runtime.chatScrollTop = messages.scrollTop;
+      state.observers.chat = new MutationObserver(restoreScroll);
+      state.observers.chat.observe(messages, { childList: true, subtree: true, characterData: true });
+    }
+    messages.setAttribute('aria-live', 'off');
+    messages.dataset.kfChatPaused = 'true';
+  } else {
+    state.observers.chat?.disconnect?.();
+    state.observers.chat = null;
+    delete messages.dataset.kfChatPaused;
+    const previousAriaLive = messages.dataset.kfPreviousAriaLive;
+    if (previousAriaLive && previousAriaLive !== '__none__') messages.setAttribute('aria-live', previousAriaLive);
+    else messages.removeAttribute('aria-live');
+    delete messages.dataset.kfPreviousAriaLive;
+  }
+}
+
+function chatKeywordsForChannel() {
+  const value = state.chatKeywords[channelPath()];
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string').slice(0, 20) : [];
+}
+
+function applyChatHighlights() {
+  const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
+  if (!messages) return;
+  const keywords = state.settings.content.chatHighlights ? chatKeywordsForChannel() : [];
+  for (const node of messages.querySelectorAll?.('[data-index], [data-message-id], .group') || []) {
+    const text = (node.textContent || '').toLowerCase();
+    node.dataset.kfHighlighted = String(keywords.some((keyword) => text.includes(keyword.toLowerCase())));
+  }
+}
+
+function applyPlaybackDiagnostics() {
+  const existing = document.querySelector('[data-kf-playback-diagnostics]');
+  if (!state.settings.content.playbackDiagnostics || state.route !== 'channel') {
+    existing?.remove();
+    clearInterval(state.playbackDiagnosticsTimer);
+    state.playbackDiagnosticsTimer = 0;
+    return;
+  }
+  const video = document.querySelector('video');
+  if (!video) return;
+  const owner = video.closest?.('[data-testid*="player" i], [data-player], [id*="player" i]') || video.parentElement;
+  if (!owner) return;
+  let panel = owner.querySelector?.('[data-kf-playback-diagnostics]');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.dataset.kfPlaybackDiagnostics = 'true';
+    owner.append(panel);
+  }
+  const update = () => {
+    const buffered = video.buffered?.length ? Math.max(0, video.buffered.end(video.buffered.length - 1) - video.currentTime) : 0;
+    const quality = video.getVideoPlaybackQuality?.();
+    panel.textContent = `ready ${video.readyState}/4 · buffer ${buffered.toFixed(1)}s${quality ? ` · dropped ${quality.droppedVideoFrames}` : ''}`;
+  };
+  update();
+  if (!state.playbackDiagnosticsTimer) state.playbackDiagnosticsTimer = window.setInterval(update, 1000);
+}
+
+function remoteBlocklistMatches(path, labels, text) {
+  const remote = state.remoteBlocklist;
+  if (remote.status !== 'ready') return false;
+  const normalized = String(text || '').toLowerCase();
+  return (path && remote.channels.has(path.toLowerCase()))
+    || labels.categories?.some?.((category) => remote.categories.has(category.toLowerCase()))
+    || [...remote.keywords].some((keyword) => normalized.includes(keyword));
+}
+
+function remoteBlocklistSummary() {
+  const remote = state.remoteBlocklist;
+  if (!state.settings.content.blocklistSubscription) return 'Optional remote blocklist is off. No remote data is fetched.';
+  if (!state.settings.content.blocklistUrl) return 'Add an HTTPS URL to enable the data-only subscription.';
+  if (remote.status === 'loading') return 'Fetching and validating the blocklist…';
+  if (remote.status === 'ready') return `Active: ${remote.channels.size} channels, ${remote.categories.size} categories, and ${remote.keywords.size} keywords. Last checked ${new Date(remote.fetchedAt).toLocaleString()}.`;
+  if (remote.status === 'stale') return 'The last valid blocklist is stale; the subscription will retry on its next interval.';
+  if (remote.status === 'error') return 'The last blocklist refresh failed. Existing valid data was kept if it came from the same URL.';
+  return 'No valid blocklist has been loaded yet.';
+}
+
+function updateRemoteBlocklistInPlace() {
+  const notice = state.shadow?.querySelector('[data-kf-remote-blocklist]');
+  if (!notice) return;
+  notice.textContent = remoteBlocklistSummary();
+  notice.dataset.status = state.remoteBlocklist.status;
+}
+
+function clearRemoteBlocklist() {
+  gmDelete(REMOTE_BLOCKLIST_KEY);
+  state.remoteBlocklist = { source: '', fetchedAt: 0, attemptedAt: 0, channels: new Set(), categories: new Set(), keywords: new Set(), status: 'off' };
+  updateRemoteBlocklistInPlace();
+  scheduleApply(0);
+}
+
+function scheduleRemoteBlocklistSync(force = false) {
+  const settings = state.settings.content;
+  if (!settings.blocklistSubscription) {
+    if (state.remoteBlocklist.status !== 'off') clearRemoteBlocklist();
+    return;
+  }
+  let url;
+  try {
+    url = new URL(settings.blocklistUrl);
+    if (url.protocol !== 'https:') throw new Error('HTTPS required');
+  } catch {
+    state.remoteBlocklist.status = 'error';
+    updateRemoteBlocklistInPlace();
+    return;
+  }
+  const now = Date.now();
+  const interval = settings.blocklistRefreshHours * 60 * 60 * 1000;
+  const sameSource = state.remoteBlocklist.source === url.href;
+  if (!force && state.remoteSyncInFlight) return;
+  if (!force && sameSource && state.remoteBlocklist.fetchedAt && now - state.remoteBlocklist.fetchedAt < interval) return;
+  if (!force && state.remoteBlocklist.attemptedAt && now - state.remoteBlocklist.attemptedAt < 60 * 1000) return;
+  state.remoteSyncInFlight = true;
+  state.remoteBlocklist.attemptedAt = now;
+  state.remoteBlocklist.status = 'loading';
+  updateRemoteBlocklistInPlace();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8000);
+  fetch(url.href, { credentials: 'omit', cache: 'no-store', signal: controller.signal })
+    .then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    })
+    .then((text) => {
+      if (text.length > 512 * 1024) throw new Error('blocklist too large');
+      const result = validateRemoteBlocklist(JSON.parse(text));
+      if (!result.ok) throw new Error(result.error);
+      const payload = result.value;
+      state.remoteBlocklist = {
+        source: url.href,
+        fetchedAt: Date.now(),
+        attemptedAt: Date.now(),
+        channels: new Set(payload.channels),
+        categories: new Set(payload.categories),
+        keywords: new Set(payload.keywords),
+        status: 'ready',
+      };
+      gmSet(REMOTE_BLOCKLIST_KEY, { source: url.href, fetchedAt: state.remoteBlocklist.fetchedAt, payload });
+      recordProtection('Blocklist', { category: 'local', label: `validated ${payload.channels.length + payload.categories.length + payload.keywords.length} entries` });
+      scheduleApply(0);
+    })
+    .catch(() => {
+      state.remoteBlocklist.status = sameSource && state.remoteBlocklist.fetchedAt ? 'stale' : 'error';
+      updateRemoteBlocklistInPlace();
+    })
+    .finally(() => {
+      window.clearTimeout(timeout);
+      state.remoteSyncInFlight = false;
+      updateRemoteBlocklistInPlace();
+    });
+}
+
+function installRemoteBlocklistTimer() {
+  if (state.remoteSyncTimer) return;
+  state.remoteSyncTimer = window.setInterval(() => scheduleRemoteBlocklistSync(false), 60 * 1000);
+  scheduleRemoteBlocklistSync(false);
+}
+
 function applyContentFilters() {
   const settings = state.settings.content;
+  for (const node of mainCardCandidates()) applyCardActions(node);
 
   // Decide first, apply second. Filtering is scored across the whole grid so a
   // run that would hide most of the page can be suspended before anything
@@ -805,6 +1365,7 @@ function applyContentFilters() {
   for (const node of cardCandidates()) {
     delete node.dataset.kfFiltered;
     delete node.dataset.kfMature;
+    delete node.dataset.kfDismissed;
     const labels = detectContentLabels(node.textContent, cardContext(node));
     const link = node.matches?.('a[href]') ? node : node.querySelector?.('a[href]');
     let path = '';
@@ -813,7 +1374,10 @@ function applyContentFilters() {
     if (path && state.casinoPaths.has(path)) labels.casino = true;
     node.dataset.kfWatched = String(Boolean(path && state.watched.has(path)));
     node.dataset.kfLiveCard = String(/(^|\s)live(?:\s|$)/i.test(node.textContent || ''));
-    const hide = (settings.hideCasino && labels.casino)
+    node.dataset.kfDismissed = String(Boolean(path && state.dismissed.has(path)));
+    const remoteBlocked = remoteBlocklistMatches(path, cardContext(node), node.textContent);
+    const hide = remoteBlocked
+      || (settings.hideCasino && labels.casino)
       || (settings.suppressPromoted && labels.promoted)
       || (settings.hideDropsPromotions && labels.drops);
     scored.push({ node, labels, hide });
@@ -895,11 +1459,13 @@ function removeAdShells() {
  * shell removal, chat detection, and sidebar sync after first paint.
  */
 function scheduleApply(delay = 50) {
+  if (state.runtime.suspended) return;
   const now = Date.now();
   if (!state.applyPendingSince) state.applyPendingSince = now;
   const effective = nextApplyDelay(delay, now - state.applyPendingSince);
   clearTimeout(state.applyTimer);
   state.applyTimer = window.setTimeout(() => {
+    if (state.runtime.suspended) return;
     state.applyPendingSince = 0;
     const currentPath = location.pathname;
     state.route = routeKind(location.href);
@@ -911,6 +1477,9 @@ function scheduleApply(delay = 50) {
         state.runtime.theater = state.route === 'channel' && state.settings.layout.streamStart === 'theater';
         state.runtime.chatHidden = false;
         state.runtime.sidebarHidden = false;
+        state.runtime.chatPaused = false;
+        state.observers.chat?.disconnect?.();
+        state.observers.chat = null;
       }
       state.runtime.matureVisible = false;
       announce(`Kick Focus applied to ${state.route}`);
@@ -920,6 +1489,13 @@ function scheduleApply(delay = 50) {
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
+    applyRailVisibility();
+    applySearchEnhancements();
+    applyMediaMemory();
+    applyPlayerResilience();
+    applyChatPause();
+    applyChatHighlights();
+    applyPlaybackDiagnostics();
     state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
     updateCompatibilityInPlace();
     syncQuickButton();
@@ -946,8 +1522,32 @@ function installSpaHooks() {
 }
 
 function installDocumentObserver() {
-  const observer = new MutationObserver(() => scheduleApply(80));
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  if (state.observers.document) return;
+  state.observers.document = new MutationObserver(() => scheduleApply(80));
+  state.observers.document.observe(document.documentElement, { childList: true, subtree: true });
+}
+
+function installRuntimeInteractions() {
+  if (pageWindow.__kickFocusRuntimeInteractionsV1) return;
+  pageWindow.__kickFocusRuntimeInteractionsV1 = true;
+  document.addEventListener('click', handleCardAction, true);
+  document.addEventListener('click', handleSearchAction, true);
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest?.('[data-kf-chat-pause]');
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    state.runtime.chatPaused = !state.runtime.chatPaused;
+    applySettingsAttributes();
+    applyChatPause();
+    announce(state.runtime.chatPaused ? 'Chat updates paused' : 'Chat updates resumed');
+  }, true);
+  const refreshPlayer = () => {
+    if (state.settings.layout.playerResizeRecovery) scheduleApply(0);
+  };
+  window.addEventListener('resize', refreshPlayer, { passive: true });
+  window.addEventListener('orientationchange', refreshPlayer, { passive: true });
+  window.visualViewport?.addEventListener('resize', refreshPlayer, { passive: true });
 }
 
 function rememberWatchedCard(event) {
@@ -1012,9 +1612,21 @@ function updateSetting(path, value, message = 'Autosaved') {
     ...state.settings,
     [section]: { ...state.settings[section], [key]: value },
   });
+  if (path === 'content.rememberVolume' && !state.settings.content.rememberVolume) clearMediaPreferenceKind('volume');
+  if (path === 'content.rememberQuality' && !state.settings.content.rememberQuality) clearMediaPreferenceKind('quality');
+  if (path === 'content.rememberVodPosition' && !state.settings.content.rememberVodPosition) clearMediaPreferenceKind('position');
+  if (path === 'content.stickyChatPause' && !state.settings.content.stickyChatPause) {
+    state.runtime.chatPaused = false;
+    state.observers.chat?.disconnect?.();
+    state.observers.chat = null;
+  }
+  if (path === 'content.blocklistSubscription' && !state.settings.content.blocklistSubscription) clearRemoteBlocklist();
+  if (path === 'content.blocklistUrl' && state.remoteBlocklist.source !== state.settings.content.blocklistUrl) clearRemoteBlocklist();
+  if (path.startsWith('content.blocklist')) window.setTimeout(() => scheduleRemoteBlocklistSync(true), 0);
   saveSettings(message);
   scheduleApply(0);
   renderSettingsPage();
+  renderCommands();
 }
 
 function escapeHtml(value) {
@@ -1213,6 +1825,18 @@ const UI_CSS = `
   .kf-range output { justify-self: center; min-width: 52px; padding: 2px 7px; border-radius: 5px; background: #2a3136; color: var(--text); text-align: center; font-size: 11px; }
   .kf-range input { width: 100%; accent-color: var(--accent); }
 
+  .kf-text, .kf-textarea {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 10px;
+    border: 1px solid #465057;
+    border-radius: 7px;
+    background: #0b0e10;
+    color: var(--text);
+  }
+  .kf-textarea { min-height: 86px; resize: vertical; }
+  .kf-text:focus, .kf-textarea:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+
   .kf-theme-grid, .kf-swatch-grid { display: grid; grid-template-columns: repeat(4, minmax(92px, 1fr)); gap: 10px; }
   .kf-theme-grid { grid-template-columns: repeat(3, minmax(125px, 1fr)); }
   .kf-choice-card {
@@ -1373,6 +1997,311 @@ const NAV_ITEMS = [
   ['about', 'About', 'Version, diagnostics, and privacy'],
 ];
 
+const TRANSLATIONS = {
+  es: {
+    'Settings': 'Configuración',
+    'Autosaved': 'Guardado automático',
+    'Close settings': 'Cerrar configuración',
+    'Reset page': 'Restablecer página',
+    'Export settings': 'Exportar configuración',
+    'Done': 'Listo',
+    'Reset settings?': '¿Restablecer configuración?',
+    'Reset all Kick Focus settings?': '¿Restablecer toda la configuración de Kick Focus?',
+    'This restores the defaults for this page.': 'Esto restaura los valores predeterminados de esta página.',
+    'Every preference and shortcut will return to its factory default.': 'Todas las preferencias y atajos volverán a sus valores de fábrica.',
+    'Only the settings on this page will return to their defaults.': 'Solo la configuración de esta página volverá a sus valores predeterminados.',
+    'Cancel': 'Cancelar',
+    'Reset': 'Restablecer',
+    'Filter commands…': 'Filtrar comandos…',
+    'Open Kick Focus command menu': 'Abrir menú de comandos de Kick Focus',
+    'Focus': 'Enfoque',
+    'Resume': 'Reanudar',
+    'Resume Kick Focus': 'Reanudar Kick Focus',
+    'Kick Focus settings': 'Configuración de Kick Focus',
+    'Layout': 'Diseño',
+    'Structure and positioning': 'Estructura y posición',
+    'Appearance': 'Apariencia',
+    'Themes, colors, and style': 'Temas, colores y estilo',
+    'Content & Ads': 'Contenido y anuncios',
+    'Filter and hide elements': 'Filtrar y ocultar elementos',
+    'Accessibility & Shortcuts': 'Accesibilidad y atajos',
+    'Shortcuts and accessibility': 'Atajos y accesibilidad',
+    'About': 'Acerca de',
+    'Version, diagnostics, and privacy': 'Versión, diagnósticos y privacidad',
+    'Control how Kick is arranged across your desktop.': 'Controla cómo se organiza Kick en tu escritorio.',
+    'Choose how the left discovery rail behaves.': 'Elige cómo funciona la barra de descubrimiento izquierda.',
+    'Choose the overall surface treatment.': 'Elige el tratamiento general de las superficies.',
+    'Set a premium visual style without replacing Kick’s identity.': 'Define un estilo visual premium sin reemplazar la identidad de Kick.',
+    'Keep the page calm, private, and focused on streams.': 'Mantén la página tranquila, privada y centrada en los streams.',
+    'Improve comfort and keep core actions within reach.': 'Mejora la comodidad y mantén las acciones principales al alcance.',
+    'A desktop-first layout and control layer for Kick.': 'Una capa de diseño y control para Kick pensada para escritorio.',
+    'Language': 'Idioma',
+    'Choose the language for Kick Focus settings and commands.': 'Elige el idioma de la configuración y los comandos de Kick Focus.',
+    'Auto': 'Automático',
+    'English': 'Inglés',
+    'Español': 'Español',
+    'Português': 'Portugués',
+    'Sidebar mode': 'Modo de barra lateral',
+    'Chat layout': 'Diseño del chat',
+    'Chat width': 'Ancho del chat',
+    'Content density': 'Densidad del contenido',
+    'Stream start behavior': 'Comportamiento al abrir streams',
+    'Remember per-channel layout': 'Recordar diseño por canal',
+    'Widen browse grids': 'Ampliar cuadrículas de exploración',
+    'Show Following rail': 'Mostrar barra de seguidos',
+    'Show Recommended rail': 'Mostrar barra recomendada',
+    'Sticky compact top bar': 'Barra superior compacta fija',
+    'Show quick command button': 'Mostrar botón de comandos',
+    'Move mini-player clear of controls': 'Mover el minirreproductor lejos de los controles',
+    'Recover player after resize': 'Recuperar el reproductor tras cambiar el tamaño',
+    'Keep ultrawide video uncropped': 'Mantener el video panorámico sin recortar',
+    'Premium stream card preview': 'Vista previa premium de tarjeta de stream',
+    'Clear hierarchy, restrained motion, and one consistent accent.': 'Jerarquía clara, movimiento moderado y un solo acento consistente.',
+    'Theme': 'Tema',
+    'Accent color': 'Color de acento',
+    'Corner radius': 'Radio de esquinas',
+    'Thumbnail treatment': 'Tratamiento de miniaturas',
+    'Interface scale': 'Escala de la interfaz',
+    'Dim watched cards': 'Atenuar tarjetas vistas',
+    'Strengthen text contrast': 'Aumentar contraste del texto',
+    'Colorize live indicators': 'Colorear indicadores en vivo',
+    'Ad defense active': 'Defensa contra anuncios activa',
+    'Network + page': 'Red + página',
+    'Page only': 'Solo página',
+    'Local channel tools': 'Herramientas locales del canal',
+    'Favorites, not-interested choices, keywords, and notes stay on this device.': 'Favoritos, opciones de no me interesa, palabras clave y notas permanecen en este dispositivo.',
+    'Clear favorites': 'Borrar favoritos',
+    'Clear not-interested': 'Borrar no me interesa',
+    'Protection log': 'Registro de protección',
+    'Accessibility & Shortcuts': 'Accesibilidad y atajos',
+    'Reduce motion': 'Reducir movimiento',
+    'High-contrast controls': 'Controles de alto contraste',
+    'Always show keyboard focus': 'Mostrar siempre el foco del teclado',
+    'Larger pointer targets': 'Objetivos táctiles más grandes',
+    'Announce layout changes': 'Anunciar cambios de diseño',
+    'Text size': 'Tamaño del texto',
+    'Caption background opacity': 'Opacidad del fondo de subtítulos',
+    'Keyboard shortcuts': 'Atajos de teclado',
+    'Restore defaults': 'Restaurar valores predeterminados',
+    'Action': 'Acción',
+    'Current shortcut': 'Atajo actual',
+    'Status': 'Estado',
+    'Change': 'Cambiar',
+    'Script health': 'Estado del script',
+    'Site compatibility': 'Compatibilidad del sitio',
+    'Protection layer': 'Capa de protección',
+    'Data & privacy': 'Datos y privacidad',
+    'Diagnostics': 'Diagnósticos',
+    'Copy diagnostic summary': 'Copiar resumen de diagnóstico',
+    'Run self-check': 'Ejecutar autocomprobación',
+    'Compatibility self-test': 'Autocomprobación de compatibilidad',
+    'Settings portability': 'Portabilidad de configuración',
+    'Import settings': 'Importar configuración',
+    'Reset all settings': 'Restablecer toda la configuración',
+    'Panic switch': 'Interruptor de emergencia',
+    'Pause Kick Focus': 'Pausar Kick Focus',
+    'Restore Kick Focus': 'Restaurar Kick Focus',
+    'Temporarily remove enhanced layout and request hooks': 'Quita temporalmente el diseño mejorado y los interceptores',
+    'Enter focus mode': 'Entrar en modo enfoque',
+    'Exit focus mode': 'Salir del modo enfoque',
+    'Maximize the stream and hide side panels': 'Maximiza el stream y oculta los paneles laterales',
+    'Enter theater mode': 'Entrar en modo teatro',
+    'Exit theater mode': 'Salir del modo teatro',
+    'Hide discovery while keeping chat': 'Oculta el descubrimiento y conserva el chat',
+    'Show chat': 'Mostrar chat',
+    'Hide chat': 'Ocultar chat',
+    'Toggle the chat panel for this session': 'Alterna el panel de chat durante esta sesión',
+    'Show sidebar': 'Mostrar barra lateral',
+    'Hide sidebar': 'Ocultar barra lateral',
+    'Toggle the discovery rail for this session': 'Alterna la barra de descubrimiento durante esta sesión',
+    'Blur mature thumbnails': 'Desenfocar miniaturas maduras',
+    'Reveal mature thumbnails': 'Mostrar miniaturas maduras',
+    'Temporarily override mature-card blur': 'Anula temporalmente el desenfoque de tarjetas maduras',
+    'Use comfortable density': 'Usar densidad cómoda',
+    'Use compact density': 'Usar densidad compacta',
+    'Change discovery spacing and save it': 'Cambia y guarda el espaciado del descubrimiento',
+    'Show casino content': 'Mostrar contenido de casino',
+    'Hide casino content': 'Ocultar contenido de casino',
+    'Filter clearly labeled casino streams': 'Filtra streams marcados claramente como casino',
+    'Open Kick Focus settings': 'Abrir configuración de Kick Focus',
+    'Customize layout, appearance, content, and access': 'Personaliza el diseño, la apariencia, el contenido y el acceso',
+    'No matching commands.': 'No hay comandos coincidentes.',
+  },
+  pt: {
+    'Settings': 'Configurações',
+    'Autosaved': 'Salvo automaticamente',
+    'Close settings': 'Fechar configurações',
+    'Reset page': 'Redefinir página',
+    'Export settings': 'Exportar configurações',
+    'Done': 'Concluído',
+    'Reset settings?': 'Redefinir configurações?',
+    'Reset all Kick Focus settings?': 'Redefinir todas as configurações do Kick Focus?',
+    'This restores the defaults for this page.': 'Isso restaura os padrões desta página.',
+    'Every preference and shortcut will return to its factory default.': 'Todas as preferências e atalhos voltarão ao padrão de fábrica.',
+    'Only the settings on this page will return to their defaults.': 'Somente as configurações desta página voltarão aos padrões.',
+    'Cancel': 'Cancelar',
+    'Reset': 'Redefinir',
+    'Filter commands…': 'Filtrar comandos…',
+    'Open Kick Focus command menu': 'Abrir menu de comandos do Kick Focus',
+    'Focus': 'Foco',
+    'Resume': 'Retomar',
+    'Resume Kick Focus': 'Retomar Kick Focus',
+    'Kick Focus settings': 'Configurações do Kick Focus',
+    'Layout': 'Layout',
+    'Structure and positioning': 'Estrutura e posicionamento',
+    'Appearance': 'Aparência',
+    'Themes, colors, and style': 'Temas, cores e estilo',
+    'Content & Ads': 'Conteúdo e anúncios',
+    'Filter and hide elements': 'Filtrar e ocultar elementos',
+    'Accessibility & Shortcuts': 'Acessibilidade e atalhos',
+    'Shortcuts and accessibility': 'Atalhos e acessibilidade',
+    'About': 'Sobre',
+    'Version, diagnostics, and privacy': 'Versão, diagnósticos e privacidade',
+    'Control how Kick is arranged across your desktop.': 'Controle como o Kick é organizado na sua área de trabalho.',
+    'Choose the overall surface treatment.': 'Escolha o tratamento geral das superfícies.',
+    'Set a premium visual style without replacing Kick’s identity.': 'Defina um estilo visual premium sem substituir a identidade do Kick.',
+    'Keep the page calm, private, and focused on streams.': 'Mantenha a página calma, privada e focada nas transmissões.',
+    'Improve comfort and keep core actions within reach.': 'Melhore o conforto e mantenha as ações principais ao alcance.',
+    'A desktop-first layout and control layer for Kick.': 'Uma camada de layout e controle para Kick pensada para desktop.',
+    'Language': 'Idioma',
+    'Choose the language for Kick Focus settings and commands.': 'Escolha o idioma das configurações e comandos do Kick Focus.',
+    'Auto': 'Automático',
+    'English': 'Inglês',
+    'Español': 'Espanhol',
+    'Português': 'Português',
+    'Sidebar mode': 'Modo da barra lateral',
+    'Chat layout': 'Layout do chat',
+    'Chat width': 'Largura do chat',
+    'Content density': 'Densidade do conteúdo',
+    'Stream start behavior': 'Comportamento ao abrir transmissões',
+    'Remember per-channel layout': 'Lembrar layout por canal',
+    'Widen browse grids': 'Ampliar grades de descoberta',
+    'Show Following rail': 'Mostrar barra de Seguindo',
+    'Show Recommended rail': 'Mostrar barra de Recomendados',
+    'Sticky compact top bar': 'Barra superior compacta fixa',
+    'Show quick command button': 'Mostrar botão de comandos',
+    'Move mini-player clear of controls': 'Mover miniplayer para longe dos controles',
+    'Recover player after resize': 'Recuperar player após redimensionar',
+    'Keep ultrawide video uncropped': 'Manter vídeo ultrawide sem corte',
+    'Premium stream card preview': 'Prévia premium de cartão de transmissão',
+    'Clear hierarchy, restrained motion, and one consistent accent.': 'Hierarquia clara, movimento discreto e um único destaque consistente.',
+    'Theme': 'Tema',
+    'Accent color': 'Cor de destaque',
+    'Corner radius': 'Raio dos cantos',
+    'Thumbnail treatment': 'Tratamento das miniaturas',
+    'Interface scale': 'Escala da interface',
+    'Dim watched cards': 'Atenuar cartões assistidos',
+    'Strengthen text contrast': 'Aumentar contraste do texto',
+    'Colorize live indicators': 'Colorir indicadores ao vivo',
+    'Ad defense active': 'Defesa contra anúncios ativa',
+    'Network + page': 'Rede + página',
+    'Page only': 'Somente página',
+    'Local channel tools': 'Ferramentas locais do canal',
+    'Favorites, not-interested choices, keywords, and notes stay on this device.': 'Favoritos, opções de não tenho interesse, palavras-chave e notas ficam neste dispositivo.',
+    'Clear favorites': 'Limpar favoritos',
+    'Clear not-interested': 'Limpar não tenho interesse',
+    'Protection log': 'Registro de proteção',
+    'Reduce motion': 'Reduzir movimento',
+    'High-contrast controls': 'Controles de alto contraste',
+    'Always show keyboard focus': 'Sempre mostrar foco do teclado',
+    'Larger pointer targets': 'Alvos de ponteiro maiores',
+    'Announce layout changes': 'Anunciar mudanças de layout',
+    'Text size': 'Tamanho do texto',
+    'Caption background opacity': 'Opacidade do fundo das legendas',
+    'Keyboard shortcuts': 'Atalhos de teclado',
+    'Restore defaults': 'Restaurar padrões',
+    'Action': 'Ação',
+    'Current shortcut': 'Atalho atual',
+    'Status': 'Status',
+    'Change': 'Alterar',
+    'Script health': 'Saúde do script',
+    'Site compatibility': 'Compatibilidade do site',
+    'Protection layer': 'Camada de proteção',
+    'Data & privacy': 'Dados e privacidade',
+    'Diagnostics': 'Diagnósticos',
+    'Copy diagnostic summary': 'Copiar resumo de diagnóstico',
+    'Run self-check': 'Executar autoteste',
+    'Compatibility self-test': 'Autoteste de compatibilidade',
+    'Settings portability': 'Portabilidade das configurações',
+    'Import settings': 'Importar configurações',
+    'Reset all settings': 'Redefinir todas as configurações',
+    'Panic switch': 'Interruptor de emergência',
+    'Pause Kick Focus': 'Pausar Kick Focus',
+    'Restore Kick Focus': 'Restaurar Kick Focus',
+    'Temporarily remove enhanced layout and request hooks': 'Remove temporariamente o layout aprimorado e os interceptadores',
+    'Enter focus mode': 'Entrar no modo foco',
+    'Exit focus mode': 'Sair do modo foco',
+    'Maximize the stream and hide side panels': 'Maximiza a transmissão e oculta os painéis laterais',
+    'Enter theater mode': 'Entrar no modo teatro',
+    'Exit theater mode': 'Sair do modo teatro',
+    'Hide discovery while keeping chat': 'Oculta a descoberta mantendo o chat',
+    'Show chat': 'Mostrar chat',
+    'Hide chat': 'Ocultar chat',
+    'Toggle the chat panel for this session': 'Alterna o painel de chat nesta sessão',
+    'Show sidebar': 'Mostrar barra lateral',
+    'Hide sidebar': 'Ocultar barra lateral',
+    'Toggle the discovery rail for this session': 'Alterna a barra de descoberta nesta sessão',
+    'Blur mature thumbnails': 'Desfocar miniaturas maduras',
+    'Reveal mature thumbnails': 'Revelar miniaturas maduras',
+    'Temporarily override mature-card blur': 'Substitui temporariamente o desfoque de cartões maduros',
+    'Use comfortable density': 'Usar densidade confortável',
+    'Use compact density': 'Usar densidade compacta',
+    'Change discovery spacing and save it': 'Altera e salva o espaçamento da descoberta',
+    'Show casino content': 'Mostrar conteúdo de cassino',
+    'Hide casino content': 'Ocultar conteúdo de cassino',
+    'Filter clearly labeled casino streams': 'Filtra transmissões claramente marcadas como cassino',
+    'Open Kick Focus settings': 'Abrir configurações do Kick Focus',
+    'Customize layout, appearance, content, and access': 'Personalize layout, aparência, conteúdo e acesso',
+    'No matching commands.': 'Nenhum comando correspondente.',
+  },
+};
+
+function activeLocale() {
+  const preference = state.settings.appearance.language;
+  if (preference !== 'auto') return preference;
+  const language = typeof navigator === 'undefined' ? '' : String(navigator.language || '').toLowerCase();
+  if (language.startsWith('es')) return 'es';
+  if (language.startsWith('pt')) return 'pt';
+  return 'en';
+}
+
+function canonicalTranslation(value) {
+  const text = String(value);
+  for (const dictionary of Object.values(TRANSLATIONS)) {
+    for (const [source, translated] of Object.entries(dictionary)) {
+      if (translated === text) return source;
+    }
+  }
+  return text;
+}
+
+function tr(value) {
+  const source = canonicalTranslation(value);
+  return TRANSLATIONS[activeLocale()]?.[source] || source;
+}
+
+function localizeInterface(root = state.shadow) {
+  if (!root) return;
+  const walk = (node) => {
+    if (node.nodeType === 3) {
+      const text = node.nodeValue;
+      const trimmed = text.trim();
+      if (!trimmed || node.parentElement?.matches?.('input, textarea')) return;
+      const start = text.indexOf(trimmed);
+      node.nodeValue = `${text.slice(0, start)}${tr(trimmed)}${text.slice(start + trimmed.length)}`;
+      return;
+    }
+    if (node.nodeType !== 1 && node.nodeType !== 11) return;
+    if (node.nodeType === 1) {
+      for (const attribute of ['aria-label', 'placeholder', 'title']) {
+        if (node.hasAttribute(attribute)) node.setAttribute(attribute, tr(node.getAttribute(attribute)));
+      }
+    }
+    for (const child of node.childNodes || []) walk(child);
+  };
+  walk(root);
+}
+
 function buildInterface() {
   if (document.getElementById('kick-focus-root')) return;
   const root = document.createElement('div');
@@ -1487,8 +2416,13 @@ function renderLayoutPage() {
       ${row('Stream start behavior', 'Choose how each channel opens.', segmented('layout.streamStart', value.streamStart, [['standard','Standard'],['theater','Theater'],['focus','Focus']]))}
       ${row('Remember per-channel layout', 'Keep the last runtime layout for each channel.', toggle('layout.rememberPerChannel', value.rememberPerChannel, { label: 'Remember per-channel layout' }))}
       ${row('Widen browse grids', 'Use reclaimed sidebar space for larger, calmer stream cards.', toggle('layout.wideGrid', value.wideGrid, { label: 'Widen browse grids' }))}
+      ${row('Show Following rail', 'Keep the Following discovery rail visible when Kick provides it.', toggle('layout.showFollowingRail', value.showFollowingRail, { label: 'Show Following rail' }))}
+      ${row('Show Recommended rail', 'Keep recommended stream rows visible in the main content.', toggle('layout.showRecommendedRail', value.showRecommendedRail, { label: 'Show Recommended rail' }))}
       ${row('Sticky compact top bar', 'Keep search and account controls available while browsing.', toggle('layout.stickyTopbar', value.stickyTopbar, { label: 'Sticky compact top bar' }))}
       ${row('Show quick command button', 'Keep the Focus control available in the lower-left corner.', toggle('layout.quickButton', value.quickButton, { label: 'Show quick command button' }))}
+      ${row('Move mini-player clear of controls', 'Raise Kick’s embedded mini-player when it would overlap the Focus button.', toggle('layout.miniPlayerCollision', value.miniPlayerCollision, { label: 'Move mini-player clear of controls' }))}
+      ${row('Recover player after resize', 'Re-apply player geometry after a window or monitor change.', toggle('layout.playerResizeRecovery', value.playerResizeRecovery, { label: 'Recover player after resize' }))}
+      ${row('Keep ultrawide video uncropped', 'Prefer contained video geometry on wide or moved displays.', toggle('layout.playerContainVideo', value.playerContainVideo, { label: 'Keep ultrawide video uncropped' }))}
     </section>`;
 }
 
@@ -1501,6 +2435,7 @@ function renderAppearancePage() {
     <section class="kf-panel">
       <div class="kf-row kf-row-wide"><div><h3>Theme</h3><p>Choose the overall surface treatment.</p></div><div class="kf-theme-grid">${themes.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.theme" data-value="${id}" aria-pressed="${selected(value.theme,id)}"><span class="kf-theme-sample" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
       <div class="kf-row kf-row-wide"><div><h3>Accent color</h3><p>Use one clear accent for highlights and controls.</p></div><div class="kf-swatch-grid">${accents.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.accent" data-value="${id}" aria-pressed="${selected(value.accent,id)}"><span class="kf-swatch" data-color="${id}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
+      ${row('Language', 'Choose the language for Kick Focus settings and commands.', segmented('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']]))}
       ${row('Corner radius', 'Adjust the roundness of enhanced UI.', segmented('appearance.radius', value.radius, [['subtle','Subtle'],['balanced','Balanced'],['rounded','Rounded']]))}
       ${row('Thumbnail treatment', 'Adjust stream-card color intensity.', range('appearance.thumbnail', value.thumbnail, 0, 100, 'Natural', 'Vivid', '%'), { wide: true })}
       ${row('Interface scale', 'Set the size of Kick Focus controls.', segmented('appearance.interfaceScale', value.interfaceScale, [[90,'90%'],[100,'100%'],[110,'110%']]))}
@@ -1516,6 +2451,34 @@ function protectionRows() {
     { time: '—', layer: 'Waiting', match: 'No ad request matched yet', action: 'Ready' },
   ];
   return entries.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.layer)}</td><td>${escapeHtml(entry.match)}</td><td>${escapeHtml(entry.action)}</td></tr>`).join('');
+}
+
+function localChannelTools() {
+  const path = channelPath();
+  if (!path) {
+    return '<div class="kf-notice">Open a channel page to set channel-specific chat keywords or a private local note.</div>';
+  }
+  const keywords = chatKeywordsForChannel().join(', ');
+  const note = typeof state.channelNotes[path] === 'string' ? state.channelNotes[path] : '';
+  return `
+    <section class="kf-panel">
+      <div class="kf-row kf-row-wide"><div><h3>Chat keywords for this channel</h3><p>Comma-separated words are highlighted locally in chat. They never leave this browser.</p></div><input class="kf-text" data-kf-chat-keywords value="${escapeHtml(keywords)}" placeholder="release, giveaway, raid" aria-label="Chat keywords for this channel"></div>
+      <div class="kf-row kf-row-wide"><div><h3>Private channel note</h3><p>Keep a local reminder for this channel. It is not sent to Kick.</p></div><textarea class="kf-textarea" data-kf-channel-note maxlength="1000" placeholder="Why I follow this channel…" aria-label="Private channel note">${escapeHtml(note)}</textarea></div>
+      <div class="kf-action-row"><div><h3>Save local channel tools</h3><p>Only this channel path and the values above are stored.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="clear-local-channel">Clear this channel</button><button type="button" class="kf-button kf-button-primary" data-action="save-local-channel">Save</button></div></div>
+    </section>`;
+}
+
+function remoteBlocklistControls() {
+  const value = state.settings.content;
+  return `
+    <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Optional data-only blocklist</h3><p>Fetch a user-supplied JSON list of channels, categories, and keywords. No code is accepted or executed.</p></div><button type="button" class="kf-button kf-button-small" data-action="clear-blocklist">Remove cached list</button></div>
+      <div class="kf-panel">
+        ${row('Enable subscription', 'Off by default. When enabled, refreshes only over HTTPS with credentials omitted.', toggle('content.blocklistSubscription', value.blocklistSubscription, { label: 'Enable optional blocklist subscription' }))}
+        <div class="kf-row kf-row-wide"><div><h3>HTTPS JSON URL</h3><p>Expected fields: channels, categories, and keywords. Unknown fields are rejected.</p></div><input class="kf-text" type="url" data-set="content.blocklistUrl" value="${escapeHtml(value.blocklistUrl)}" placeholder="https://example.com/kick-focus-blocklist.json" aria-label="Optional blocklist URL"></div>
+        ${row('Refresh interval', 'Keep the last valid payload if a later request fails.', segmented('content.blocklistRefreshHours', value.blocklistRefreshHours, [[6,'6 h'],[12,'12 h'],[24,'24 h'],[72,'72 h']]))}
+      </div>
+      <div class="kf-status-note" data-kf-remote-blocklist data-status="${escapeHtml(state.remoteBlocklist.status)}">${escapeHtml(remoteBlocklistSummary())}</div>
+    </section>`;
 }
 
 function renderContentPage() {
@@ -1540,7 +2503,15 @@ function renderContentPage() {
       ${row('Blur mature thumbnails', 'Blur marked mature cards until hover or keyboard focus.', toggle('content.blurMature', value.blurMature, { label: 'Blur mature thumbnails' }))}
       ${row('Hide Drops and gambling promotions', 'Hide clearly labeled Drops and gambling promotion modules.', toggle('content.hideDropsPromotions', value.hideDropsPromotions, { label: 'Hide Drops and gambling promotions' }))}
       ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
+      ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
+      ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
+      ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
+      ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
+      ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
+      ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
     </section>
+    <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Local channel tools</h3><p>Favorites, not-interested choices, keywords, and notes stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear not-interested</button></div></div>${localChannelTools()}</section>
+    ${remoteBlocklistControls()}
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Protection log</h3><p>Sanitized in-memory diagnostics; query strings are never retained.</p></div></div><div class="kf-panel"><table class="kf-table"><thead><tr><th>Time</th><th>Layer</th><th>Match</th><th>Action</th></tr></thead><tbody data-kf-protection-log>${protectionRows()}</tbody></table></div></section>
     <div class="kf-notice">${companion.active
       ? 'The companion extension blocks known ad hosts at the browser network layer. Server-side stitched media is still delivered inside the stream itself.'
@@ -1581,6 +2552,7 @@ function renderAboutPage() {
     <section class="kf-panel">
       <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
       ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
+      <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move your preferences using a local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
@@ -1605,6 +2577,7 @@ function renderSettingsPage() {
   }
   const reset = state.shadow.querySelector('[data-action="reset-page"]');
   reset.disabled = state.currentPage === 'about';
+  localizeInterface();
 }
 
 function updateDiagnosticsInPlace() {
@@ -1623,6 +2596,48 @@ function updateDiagnosticsInPlace() {
 function getSetting(path) {
   const [section, key] = path.split('.');
   return state.settings[section]?.[key];
+}
+
+function saveLocalChannelTools() {
+  const path = channelPath();
+  if (!path) {
+    showToast('Open a channel page first.', true);
+    return;
+  }
+  const keywords = (state.shadow?.querySelector('[data-kf-chat-keywords]')?.value || '')
+    .split(/[\n,]+/)
+    .map((value) => value.trim().toLowerCase())
+    .filter((value, index, values) => value && value.length <= 48 && values.indexOf(value) === index)
+    .slice(0, 20);
+  const note = String(state.shadow?.querySelector('[data-kf-channel-note]')?.value || '').trim().slice(0, 1000);
+  if (keywords.length) state.chatKeywords[path] = keywords;
+  else delete state.chatKeywords[path];
+  if (note) state.channelNotes[path] = note;
+  else delete state.channelNotes[path];
+  state.chatKeywords = Object.fromEntries(Object.entries(state.chatKeywords).slice(-100));
+  state.channelNotes = Object.fromEntries(Object.entries(state.channelNotes).slice(-100));
+  gmSet(CHAT_KEYWORDS_KEY, state.chatKeywords);
+  gmSet(CHANNEL_NOTES_KEY, state.channelNotes);
+  showToast('Local channel tools saved.');
+  scheduleApply(0);
+}
+
+function clearLocalChannelTools() {
+  const path = channelPath();
+  if (!path) return;
+  delete state.chatKeywords[path];
+  delete state.channelNotes[path];
+  gmSet(CHAT_KEYWORDS_KEY, state.chatKeywords);
+  gmSet(CHANNEL_NOTES_KEY, state.channelNotes);
+  renderSettingsPage();
+  scheduleApply(0);
+  showToast('Local channel tools cleared.');
+}
+
+function clearMediaPreferenceKind(kind) {
+  const prefix = `${kind}:`;
+  state.mediaPreferences = Object.fromEntries(Object.entries(state.mediaPreferences).filter(([key]) => !key.startsWith(prefix)));
+  gmSet(MEDIA_PREFERENCES_KEY, state.mediaPreferences);
 }
 
 function coerceSetting(path, raw) {
@@ -1667,6 +2682,7 @@ function onInterfaceClick(event) {
   if (!actionTarget) return;
   const action = actionTarget.dataset.action;
   if (action === 'open-command') openCommandMenu();
+  else if (action === 'toggle-panic') togglePanicSwitch();
   else if (action === 'close-settings') closeSettings();
   else if (action === 'reset-page') openResetConfirmation('page');
   else if (action === 'reset-all') openResetConfirmation('all');
@@ -1677,6 +2693,26 @@ function onInterfaceClick(event) {
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'self-check') runSelfCheck();
   else if (action === 'restore-shortcuts') restoreShortcuts();
+  else if (action === 'save-local-channel') saveLocalChannelTools();
+  else if (action === 'clear-local-channel') clearLocalChannelTools();
+  else if (action === 'clear-blocklist') {
+    clearRemoteBlocklist();
+    showToast('Cached blocklist removed.');
+    renderSettingsPage();
+  }
+  else if (action === 'clear-favorites') {
+    state.favorites.clear();
+    persistSet(FAVORITES_KEY, state.favorites);
+    renderSettingsPage();
+    scheduleApply(0);
+    showToast('Favorites cleared.');
+  } else if (action === 'clear-dismissed') {
+    state.dismissed.clear();
+    persistSet(DISMISSED_KEY, state.dismissed);
+    renderSettingsPage();
+    scheduleApply(0);
+    showToast('Not-interested channels restored.');
+  }
   else if (action === 'cancel-shortcut') {
     state.shortcutCapture = null;
     state.shortcutError = '';
@@ -1716,8 +2752,9 @@ function openResetConfirmation(scope) {
   const container = state.shadow.querySelector('[data-kf-confirm]');
   const title = state.shadow.querySelector('[data-kf-confirm-title]');
   const copy = state.shadow.querySelector('[data-kf-confirm-copy]');
-  title.textContent = scope === 'all' ? 'Reset all Kick Focus settings?' : `Reset ${NAV_ITEMS.find(([id]) => id === state.currentPage)?.[1] || 'this page'}?`;
-  copy.textContent = scope === 'all' ? 'Every preference and shortcut will return to its factory default.' : 'Only the settings on this page will return to their defaults.';
+  title.textContent = scope === 'all' ? tr('Reset all Kick Focus settings?') : `${tr('Reset')} ${tr(NAV_ITEMS.find(([id]) => id === state.currentPage)?.[1] || 'this page')}?`;
+  copy.textContent = scope === 'all' ? tr('Every preference and shortcut will return to its factory default.') : tr('Only the settings on this page will return to their defaults.');
+  localizeInterface();
   container.hidden = false;
   container.querySelector('[data-action="cancel-reset"]')?.focus();
 }
@@ -1860,6 +2897,69 @@ function restoreShortcuts() {
   renderSettingsPage();
 }
 
+function clearEnhancedPage() {
+  const root = document.documentElement;
+  if (root.dataset.kfManagedSidebar === 'true') {
+    findProbe(document, 'sidebarExpand').element?.click?.();
+  }
+  for (const key of Object.keys(root.dataset)) {
+    if (key.startsWith('kf')) delete root.dataset[key];
+  }
+  for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
+    root.style.removeProperty(property);
+  }
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta]')) {
+    if (node.matches?.('[data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta]')) node.remove();
+    else {
+      for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
+    }
+  }
+  state.siteStyle?.remove?.();
+  state.siteStyle = null;
+  clearTimeout(state.applyTimer);
+  state.applyTimer = 0;
+  clearInterval(state.playbackDiagnosticsTimer);
+  state.playbackDiagnosticsTimer = 0;
+  state.observers.document?.disconnect?.();
+  state.observers.body?.disconnect?.();
+  state.observers.chat?.disconnect?.();
+  state.observers.document = null;
+  state.observers.body = null;
+  state.observers.chat = null;
+  clearInterval(state.remoteSyncTimer);
+  state.remoteSyncTimer = 0;
+  state.runtime.focus = false;
+  state.runtime.theater = false;
+  state.runtime.chatHidden = false;
+  state.runtime.sidebarHidden = false;
+  state.runtime.chatPaused = false;
+  if (state.modal) state.modal.hidden = true;
+  if (state.command) state.command.hidden = true;
+  state.runtime.suspended = true;
+  syncQuickButton();
+}
+
+function restoreEnhancedPage() {
+  state.runtime.suspended = false;
+  addStyle(SITE_CSS);
+  applySettingsAttributes();
+  installDocumentObserver();
+  installRemoteBlocklistTimer();
+  scheduleApply(0);
+  syncQuickButton();
+}
+
+function togglePanicSwitch() {
+  if (state.runtime.suspended) {
+    restoreEnhancedPage();
+    announce('Kick Focus restored');
+    showToast('Kick Focus restored.');
+  } else {
+    clearEnhancedPage();
+    showToast('Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.');
+  }
+}
+
 function showToast(message, isError = false) {
   const toast = state.shadow?.querySelector('[data-kf-toast]');
   if (!toast) return;
@@ -1872,14 +2972,15 @@ function showToast(message, isError = false) {
 
 function commandDefinitions() {
   return [
-    { id: 'focus', label: state.runtime.focus ? 'Exit focus mode' : 'Enter focus mode', description: 'Maximize the stream and hide side panels', key: state.settings.shortcuts.focus },
-    { id: 'theater', label: state.runtime.theater ? 'Exit theater mode' : 'Enter theater mode', description: 'Hide discovery while keeping chat', key: 'T' },
-    { id: 'chat', label: state.runtime.chatHidden ? 'Show chat' : 'Hide chat', description: 'Toggle the chat panel for this session', key: state.settings.shortcuts.chat },
-    { id: 'sidebar', label: state.runtime.sidebarHidden ? 'Show sidebar' : 'Hide sidebar', description: 'Toggle the discovery rail for this session', key: state.settings.shortcuts.sidebar },
-    { id: 'mature', label: state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails', description: 'Temporarily override mature-card blur', key: state.settings.shortcuts.mature },
-    { id: 'density', label: `Use ${state.settings.layout.density === 'compact' ? 'comfortable' : 'compact'} density`, description: 'Change discovery spacing and save it', key: 'D' },
-    { id: 'casino', label: state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content', description: 'Filter clearly labeled casino streams', key: 'G' },
-    { id: 'settings', label: 'Open Kick Focus settings', description: 'Customize layout, appearance, content, and access', key: state.settings.shortcuts.settings },
+    { id: 'panic', label: tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'), description: tr('Temporarily remove enhanced layout and request hooks'), key: 'Ctrl+Shift+F' },
+    { id: 'focus', label: tr(state.runtime.focus ? 'Exit focus mode' : 'Enter focus mode'), description: tr('Maximize the stream and hide side panels'), key: state.settings.shortcuts.focus },
+    { id: 'theater', label: tr(state.runtime.theater ? 'Exit theater mode' : 'Enter theater mode'), description: tr('Hide discovery while keeping chat'), key: 'T' },
+    { id: 'chat', label: tr(state.runtime.chatHidden ? 'Show chat' : 'Hide chat'), description: tr('Toggle the chat panel for this session'), key: state.settings.shortcuts.chat },
+    { id: 'sidebar', label: tr(state.runtime.sidebarHidden ? 'Show sidebar' : 'Hide sidebar'), description: tr('Toggle the discovery rail for this session'), key: state.settings.shortcuts.sidebar },
+    { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
+    { id: 'density', label: tr(`Use ${state.settings.layout.density === 'compact' ? 'comfortable' : 'compact'} density`), description: tr('Change discovery spacing and save it'), key: 'D' },
+    { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
+    { id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access'), key: state.settings.shortcuts.settings },
   ];
 }
 
@@ -1890,6 +2991,7 @@ function renderCommands() {
   state.commandList.innerHTML = commands.length
     ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
     : '<div class="kf-command-empty">No matching commands.</div>';
+  localizeInterface();
 }
 
 function openCommandMenu() {
@@ -1906,7 +3008,11 @@ function closeCommandMenu() {
 }
 
 function executeCommand(id) {
-  if (id === 'focus') {
+  if (id === 'panic') {
+    togglePanicSwitch();
+    closeCommandMenu();
+    return;
+  } else if (id === 'focus') {
     state.runtime.focus = !state.runtime.focus;
     if (state.runtime.focus) state.runtime.theater = false;
     announce(state.runtime.focus ? 'Focus mode on' : 'Focus mode off');
@@ -1979,6 +3085,12 @@ function trapFocus(event) {
 
 function onGlobalKeydown(event) {
   if (!state.shadow) return;
+  if (event.ctrlKey && event.shiftKey && String(event.key).toLowerCase() === 'f') {
+    event.preventDefault();
+    event.stopPropagation();
+    togglePanicSwitch();
+    return;
+  }
   if (state.shortcutCapture) {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -2032,7 +3144,18 @@ function onGlobalKeydown(event) {
 
 function syncQuickButton() {
   if (!state.root?.isConnected && document.body) document.body.append(state.root);
-  if (state.quickButton) state.quickButton.hidden = !state.settings.layout.quickButton;
+  if (!state.quickButton) return;
+  if (state.runtime.suspended) {
+    state.quickButton.hidden = false;
+    state.quickButton.dataset.action = 'toggle-panic';
+    state.quickButton.textContent = tr('Resume');
+    state.quickButton.setAttribute('aria-label', tr('Restore Kick Focus'));
+    return;
+  }
+  state.quickButton.dataset.action = 'open-command';
+  state.quickButton.textContent = tr('Focus');
+  state.quickButton.setAttribute('aria-label', tr('Open Kick Focus command menu'));
+  state.quickButton.hidden = !state.settings.layout.quickButton;
 }
 
 addStyle(SITE_CSS);
@@ -2068,13 +3191,17 @@ function startWhenBodyExists() {
     const bodyObserver = new MutationObserver(() => {
       if (!document.body) return;
       bodyObserver.disconnect();
+      state.observers.body = null;
       startWhenBodyExists();
     });
+    state.observers.body = bodyObserver;
     bodyObserver.observe(document.documentElement, { childList: true, subtree: true });
     return;
   }
   buildInterface();
+  installRuntimeInteractions();
   installDocumentObserver();
+  installRemoteBlocklistTimer();
   scheduleApply(0);
   // Both content scripts have certainly registered their listeners by now, so
   // this is the announcement the companion can rely on receiving.

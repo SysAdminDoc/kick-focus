@@ -12,6 +12,10 @@ const content = await read('dist/extension/content/kick-focus.js');
 const bridge = await read('dist/extension/content/bridge.js');
 const adRules = await readJson('dist/extension/rules/ads.json');
 const telemetryRules = await readJson('dist/extension/rules/telemetry.json');
+const firefoxManifest = await readJson('dist/extension-firefox/manifest.json');
+const firefoxContent = await read('dist/extension-firefox/content/kick-focus.js');
+const firefoxBridge = await read('dist/extension-firefox/content/bridge.js');
+const firefoxBackground = await read('dist/extension-firefox/background.js');
 
 const mainWorld = manifest.content_scripts.find((entry) => entry.world === 'MAIN');
 const isolated = manifest.content_scripts.find((entry) => entry.world === 'ISOLATED');
@@ -57,6 +61,24 @@ const checks = [
     === adRules.length + telemetryRules.length],
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
+
+  // Firefox companion shape
+  ['Firefox manifest version matches', firefoxManifest.version === VERSION],
+  ['Firefox manifest is v2', firefoxManifest.manifest_version === 2],
+  ['Firefox manifest has a stable extension id', firefoxManifest.browser_specific_settings?.gecko?.id === 'kick-focus@sysadmindoc'],
+  ['Firefox background is local and non-persistent', firefoxManifest.background?.scripts?.includes('background.js')
+    && firefoxManifest.background?.persistent === false],
+  ['Firefox requests the blocking permission', firefoxManifest.permissions?.includes('webRequestBlocking')],
+  ['Firefox content bridge runs at document_start', firefoxManifest.content_scripts?.[0]?.run_at === 'document_start'],
+  ['Firefox page bundle is web-accessible', firefoxManifest.web_accessible_resources?.includes('content/kick-focus.js')],
+  ['Firefox page bundle contains the settings UI', firefoxContent.includes('data-kf-settings-shell')],
+  ['Firefox bridge injects the local page bundle', firefoxBridge.includes("runtime.getURL('content/kick-focus.js')")],
+  ['Firefox network layer uses blocking listeners', firefoxBackground.includes('onBeforeRequest')
+    && firefoxBackground.includes("['blocking']")
+    && firefoxBackground.includes('return { cancel: true }')],
+  ['Firefox network layer is scoped to Kick initiators', firefoxBackground.includes('kickInitiator(details.initiator)')],
+  ['Firefox host lists are generated', !firefoxBackground.includes('__AD_HOSTS__')
+    && !firefoxBackground.includes('__TELEMETRY_HOSTS__')],
 ];
 
 for (const [label, passed] of checks) {

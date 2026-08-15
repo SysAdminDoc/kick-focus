@@ -25,7 +25,7 @@
  *   KF_HEADLESS=1 node scripts/verify-extension.mjs               # network checks only
  */
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -70,6 +70,7 @@ if (!CHROME) {
 
 const EXT = resolve('dist/extension');
 const PORT = Number(process.env.KF_DEBUG_PORT || 9411);
+const WINDOW_SIZE = process.env.KF_WINDOW_SIZE || '1440,900';
 const TARGET_URL = process.argv[2] || 'https://kick.com/';
 const EXPECTED_VERSION = JSON.parse(
   await (await import('node:fs/promises')).readFile('package.json', 'utf8'),
@@ -89,7 +90,7 @@ const child = spawn(CHROME, [
   ...(process.env.KF_WINDOW_POSITION ? [`--window-position=${process.env.KF_WINDOW_POSITION}`] : []),
   '--no-first-run',
   '--no-default-browser-check',
-  '--window-size=1440,900',
+  `--window-size=${WINDOW_SIZE}`,
   'about:blank',
 ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -238,7 +239,7 @@ try {
   // passed when it is not.
   if (reachedKick) {
     const overflow = await evaluate(pageClient, 'document.documentElement.scrollWidth <= window.innerWidth');
-    record('no horizontal document overflow at 1440', overflow.value === true);
+    record(`no horizontal document overflow at ${WINDOW_SIZE.replace(',', '×')}`, overflow.value === true);
 
     const cards = await evaluate(pageClient, 'document.querySelectorAll("[data-kf-live-card]").length');
     record('card detection found Kick cards', Number(cards.value) > 0, `${cards.value} cards scored`);
@@ -253,6 +254,16 @@ try {
   } else {
     console.log('SKIP  layout, card detection, and filter checks need the real Kick DOM');
     console.log('      Run with a non-headless browser, or use the offline DOM fixtures.');
+  }
+
+  if (process.env.KF_SCREENSHOT_PATH && reachedKick) {
+    const capture = await pageClient.send('Page.captureScreenshot', { format: 'png' });
+    if (capture.result?.data) {
+      await writeFile(resolve(process.env.KF_SCREENSHOT_PATH), Buffer.from(capture.result.data, 'base64'));
+      record(`captured ${WINDOW_SIZE.replace(',', '×')} release screenshot`, true, process.env.KF_SCREENSHOT_PATH);
+    } else {
+      record(`captured ${WINDOW_SIZE.replace(',', '×')} release screenshot`, false, 'CDP returned no image data');
+    }
   }
 
   // 3b. On a fresh profile nothing has ever been saved, so this proves the

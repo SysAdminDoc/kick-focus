@@ -83,16 +83,18 @@ for (const size of [16, 32, 48, 128]) {
 console.log(`Built dist/extension/ (${AD_HOSTS.length} ad rules, ${TELEMETRY_HOSTS.length} telemetry rules)`);
 
 // Load-unpacked works straight from dist/extension; the archive is for sharing.
-async function collect(directory, prefix = '') {
-  const entries = await readdir(resolve(extensionRoot, directory || '.'), { withFileTypes: true });
+async function collectFrom(base, directory = '', prefix = '') {
+  const entries = await readdir(resolve(base, directory || '.'), { withFileTypes: true });
   const collected = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) collected.push(...await collect(relative, relative));
-    else collected.push({ name: relative, data: await readFile(resolve(extensionRoot, relative)) });
+    if (entry.isDirectory()) collected.push(...await collectFrom(base, relative, relative));
+    else collected.push({ name: relative, data: await readFile(resolve(base, relative)) });
   }
   return collected;
 }
+
+const collect = (directory, prefix = '') => collectFrom(extensionRoot, directory, prefix);
 
 // Previous artifacts go before the new one is written, so dist never offers two
 // versions of the same package.
@@ -103,3 +105,44 @@ for (const entry of await readdir(resolve(root, 'dist'))) {
 const archive = resolve(root, `dist/kick-focus-extension-v${VERSION}.zip`);
 await writeFile(archive, createZip(await collect('')));
 console.log(`Built dist/kick-focus-extension-v${VERSION}.zip`);
+
+// ---------------------------------------------------------------------------
+// Firefox companion extension (Manifest V2)
+// ---------------------------------------------------------------------------
+
+const firefoxRoot = resolve(root, 'dist/extension-firefox');
+await rm(firefoxRoot, { recursive: true, force: true });
+for (const directory of ['content', 'icons']) {
+  await mkdir(resolve(firefoxRoot, directory), { recursive: true });
+}
+
+const firefoxManifest = (await read('src/extension/manifest.firefox.json')).replaceAll('__VERSION__', VERSION);
+const firefoxBackground = (await read('src/extension/background.firefox.js'))
+  .replace('__AD_HOSTS__', JSON.stringify(AD_HOSTS))
+  .replace('__TELEMETRY_HOSTS__', JSON.stringify(TELEMETRY_HOSTS));
+const firefoxFiles = [
+  ['manifest.json', firefoxManifest],
+  ['background.js', firefoxBackground],
+  ['popup.html', await read('src/extension/popup.html')],
+  ['popup.js', await read('src/extension/popup.js')],
+  ['content/bridge.js', await read('src/extension/bridge.firefox.js')],
+  ['content/kick-focus.js', `/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`],
+];
+
+for (const [name, contents] of firefoxFiles) {
+  await writeFile(resolve(firefoxRoot, name), contents, 'utf8');
+}
+
+for (const size of [16, 32, 48, 128]) {
+  await writeFile(resolve(firefoxRoot, `icons/icon-${size}.png`), renderIcon(size));
+}
+
+console.log(`Built dist/extension-firefox/ (${AD_HOSTS.length} ad hosts, ${TELEMETRY_HOSTS.length} telemetry hosts)`);
+
+for (const entry of await readdir(resolve(root, 'dist'))) {
+  if (/^kick-focus-firefox-v.*\.zip$/.test(entry)) await rm(resolve(root, 'dist', entry));
+}
+
+const firefoxArchive = resolve(root, `dist/kick-focus-firefox-v${VERSION}.zip`);
+await writeFile(firefoxArchive, createZip(await collectFrom(firefoxRoot)));
+console.log(`Built dist/kick-focus-firefox-v${VERSION}.zip`);

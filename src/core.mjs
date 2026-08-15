@@ -1,4 +1,4 @@
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 export const SETTINGS_SCHEMA = 1;
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -13,10 +13,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
     wideGrid: true,
     stickyTopbar: true,
     quickButton: true,
+    showFollowingRail: true,
+    showRecommendedRail: true,
+    miniPlayerCollision: true,
+    playerResizeRecovery: true,
+    playerContainVideo: true,
   }),
   appearance: Object.freeze({
     theme: 'studio',
     accent: 'kick',
+    language: 'auto',
     radius: 'balanced',
     thumbnail: 55,
     interfaceScale: 100,
@@ -33,6 +39,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
     blurMature: true,
     hideDropsPromotions: true,
     reduceTelemetry: true,
+    rememberVolume: true,
+    rememberQuality: true,
+    rememberVodPosition: true,
+    stickyChatPause: false,
+    chatHighlights: false,
+    playbackDiagnostics: false,
+    blocklistSubscription: false,
+    blocklistUrl: '',
+    blocklistRefreshHours: 24,
   }),
   accessibility: Object.freeze({
     reduceMotion: true,
@@ -130,10 +145,16 @@ export function normalizeSettings(input) {
       wideGrid: bool(layout.wideGrid, defaults.layout.wideGrid),
       stickyTopbar: bool(layout.stickyTopbar, defaults.layout.stickyTopbar),
       quickButton: bool(layout.quickButton, defaults.layout.quickButton),
+      showFollowingRail: bool(layout.showFollowingRail, defaults.layout.showFollowingRail),
+      showRecommendedRail: bool(layout.showRecommendedRail, defaults.layout.showRecommendedRail),
+      miniPlayerCollision: bool(layout.miniPlayerCollision, defaults.layout.miniPlayerCollision),
+      playerResizeRecovery: bool(layout.playerResizeRecovery, defaults.layout.playerResizeRecovery),
+      playerContainVideo: bool(layout.playerContainVideo, defaults.layout.playerContainVideo),
     },
     appearance: {
       theme: enumValue(appearance.theme, ['studio', 'oled', 'slate'], defaults.appearance.theme),
       accent: enumValue(appearance.accent, ['kick', 'cyan', 'violet', 'gold'], defaults.appearance.accent),
+      language: enumValue(appearance.language, ['auto', 'en', 'es', 'pt'], defaults.appearance.language),
       radius: enumValue(appearance.radius, ['subtle', 'balanced', 'rounded'], defaults.appearance.radius),
       thumbnail: Math.round(clamp(appearance.thumbnail, 0, 100, defaults.appearance.thumbnail)),
       interfaceScale: enumValue(Number(appearance.interfaceScale), [90, 100, 110], defaults.appearance.interfaceScale),
@@ -151,6 +172,15 @@ export function normalizeSettings(input) {
       blurMature: bool(content.blurMature, defaults.content.blurMature),
       hideDropsPromotions: bool(content.hideDropsPromotions, defaults.content.hideDropsPromotions),
       reduceTelemetry: bool(content.reduceTelemetry, defaults.content.reduceTelemetry),
+      rememberVolume: bool(content.rememberVolume, defaults.content.rememberVolume),
+      rememberQuality: bool(content.rememberQuality, defaults.content.rememberQuality),
+      rememberVodPosition: bool(content.rememberVodPosition, defaults.content.rememberVodPosition),
+      stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
+      chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
+      playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
+      blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
+      blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
+      blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
     },
     accessibility: {
       reduceMotion: bool(accessibility.reduceMotion, defaults.accessibility.reduceMotion),
@@ -476,6 +506,70 @@ export function detectContentLabels(text, context = {}) {
       ? badgeMatches(/^(drops?|drops enabled|kick drops)$/)
       : /\b(?:kick\s+drops?|drops\s+enabled)\b/.test(normalized),
   };
+}
+
+export const BLOCKLIST_SCHEMA = 1;
+
+function cleanBlocklistValues(input, normalizer, limit = 500) {
+  if (!Array.isArray(input)) return [];
+  const values = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string' || raw.length > 320) continue;
+    const value = normalizer(raw);
+    if (value && !values.includes(value)) values.push(value);
+    if (values.length >= limit) break;
+  }
+  return values;
+}
+
+function normalizeChannelPath(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw, 'https://kick.com');
+    if (url.hostname !== 'kick.com' && !url.hostname.endsWith('.kick.com')) return '';
+    return url.pathname.replace(/\/$/, '') || '/';
+  } catch {
+    const path = raw.startsWith('/') ? raw : `/${raw}`;
+    return path.replace(/[^a-z0-9/_-]/g, '').replace(/\/$/, '') || '';
+  }
+}
+
+function normalizeBlocklistPayload(payload) {
+  const source = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  return {
+    schema: BLOCKLIST_SCHEMA,
+    channels: cleanBlocklistValues(source.channels, normalizeChannelPath),
+    categories: cleanBlocklistValues(source.categories, (value) => String(value).trim().toLowerCase().replace(/^\//, '').replace(/\s*&\s*/g, '-').replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')),
+    keywords: cleanBlocklistValues(source.keywords, (value) => String(value).replace(/\s+/g, ' ').trim().toLowerCase()),
+  };
+}
+
+/**
+ * Validate data-only remote blocklists before they enter settings or storage.
+ * Unknown keys, executable-looking fields, and non-string list members are
+ * rejected rather than silently merged.
+ */
+export function validateRemoteBlocklist(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { ok: false, error: 'A blocklist must be a JSON object.' };
+  }
+  const allowed = new Set(['schema', 'channels', 'categories', 'keywords']);
+  const unknown = Object.keys(payload).filter((key) => !allowed.has(key));
+  if (unknown.length) return { ok: false, error: `Unsupported blocklist field: ${unknown[0]}.` };
+  if (payload.schema != null && Number(payload.schema) > BLOCKLIST_SCHEMA) {
+    return { ok: false, error: `Blocklist schema ${payload.schema} is newer than this build supports.` };
+  }
+  for (const key of ['channels', 'categories', 'keywords']) {
+    if (payload[key] != null && !Array.isArray(payload[key])) return { ok: false, error: `${key} must be an array.` };
+    if (Array.isArray(payload[key]) && payload[key].some((value) => typeof value !== 'string')) return { ok: false, error: `${key} may contain strings only.` };
+  }
+  const value = normalizeBlocklistPayload(payload);
+  const inputCount = ['channels', 'categories', 'keywords'].reduce((sum, key) => sum + (payload[key]?.length || 0), 0);
+  const outputCount = value.channels.length + value.categories.length + value.keywords.length;
+  if (inputCount > 1500) return { ok: false, error: 'That blocklist exceeds the 1,500-entry safety limit.' };
+  if (inputCount > 0 && outputCount === 0) return { ok: false, error: 'The blocklist contains no usable entries.' };
+  return { ok: true, value, dropped: inputCount - outputCount };
 }
 
 /**

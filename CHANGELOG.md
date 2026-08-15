@@ -2,12 +2,27 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
-## Unreleased
+## 1.3.0 — 2026-08-14
 
 ### Added
 
 - Ordered shell locator probes now prefer Kick's ids and data markers, fall back through structural and accessible anchors, and expose a visible compatibility self-test on the About page.
 - Committed lightweight Home, Browse, Category, Search, Channel, and localized chat fixtures with build-gating shape tests, without adding the large MHTML captures to history.
+- Viewer controls now remember volume, mute state, quality, and finite VOD position locally with independent privacy toggles, and add favorite, not-interested, search-count, rail, and mini-player collision controls.
+- Chat and playback utilities now include sticky pause with full `aria-live` recovery, local per-channel keyword highlights and notes, opt-in diagnostics, and independently toggleable player resize/ultrawide recovery.
+- Optional data-only blocklist subscriptions accept only validated HTTPS JSON channels, categories, and keywords, with cached payload recovery and complete removal.
+- Firefox now has an unsigned Manifest V2 companion package with a local page-world bridge and Kick-scoped `webRequest` blocking that mirrors the Chromium companion.
+- Settings and the command menu support browser-language auto detection plus English, Spanish, and Portuguese selections.
+- The release checklist repeats live proof at 1440×900 and 1920×1080 and captures screenshots for visual comparison after Kick deployments.
+
+### Changed
+
+- Added a panic switch that tears down Kick Focus styles, page markers, observers, request hooks, and overlays without a reload, then restores the enhanced page on demand.
+- The README now distinguishes the default no-remote-code posture from the explicit, user-supplied data-only blocklist opt-in.
+
+### Known limitations
+
+- Browser-manager cold-start timing, authenticated surfaces, Safari, worker-only delivery, and server-side stitched ads remain unverified. The Firefox companion is package- and handshake-tested but still needs a live Firefox profile for end-to-end verification.
 
 ## 1.2.0 — 2026-08-14
 
