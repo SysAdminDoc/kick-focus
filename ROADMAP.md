@@ -116,13 +116,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
 
 ### P0
 
-- [ ] P0 — Close the untranslated-settings-copy gap and gate it
-  Why: most settings copy has no dictionary entry at all, so `es` and `pt` users read English for the majority of the interface — and nothing detects it.
-  Evidence: measured 2026-08-15 — **76 of 112** `row()`/`pageHeader()` label and description strings are missing from at least one locale (`es` and `pt` hold 126 keys each). This is partly pre-existing (layout, chat, density, appearance descriptions) and was widened by v1.5.0, which added the entire Kick-data section and multi-stream surface untranslated. Only 2 of 16 `tr()` call-site strings are missing, so the gap is specifically in markup that `localizeInterface()` translates by lookup after render — a string with no entry silently stays English. `test/i18n.test.js` passes throughout because it checks locale *parity* and duplicates, never whether a rendered string has any entry.
-  Touches: `src/runtime.js` (`TRANSLATIONS`, settings markup), `test/i18n.test.js`.
-  Acceptance: every `row()`/`pageHeader()` string and every `tr()` argument has an `es` and `pt` entry; the i18n gate additionally fails when a rendered UI string has no dictionary entry in any locale, and is verified red against a deliberately removed entry before being trusted. If full translation is too large for one pass, land the gate first with an explicit allow-list of known-untranslated strings so the count can only shrink.
-  Complexity: L
-
 - [ ] P0 — Cap non-focused tile quality and pause offscreen tiles
   Why: nine tiles at source quality exceeds the hardware most viewers own, so the grid's headline capacity is unusable on a laptop — and this is the one axis no competitor has claimed.
   Evidence: ~4–6 simultaneous 1080p60 decodes is the realistic integrated-GPU ceiling before dropped frames; bhamrick/multitwitch#59 is the same complaint against Twitch ("defaults to source, melts CPUs") and was never fixed. Chrome pauses muted video in backgrounded tabs and advises the Page Visibility API. destinygg/kickstiny#19 proves the Amazon IVS worker inside `player.kick.com` is scriptable for quality, which is the only available lever because the embed exposes no quality parameter.
