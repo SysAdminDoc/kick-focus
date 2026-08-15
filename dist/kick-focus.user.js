@@ -766,7 +766,11 @@ function validateImportedSettings(jsonText) {
     const incoming = parsed[section];
     if (!isRecord(incoming)) continue;
     for (const [key, raw] of Object.entries(incoming)) {
-      if (!(key in value[section])) {
+      // `in` walks the prototype chain, so an imported "__proto__", "constructor"
+      // or "toString" key read as recognised and was silently dropped from the
+      // report. normalizeSettings rebuilds from defaults, so this was never a
+      // pollution risk — but transparency is the point of this whole function.
+      if (!Object.hasOwn(value[section], key)) {
         notes.push(`Ignored unknown setting "${section}.${key}".`);
       } else if (JSON.stringify(value[section][key]) !== JSON.stringify(raw)) {
         notes.push(`Adjusted "${section}.${key}" to a supported value.`);
@@ -792,6 +796,94 @@ function validateImportedSettings(jsonText) {
   }
 
   return { ok: true, value, stickers, notes };
+}
+
+// ---------------------------------------------------------------------------
+// Storage health
+// ---------------------------------------------------------------------------
+
+/**
+ * What each persisted key is, in the user's words.
+ *
+ * A failed write used to be discarded by 12 of 13 call sites, so a full quota
+ * lost a curated emote library with no message at all. Naming the data is the
+ * difference between "something went wrong" and "your emote library did not
+ * save".
+ */
+const STORAGE_LABELS = {
+  'kick-focus:settings': 'settings',
+  'kick-focus:sticker-preferences': 'emote library',
+  'kick-focus:media-preferences': 'volume and quality memory',
+  'kick-focus:chat-keywords': 'chat keyword filters',
+  'kick-focus:channel-notes': 'channel notes',
+  'kick-focus:channel-layouts': 'per-channel layout',
+  'kick-focus:remote-blocklist': 'blocklist cache',
+  'kick-focus:emote-usage': 'emote usage counts',
+};
+
+function storageLabel(key) {
+  return STORAGE_LABELS[key] || String(key || '').replace(/^kick-focus:/, '') || 'data';
+}
+
+/**
+ * Fold a failed or recovered write into a failure registry.
+ *
+ * Keyed by storage key so a repeatedly failing library reports once rather than
+ * once per keystroke, and a later success clears the entry.
+ */
+function recordStorageResult(registry, key, ok, at = 0) {
+  const next = { ...(registry || {}) };
+  if (ok) delete next[key];
+  else next[key] = { label: storageLabel(key), at, count: (next[key]?.count || 0) + 1 };
+  return next;
+}
+
+/**
+ * Describe a failure registry for a warning the user has to acknowledge.
+ *
+ * `quota` is the likely cause when several distinct keys fail together: a denied
+ * storage backend fails everything, whereas a single large payload hitting the
+ * cap fails only itself.
+ */
+function describeStorageFailures(registry) {
+  const entries = Object.entries(registry || {});
+  if (!entries.length) return null;
+  const labels = [...new Set(entries.map(([, entry]) => entry.label))].sort();
+  const list = labels.length === 1
+    ? labels[0]
+    : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+  return {
+    keys: entries.map(([key]) => key).sort(),
+    labels,
+    total: entries.reduce((sum, [, entry]) => sum + (entry.count || 0), 0),
+    message: `Kick Focus could not save your ${list}. Browser storage is full or blocked, so those changes exist only until you reload.`,
+  };
+}
+
+/** Approximate on-disk size of the payloads this build owns, for diagnostics. */
+function approximateStorageBytes(entries) {
+  let total = 0;
+  const breakdown = [];
+  for (const [key, value] of Object.entries(entries || {})) {
+    let bytes = 0;
+    try {
+      // UTF-16 code units are what a browser quota actually counts.
+      bytes = (typeof value === 'string' ? value : JSON.stringify(value) || '').length * 2;
+    } catch {
+      bytes = 0;
+    }
+    total += bytes;
+    breakdown.push({ key, label: storageLabel(key), bytes });
+  }
+  breakdown.sort((a, b) => b.bytes - a.bytes);
+  return { total, breakdown };
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 /**
@@ -998,7 +1090,12 @@ const CHAT_KEYWORDS_KEY = 'kick-focus:chat-keywords';
 const CHANNEL_NOTES_KEY = 'kick-focus:channel-notes';
 const STICKER_PREFERENCES_KEY = 'kick-focus:sticker-preferences';
 const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
+const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
+
+// Declared ahead of `state` because writes can happen while `state` is still in
+// its own initializer, and reading a const in its temporal dead zone throws.
+const storageHealth = { failures: {}, lastError: '' };
 const ROUTE_EVENT = 'kick-focus:routechange';
 const AD_SHELL_SELECTORS = [
   'iframe[src*="doubleclick.net"]',
@@ -1140,14 +1237,38 @@ function gmGet(key, fallback) {
   }
 }
 
+/**
+ * Persist a value, and never let the failure pass unnoticed.
+ *
+ * Every call site used to discard the return value except `saveSettings`, so a
+ * full or denied storage backend silently dropped the emote library, notes,
+ * keyword filters and layout memory. The write result now feeds a registry that
+ * raises a warning the user has to acknowledge.
+ */
 function gmSet(key, value) {
+  let ok = true;
   try {
     if (typeof GM_setValue === 'function') GM_setValue(key, value);
     else localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
+  } catch (error) {
+    ok = false;
+    storageHealth.lastError = error?.name || 'StorageError';
   }
+  noteStorageResult(key, ok);
+  return ok;
+}
+
+/**
+ * Fold one write result into the failure registry and surface or retire the
+ * warning. Keyed by storage key, so a library that fails on every keystroke
+ * warns once and a later success clears it.
+ */
+function noteStorageResult(key, ok) {
+  const before = storageHealth.failures;
+  const after = recordStorageResult(before, key, ok, Date.now());
+  if (JSON.stringify(before) === JSON.stringify(after)) return;
+  storageHealth.failures = after;
+  renderStorageWarning();
 }
 
 function gmDelete(key) {
@@ -4154,6 +4275,30 @@ const UI_CSS = `
   }
   .kf-toast[data-error="true"] { border-color: var(--danger); }
 
+  /* Data loss is not a toast. This stays until the user acknowledges it. */
+  .kf-storage-alert {
+    position: fixed;
+    z-index: 2147483001;
+    inset-inline: 16px;
+    bottom: 16px;
+    margin-inline: auto;
+    max-width: 640px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--danger);
+    border-radius: 10px;
+    background: #2a1416;
+    color: var(--text);
+    box-shadow: 0 18px 44px rgba(0,0,0,.55);
+    font-size: 12px;
+  }
+  .kf-storage-alert[hidden] { display: none; }
+  .kf-storage-alert-body { display: grid; gap: 2px; flex: 1; min-width: 0; }
+  .kf-storage-alert-body strong { font-size: 12px; }
+  .kf-storage-alert-body span { opacity: .85; }
+
   .kf-command-shell {
     width: min(560px, calc(100vw - 48px));
     max-height: min(620px, calc(100vh - 80px));
@@ -4638,6 +4783,14 @@ function buildInterface() {
       </section>
     </div>
     <input type="file" accept="application/json,.json" data-kf-import hidden>
+    <div class="kf-storage-alert" data-kf-storage-alert role="alert" hidden>
+      <div class="kf-storage-alert-body">
+        <strong data-kf-storage-alert-title>Changes are not being saved</strong>
+        <span data-kf-storage-alert-copy></span>
+      </div>
+      <button type="button" class="kf-button kf-button-small" data-action="open-storage-diagnostics">Details</button>
+      <button type="button" class="kf-button kf-button-small" data-action="dismiss-storage-alert">Dismiss</button>
+    </div>
     <div class="kf-toast" data-kf-toast hidden></div>
     <div class="kf-sr-only" aria-live="polite" data-kf-live></div>
   `;
@@ -4657,6 +4810,9 @@ function buildInterface() {
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
   renderSettingsPage();
+  // Writes can fail before the interface exists — startup reads and migrations
+  // both persist. Replay whatever failed so it is not lost to mount ordering.
+  renderStorageWarning();
   renderCommands();
 
   try {
@@ -4963,6 +5119,30 @@ function renderAccessibilityPage() {
     </section>`;
 }
 
+/**
+ * Report what this build is actually storing, and anything it failed to store.
+ *
+ * The emote library is by far the largest payload and the one most likely to hit
+ * a quota, so its size is worth showing before the write starts failing.
+ */
+function renderStorageHealthPanel() {
+  const report = storageDiagnostics();
+  const failures = describeStorageFailures(storageHealth.failures);
+  const rows = report.breakdown
+    .filter((entry) => entry.bytes > 0)
+    .map((entry) => `<tr><th>${escapeHtml(entry.label)}</th><td>${escapeHtml(formatBytes(entry.bytes))}</td><td>${storageHealth.failures[entry.key] ? '<strong data-error="true">Not saving</strong>' : 'Saved'}</td></tr>`)
+    .join('');
+  return `
+    <section class="kf-subsection">
+      <div class="kf-panel">
+        <div class="kf-action-row"><div><h3>Local storage</h3><p>${failures
+          ? `${escapeHtml(failures.message)}${storageHealth.lastError ? ` The browser reported <strong>${escapeHtml(storageHealth.lastError)}</strong>.` : ''} Exporting now is the only way to keep these changes.`
+          : `Kick Focus is using about ${escapeHtml(formatBytes(report.total))} of browser storage. Nothing has failed to save this session.`}</p></div>${failures ? '<button type="button" class="kf-button kf-button-primary" data-action="export">Export now</button>' : ''}</div>
+        ${rows ? `<table class="kf-table"><tbody>${rows}</tbody></table>` : ''}
+      </div>
+    </section>`;
+}
+
 function renderAboutPage() {
   return `
     ${pageHeader('About', 'A desktop-first layout and control layer for Kick.', 'Version', VERSION)}
@@ -4976,6 +5156,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded sticker metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
+    ${renderStorageHealthPanel()}
     <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
 }
 
@@ -5207,6 +5388,18 @@ function onInterfaceClick(event) {
   else if (action === 'export') exportSettings();
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
   else if (action === 'copy-diagnostics') copyDiagnostics();
+  else if (action === 'dismiss-storage-alert') {
+    // Acknowledging this exact set of failures; a different key failing later
+    // raises the warning again rather than staying silent.
+    const alert = state.shadow?.querySelector('[data-kf-storage-alert]');
+    storageHealth.acknowledged = alert?.dataset.kfStorageSignature || '';
+    if (alert) alert.hidden = true;
+  }
+  else if (action === 'open-storage-diagnostics') {
+    openSettings();
+    state.currentPage = 'about';
+    renderSettingsPage();
+  }
   else if (action === 'self-check') runSelfCheck();
   else if (action === 'restore-shortcuts') restoreShortcuts();
   else if (action === 'save-local-channel') saveLocalChannelTools();
@@ -5514,6 +5707,39 @@ function togglePanicSwitch() {
     clearEnhancedPage();
     showToast('Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.');
   }
+}
+
+/**
+ * Raise or retire the persistent storage warning.
+ *
+ * Deliberately not a toast: a toast that disappears after 3.6 seconds is how
+ * this failure stayed invisible. Dismissing it clears the acknowledgement for
+ * the *current* set of failing keys only, so a new failure raises it again.
+ */
+function renderStorageWarning() {
+  const alert = state.shadow?.querySelector('[data-kf-storage-alert]');
+  if (!alert) return;
+  const summary = describeStorageFailures(storageHealth.failures);
+  if (!summary) {
+    alert.hidden = true;
+    storageHealth.acknowledged = '';
+    return;
+  }
+  const signature = summary.keys.join('|');
+  if (storageHealth.acknowledged === signature) return;
+  alert.querySelector('[data-kf-storage-alert-copy]').textContent = summary.message;
+  alert.dataset.kfStorageSignature = signature;
+  alert.hidden = false;
+  announce(summary.message);
+}
+
+function storageDiagnostics() {
+  const entries = {};
+  for (const key of Object.keys(STORAGE_LABELS)) {
+    const raw = gmGet(key, null);
+    if (raw != null) entries[key] = raw;
+  }
+  return approximateStorageBytes(entries);
 }
 
 function showToast(message, isError = false) {

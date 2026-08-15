@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_SETTINGS,
+  approximateStorageBytes,
+  describeStorageFailures,
+  formatBytes,
+  recordStorageResult,
   FILTER_MIN_SAMPLE,
   assessAdStack,
   classifyRequest,
@@ -385,4 +389,64 @@ test('ad stack drift is reported instead of passing silently', () => {
   const absent = assessAdStack({ sawPlayback: true, playbackSdkKeys: [] });
   assert.equal(absent.status, 'absent');
   assert.equal(absent.drifted, true);
+});
+
+test('failed writes are named and recovered writes clear themselves', () => {
+  let registry = {};
+
+  // A failure names the data in the user's words, not the storage key.
+  registry = recordStorageResult(registry, 'kick-focus:sticker-preferences', false, 1);
+  assert.match(describeStorageFailures(registry).message, /emote library/);
+
+  // Repeated failures of the same key warn once, counting the attempts, so a
+  // library that fails on every keystroke does not produce a wall of warnings.
+  registry = recordStorageResult(registry, 'kick-focus:sticker-preferences', false, 2);
+  assert.equal(Object.keys(registry).length, 1);
+  assert.equal(describeStorageFailures(registry).total, 2);
+
+  // A second, different key reads as a broader problem and lists both.
+  registry = recordStorageResult(registry, 'kick-focus:channel-notes', false, 3);
+  const both = describeStorageFailures(registry);
+  assert.deepEqual(both.labels, ['channel notes', 'emote library']);
+  assert.match(both.message, /channel notes and emote library/);
+
+  // Recovery retires the entry rather than leaving a stale warning up.
+  registry = recordStorageResult(registry, 'kick-focus:sticker-preferences', true, 4);
+  assert.match(describeStorageFailures(registry).message, /channel notes/);
+  registry = recordStorageResult(registry, 'kick-focus:channel-notes', true, 5);
+  assert.equal(describeStorageFailures(registry), null);
+});
+
+test('storage size is reported largest-first in units a person reads', () => {
+  const report = approximateStorageBytes({
+    'kick-focus:settings': { a: 1 },
+    'kick-focus:sticker-preferences': { library: new Array(400).fill('collectiblesGoldenLULW') },
+  });
+  assert.equal(report.breakdown[0].key, 'kick-focus:sticker-preferences');
+  assert.equal(report.breakdown[0].label, 'emote library');
+  assert.ok(report.total > report.breakdown[1].bytes);
+
+  // A value that cannot be serialised must not take the diagnostics down.
+  const circular = {};
+  circular.self = circular;
+  assert.equal(approximateStorageBytes({ 'kick-focus:settings': circular }).total, 0);
+
+  assert.equal(formatBytes(512), '512 B');
+  assert.equal(formatBytes(2048), '2.0 KB');
+  assert.equal(formatBytes(5 * 1024 * 1024), '5.00 MB');
+});
+
+test('imported keys hidden by the prototype chain are reported, not swallowed', () => {
+  const payload = JSON.parse('{"schema":2,"layout":{"__proto__":{"polluted":true},"constructor":1,"toString":"x","density":"compact"}}');
+  const result = validateImportedSettings(JSON.stringify(payload));
+  assert.equal(result.ok, true);
+  for (const key of ['__proto__', 'constructor', 'toString']) {
+    assert.ok(
+      result.notes.some((note) => note.includes(`layout.${key}`)),
+      `expected "${key}" to be reported as ignored`,
+    );
+  }
+  // Reporting only — normalizeSettings rebuilds from defaults, so nothing leaks.
+  assert.equal(({}).polluted, undefined);
+  assert.equal(result.value.layout.density, 'compact');
 });

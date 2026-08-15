@@ -744,7 +744,11 @@ export function validateImportedSettings(jsonText) {
     const incoming = parsed[section];
     if (!isRecord(incoming)) continue;
     for (const [key, raw] of Object.entries(incoming)) {
-      if (!(key in value[section])) {
+      // `in` walks the prototype chain, so an imported "__proto__", "constructor"
+      // or "toString" key read as recognised and was silently dropped from the
+      // report. normalizeSettings rebuilds from defaults, so this was never a
+      // pollution risk — but transparency is the point of this whole function.
+      if (!Object.hasOwn(value[section], key)) {
         notes.push(`Ignored unknown setting "${section}.${key}".`);
       } else if (JSON.stringify(value[section][key]) !== JSON.stringify(raw)) {
         notes.push(`Adjusted "${section}.${key}" to a supported value.`);
@@ -770,4 +774,92 @@ export function validateImportedSettings(jsonText) {
   }
 
   return { ok: true, value, stickers, notes };
+}
+
+// ---------------------------------------------------------------------------
+// Storage health
+// ---------------------------------------------------------------------------
+
+/**
+ * What each persisted key is, in the user's words.
+ *
+ * A failed write used to be discarded by 12 of 13 call sites, so a full quota
+ * lost a curated emote library with no message at all. Naming the data is the
+ * difference between "something went wrong" and "your emote library did not
+ * save".
+ */
+export const STORAGE_LABELS = {
+  'kick-focus:settings': 'settings',
+  'kick-focus:sticker-preferences': 'emote library',
+  'kick-focus:media-preferences': 'volume and quality memory',
+  'kick-focus:chat-keywords': 'chat keyword filters',
+  'kick-focus:channel-notes': 'channel notes',
+  'kick-focus:channel-layouts': 'per-channel layout',
+  'kick-focus:remote-blocklist': 'blocklist cache',
+  'kick-focus:emote-usage': 'emote usage counts',
+};
+
+export function storageLabel(key) {
+  return STORAGE_LABELS[key] || String(key || '').replace(/^kick-focus:/, '') || 'data';
+}
+
+/**
+ * Fold a failed or recovered write into a failure registry.
+ *
+ * Keyed by storage key so a repeatedly failing library reports once rather than
+ * once per keystroke, and a later success clears the entry.
+ */
+export function recordStorageResult(registry, key, ok, at = 0) {
+  const next = { ...(registry || {}) };
+  if (ok) delete next[key];
+  else next[key] = { label: storageLabel(key), at, count: (next[key]?.count || 0) + 1 };
+  return next;
+}
+
+/**
+ * Describe a failure registry for a warning the user has to acknowledge.
+ *
+ * `quota` is the likely cause when several distinct keys fail together: a denied
+ * storage backend fails everything, whereas a single large payload hitting the
+ * cap fails only itself.
+ */
+export function describeStorageFailures(registry) {
+  const entries = Object.entries(registry || {});
+  if (!entries.length) return null;
+  const labels = [...new Set(entries.map(([, entry]) => entry.label))].sort();
+  const list = labels.length === 1
+    ? labels[0]
+    : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+  return {
+    keys: entries.map(([key]) => key).sort(),
+    labels,
+    total: entries.reduce((sum, [, entry]) => sum + (entry.count || 0), 0),
+    message: `Kick Focus could not save your ${list}. Browser storage is full or blocked, so those changes exist only until you reload.`,
+  };
+}
+
+/** Approximate on-disk size of the payloads this build owns, for diagnostics. */
+export function approximateStorageBytes(entries) {
+  let total = 0;
+  const breakdown = [];
+  for (const [key, value] of Object.entries(entries || {})) {
+    let bytes = 0;
+    try {
+      // UTF-16 code units are what a browser quota actually counts.
+      bytes = (typeof value === 'string' ? value : JSON.stringify(value) || '').length * 2;
+    } catch {
+      bytes = 0;
+    }
+    total += bytes;
+    breakdown.push({ key, label: storageLabel(key), bytes });
+  }
+  breakdown.sort((a, b) => b.bytes - a.bytes);
+  return { total, breakdown };
+}
+
+export function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }

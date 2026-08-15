@@ -95,6 +95,11 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  ['reports storage writes that fail instead of losing data', source.includes('noteStorageResult')
+    && source.includes('describeStorageFailures')
+    && source.includes('data-kf-storage-alert')
+    && source.includes('renderStorageHealthPanel')],
+
   // Firefox companion shape
   ['Firefox manifest version matches', firefoxManifest.version === VERSION],
   ['Firefox manifest is v2', firefoxManifest.manifest_version === 2],
