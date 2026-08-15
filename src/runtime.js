@@ -2130,6 +2130,13 @@ function renderMultistreamChat(backdrop, chat, showChat) {
   const current = host.querySelector('iframe');
   if (current?.dataset.slug === chat) return;
   host.innerHTML = '';
+  // Kick's popout chat refuses to send from inside an iframe — it throws a
+  // CSRF error by design, and only reading works. Saying so is the difference
+  // between a limitation and something that looks broken.
+  const notice = document.createElement('p');
+  notice.className = 'kf-ms-chat-notice';
+  notice.textContent = tr('Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.');
+  host.append(notice);
   const frame = document.createElement('iframe');
   frame.src = chatEmbedUrl(chat);
   frame.dataset.slug = chat;
@@ -4340,8 +4347,16 @@ const UI_CSS = `
   }
   .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
-  .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); }
+  .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
   .kf-ms-chat iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .kf-ms-chat-notice {
+    margin: 0;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    background: #121512;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
   .kf-ms-layouts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .kf-ms-layout { display: inline-flex; }
   .kf-ms-layout button {
@@ -4675,6 +4690,7 @@ const TRANSLATIONS = {
     'Multi-stream opened': 'Multitransmisión abierta',
     'Watch several Kick channels in one grid': 'Mira varios canales de Kick en una sola cuadrícula',
     'Freeze animated emotes': 'Congelar los emotes animados',
+    'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Solo lectura aquí. Kick impide enviar desde un chat incrustado; abre el canal para hablar.',
   },
   pt: {
     'Settings': 'Configurações',
@@ -4881,6 +4897,7 @@ const TRANSLATIONS = {
     'Set the preferred caption background strength.': 'Define a intensidade preferida do fundo das legendas.',
     'Multi-stream opened': 'Multitransmissão aberta',
     'Watch several Kick channels in one grid': 'Assista a vários canais do Kick em uma única grade',
+    'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Somente leitura aqui. O Kick impede o envio a partir de um chat incorporado; abra o canal para falar.',
   },
 };
 
@@ -5421,6 +5438,7 @@ function renderAboutPage() {
       ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
       <div class="kf-action-row"><div><h3>Multi-stream</h3><p>Watch up to ${MULTISTREAM_MAX} Kick channels in one grid, with audio and chat following whichever you focus. Uses Kick’s own embedded player, so subscriptions and entitlements are unchanged.${state.multistream.streams.length ? ` Currently holding ${state.multistream.streams.length}.` : ''}</p></div><button type="button" class="kf-button" data-action="open-multistream">Open multi-stream</button></div>
       <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
+      <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks ${AD_HOSTS.length + TELEMETRY_HOSTS.length} third-party ad and telemetry hosts and <strong>no kick.com host at all</strong>, so pausing Kick Focus will not change that behaviour. Check your ad blocker&rsquo;s filters for kick.com before blaming an extension.</p></div></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded sticker metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>

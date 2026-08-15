@@ -97,6 +97,11 @@ Kick Focus is deliberately honest about the userscript boundary:
 
 This boundary is reflected directly in the Content & Ads settings page and protection log, which report `Network + page` or `Page only` depending on what is actually installed.
 
+## Known limitations
+
+- **Multi-stream chat is read-only.** Kick's popout chat refuses to send from inside an iframe — it answers with a CSRF error by design ([KickDevDocs #262](https://github.com/KickEngineering/KickDevDocs/issues/262)). The grid says so in the panel rather than letting you find out by typing. Kick Focus deliberately does not work around this: it would mean writing to Kick, and this project commits to read-only access below.
+- **If Kick sign-in, sign-up, or Follow stops working, check your ad blocker, not this extension.** Since Kick began serving ads on 2026-08-06, ad-blocker filter lists have been reported to break those actions until the blocker is disabled and the browser restarted. Kick Focus blocks eleven third-party ad and telemetry hosts and **no kick.com host at all**, so pausing it will not change that behaviour.
+
 ## What this project reads from Kick
 
 Since 1.5.0 Kick Focus calls Kick's own endpoints rather than only scraping the rendered page. The rules it holds to:

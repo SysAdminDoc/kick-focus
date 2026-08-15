@@ -125,20 +125,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
   Acceptance: frame parsing and subscription management are separated from the connection method so a second transport is an added function rather than a rewrite; an unsupported provider still degrades to the DOM path and says so. Settle open question 2 in RESEARCH.md — whether the gateway is reachable from a page-world content script at all — because a service-worker-only answer means the userscript build can never follow, and that belongs in the docs.
   Complexity: M
 
-- [ ] P1 — Say that multi-stream chat is read-only, or make it writable
-  Why: Kick's popout chat refuses to send from inside an iframe, so the grid's chat panel looks broken rather than limited — and Kick Focus is the only tool positioned to fix it properly.
-  Evidence: KickDevDocs#262 (2025-09-28, closed without staff response) documents that the chat popout throws a CSRF error on login and send inside an iframe — "lacks iframe support by design"; read-only works. bhamrick/multitwitch#51 and #52 are the same failure a platform earlier. Because Kick Focus runs on kick.com's own origin, it can compose and send through the page's own session — the structural advantage every standalone multi-view site lacks.
-  Touches: `src/runtime.js` (multi-stream chat panel), `README.md`.
-  Acceptance: the chat panel states plainly that sending is unavailable in the embed, or a same-origin composer sends through the page's own session; either way the limitation is never left for the user to discover by failing.
-  Complexity: M
-
-- [ ] P1 — Detect the adblock collision and say it is not ours
-  Why: since ads launched, filter lists break Kick's own signup and follow actions, and the last extension a user installed gets the blame.
-  Evidence: four distinct users in one week (2026-08-09 to 2026-08-15, r/KickStreaming and r/Kick) report signup, follow, and sign-in failing with "Unknown error" until uBlock Origin is disabled *and* the browser restarted; one abandoned the platform. Attributed by users to Kick's new trackers, not to deliberate adblock detection. Kick Focus does not block those hosts — `AD_HOSTS` and `TELEMETRY_HOSTS` in `src/core.mjs` contain none of them — which is precisely why the disclaimer is honest.
-  Touches: `src/runtime.js` (diagnostics, Content & Ads page), `README.md`.
-  Acceptance: when a Kick account action fails in a way consistent with the known collision, the interface states that Kick Focus does not block the hosts involved and names what to check; the README carries the same note. Settle open question 3 in RESEARCH.md — which filter rule is responsible — before naming a specific fix, and disclaim only what is verified.
-  Complexity: S
-
 ### P2
 
 - [ ] P2 — Make saved layouts shareable and show who is live

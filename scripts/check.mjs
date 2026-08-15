@@ -166,6 +166,9 @@ const checks = [
     && source.includes("matchMedia('(prefers-reduced-motion: reduce)').matches")],
   // A cross-origin embed cannot be paused or quality-capped, so unloading its
   // document is the only control over decode cost that exists.
+  ['states the limitations users would otherwise hit blind', source.includes('kf-ms-chat-notice')
+    && source.includes('Kick blocks sending from an embedded chat')
+    && source.includes('no kick.com host at all')],
   ['focus is contained in whichever overlay is on top', source.includes('function topmostOverlayShell')
     && source.includes('kf-ms-shell')
     && source.includes('kf-command-shell')
