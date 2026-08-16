@@ -22,6 +22,8 @@ const firefoxManifest = await readJson('dist/extension-firefox/manifest.json');
 const firefoxContent = await read('dist/extension-firefox/content/kick-focus.js');
 const firefoxBridge = await read('dist/extension-firefox/content/bridge.js');
 const firefoxBackground = await read('dist/extension-firefox/background.js');
+const popup = await read('dist/extension/popup.js');
+const extensionZip = await readFile(resolve(`dist/kick-focus-extension-v${VERSION}.zip`));
 
 const mainWorld = manifest.content_scripts.find((entry) => entry.world === 'MAIN');
 const isolated = manifest.content_scripts.find((entry) => entry.world === 'ISOLATED');
@@ -403,6 +405,11 @@ const checks = [
   // already degrades — it shows "—" in the popup when the debug API is absent.
   ['release manifest omits the feedback permission', !manifest.permissions.includes('declarativeNetRequestFeedback')],
   ['dev manifest provides the feedback permission', devManifest.permissions.includes('declarativeNetRequestFeedback')],
+  ['release zip excludes the dev manifest', !extensionZip.toString('latin1').includes('manifest.dev.json')],
+  ['popup uses the browser-or-chrome shim so the Firefox popup renders live', popup.includes('globalThis.browser || globalThis.chrome')
+    && popup.includes('api.tabs.query')
+    && popup.includes('api.runtime.sendMessage')
+    && !popup.includes('chrome.tabs.query')],
 
   // Firefox companion shape
   ['Firefox manifest version matches', firefoxManifest.version === VERSION],

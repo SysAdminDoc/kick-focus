@@ -77,13 +77,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: toggling a setting deep in a page keeps focus and scroll position; forced-colors shows which switch/theme/accent/page is selected; toasts announce via a live region (errors as role="alert"); the reset dialog traps focus to itself and Escape cancels only the dialog; sliders expose aria-valuetext and non-dotted names; largeTargets/reduceMotion visibly affect `.kf-switch`/`.kf-ms-bar`; a fixture or node:test asserts the aria wiring.
   Complexity: L
 
-- [ ] R-14 — Make the Firefox popup work and keep the dev manifest out of the release zip (pairs with "Next" item 4)
-  Why: the build copies the Chromium promise-API popup.js verbatim into the Firefox zip so `chrome.tabs.query` returns undefined and the popup shows static defaults forever; manifest.dev.json is also zipped into the release archive; the live gate calls a feedback-gated API the release manifest can't grant.
-  Evidence: phase0-memo #9,#10 — src/extension/popup.js:25,42,88; scripts/build.mjs:72-76,117,148; verify-extension.mjs:71,346,377-378.
-  Touches: Firefox popup shim (browser||chrome + callback alias); build.mjs zip tree exclusion; the release manifest's feedback-gated API usage; cross-reference "Next" item 4's live Firefox proof.
-  Acceptance: a Firefox-target popup gate asserts the shim is used and the popup renders live counts; the release zip contains no manifest.dev.json; the live gate does not call an API the release manifest cannot grant.
-  Complexity: M
-
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
 
 - [ ] R-35 — Split the multi-stream and live-data surfaces out of `src/runtime.js` (unblocked 2026-08-16)

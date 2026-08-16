@@ -116,7 +116,11 @@ for (const entry of await readdir(resolve(root, 'dist'))) {
 }
 
 const archive = resolve(root, `dist/kick-focus-extension-v${VERSION}.zip`);
-await writeFile(archive, createZip(await collect('')));
+// manifest.dev.json is a load-unpacked convenience (it adds
+// declarativeNetRequestFeedback for the debug counter); it must not ship inside
+// the release archive, which would otherwise carry the extra permission.
+const archiveFiles = (await collect('')).filter((file) => file.name !== 'manifest.dev.json');
+await writeFile(archive, createZip(archiveFiles));
 console.log(`Built dist/kick-focus-extension-v${VERSION}.zip`);
 
 // ---------------------------------------------------------------------------

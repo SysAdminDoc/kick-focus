@@ -21,25 +21,26 @@ const els = {
 
 const KICK_HOST = /^https:\/\/(www\.)?kick\.com\//;
 
+// Firefox exposes the promise-based `browser`; Chromium MV3 promisifies its own
+// namespace. Either way this uses promises. Without the shim the Firefox popup
+// queried tabs callback-style, got `undefined`, and rendered static defaults
+// forever.
+const api = globalThis.browser || globalThis.chrome;
+
 async function activeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   return tab || null;
 }
 
 function send(tabId, message) {
-  return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, message, (response) => {
-      void chrome.runtime.lastError;
-      resolve(response || null);
-    });
-  });
+  return Promise.resolve(api.tabs.sendMessage(tabId, message)).catch(() => null);
 }
 
 async function render() {
   const tab = await activeTab();
   const onKick = Boolean(tab?.url && KICK_HOST.test(tab.url));
 
-  const status = await chrome.runtime.sendMessage({
+  const status = await api.runtime.sendMessage({
     type: 'kick-focus:status',
     tabId: tab?.id ?? -1,
   });
