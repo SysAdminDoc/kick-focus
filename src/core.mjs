@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     hideCasino: false,
     blurMature: true,
     hideDropsPromotions: true,
+    hideMonetization: false,
     reduceTelemetry: true,
     rememberVolume: true,
     rememberQuality: true,
@@ -284,6 +285,7 @@ export function normalizeSettings(input) {
       hideCasino: bool(content.hideCasino, defaults.content.hideCasino),
       blurMature: bool(content.blurMature, defaults.content.blurMature),
       hideDropsPromotions: bool(content.hideDropsPromotions, defaults.content.hideDropsPromotions),
+      hideMonetization: bool(content.hideMonetization, defaults.content.hideMonetization),
       reduceTelemetry: bool(content.reduceTelemetry, defaults.content.reduceTelemetry),
       rememberVolume: bool(content.rememberVolume, defaults.content.rememberVolume),
       rememberQuality: bool(content.rememberQuality, defaults.content.rememberQuality),
@@ -750,7 +752,28 @@ export function detectContentLabels(text, context = {}) {
   };
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 5;
+/**
+ * Identify a Kick control whose only purpose is spending or spend-based social
+ * proof. Inputs are deliberately plain strings so the DOM adapter can stay
+ * small and the false-positive boundary can be unit-tested.
+ */
+export function monetizationKind({ text = '', ariaLabel = '', title = '', testId = '' } = {}) {
+  const id = String(testId).trim().toLowerCase();
+  if (id === 'sub-button') return 'subscribe';
+  if (id === 'gift-sub-button' || id === 'gift-shop-button') return 'gift';
+  if (id === 'kicks-top-nav' || id === 'get-kicks') return 'currency';
+
+  const label = [text, ariaLabel, title]
+    .map((value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase())
+    .find(Boolean) || '';
+  if (/^(?:subscribe|subscription)$/.test(label)) return 'subscribe';
+  if (/^(?:gift (?:subs?|dubs?|a sub|a subscription)|send a gift)$/.test(label)) return 'gift';
+  if (/^(?:get|buy|purchase) kicks?$/.test(label)) return 'currency';
+  if (label === 'expand leaderboard' || label === 'gift leaderboard') return 'leaderboard';
+  return '';
+}
+
+export const STICKER_PREFERENCES_SCHEMA = 6;
 
 /**
  * Timestamps travel through the settings export, so an imported file can carry
@@ -916,7 +939,7 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
       nativeGroups: [...new Set((Array.isArray(raw.nativeGroups) ? raw.nativeGroups : [])
         .map((group) => cleanStickerText(group, 80))
         .filter(Boolean))].slice(0, 20),
-      access: enumValue(raw.access, ['available', 'observed', 'locked'], 'available'),
+      access: enumValue(raw.access, ['available', 'channel', 'observed', 'locked'], 'available'),
       // Schema 4. Entries captured before it carry 0, which reads as unknown
       // rather than as a date the record cannot actually support.
       firstSeen: cleanCaptureTime(raw.firstSeen),

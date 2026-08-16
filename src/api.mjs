@@ -335,6 +335,31 @@ function setKind(name) {
 }
 
 /**
+ * Explicit entitlement only. The public /emotes/{slug} response normally
+ * carries subscribers_only but no ownership signal, so "unknown" must stay
+ * distinct from both granted and denied.
+ */
+function emoteEntitlement(source) {
+  const emote = source && typeof source === 'object' ? source : {};
+  const value = emote.subscribed ?? emote.is_subscribed ?? emote.subscription
+    ?? emote.entitled ?? emote.unlocked ?? emote.owned;
+  if (value === true || value === 1 || (value && typeof value === 'object')) return 'granted';
+  if (value === false || value === 0 || emote.locked === true || emote.is_locked === true) return 'denied';
+  return 'unknown';
+}
+
+/**
+ * What an API-only catalog entry may honestly claim before the native picker
+ * corroborates it. Public artwork is not proof that the account can send it.
+ */
+export function catalogEmoteAccess(emote) {
+  const source = emote && typeof emote === 'object' ? emote : {};
+  if (source.kind === 'global' || source.kind === 'emoji') return 'available';
+  if (!source.subscribersOnly && !source.subscribers_only) return 'channel';
+  return (source.entitlement || emoteEntitlement(source)) === 'granted' ? 'available' : 'locked';
+}
+
+/**
  * Turn `/emotes/{slug}` into a flat, deduplicated catalog.
  *
  * Two facts drive the shape here:
@@ -372,6 +397,7 @@ export function normalizeEmoteSets(payload) {
         // Kick's flag: subscriber emotes are usable platform-wide.
         subscribersOnly: Boolean(raw.subscribers_only),
         usableEverywhere: kind !== 'channel' || Boolean(raw.subscribers_only),
+        entitlement: emoteEntitlement(raw),
         collectible: isCollectibleEmote(name),
         url: emoteImageUrl(id),
       };

@@ -4,7 +4,13 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- Public channel emote catalogs no longer masquerade as account entitlement. Kick returns subscriber-only artwork from `/emotes/{slug}` even when it supplies no subscription/ownership field; those entries are now recorded as subscriber-only until the native picker or an explicit API signal proves access. Free channel emotes are recorded as channel-only, while Global and Emoji sets remain available.
+
+### Internal
+
+- Emote preferences migrate losslessly to schema 6, which adds the portable `channel` access state. The catalog-access decision and the exact spending-control boundary used by the upcoming Poor mode are pure, unit-tested functions.
 
 ## 1.11.0 — 2026-08-16
 

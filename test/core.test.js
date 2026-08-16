@@ -57,6 +57,7 @@ import {
   findShortcutConflict,
   pluralForm,
   sanitizeErrorMessage,
+  monetizationKind,
 } from '../src/core.mjs';
 
 test('sanitizeErrorMessage strips query strings and long tokens for the local error log', () => {
@@ -272,6 +273,28 @@ test('v2 migrates the former desktop defaults without overwriting custom layout 
   assert.equal(custom.layout.chatWidth, 455);
 });
 
+test('Poor mode is opt-in and identifies only spending controls', () => {
+  assert.equal(DEFAULT_SETTINGS.content.hideMonetization, false);
+  assert.equal(normalizeSettings({ content: { hideMonetization: true } }).content.hideMonetization, true);
+  assert.equal(normalizeSettings({ content: { hideMonetization: 'yes' } }).content.hideMonetization, false);
+
+  assert.equal(monetizationKind({ testId: 'sub-button' }), 'subscribe');
+  assert.equal(monetizationKind({ text: 'Subscribe' }), 'subscribe');
+  assert.equal(monetizationKind({ testId: 'gift-sub-button' }), 'gift');
+  assert.equal(monetizationKind({ text: 'Gift Dubs' }), 'gift');
+  assert.equal(monetizationKind({ testId: 'gift-shop-button' }), 'gift');
+  assert.equal(monetizationKind({ testId: 'kicks-top-nav' }), 'currency');
+  assert.equal(monetizationKind({ testId: 'get-kicks' }), 'currency');
+  assert.equal(monetizationKind({ ariaLabel: 'Expand leaderboard' }), 'leaderboard');
+
+  // Poor mode must leave free/community actions intact and never classify a
+  // chat sentence just because it happens to mention a purchase word.
+  assert.equal(monetizationKind({ text: 'Follow', testId: 'follow-button' }), '');
+  assert.equal(monetizationKind({ text: 'Claim Your Daily Reward' }), '');
+  assert.equal(monetizationKind({ text: 'Someone gifted five subs in chat' }), '');
+  assert.equal(monetizationKind({ text: 'Subscription settings' }), '');
+});
+
 test('emote preferences keep favorites, removals, and view modes bounded and local', () => {
   // Schema 4 and earlier stored a flat `pinned` array. Position in it was the
   // order, so it migrates to ordered global favorites with nothing lost.
@@ -403,7 +426,7 @@ test('a hidden emote can never be favorited, in any scope', () => {
   assert.deepEqual(favoritesForChannel(value.favorites, 'xqc'), ['id:kept']);
 });
 
-test('sticker library keeps portable metadata, custom groups, and one assignment per sticker', () => {
+test('sticker library keeps portable metadata, catalog access, custom groups, and one assignment per sticker', () => {
   const value = normalizeStickerPreferences({
     schema: 3,
     view: 'group',
@@ -421,6 +444,7 @@ test('sticker library keeps portable metadata, custom groups, and one assignment
     library: [
       { key: 'id:100', id: '100', name: 'Wave', src: 'https://files.kick.com/emotes/100/fullsize', nativeGroups: ['Global', ' Global '], access: 'locked' },
       { key: 'id:101', id: '101', name: 'Chat find', src: 'https://files.kick.com/emotes/101/fullsize', nativeGroups: ['Seen in chat'], access: 'observed' },
+      { key: 'id:102', id: '102', name: 'Channel find', src: 'https://files.kick.com/emotes/102/fullsize', nativeGroups: ['somechannel'], access: 'channel' },
       { key: 'id:200', id: '200', name: 'External', src: 'https://tracker.example/emotes/200/fullsize' },
       { key: 'id:300', id: '300', name: 'Protocol relative', src: '//tracker.example/emotes/300/fullsize' },
     ],
@@ -429,10 +453,11 @@ test('sticker library keeps portable metadata, custom groups, and one assignment
   assert.equal(value.view, 'group');
   assert.equal(value.groups.length, 2);
   assert.deepEqual(value.assignments, [{ key: 'id:100', groupId: 'reactions' }]);
-  assert.equal(value.library.length, 2);
+  assert.equal(value.library.length, 3);
   assert.equal(value.library[0].access, 'locked');
   assert.deepEqual(value.library[0].nativeGroups, ['Global']);
   assert.equal(value.library[1].access, 'observed');
+  assert.equal(value.library[2].access, 'channel');
   assert.equal(normalizeStickerPreferences({ view: 'group', activeGroup: 'missing' }).view, 'all');
 });
 
@@ -486,7 +511,7 @@ test('removed keys are never re-materialised into the library on normalize', () 
   assert.deepEqual(value.library.map((item) => item.key), ['id:kept']);
 });
 
-test('the emote preferences migrate losslessly from every historical schema to 5', () => {
+test('the emote preferences migrate losslessly from every historical schema to 6', () => {
   const cdn = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
   const day = Date.UTC(2026, 0, 10);
 
@@ -535,6 +560,14 @@ test('the emote preferences migrate losslessly from every historical schema to 5
     { key: 'id:9', channel: 'xqc', order: 0 },
     { key: 'id:8', channel: '', order: 0 },
   ]);
+
+  // Schema 6 adds an honest channel-only catalog state. It stays portable and
+  // is never upgraded to sendable merely because the artwork is public.
+  const s6 = normalizeStickerPreferences({
+    schema: 6,
+    library: [{ key: 'id:10', id: '10', name: 'Local', src: cdn(10), nativeGroups: ['channel'], access: 'channel' }],
+  });
+  assert.equal(s6.library[0].access, 'channel');
 
   // A corrupted intermediate is caught: provenance that no longer differs from
   // the current name must NOT be carried as a phantom rename.

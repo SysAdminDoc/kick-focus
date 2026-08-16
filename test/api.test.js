@@ -19,6 +19,7 @@ import {
   realtimeSubscribeFrame,
   realtimeTransport,
   emoteLockState,
+  catalogEmoteAccess,
   normalizeCurrentViewers,
   summarizeCollectibleInventory,
   COLLECTIBLE_FACTS,
@@ -292,7 +293,7 @@ test('a socket that is open but silent is not reported as healthy', () => {
   assert.equal(realtimeHealth({ connected: true, unparsable: 20, now: 1 }).state, 'unparsable');
 });
 
-test('emote sets normalize with entitlement, not a disabled attribute', () => {
+test('emote sets keep access honest when the public catalog carries no entitlement', () => {
   const result = normalizeEmoteSets([
     {
       id: 12, name: 'lacobraaa', slug: 'lacobraaa',
@@ -315,8 +316,24 @@ test('emote sets normalize with entitlement, not a disabled attribute', () => {
   // subscribers_only doubles as Kick's platform-wide usability flag, which is
   // inverted from what the name suggests.
   assert.equal(golden.usableEverywhere, true);
+  assert.equal(golden.entitlement, 'unknown');
+  assert.equal(catalogEmoteAccess(golden), 'locked');
   assert.equal(result.emotes.find((emote) => emote.name === 'cobraHi').usableEverywhere, false);
+  assert.equal(catalogEmoteAccess(result.emotes.find((emote) => emote.name === 'cobraHi')), 'channel');
   assert.equal(result.emotes.find((emote) => emote.name === 'KEKW').usableEverywhere, true);
+  assert.equal(catalogEmoteAccess(result.emotes.find((emote) => emote.name === 'KEKW')), 'available');
+
+  // An explicit ownership signal may upgrade a subscriber emote. The live
+  // /emotes/{slug} response observed on 2026-08-16 supplies no such field, so
+  // subscriber-only artwork defaults to browseable-but-locked.
+  const entitled = normalizeEmoteSets([{ id: 12, name: 'lacobraaa', emotes: [
+    { id: 2, name: 'Owned', subscribers_only: true, subscribed: true },
+    { id: 3, name: 'Denied', subscribers_only: true, subscribed: false },
+  ] }]).emotes;
+  assert.equal(entitled[0].entitlement, 'granted');
+  assert.equal(catalogEmoteAccess(entitled[0]), 'available');
+  assert.equal(entitled[1].entitlement, 'denied');
+  assert.equal(catalogEmoteAccess(entitled[1]), 'locked');
 
   // A changed shape reports rather than throwing, so the caller can fall back.
   assert.equal(normalizeEmoteSets(null).ok, false);

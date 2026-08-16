@@ -1792,15 +1792,16 @@ async function refreshEmoteCatalog(slug) {
   state.live.catalogError = '';
   state.live.collisions = state.settings.content.warnShadowedEmotes ? findShadowedNames(catalog.emotes) : [];
 
-  // The catalog is the user's real entitlement, so it seeds the library without
-  // the picker ever being opened.
+  // The endpoint publishes every image but normally carries no ownership
+  // signal. Seed the library without claiming that subscriber artwork is
+  // sendable; the native picker can still upgrade a confirmed tile later.
   mergeStickerLibrary(catalog.emotes.map((emote) => ({
     key: `id:${emote.id}`,
     id: emote.id,
     name: emote.name,
     src: emote.url,
     nativeGroups: [emote.kind === 'channel' ? emote.setName : emote.setName],
-    available: true,
+    access: catalogEmoteAccess(emote),
   })));
 
   if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);
@@ -3259,12 +3260,13 @@ function mergeStickerLibrary(observed) {
       ? 'available'
       : sticker.access === 'observed'
         ? 'observed'
-        : 'locked';
-    const access = existing?.access === 'available' || incomingAccess === 'available'
-      ? 'available'
-      : existing?.access === 'locked' || incomingAccess === 'locked'
-        ? 'locked'
-        : 'observed';
+        : sticker.access === 'channel'
+          ? 'channel'
+          : 'locked';
+    const accessRank = { observed: 0, locked: 1, channel: 2, available: 3 };
+    const access = (accessRank[existing?.access] || 0) >= accessRank[incomingAccess]
+      ? existing.access
+      : incomingAccess;
     // Nothing here calls Kick. The record is built from what the page and the
     // catalog already showed, so no claim is automated and no endpoint replayed.
     const record = recordStickerObservation(existing, {
@@ -5980,7 +5982,13 @@ function renderStickerLibraryManager() {
     const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
     const searchText = `${sticker.name} ${nativeGroups}`.toLowerCase();
-    const accessLabel = sticker.access === 'available' ? 'Seen available' : sticker.access === 'observed' ? 'Seen in chat' : 'Locked only';
+    const accessLabel = sticker.access === 'available'
+      ? 'Seen available'
+      : sticker.access === 'channel'
+        ? 'Channel-only'
+        : sticker.access === 'observed'
+          ? 'Seen in chat'
+          : 'Subscriber-only';
     const changeNote = describeStickerChange(sticker);
     const seenNote = stickerSeenSummary(sticker);
     // A greyed tile with no explanation teaches nothing. Nothing here enables
