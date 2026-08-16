@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## Unreleased
+
+### Changed
+
+- **Ready for the day Kick turns on Trusted Types.** Kick currently ships no Content Security Policy, but `require-trusted-types-for 'script'` would make every `innerHTML` write in the page throw — including all of this build's own interface, which would simply stop appearing. Markup now goes through a feature-detected policy of its own. It deliberately does not claim the `default` policy, which would vouch for every other script on the page, Kick's included. Four writes that only cleared a node no longer produce markup at all.
+
 ## 1.14.0 — 2026-08-16
 
 ### Added

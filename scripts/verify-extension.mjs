@@ -378,6 +378,21 @@ try {
       && locale.spanish?.toast === 'Escribe un nombre de canal o una URL.',
     locale.ok ? `count "${locale.english?.count}" -> "${locale.spanish?.count}"; toast "${locale.english?.toast}" -> "${locale.spanish?.toast}"` : locale.why);
 
+  // Chromium exposes the Trusted Types API even where no CSP enforces it, so
+  // this run takes the policy branch: every innerHTML write in the interface
+  // below already went through createHTML. Asserted rather than assumed,
+  // because if the branch were not taken the rest of the run would look
+  // identical and prove nothing about it.
+  const ttProbe = await evaluate(pageClient, `({
+    api: typeof window.trustedTypes?.createPolicy === 'function',
+    enforced: Boolean(window.trustedTypes?.defaultPolicy),
+    rendered: Boolean(document.getElementById('kick-focus-root')?.shadowRoot?.querySelector('[data-kf-settings-shell]')),
+  })`);
+  const tt = ttProbe.value || {};
+  record('the interface renders through a Trusted Types policy on an engine that provides one',
+    tt.api === true && tt.rendered === true,
+    `trustedTypes available=${tt.api}, page enforces a default policy=${tt.enforced}, settings shell rendered=${tt.rendered}`);
+
   // Typing an emote name reaches into Kick's own composer, so prove against a
   // real contenteditable that the plain name lands at the caret and that
   // nothing in the path submits: no Enter, no send click, no form submit.

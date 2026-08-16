@@ -57,7 +57,7 @@ function fakeNode() {
   return node;
 }
 
-function makeBootEnvironment() {
+function makeBootEnvironment(extras = {}) {
   const documentElement = fakeNode();
   const document = {
     documentElement,
@@ -147,6 +147,7 @@ function makeBootEnvironment() {
     CSS: { escape: (value) => String(value) },
     document,
   };
+  Object.assign(context, extras);
   const win = {
     ...context,
     addEventListener() {},
@@ -163,6 +164,36 @@ function makeBootEnvironment() {
 test('the built bundle boots in a stubbed environment without a TDZ or bad const order', { tag: 'artifact' }, async () => {
   const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
   const context = makeBootEnvironment();
+  vm.runInNewContext(bundle, context);
+  assert.equal(context.window.__kickFocusBooted, true);
+});
+
+test('under enforced Trusted Types the bundle takes its own policy, never the default', { tag: 'artifact' }, async () => {
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const created = [];
+  // A strict environment: policies are handed out by name, and creating one
+  // called 'default' would vouch for every other script on the page — Kick's
+  // included — which this build must never do.
+  const trustedTypes = {
+    createPolicy(name, rules) {
+      created.push(name);
+      if (name === 'default') throw new Error('the default policy must not be claimed');
+      return { createHTML: (value) => ({ trusted: true, value: rules.createHTML(value) }) };
+    },
+  };
+  const context = makeBootEnvironment({ trustedTypes });
+  vm.runInNewContext(bundle, context);
+
+  assert.equal(context.window.__kickFocusBooted, true, 'enforcement must not stop the build from booting');
+  assert.deepEqual(created, ['kick-focus'], 'exactly one policy, under this build’s own name');
+});
+
+test('a page without Trusted Types boots without reaching for the API', { tag: 'artifact' }, async () => {
+  // Feature-detected, never version-sniffed: today kick.com ships no CSP at
+  // all, so the absent case is the one that actually runs.
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const context = makeBootEnvironment();
+  assert.equal(context.trustedTypes, undefined);
   vm.runInNewContext(bundle, context);
   assert.equal(context.window.__kickFocusBooted, true);
 });

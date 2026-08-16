@@ -123,13 +123,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: the emote key schema carries a platformId prefix with a tested migration from the current keys; bound to the next schema bump.
   Complexity: M
 
-- [ ] R-31 — Trusted Types resilience
-  Why: Trusted Types reached Baseline 2026-02; a future require-trusted-types-for 'script' on kick.com turns every page-world innerHTML into a TypeError.
-  Evidence: security stream — MDN require-trusted-types-for; kick.com currently ships no CSP (Mozilla Observatory D/30, scan 2026-08-16).
-  Touches: a feature-detected Trusted Types policy routing all page-world innerHTML writes.
-  Acceptance: innerHTML writes route through a policy when Trusted Types is enforced (feature-detected), verified by a node:test that stubs a strict TT environment.
-  Complexity: M
-
 - [ ] R-32 — Close remaining WCAG 2.2 AA gaps on the mod's own chrome
   Why: density controls can drive icon buttons under 24px, sticky/floating chrome can obscure focus, and 80 absolute-px font sizes threaten 200%-zoom reflow.
   Evidence: a11y-i18n stream — WCAG 2.2 2.5.8 Target Size (24×24, mouse-inclusive), 2.4.11 Focus Not Obscured, 1.4.10 Reflow.
