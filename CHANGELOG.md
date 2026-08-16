@@ -4,6 +4,12 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+_Nothing yet._
+
+## 1.10.0 — 2026-08-16
+
+Two operator-requested flagship features — collecting emotes straight from chat and one-click multi-stream — on top of a data-safety, security, and verification pass. Existing data migrates without loss.
+
 ### Added
 
 - **Add the channel you're watching to multi-stream with one click.** The Kick Focus header control now shows a **+ Multi** button on any channel page. Click it to drop that channel into the grid without leaving the page — collect several as you browse, then open them together. The button flips to **In Multi ✓** once a channel is in the grid (click again to remove it), the header shows a live **Multi (n)** count, and each add pops a toast — "Added xqc — 3 of 9" — with **View** and **Undo**. Adds and removes are now merge-safe across tabs: two tabs each adding a different channel no longer clobber each other.

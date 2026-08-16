@@ -135,13 +135,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: API-drift assertions use partialDeepStrictEqual (tolerant of added fields); offline and live-browser gates are tag-separated in one suite; coverage-include-all runs and exposes wholly-untested files; jsdom/happy-dom and Node's built-in localStorage are explicitly NOT adopted.
   Complexity: M
 
-- [ ] R-23 — Document what the project cannot and should not claim (and fix the doc drift)
-  Why: SSAI cannot be client-removed, the legal posture has newly-explicit conflicts, the Firefox/userscript install realities are unstated, and CLAUDE.md/README have drifted from the code.
-  Evidence: kick-platform + ads-ssai + distribution streams + phase0-memo §5H — aws:ads-opt-out in signed JWT; Kick Developer Terms + consumer ToS; BGH I ZR 131/23 (2025-07-31); CLAUDE.md:7,9,11 (Node floor, "~4,650 lines" vs 6,651, missing api.mjs); README.md:138,162-173.
-  Touches: README.md, CLAUDE.md.
-  Acceptance: README states forcefully that SSAI is not client-removable, documents the ToS/Developer-Terms/BGH exposure (esp. full-shell restyle vs §69c UrhG), and records the Firefox unsigned-XPI reality + Violentmonkey "Alternative page mode"; CLAUDE.md line count/Node floor/build description are corrected and the README repo map lists api.mjs and compatibility.mjs; README:138's live-proof claim is corrected (see R-01).
-  Complexity: S
-
 - [ ] R-24 — Establish a remote + stable HTTPS URL so the userscript can auto-update (operator-gated)
   Why: the userscript is the only artifact reaching Windows/macOS users but cannot auto-update because there is no git remote → no @downloadURL/@updateURL.
   Evidence: distribution stream — Greasy Fork @version+@downloadURL; Firefox update_hash sha256; conflicts with the ROADMAP "no publication without explicit approval" deferral.

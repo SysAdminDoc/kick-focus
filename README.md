@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.9.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.10.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -140,6 +140,12 @@ One caveat worth stating plainly, because it is widely reported the other way ro
 
 Kick changes frequently. The most brittle hooks are the sidebar and chat selectors documented in [RESEARCH.md](RESEARCH.md). If the player or chat fails, disable Kick Focus first; Kick’s own help center notes that ad/privacy/script blockers can interfere with playback and chat.
 
+## What it cannot do
+
+- **It cannot remove Kick's in-stream video ads.** Kick serves those through server-side ad insertion (SSAI): they are stitched into the video manifest itself, parsed inside an opaque Amazon IVS WASM worker the page world cannot reach, and the ad opt-out lives in a server-signed playback token. Kick Focus blocks the *separable* ad stack (display and tracking hosts) at the network and page layers and never touches playback. A subscription is the only path Kick offers to change in-stream ads, and even that does not remove them.
+- **Installation is manual and unsigned.** Chromium rejects self-hosted `.crx` files on Windows and macOS, so the companion loads via Developer Mode → Load unpacked. The userscript is the artifact that actually reaches most people; install it in Tampermonkey or Violentmonkey. On Chromium a userscript manager needs its own "Allow user scripts" toggle (Chrome 138+), and Violentmonkey's true document-start injection needs its "Alternative page mode" enabled. The Firefox package is unsigned: it runs temporarily via `about:debugging`, or permanently only on Nightly/DevEdition/ESR with signature enforcement off.
+- **It reads Kick; it never acts for you.** No automation, no writes, no entitlement changes. Every API surface it reads is one Kick's own client already calls, inheriting your existing session, and every feature degrades to reading the page when it fails.
+
 ## Build and verify
 
 No runtime or development dependencies are required beyond Node.js 22+.
@@ -166,11 +172,15 @@ design/mockups/       Selected ImageGen references for Kick routes and settings 
 design/screenshots/   Captured UI, re-taken when the interface changes
 dist/                 Installable userscript, unpacked extension, and zip
 scripts/              Deterministic build, artifact checks, live proof, release gate
-src/core.mjs          Settings, routing, blocklist, and validation logic
-src/runtime.js        Live DOM, layout, settings UI, commands, and request hooks
+src/core.mjs          Settings, routing, blocklist, storage registry, and validation logic
+src/api.mjs           Kick API endpoint shapes, emote/catalog parsing, chat frame normalization
+src/compatibility.mjs Shell/selector probes that detect Kick DOM drift
+src/runtime.js        Live DOM, layout, settings UI, commands, emote library, and request hooks
 src/extension/        Chromium/Firefox manifests, bridges, service workers, popup
-test/                 Node test suite
+test/                 Node test suite (offline gate + vm boot/companion gates)
 ```
+
+The build concatenates `core.mjs` → `api.mjs` → `compatibility.mjs` → `runtime.js` into one IIFE, in that order.
 
 See [RESEARCH.md](RESEARCH.md) for the dated audit and evidence, [ROADMAP.md](ROADMAP.md) for prioritized follow-up work, and [CHANGELOG.md](CHANGELOG.md) for release history.
 
