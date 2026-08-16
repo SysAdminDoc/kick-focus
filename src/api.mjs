@@ -642,3 +642,72 @@ export function joinCollectibleRarity(cards, emotes, { minConfidence = RARITY_MI
     usable: total > 0 && matched.length > 0,
   };
 }
+
+/**
+ * Summarise the user's own collectible inventory.
+ *
+ * Kick publishes no drop odds and documents no duplicate protection, so the
+ * only trustworthy duplicate figure is the one the user's own inventory shows.
+ * Whether it shows one at all depends on Kick returning a per-card quantity,
+ * which is read tolerantly across the names it might use — and when no card
+ * carries one, `quantityKnown` is false and the caller must say the number is
+ * unavailable rather than present `distinct` as if it were the whole story.
+ */
+export function summarizeCollectibleInventory(cards) {
+  const list = (Array.isArray(cards) ? cards : []).filter((card) => card && typeof card === 'object');
+  if (!list.length) return { ok: false, reason: 'no-cards' };
+
+  let copies = 0;
+  let quantityKnown = false;
+  for (const card of list) {
+    const raw = card.quantity ?? card.count ?? card.amount ?? card.owned;
+    const value = Math.floor(Number(raw));
+    if (Number.isFinite(value) && value >= 1) {
+      copies += value;
+      quantityKnown = true;
+    } else {
+      // No quantity on this card: it is still one copy, so the total stays a
+      // lower bound rather than becoming a guess.
+      copies += 1;
+    }
+  }
+
+  const distinct = list.length;
+  const duplicates = quantityKnown ? Math.max(0, copies - distinct) : 0;
+  return {
+    ok: true,
+    distinct,
+    copies,
+    duplicates,
+    quantityKnown,
+    duplicateRate: quantityKnown && copies > 0 ? duplicates / copies : 0,
+  };
+}
+
+/**
+ * What Kick does not explain about collectibles, stated only where a source
+ * exists. Every line is either something Kick has published, something Kick
+ * support has said, or an absence that can be verified by looking.
+ */
+export const COLLECTIBLE_FACTS = Object.freeze([
+  Object.freeze({
+    claim: 'The daily streak does not improve what you get.',
+    detail: 'Kick support has stated the streak confers no bonus to drop quality or odds — it only tracks consecutive claims. Nothing in the collectibles response carries a streak multiplier either.',
+  }),
+  Object.freeze({
+    claim: 'Kick does not publish drop odds.',
+    detail: 'No rarity probability appears in any response this build reads, and none is documented. Any odds you have seen quoted are someone else’s estimate, not Kick’s figure.',
+  }),
+  Object.freeze({
+    claim: 'Duplicate protection is undocumented.',
+    detail: 'Kick has never stated whether a drop can repeat an item you already own. The count below is what your own inventory shows, which is the only evidence available.',
+  }),
+  Object.freeze({
+    claim: 'The collectibles page and your chat emote set can disagree.',
+    detail: 'They are served by different endpoints and are reported to fall out of sync. The emote set is the one chat actually accepts, so trust that when they differ.',
+  }),
+  Object.freeze({
+    claim: 'Kick can change an emote you already pulled.',
+    detail: 'Reported in July 2026 and answered by Kick support with “remastered… clear your cache”. Your local library records the name and artwork at first capture, so a changed entry is flagged rather than quietly replaced.',
+  }),
+]);

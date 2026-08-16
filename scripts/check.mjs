@@ -134,6 +134,16 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // Kick publishes no drop odds and documents no duplicate protection. The
+  // duplicate figure must therefore be measured or declared unavailable — the
+  // one thing it must never be is inferred.
+  ['states the collectible facts Kick leaves unexplained without inventing any',
+    source.includes('COLLECTIBLE_FACTS')
+    && source.includes('summarizeCollectibleInventory')
+    && source.includes('kf-fact-list')
+    && source.includes('quantityKnown')
+    && source.includes('cannot be measured')],
+
   // Kick edits emotes users already pulled, so the local record is the only
   // copy that can prove it. Timestamps and the prior value must both survive.
   ['snapshots the emote library with first-seen, last-seen, and what Kick changed',

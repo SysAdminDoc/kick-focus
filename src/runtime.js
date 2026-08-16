@@ -131,6 +131,7 @@ const state = {
     catalogError: '',
     collisions: [],
     rarity: null,
+    inventory: null,
     socket: null,
     socketState: 'offline',
     lastFrameAt: 0,
@@ -1673,6 +1674,7 @@ async function refreshLiveChannel() {
   state.live.catalogError = '';
   state.live.collisions = [];
   state.live.rarity = null;
+  state.live.inventory = null;
 
   if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
 
@@ -1748,6 +1750,10 @@ async function refreshCollectibleRarity(slug) {
   if (!cards.length) return;
   const join = joinCollectibleRarity(cards, state.live.catalog.emotes);
   state.live.rarity = join.usable ? join : null;
+  // The user's own inventory is the only evidence for a duplicate rate, since
+  // Kick publishes no odds and documents no duplicate protection.
+  const inventory = summarizeCollectibleInventory(cards);
+  state.live.inventory = inventory.ok ? inventory : null;
   refreshLiveDiagnostics();
 }
 
@@ -4473,6 +4479,13 @@ const UI_CSS = `
     .kf-storage-alert { border: 2px solid CanvasText; }
   }
 
+  /* Kick publishes no drop odds and documents no duplicate protection, so this
+     states what is known and attributes it, rather than filling the gap. */
+  .kf-fact-list { margin: 0; padding: 0; display: grid; gap: 10px; }
+  .kf-fact { margin: 0; padding: 10px 12px; border-left: 3px solid var(--border-subtle); background: rgba(255,255,255,.02); border-radius: 0 4px 4px 0; }
+  .kf-fact dt { margin: 0 0 3px; font-size: 12px; font-weight: 700; }
+  .kf-fact dd { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+
   /* Rarity is shown only when the join is confident; see joinCollectibleRarity. */
   .kf-rarity {
     display: inline-flex;
@@ -5574,6 +5587,27 @@ function applyStickerLibrarySearch(value = state.runtime.stickerLibraryQuery) {
  * behaviour when turned off, so the section can be read as "how much of Kick's
  * own data should this use" rather than "which features work".
  */
+/**
+ * What Kick leaves unexplained about collectibles, plus the only numbers the
+ * local record can actually support. Where Kick's response carries no
+ * quantity, the duplicate count says so rather than presenting the distinct
+ * count as though it answered the question.
+ */
+function renderCollectiblePanel() {
+  const inventory = state.live.inventory;
+  const changed = countChangedStickers(state.stickerPreferences.library);
+  const observed = inventory
+    ? (inventory.quantityKnown
+      ? `Your inventory holds ${inventory.copies} collectible${inventory.copies === 1 ? '' : 's'} across ${inventory.distinct} distinct item${inventory.distinct === 1 ? '' : 's'} — ${inventory.duplicates} duplicate${inventory.duplicates === 1 ? '' : 's'}, or ${Math.round(inventory.duplicateRate * 100)}% of what you have pulled.`
+      : `Your inventory holds ${inventory.distinct} distinct collectible${inventory.distinct === 1 ? '' : 's'}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.`)
+    : 'Open a channel with collectibles while signed in to read your own inventory. Nothing is fetched otherwise.';
+  return `
+    <div class="kf-panel">
+      <div class="kf-action-row"><div><h3>What Kick does not explain</h3><p>${escapeHtml(observed)}${changed ? ` ${changed} recorded emote${changed === 1 ? ' has' : 's have'} been changed by Kick since first capture — see the Changed by Kick filter in the library below.` : ''}</p></div></div>
+      <dl class="kf-fact-list">${COLLECTIBLE_FACTS.map((fact) => `<div class="kf-fact"><dt>${escapeHtml(fact.claim)}</dt><dd>${escapeHtml(fact.detail)}</dd></div>`).join('')}</dl>
+    </div>`;
+}
+
 function renderLiveDataSection(value) {
   const collisions = state.live.collisions;
   const rarity = state.live.rarity;
@@ -5591,6 +5625,7 @@ function renderLiveDataSection(value) {
         ${row('Warn about shadowed emote names', 'Subscriber emotes work in every chat and Kick resolves typed names through one map, so two channels sharing a name means one silently sends the other’s.', toggle('content.warnShadowedEmotes', value.warnShadowedEmotes, { label: 'Warn about shadowed emote names' }))}
         ${row('Freeze animated emotes', 'Render animated emotes and collectibles as a single static frame, in chat and in the picker. Applied automatically when your system asks for reduced motion.', toggle('content.staticEmotes', value.staticEmotes, { label: 'Freeze animated emotes' }))}
       </div>
+      ${renderCollectiblePanel()}
       ${rarity ? `<div class="kf-panel"><div class="kf-action-row"><div><h3>Collectible rarity</h3><p>Resolved ${rarity.matched.length} of ${rarity.total} collectible emotes. ${rarity.unmatched.length ? `${rarity.unmatched.length} could not be matched confidently and are shown without a rarity — a wrong label is worse than none.` : 'Every collectible in this channel was matched.'}</p></div></div></div>` : ''}
       ${collisions.length ? `<div class="kf-panel"><div class="kf-action-row"><div class="kf-shadow-warning"><h3>Shadowed emote names</h3><p>These names exist in more than one of your sets. Kick sends the last one loaded, so typing the name may not send what you expect.</p>${collisions.slice(0, 12).map((collision) => `<p><code>${escapeHtml(collision.name)}</code> — sends <strong>${escapeHtml(collision.winner.setName)}</strong>, shadowing ${escapeHtml(collision.shadowed.map((entry) => entry.setName).join(', '))}</p>`).join('')}${collisions.length > 12 ? `<p>…and ${collisions.length - 12} more.</p>` : ''}</div></div></div>` : ''}
     </section>`;

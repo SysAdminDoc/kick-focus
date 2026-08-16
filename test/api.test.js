@@ -18,6 +18,8 @@ import {
   realtimeHealth,
   realtimeSubscribeFrame,
   realtimeTransport,
+  summarizeCollectibleInventory,
+  COLLECTIBLE_FACTS,
   REALTIME_TRANSPORTS,
 } from '../src/api.mjs';
 import { rankEmoteUsage, recordEmoteUse, unusedEmotes } from '../src/core.mjs';
@@ -137,6 +139,56 @@ test('frame parsing is shared by every transport and classifies by kind', () => 
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'App\\Events\\SomethingNew', data: {} })).kind, 'other');
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: 'not json' })).kind, 'other');
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: null })).kind, 'other');
+});
+
+test('the duplicate rate is measured, or reported as unavailable — never guessed', () => {
+  // Kick returning a quantity is the only thing that makes duplicates knowable.
+  const counted = summarizeCollectibleInventory([
+    { id: 1, quantity: 3 },
+    { id: 2, quantity: 1 },
+  ]);
+  assert.equal(counted.quantityKnown, true);
+  assert.equal(counted.distinct, 2);
+  assert.equal(counted.copies, 4);
+  assert.equal(counted.duplicates, 2);
+  assert.equal(counted.duplicateRate, 0.5);
+
+  // The field name is read tolerantly, because this is an internal API.
+  for (const field of ['quantity', 'count', 'amount', 'owned']) {
+    const summary = summarizeCollectibleInventory([{ id: 1, [field]: 2 }]);
+    assert.equal(summary.quantityKnown, true, `${field} should be read as a quantity`);
+    assert.equal(summary.duplicates, 1, `${field} should yield one duplicate`);
+  }
+
+  // No quantity anywhere: duplicates are unknown, and must not read as zero
+  // duplicates out of N — that would be a claim the payload cannot support.
+  const unknown = summarizeCollectibleInventory([{ id: 1 }, { id: 2 }]);
+  assert.equal(unknown.quantityKnown, false);
+  assert.equal(unknown.distinct, 2);
+  assert.equal(unknown.duplicates, 0);
+  assert.equal(unknown.duplicateRate, 0);
+
+  // A card without a quantity still counts as the one copy it must be.
+  const mixed = summarizeCollectibleInventory([{ id: 1, quantity: 3 }, { id: 2 }]);
+  assert.equal(mixed.copies, 4);
+  assert.equal(mixed.duplicates, 2);
+
+  // Junk never produces a summary to render.
+  assert.equal(summarizeCollectibleInventory([]).ok, false);
+  assert.equal(summarizeCollectibleInventory(undefined).ok, false);
+  assert.equal(summarizeCollectibleInventory([null, 'x', 7]).ok, false);
+
+  // Nonsense quantities are ignored rather than inflating the count.
+  const junk = summarizeCollectibleInventory([{ id: 1, quantity: -5 }, { id: 2, quantity: 'many' }]);
+  assert.equal(junk.quantityKnown, false);
+  assert.equal(junk.copies, 2);
+
+  // Every stated fact carries its own detail; an unsourced claim is worse than
+  // silence on a page whose whole purpose is that Kick explains none of this.
+  assert.ok(COLLECTIBLE_FACTS.length >= 4);
+  for (const fact of COLLECTIBLE_FACTS) {
+    assert.ok(fact.claim && fact.detail, 'a fact needs both a claim and its basis');
+  }
 });
 
 test('realtime channel names keep Kick\'s inconsistent separators', () => {
