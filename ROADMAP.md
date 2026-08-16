@@ -34,13 +34,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Acceptance: the library records first-seen and last-seen timestamps per sticker and flags entries whose name or asset changed since first capture; the export carries the history; nothing automates claiming and no private endpoint is replayed.
   Complexity: M
 
-- [ ] P2 — Add a named-channel blocklist for discovery surfaces
-  Why: a distinct, explicitly unmet want — users ask to hide specific promoted channels, which the existing promoted/gambling filters do not address because those key on content labels, not identity.
-  Evidence: r/Kick 2026-07-24 ("There's a few streamers that Kick promotes hard that I would just rather not see"), answered as not natively possible; the remote blocklist schema already carries a `channels` array that only remote subscriptions can populate.
-  Touches: `src/core.mjs` (local blocklist alongside the remote one), `src/runtime.js` (`applyContentFilters`), Content settings.
-  Acceptance: a channel can be hidden from Home, Browse, Following and Search from a card action, the list is editable and exportable, and hidden entries count toward the existing fail-open ceiling.
-  Complexity: M
-
 - [ ] P2 — Replace the reverse-mapping translator with forward-only keys
   Why: every translated string is resolved by scanning all 252 dictionary entries to map a possibly-already-translated value back to English, and the whole settings DOM is re-walked on every render.
   Evidence: `tr()` → `canonicalTranslation()` in `src/runtime.js`; `localizeInterface()` walks every text node plus `aria-label`, `placeholder`, and `title`; four English source strings are also translated values of other strings, making the reverse map ambiguous by construction.

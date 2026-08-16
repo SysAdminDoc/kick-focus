@@ -4,7 +4,9 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+
+- **Named-channel blocklist.** Specific channels can now be hidden from Home, Browse, Following, and Search through the Content settings. The list is normalized, capped at 200 entries, editable, exportable, and counts toward the fail-open ceiling.
 
 ## 1.7.0 — 2026-08-15
 
