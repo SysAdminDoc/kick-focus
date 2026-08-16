@@ -1248,6 +1248,36 @@ export function multistreamTileActive(value, slug, suspended) {
 }
 
 /**
+ * Decide which tiles to keep, build, and drop for a render.
+ *
+ * Replacing an `<iframe>` restarts its stream, so a tile that is still wanted
+ * must be reused rather than recreated — adding a tenth channel must not
+ * interrupt the nine already playing. Keeping that decision here makes the
+ * invariant testable without a browser; the DOM layer only carries it out.
+ */
+export function planMultistreamTiles(existing, wanted) {
+  const present = new Set((existing instanceof Set ? [...existing] : (Array.isArray(existing) ? existing : [])));
+  const order = Array.isArray(wanted) ? wanted : [];
+  const reuse = [];
+  const create = [];
+  const seen = new Set();
+  for (const slug of order) {
+    if (typeof slug !== 'string' || !slug || seen.has(slug)) continue;
+    seen.add(slug);
+    if (present.has(slug)) reuse.push(slug);
+    else create.push(slug);
+  }
+  return {
+    order: [...seen],
+    reuse,
+    create,
+    // Anything present but no longer wanted. A tile that is still wanted must
+    // never appear here, or the render would tear down a playing stream.
+    remove: [...present].filter((slug) => !seen.has(slug)),
+  };
+}
+
+/**
  * Add a channel, reporting *why* nothing happened rather than failing silently
  * — "I clicked add and nothing appeared" is the whole failure mode here.
  */

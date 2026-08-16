@@ -2240,8 +2240,12 @@ function renderMultistream() {
     existing.set(tile.dataset.kfMultistreamTile, tile);
   }
 
+  // Which tiles survive this render is decided in core, where it is tested
+  // without a browser: replacing an iframe restarts its stream, so a channel
+  // that is still wanted must keep the exact element it already had.
+  const plan = planMultistreamTiles([...existing.keys()], streams);
   const ordered = [];
-  for (const slug of streams) {
+  for (const slug of plan.order) {
     let tile = existing.get(slug);
     if (tile) {
       existing.delete(slug);

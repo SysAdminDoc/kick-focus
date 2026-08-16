@@ -758,6 +758,72 @@ test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', a
   assert.equal(multistreamColumns(0), 1);
 });
 
+test('adding a channel never recreates a tile that is already playing', async () => {
+  const { planMultistreamTiles, normalizeMultistream, addMultistreamChannel } = await import('../src/core.mjs');
+
+  // Replacing an <iframe> restarts its stream, so the nine already playing must
+  // keep their exact elements when a tenth is added.
+  const before = ['xqc', 'adin', 'trainwesx'];
+  const after = addMultistreamChannel(normalizeMultistream({ streams: before }), 'newone');
+  const plan = planMultistreamTiles(before, after.value.streams);
+  assert.deepEqual(plan.reuse, before, 'every existing tile must be reused');
+  assert.deepEqual(plan.create, ['newone']);
+  assert.deepEqual(plan.remove, [], 'adding a channel must never remove a tile');
+
+  // Removing one drops exactly that tile and disturbs nothing else.
+  const removed = planMultistreamTiles(['a', 'b', 'c'], ['a', 'c']);
+  assert.deepEqual(removed.reuse, ['a', 'c']);
+  assert.deepEqual(removed.create, []);
+  assert.deepEqual(removed.remove, ['b']);
+
+  // Reordering is not a reason to rebuild anything.
+  const reordered = planMultistreamTiles(['a', 'b', 'c'], ['c', 'a', 'b']);
+  assert.deepEqual(reordered.create, []);
+  assert.deepEqual(reordered.remove, []);
+  assert.deepEqual(reordered.order, ['c', 'a', 'b'], 'order follows the request');
+
+  // A repeated slug must not plan two tiles for one channel.
+  assert.deepEqual(planMultistreamTiles([], ['a', 'a']).create, ['a']);
+
+  // Junk in either list never produces a tile.
+  assert.deepEqual(planMultistreamTiles(undefined, undefined).create, []);
+  assert.deepEqual(planMultistreamTiles(['a'], [null, '', 42]).remove, ['a']);
+
+  // The invariant that matters, stated directly: nothing is ever in both.
+  for (const [have, want] of [[['a', 'b'], ['b', 'c']], [[], ['a']], [['a'], []]]) {
+    const result = planMultistreamTiles(have, want);
+    const overlap = result.reuse.filter((slug) => result.remove.includes(slug));
+    assert.deepEqual(overlap, [], 'a reused tile must never also be removed');
+  }
+});
+
+test('exactly one tile is ever unmuted, across every reachable grid state', async () => {
+  const { normalizeMultistream, multistreamTileMuted } = await import('../src/core.mjs');
+
+  // The rule is load-bearing: a nine-way grid that gets it wrong is nine
+  // simultaneous audio streams. Assert it as a property, not one example.
+  const streams = ['a', 'b', 'c', 'd'];
+  for (const focus of streams) {
+    for (const paused of [false, true]) {
+      for (const muted of [false, true]) {
+        const grid = normalizeMultistream({ streams, focus, paused, muted });
+        const unmuted = grid.streams.filter((slug) => !multistreamTileMuted(grid, slug));
+        const expected = paused || muted ? 0 : 1;
+        assert.equal(
+          unmuted.length,
+          expected,
+          `focus=${focus} paused=${paused} muted=${muted} produced ${unmuted.length} unmuted tiles`,
+        );
+        if (expected === 1) assert.equal(unmuted[0], grid.focus, 'the unmuted tile must be the focused one');
+      }
+    }
+  }
+
+  // An empty grid is silent rather than throwing.
+  const empty = normalizeMultistream({ streams: [] });
+  assert.equal(empty.streams.filter((slug) => !multistreamTileMuted(empty, slug)).length, 0);
+});
+
 test('pausing and muting the grid are separate controls', async () => {
   const { normalizeMultistream, multistreamTileMuted } = await import('../src/core.mjs');
 

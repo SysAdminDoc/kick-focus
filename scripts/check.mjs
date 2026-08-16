@@ -134,6 +134,15 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // Replacing an iframe restarts its stream, so tile reuse is decided by a
+  // core function that is tested without a browser rather than inline here.
+  // A deletion must annotate its node once: the guard is what stops chat
+  // virtualisation from stacking a second note on every apply cycle.
+  ['multi-stream invariants are decided where they can be tested offline',
+    source.includes('planMultistreamTiles')
+    && source.includes('multistreamTileMuted')
+    && source.includes("node.dataset.kfDeletionNoted === 'true'")],
+
   // A reverse scan of 252 entries per string, on every text node, on every
   // render — and ambiguous, because some English sources are also translated
   // values. Lookup is one forward hit against a remembered original.
