@@ -58,13 +58,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
 
-- [ ] R-18 — Picker "Most Used"/recent sections + organizer scale pass (operator-requested)
-  Why: 7TV/BTTV ship recency/frequency sections KF lacks, and full innerHTML rebuilds break down before the 2400 cap does — urgent once R-06 inflates the library. (Two independent features: presentational Most-Used, and the organizer windowing pass.)
-  Evidence: phase1b E7/E8 — src/runtime.js:3443,3472-3529,5688-5767; SevenTV discussion #379; FFZ emote_menu.jsx.
-  Touches: pure top-N-with-recency + `visibleWindow(entries,anchor,size)` in core.mjs; section IntersectionObserver + placeholders, ~120ms debounced search, in-place dataset patch, content-visibility + loading=lazy in runtime.js.
-  Acceptance: pure ordering/window functions in core.mjs under node:test — presentational over existing usage counts, EXCLUDES hold-to-spam/turbo/pyramid; organizer renders a window (not full 2400) with placeholder swap (NOT full virtualization) and debounced search, toggles patch in place rather than full-rebuild.
-  Complexity: L
-
 - [ ] R-19 — Per-card "+ Multi" chip on discovery surfaces + cross-tab converge + shared-link toast (operator-requested)
   Why: collect channels without opening them, converge adds across tabs, and warn when `?kf-multi=` silently overwrites a mid-collection set. (M4 chip + M5 cross-tab BroadcastChannel convergence + M7 toast; M5 alone is the heavy part.)
   Evidence: phase1b M4/M5/M7 (design-check CONFIRMED-WITH-CONDITIONS) — src/runtime.js:2628-2666,7035-7055; bridge.js:81; src/metadata.txt:10-18.

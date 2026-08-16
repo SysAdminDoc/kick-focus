@@ -798,6 +798,92 @@ try {
       && tip.afterUnrelated === null,
     tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
 
+  // A library at the cap is 2400 tiles, and Kick's own picker needs an account,
+  // so the picker is synthesised here: a panel with the shell contract the
+  // organizer keys off, filled with enough emote buttons that rendering all of
+  // them would be exactly the problem this change removes. What is under test is
+  // the organizer's own behaviour against real layout — how many tiles reach the
+  // DOM, whether the spacers account for the rest, and whether toggling a
+  // favorite rebuilds the window or patches the tile where it stands.
+  const organizerProbe = await evaluate(pageClient, `(async () => {
+    const settle = () => new Promise((done) => setTimeout(done, 350));
+    const TOTAL = 900;
+    const panel = document.createElement('div');
+    panel.id = 'chat-emotes-picker-panel';
+    panel.style.cssText = 'position:fixed;left:-4000px;top:0;width:360px;height:520px;overflow:hidden';
+    const scroll = document.createElement('div');
+    scroll.className = 'overflow-y-auto';
+    scroll.style.cssText = 'width:100%;height:100%';
+    panel.append(scroll);
+    for (let index = 0; index < TOTAL; index += 1) {
+      const button = document.createElement('button');
+      button.setAttribute('aria-label', 'KfProbe' + index);
+      const image = document.createElement('img');
+      image.setAttribute('src', 'https://files.kick.com/emotes/' + (700000 + index) + '/fullsize');
+      image.setAttribute('alt', 'KfProbe' + index);
+      button.append(image);
+      scroll.append(button);
+    }
+    document.body.append(panel);
+    try {
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+      const organizer = panel.querySelector('[data-kf-sticker-organizer]');
+      if (!organizer) return { ok: false, why: 'organizer never rendered' };
+      const grid = organizer.querySelector('[data-kf-sticker-grid]');
+      if (!grid) return { ok: false, why: 'grid never rendered' };
+      const total = Number(grid.dataset.kfStickerTotal) || 0;
+      const rendered = grid.querySelectorAll('[data-kf-sticker-item]').length;
+      const spacers = [...grid.querySelectorAll('[data-kf-sticker-spacer]')]
+        .map((node) => node.getBoundingClientRect().height);
+      // Toggle a favorite on the first rendered tile and see what survives.
+      const tile = grid.querySelector('[data-kf-sticker-item]');
+      const key = tile.dataset.kfStickerKey;
+      const before = { tile, grid, state: tile.dataset.kfStickerState };
+      tile.querySelector('[data-kf-sticker-action="pin"]').click();
+      await settle();
+      const afterGrid = panel.querySelector('[data-kf-sticker-grid]');
+      const afterTile = afterGrid?.querySelector('[data-kf-sticker-key="' + CSS.escape(key) + '"]');
+      const shelves = [...organizer.querySelectorAll('[data-kf-sticker-usage-shelf]')]
+        .map((node) => node.getAttribute('data-kf-sticker-usage-shelf'));
+      return {
+        ok: true,
+        total,
+        rendered,
+        spacers,
+        sameGrid: afterGrid === before.grid,
+        sameTile: afterTile === before.tile,
+        stateChanged: afterTile?.dataset.kfStickerState !== before.state,
+        pinned: afterTile?.dataset.kfStickerState,
+        shelves,
+      };
+    } finally {
+      panel.remove();
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+    }
+  })()`);
+  const organizerResult = organizerProbe.value || {};
+  record('the emote organizer renders a window of a large library and keeps the rest in spacers',
+    organizerResult.ok === true
+      && organizerResult.total >= 800
+      && organizerResult.rendered > 0
+      && organizerResult.rendered < organizerResult.total / 2
+      && organizerResult.spacers.length > 0
+      && organizerResult.spacers.some((height) => height > 100),
+    organizerResult.ok
+      ? `${organizerResult.rendered} of ${organizerResult.total} tiles in the DOM; spacer heights ${JSON.stringify(organizerResult.spacers.map(Math.round))}`
+      : organizerResult.why);
+  record('favoriting an emote patches its tile in place instead of rebuilding the window',
+    organizerResult.ok === true
+      && organizerResult.sameGrid === true
+      && organizerResult.sameTile === true
+      && organizerResult.stateChanged === true
+      && String(organizerResult.pinned).startsWith('true'),
+    organizerResult.ok
+      ? `grid reused=${organizerResult.sameGrid} tile reused=${organizerResult.sameTile} state now ${organizerResult.pinned}`
+      : organizerResult.why);
+
   // Import now commits every store as one sized transaction instead of ten
   // separate writes, which is a data-loss-shaped change: exercise the real file
   // input rather than trusting that the unit tests covered the wiring.

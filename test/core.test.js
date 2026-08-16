@@ -71,7 +71,105 @@ import {
   pluralForm,
   sanitizeErrorMessage,
   monetizationKind,
+  rankEmoteUsage,
+  recentEmoteUsage,
+  visibleWindow,
+  EMOTE_WINDOW_SIZE,
 } from '../src/core.mjs';
+
+const usageStore = (global = {}, channels = {}) => ({ global, channels });
+const use = (name, count, lastAt) => ({ name, count, firstAt: 1, lastAt });
+
+test('the recent shelf orders by when an emote was last sent, not how often', { tag: 'unit' }, () => {
+  const counts = usageStore({
+    a: use('Alpha', 100, 1_000),
+    b: use('Beta', 2, 9_000),
+    c: use('Gamma', 50, 5_000),
+  });
+
+  assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.name), ['Beta', 'Gamma', 'Alpha']);
+  // The frequency shelf is the other answer, and must stay the other answer:
+  // the two sections exist precisely because they disagree.
+  assert.deepEqual(rankEmoteUsage(counts).map((entry) => entry.name), ['Alpha', 'Gamma', 'Beta']);
+});
+
+test('the recent shelf prefers this channel record and falls back to the rollup', { tag: 'unit' }, () => {
+  const counts = usageStore(
+    { a: use('Alpha', 10, 9_000), b: use('Beta', 10, 8_000) },
+    { xqc: { a: use('Alpha', 1, 1_000) } },
+  );
+  // Sent here long ago, sent elsewhere recently: in this chat, Beta is newer.
+  assert.deepEqual(recentEmoteUsage(counts, { channel: 'xqc' }).map((entry) => entry.name), ['Beta', 'Alpha']);
+  // An emote never sent here keeps its rollup timestamp rather than vanishing.
+  assert.deepEqual(recentEmoteUsage(counts, { channel: 'nobody' }).map((entry) => entry.name), ['Alpha', 'Beta']);
+});
+
+test('an entry with no timestamp never reaches a list ordered by timestamp', { tag: 'unit' }, () => {
+  // What an imported file that predates the field looks like.
+  const counts = usageStore({ a: use('Alpha', 5, 0), b: use('Beta', 1, 3_000) });
+  assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.name), ['Beta']);
+  assert.deepEqual(recentEmoteUsage(usageStore()), []);
+  assert.deepEqual(recentEmoteUsage(null), []);
+  assert.deepEqual(recentEmoteUsage(counts, { limit: 0 }), []);
+});
+
+test('ties in the recent shelf resolve the same way every render', { tag: 'unit' }, () => {
+  const counts = usageStore({
+    b: use('Beta', 1, 5_000),
+    a: use('Alpha', 1, 5_000),
+    c: use('Gamma', 9, 5_000),
+  });
+  // Same instant: heavier use first, then a stable id order — never insertion
+  // order, or the shelf would reshuffle itself between identical renders.
+  assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.id), ['c', 'a', 'b']);
+  assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.id), recentEmoteUsage(counts).map((entry) => entry.id));
+});
+
+test('a list shorter than the window is rendered whole, with no spacers', { tag: 'unit' }, () => {
+  const entries = Array.from({ length: 12 }, (_v, index) => index);
+  const slice = visibleWindow(entries, 0, 240);
+  assert.deepEqual(slice, { start: 0, end: 12, items: entries, before: 0, after: 0 });
+  assert.equal(slice.items, entries, 'no copy is made when the whole list fits');
+});
+
+test('a library at the cap renders one window and accounts for the rest', { tag: 'unit' }, () => {
+  const entries = Array.from({ length: 2400 }, (_v, index) => index);
+
+  const top = visibleWindow(entries, 0);
+  assert.equal(top.items.length, EMOTE_WINDOW_SIZE);
+  assert.equal(top.start, 0, 'at the top the window does not run off the front');
+  assert.equal(top.before, 0);
+  assert.equal(top.after, 2400 - EMOTE_WINDOW_SIZE);
+
+  // Scrolled into the middle: the window leads the anchor so scrolling back a
+  // row does not immediately fall out of it.
+  const middle = visibleWindow(entries, 1200);
+  assert.equal(middle.start, 1200 - EMOTE_WINDOW_SIZE / 4);
+  assert.equal(middle.items.length, EMOTE_WINDOW_SIZE);
+  assert.equal(middle.before + middle.items.length + middle.after, entries.length,
+    'every entry is either rendered or accounted for by a spacer');
+  assert.deepEqual(middle.items[0], middle.start);
+
+  // At the very bottom the window stops at the end rather than past it.
+  const bottom = visibleWindow(entries, 2399);
+  assert.equal(bottom.end, 2400);
+  assert.equal(bottom.start, 2400 - EMOTE_WINDOW_SIZE);
+  assert.equal(bottom.after, 0);
+});
+
+test('a nonsense anchor or size cannot produce a window outside the list', { tag: 'unit' }, () => {
+  const entries = Array.from({ length: 500 }, (_v, index) => index);
+  for (const anchor of [-100, Number.NaN, Number.POSITIVE_INFINITY, 10_000, undefined]) {
+    const slice = visibleWindow(entries, anchor);
+    assert.ok(slice.start >= 0 && slice.end <= entries.length, `anchor ${String(anchor)} stays in range`);
+    assert.equal(slice.before + slice.items.length + slice.after, entries.length);
+  }
+  for (const size of [0, -5, Number.NaN, undefined]) {
+    const slice = visibleWindow(entries, 0, size);
+    assert.ok(slice.items.length > 0 && slice.items.length <= entries.length, `size ${String(size)} yields a real window`);
+  }
+  assert.deepEqual(visibleWindow(null, 0), { start: 0, end: 0, items: [], before: 0, after: 0 });
+});
 
 test('sanitizeErrorMessage strips query strings and long tokens for the local error log', { tag: 'unit' }, () => {
   assert.equal(sanitizeErrorMessage('Failed at https://kick.com/api/v1/log?token=abc123'), 'Failed at https://kick.com/api/v1/log');

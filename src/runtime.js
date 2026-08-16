@@ -38,6 +38,21 @@ const AD_SHELL_SELECTORS = [
   '[class*="advertisement"]',
 ];
 
+// Long enough that typing a name is one render rather than one per keystroke,
+// short enough that the grid still feels attached to the keyboard.
+const STICKER_SEARCH_DEBOUNCE_MS = 120;
+const STICKER_USAGE_SECTION_LIMIT = 24;
+// Must match the organizer grid CSS: tiles are a fixed row height in a
+// minmax(50px, 1fr) auto-fill grid, which is what lets a spacer stand in for a
+// known number of rows without measuring every one of them.
+const STICKER_TILE_HEIGHT = 62;
+const STICKER_GRID_GAP = 7;
+const STICKER_TILE_MIN_WIDTH = 50;
+// How close the viewport may get to the rendered window's edge before the
+// window moves. Four rows of slack keeps a slow scroll from re-rendering
+// continuously while never letting the viewer reach an unrendered gap.
+const STICKER_WINDOW_GUARD_ROWS = 4;
+
 const pageWindow = typeof unsafeWindow === 'object' ? unsafeWindow : window;
 
 // Measured immediately, before this script touches anything: what the page
@@ -82,6 +97,10 @@ const state = {
     applyRunning: false,
     presenceRequested: false,
     stickerGridScrollTop: null,
+    stickerSearchTimer: 0,
+    // Index of the first tile the grid should render around. The organizer
+    // renders a window rather than the whole library, so this is what moves.
+    stickerGridAnchor: 0,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
     emoteCatalogSlug: '',
@@ -1414,6 +1433,9 @@ const SITE_CSS = `
     [data-kf-sticker-grid] {
       display: grid !important;
       grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)) !important;
+      /* Fixed rows are what let one spacer stand in for a known number of them.
+         The values here are mirrored by STICKER_TILE_HEIGHT/STICKER_GRID_GAP. */
+      grid-auto-rows: 62px !important;
       gap: 7px !important;
       max-height: min(360px, 42vh) !important;
       overflow: auto !important;
@@ -1424,6 +1446,10 @@ const SITE_CSS = `
        tiles. Skipping layout and paint for the off-screen ones is what keeps
        opening it cheap; the intrinsic size holds the scroll height steady. */
     [data-kf-sticker-item] { min-width: 0 !important; text-align: center !important; content-visibility: auto !important; contain-intrinsic-size: auto 62px !important; }
+    /* Stands in for the rows outside the rendered window, so the scrollbar
+       still describes the whole library. Spans every column, draws nothing. */
+    [data-kf-sticker-spacer] { grid-column: 1 / -1 !important; pointer-events: none !important; }
+    [data-kf-sticker-usage-shelf] { margin-top: 8px !important; }
     [data-kf-sticker-proxy] {
       display: flex !important;
       align-items: center !important;
@@ -2991,7 +3017,9 @@ function stickerProxyMarkup(descriptor) {
   // ranks nothing, so this is the only place an explicit order exists.
   const ordering = pinned && state.stickerPreferences.view === 'pinned';
   const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
-  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
+  // The state stamp is what lets a favorite toggle patch this tile in place
+  // instead of re-serialising the window it sits in.
+  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-state="${pinned}:${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
     <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use emote ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <div data-kf-sticker-tools>
       ${ordering ? `<button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="up" data-kf-sticker-key="${safeKey}" aria-label="Move ${safeName} earlier" title="Move earlier">‹</button>
@@ -3090,12 +3118,28 @@ function renderStickerOrganizer() {
   const search = stickerSearchInput(picker);
   if (search && search.dataset.kfStickerSearchBound !== 'true') {
     search.dataset.kfStickerSearchBound = 'true';
-    search.addEventListener('input', () => renderStickerOrganizer());
+    // Debounced: every keystroke used to re-filter and re-serialise the whole
+    // library, so typing a five-letter name rebuilt the grid five times.
+    search.addEventListener('input', () => {
+      clearTimeout(state.runtime.stickerSearchTimer);
+      state.runtime.stickerSearchTimer = window.setTimeout(() => {
+        state.runtime.stickerSearchTimer = 0;
+        renderStickerOrganizer();
+      }, STICKER_SEARCH_DEBOUNCE_MS);
+    });
   }
   let organizer = picker.querySelector('[data-kf-sticker-organizer]');
   if (!organizer) {
     organizer = document.createElement('section');
     organizer.dataset.kfStickerOrganizer = 'true';
+    // A stable skeleton: the chrome and the grid are rebuilt on their own
+    // signatures, so a favorite toggle never re-serialises the whole library.
+    const chrome = document.createElement('div');
+    chrome.dataset.kfStickerChrome = 'true';
+    const gridHost = document.createElement('div');
+    gridHost.dataset.kfStickerGridHost = 'true';
+    organizer.append(chrome, gridHost);
+    bindStickerGridScroll(gridHost);
   }
   if (organizer.parentElement !== scroll) scroll.prepend(organizer);
   const previousGridScrollTop = state.runtime.stickerGridScrollTop;
@@ -3119,23 +3163,58 @@ function renderStickerOrganizer() {
       ? allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === state.stickerPreferences.activeGroup)
       : allVisible;
   const unavailableCount = unavailableStickerCount(picker, descriptors);
+
+  // Usage counts are keyed by Kick's emote id; the organizer is keyed by
+  // storage key, so the two shelves are a lookup rather than a second store.
+  const byId = new Map();
+  for (const descriptor of descriptors) {
+    if (descriptor.id && !byId.has(String(descriptor.id))) byId.set(String(descriptor.id), descriptor);
+  }
+  // Presentational, over counts this build already records: these two shelves
+  // order emotes the user sent by hand. Nothing here sends, repeats, or
+  // schedules a send — the hold-to-spam, turbo and pyramid features other
+  // clients pair with a Most Used shelf are deliberately absent.
+  const fromUsage = (ranked) => ranked
+    .map((entry) => byId.get(String(entry.id)))
+    .filter((descriptor) => descriptor && !state.stickerPreferences.hidden.has(descriptor.key))
+    .slice(0, STICKER_USAGE_SECTION_LIMIT);
+  const usageDepth = STICKER_USAGE_SECTION_LIMIT * 3;
+  const mostUsed = fromUsage(rankEmoteUsage(state.emoteUsage, { channel: state.live.slug, limit: usageDepth }));
+  const recent = fromUsage(recentEmoteUsage(state.emoteUsage, { channel: state.live.slug, limit: usageDepth }));
+
+  const chrome = organizer.querySelector('[data-kf-sticker-chrome]');
+  const gridHost = organizer.querySelector('[data-kf-sticker-grid-host]');
+  const view = state.stickerPreferences.view;
+
+  // The chrome and the grid carry separate signatures. Toggling one favorite
+  // changes a toolbar count and a shelf, both cheap; re-serialising a library
+  // at the 2400 cap to show it is not, and the split is what stops that.
   const signature = [
-    state.stickerPreferences.view,
+    view,
     state.stickerPreferences.activeGroup,
     String(showHidden),
     query,
-    descriptors.map((descriptor) => descriptor.key).join(','),
+    String(visible.length),
+    String(allVisible.length),
+    quickFavorites.map((descriptor) => descriptor.key).join(','),
+    mostUsed.map((descriptor) => descriptor.key).join(','),
+    recent.map((descriptor) => descriptor.key).join(','),
     String(unavailableCount),
     // Order is part of the signature: reordering changes nothing else, so
     // without it the shelf would keep the stale arrangement on screen.
-    favoriteKeysInOrder().join(','),
+    favoriteOrder.join(','),
     [...state.stickerPreferences.hidden].join(','),
     state.stickerPreferences.groups.map((group) => `${group.id}:${group.name}`).join(','),
     [...state.stickerPreferences.assignments].map(([key, groupId]) => `${key}:${groupId}`).join(','),
   ].join('\u0001');
-  if (organizer.dataset.kfStickerSignature === signature) return;
-  organizer.dataset.kfStickerSignature = signature;
-  const view = state.stickerPreferences.view;
+  if (chrome.dataset.kfStickerSignature === signature) {
+    // The chrome is current; the grid may still need a different window, and a
+    // pinned/removed tile inside the current one needs its own state refreshed.
+    renderStickerGrid(gridHost, visible, view);
+    restoreStickerGridScroll(organizer, previousGridScrollTop);
+    return;
+  }
+  chrome.dataset.kfStickerSignature = signature;
   const countLabel = `${visible.length} ${plural(visible.length, 'emote', 'emotes')}`;
   const unavailableLabel = unavailableCount
     ? `<span data-kf-sticker-locked>${unavailableCount} locked by Kick</span>`
@@ -3143,11 +3222,12 @@ function renderStickerOrganizer() {
   const quickShelf = quickFavorites.length
     ? `<div data-kf-sticker-quick-grid role="group" aria-label="Three-row one-click favorite emotes">${quickFavorites.map(stickerQuickProxyMarkup).join('')}</div>`
     : '<div data-kf-sticker-quick-empty>Favorite emotes with ☆ to fill up to three rows of one-click shortcuts.</div>';
-  const list = view === 'native'
-    ? '<div data-kf-sticker-empty>Kick’s native emote groups are shown below.</div>'
-    : visible.length
-      ? `<div data-kf-sticker-grid>${visible.map(stickerProxyMarkup).join('')}</div>`
-      : `<div data-kf-sticker-empty>${view === 'pinned' ? 'Favorite emotes here to build your shelf.' : view === 'group' ? 'No available emotes are assigned to this group.' : 'No emotes match this search.'}</div>`;
+  const usageShelf = (entries, label, hint) => (entries.length
+    ? `<section data-kf-sticker-usage-shelf="${label.toLowerCase().replace(/\s+/g, '-')}">
+      <div data-kf-sticker-quick-header><strong>${escapeHtml(label)}</strong><span>${escapeHtml(hint)}</span></div>
+      <div data-kf-sticker-quick-grid role="group" aria-label="${escapeHtml(label)} emotes">${entries.map(stickerQuickProxyMarkup).join('')}</div>
+    </section>`
+    : '');
   const customGroups = state.stickerPreferences.groups.map((group) => {
     const count = allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === group.id).length;
     const active = view === 'group' && state.stickerPreferences.activeGroup === group.id;
@@ -3157,7 +3237,7 @@ function renderStickerOrganizer() {
   const groupsTab = firstGroup
     ? `<button type="button" data-kf-sticker-view="group" data-kf-sticker-group="${escapeHtml(state.stickerPreferences.activeGroup || firstGroup.id)}" data-active="${view === 'group'}" aria-pressed="${view === 'group'}">Groups</button>`
     : '<button type="button" data-kf-sticker-manage="true">Groups</button>';
-  organizer.innerHTML = trustedHTML(`
+  chrome.innerHTML = trustedHTML(`
     <div data-kf-sticker-topline>
       <div><strong>Emote shelf</strong><span data-kf-sticker-count>${escapeHtml(countLabel)}</span>${unavailableLabel}</div>
       <button type="button" data-kf-sticker-manage="true">Manage</button>
@@ -3175,10 +3255,142 @@ function renderStickerOrganizer() {
       <div data-kf-sticker-quick-header><strong>Quick favorites</strong><span data-kf-sticker-quick-count>${quickFavorites.length} available · 3 rows</span><button type="button" data-kf-sticker-view="pinned" aria-pressed="${view === 'pinned'}">Edit shelf</button></div>
       ${quickShelf}
     </section>
-    <div data-kf-sticker-secondary-actions><button type="button" data-kf-sticker-reset="true">Reset changes</button></div>
-    ${list}`);
+    ${usageShelf(mostUsed, 'Most used', `top ${mostUsed.length} you send`)}
+    ${usageShelf(recent, 'Recent', 'newest first')}
+    <div data-kf-sticker-secondary-actions><button type="button" data-kf-sticker-reset="true">Reset changes</button></div>`);
+  renderStickerGrid(gridHost, visible, view);
   restoreStickerGridScroll(organizer, previousGridScrollTop);
   measureEmoteAspect(organizer);
+}
+
+/** How many columns the auto-fill grid resolves to at its current width. */
+function stickerGridColumns(grid) {
+  const width = grid?.clientWidth || 0;
+  if (!width) return 1;
+  return Math.max(1, Math.floor((width + STICKER_GRID_GAP) / (STICKER_TILE_MIN_WIDTH + STICKER_GRID_GAP)));
+}
+
+/**
+ * One grid item standing in for a whole block of rows nobody can see.
+ *
+ * Not virtualization: the browser keeps doing the scrolling, and the spacer's
+ * height is what keeps the scrollbar honest about how much library is there.
+ */
+function stickerSpacerMarkup(count, columns, side) {
+  const rows = Math.ceil(Math.max(0, count) / Math.max(1, columns));
+  if (rows <= 0) return '';
+  const height = rows * STICKER_TILE_HEIGHT + (rows - 1) * STICKER_GRID_GAP;
+  return `<div data-kf-sticker-spacer="${side}" aria-hidden="true" style="height:${height}px"></div>`;
+}
+
+/**
+ * Render the window of the grid that is actually near the viewport.
+ *
+ * A library at the cap is 2400 tiles, each a button, an image and two controls.
+ * Serialising all of them cost more than the picker itself, so what goes in the
+ * DOM is one window plus two spacers, and the window moves when the viewer gets
+ * within a few rows of its edge.
+ */
+function renderStickerGrid(gridHost, visible, view) {
+  if (view === 'native') {
+    setStickerGridHost(gridHost, 'native', '<div data-kf-sticker-empty>Kick’s native emote groups are shown below.</div>');
+    return;
+  }
+  if (!visible.length) {
+    const message = view === 'pinned' ? 'Favorite emotes here to build your shelf.'
+      : view === 'group' ? 'No available emotes are assigned to this group.'
+        : 'No emotes match this search.';
+    setStickerGridHost(gridHost, `empty:${view}`, `<div data-kf-sticker-empty>${message}</div>`);
+    return;
+  }
+  const grid = gridHost.querySelector('[data-kf-sticker-grid]');
+  const columns = stickerGridColumns(grid);
+  const slice = visibleWindow(visible, state.runtime.stickerGridAnchor);
+  const signature = [view, String(visible.length), String(columns), String(slice.start), String(slice.end),
+    slice.items.map((descriptor) => descriptor.key).join(',')].join('');
+  if (gridHost.dataset.kfStickerGridSignature === signature) {
+    // Same tiles, possibly different state on one of them.
+    patchStickerTileStates(gridHost);
+    return;
+  }
+  const scrollTop = Number.isFinite(grid?.scrollTop) ? grid.scrollTop : null;
+  gridHost.dataset.kfStickerGridSignature = signature;
+  gridHost.dataset.kfStickerWindow = `${slice.start}-${slice.end}`;
+  gridHost.innerHTML = trustedHTML(`<div data-kf-sticker-grid data-kf-sticker-total="${visible.length}">${
+    stickerSpacerMarkup(slice.before, columns, 'before')
+  }${slice.items.map(stickerProxyMarkup).join('')}${
+    stickerSpacerMarkup(slice.after, columns, 'after')
+  }</div>`);
+  // Replacing the grid element resets its scroll; the window only moved because
+  // the viewer scrolled, so putting it back is what makes the swap invisible.
+  const next = gridHost.querySelector('[data-kf-sticker-grid]');
+  if (next && scrollTop !== null) next.scrollTop = scrollTop;
+  measureEmoteAspect(gridHost);
+}
+
+function setStickerGridHost(gridHost, signature, markup) {
+  if (gridHost.dataset.kfStickerGridSignature === signature) return;
+  gridHost.dataset.kfStickerGridSignature = signature;
+  delete gridHost.dataset.kfStickerWindow;
+  gridHost.innerHTML = trustedHTML(markup);
+}
+
+/**
+ * Bring rendered tiles up to date without re-serialising the grid.
+ *
+ * Favoriting or removing an emote changes two glyphs and an attribute on one
+ * tile. Rebuilding the window to show that would throw away every image the
+ * browser had already decoded, so the tile is patched where it stands.
+ */
+function patchStickerTileStates(gridHost) {
+  for (const tile of gridHost.querySelectorAll('[data-kf-sticker-item]')) {
+    const key = tile.dataset.kfStickerKey;
+    const pinned = isFavorited(key);
+    const hidden = state.stickerPreferences.hidden.has(key);
+    const stamp = `${pinned}:${hidden}`;
+    if (tile.dataset.kfStickerState === stamp) continue;
+    tile.dataset.kfStickerState = stamp;
+    tile.dataset.kfStickerHidden = String(hidden);
+    const name = tile.querySelector('img')?.getAttribute('alt') || 'emote';
+    const pin = tile.querySelector('[data-kf-sticker-action="pin"]');
+    if (pin) {
+      pin.setAttribute('aria-pressed', String(pinned));
+      pin.textContent = pinned ? '★' : '☆';
+      pin.setAttribute('aria-label', `${pinned ? 'Remove favorite' : 'Favorite'} ${name}`);
+      pin.title = pinned ? 'Remove favorite' : 'Favorite';
+    }
+    const hide = tile.querySelector('[data-kf-sticker-action="hide"]');
+    if (hide) {
+      hide.textContent = hidden ? '↶' : '×';
+      hide.setAttribute('aria-label', `${hidden ? 'Restore' : 'Remove'} ${name}`);
+      hide.title = hidden ? 'Restore' : 'Remove';
+    }
+  }
+}
+
+/**
+ * Move the window when the viewer approaches its edge.
+ *
+ * Scroll does not bubble, so this is bound in the capture phase on the host
+ * that outlives every grid rebuild — binding to the grid itself would be lost
+ * the first time the window moved.
+ */
+function bindStickerGridScroll(gridHost) {
+  gridHost.addEventListener('scroll', (event) => {
+    const grid = event.target;
+    if (!grid?.dataset || grid.dataset.kfStickerTotal === undefined) return;
+    const total = Number(grid.dataset.kfStickerTotal) || 0;
+    const [start, end] = String(gridHost.dataset.kfStickerWindow || '0-0').split('-').map(Number);
+    if (end - start >= total) return; // everything is rendered; nothing to move
+    const columns = stickerGridColumns(grid);
+    const rowHeight = STICKER_TILE_HEIGHT + STICKER_GRID_GAP;
+    const first = Math.floor(grid.scrollTop / rowHeight) * columns;
+    const last = first + (Math.ceil(grid.clientHeight / rowHeight) + 1) * columns;
+    const guard = STICKER_WINDOW_GUARD_ROWS * columns;
+    if (first >= start + guard && last <= end - guard) return;
+    state.runtime.stickerGridAnchor = first;
+    renderStickerOrganizer();
+  }, { capture: true, passive: true });
 }
 
 function resetStickerPreferences(options = {}) {
@@ -3275,6 +3487,10 @@ function handleStickerAction(event) {
     }
   }
   applySettingsAttributes();
+  // Straight to the organizer rather than through the apply cycle: a toggle
+  // changes the chrome and one tile, and renderStickerOrganizer now patches
+  // that tile in place instead of re-serialising the whole window.
+  renderStickerOrganizer();
   scheduleApply(0);
 }
 

@@ -1778,6 +1778,69 @@ export function rankEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
     .slice(0, limit);
 }
 
+/**
+ * Emotes ordered by how recently they were sent, newest first.
+ *
+ * The companion to `rankEmoteUsage`, not a replacement: frequency answers "what
+ * do I use", recency answers "what am I using right now", and a shelf built on
+ * frequency alone takes weeks to notice that a channel's meta moved on. Same
+ * scoping rule as the frequency ranking — the channel's own record wins, and
+ * falls back to the global rollup for an emote never sent here.
+ *
+ * Presentational only. This orders emotes the user already sent by hand; it
+ * neither records a use nor sends anything, which is the line that separates a
+ * recency shelf from the hold-to-spam, turbo and pyramid features other clients
+ * pair it with and this build does not have.
+ */
+export function recentEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
+  const scope = (channel && counts?.channels?.[channel]) || {};
+  const global = counts?.global || {};
+  const merged = new Map();
+  for (const [id, entry] of Object.entries(global)) {
+    merged.set(id, { id, name: entry.name || '', count: Number(entry.count) || 0, lastAt: Number(entry.lastAt) || 0 });
+  }
+  for (const [id, entry] of Object.entries(scope)) {
+    const current = merged.get(id);
+    merged.set(id, {
+      id,
+      name: entry.name || current?.name || '',
+      count: Number(entry.count) || 0,
+      lastAt: Number(entry.lastAt) || current?.lastAt || 0,
+    });
+  }
+  return [...merged.values()]
+    // An entry with no timestamp is one an import carried without one; it has
+    // no place in a list whose whole ordering is the timestamp.
+    .filter((entry) => entry.lastAt > 0)
+    .sort((a, b) => (b.lastAt - a.lastAt) || (b.count - a.count) || String(a.id).localeCompare(String(b.id)))
+    .slice(0, Math.max(0, Math.floor(Number(limit)) || 0));
+}
+
+/** How many tiles the organizer grid renders at once, regardless of library size. */
+export const EMOTE_WINDOW_SIZE = 240;
+
+/**
+ * The slice of a long list worth putting in the DOM, and how much is outside it.
+ *
+ * Not virtualization: the caller renders `items` plus one spacer above and one
+ * below, sized from `before` and `after`, so the scrollbar stays honest and the
+ * browser keeps doing the scrolling. A library at the 2400 cap therefore costs
+ * one window of nodes rather than 2400, and the arithmetic that decides which
+ * window lives here where it can be tested without a browser.
+ */
+export function visibleWindow(entries, anchor = 0, size = EMOTE_WINDOW_SIZE) {
+  const list = Array.isArray(entries) ? entries : [];
+  const count = Math.max(1, Math.floor(Number(size)) || EMOTE_WINDOW_SIZE);
+  if (list.length <= count) return { start: 0, end: list.length, items: list, before: 0, after: 0 };
+  // Lead margin: start the window a little above the anchor so scrolling back a
+  // row does not immediately fall out of it and force a rebuild.
+  const lead = Math.floor(count / 4);
+  const requested = Math.floor(Number(anchor)) || 0;
+  const start = Math.min(Math.max(0, requested - lead), list.length - count);
+  const end = start + count;
+  return { start, end, items: list.slice(start, end), before: start, after: list.length - end };
+}
+
 /** Emotes the user owns but has never sent — the inverse view nothing offers. */
 export function unusedEmotes(counts, emotes, { channel = '' } = {}) {
   const used = new Set([

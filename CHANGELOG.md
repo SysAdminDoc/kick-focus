@@ -4,6 +4,14 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Added
+
+- **"Most used" and "Recent" shelves in the emote picker.** Two shelves over the usage Kick Focus already counts — one ordered by how often you send an emote, one by how recently — scoped to the channel you are in and falling back to your overall history for anything you have not sent there yet. They are presentational: nothing here sends, repeats, or schedules a send.
+
+### Changed
+
+- **The emote picker stops rendering your whole library at once.** Only the tiles near the viewport are put in the page, with a spacer standing in for the rest so the scrollbar still describes the full library — measured on the live site, 240 tiles in the page instead of 900. Typing in the picker's search now waits for you to stop typing rather than re-filtering on every keystroke, and favoriting or removing an emote updates that one tile instead of rebuilding the grid, so the images already on screen are never re-fetched or re-decoded.
+
 ### Internal
 
 - The live-data surface is its own module too — the same treatment, and it brought twelve tests to paths that previously had none that could fail: that a slow endpoint is really aborted rather than left hanging, that an oversized or malformed body is refused instead of parsed, that the follow request rejects a junk channel before it reaches the network and decodes Kick's CSRF token rather than forwarding it raw, that recorded API drift is capped, and that a deletion annotation survives chat remounting a message without ever being applied twice.

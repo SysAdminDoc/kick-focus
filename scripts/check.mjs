@@ -132,6 +132,60 @@ const MODULE_SYNTAX = /^(?:import|export)\s/m;
 const withModuleSyntax = (bundle) => MODULE_SYNTAX.test(bundle);
 const leakedModuleSyntax = bundleTargets.filter(([, bundleSource]) => withModuleSyntax(bundleSource)).map(([name]) => name);
 
+/**
+ * What the organizer's render signature actually accounts for.
+ *
+ * Reordering favorites, removing an emote, and reassigning a group each change
+ * nothing else about the shelf, so a signature that omits one of them leaves the
+ * stale arrangement on screen. This used to be asserted as
+ * `source.includes('favoriteKeysInOrder().join')` — a literal call site, which
+ * broke the moment that value was computed once and reused, without anything
+ * actually going missing. Read the signature array and check what is in it.
+ */
+const ORGANIZER_SIGNATURE_TERMS = [/favoriteOrder|favoriteKeysInOrder/, /hidden/, /assignments/, /groups/];
+function organizerSignatureCovers(bundle) {
+  const start = bundle.indexOf('const signature = [');
+  if (start === -1) return false;
+  // The array's own closing bracket starts a line; `[...set].join(',')` inside
+  // an entry does not, and matching that one truncated the body before the last
+  // two terms — so the gate passed on a signature it had never finished reading.
+  const rest = bundle.slice(start);
+  const close = /\n\s*\]\.join\(/.exec(rest);
+  if (!close) return false;
+  const body = rest.slice(0, close.index);
+  return ORGANIZER_SIGNATURE_TERMS.every((term) => term.test(body));
+}
+
+/**
+ * The organizer renders a window, and its spacer arithmetic agrees with the CSS.
+ *
+ * A library at the cap is 2400 tiles; what goes in the DOM is one window plus a
+ * spacer standing in for the rows above and below it. The spacer's height is
+ * computed in JS from a tile height and gap that are *written in the CSS*, so
+ * changing the stylesheet without the constants would leave the scrollbar
+ * describing a library of the wrong size — silently, and only past the first
+ * screenful. This gate is what ties the two together.
+ */
+const organizerWindows = (bundle) => /visibleWindow\(visible,/.test(bundle)
+  && bundle.includes('data-kf-sticker-spacer')
+  && bundle.includes('stickerSpacerMarkup');
+const spacerMathMatchesCss = (bundle) => {
+  const height = /const STICKER_TILE_HEIGHT = (\d+);/.exec(bundle)?.[1];
+  const gap = /const STICKER_GRID_GAP = (\d+);/.exec(bundle)?.[1];
+  const minWidth = /const STICKER_TILE_MIN_WIDTH = (\d+);/.exec(bundle)?.[1];
+  if (!height || !gap || !minWidth) return false;
+  return new RegExp(`grid-auto-rows: ${height}px`).test(bundle)
+    && new RegExp(`\\[data-kf-sticker-grid\\][\\s\\S]{0,400}?gap: ${gap}px`).test(bundle)
+    && new RegExp(`\\[data-kf-sticker-grid\\][\\s\\S]{0,400}?minmax\\(${minWidth}px, 1fr\\)`).test(bundle);
+};
+/** Typing must be one render, not one per keystroke. */
+const organizerDebouncesSearch = (bundle) =>
+  /addEventListener\('input'[\s\S]{0,400}?STICKER_SEARCH_DEBOUNCE_MS/.test(bundle);
+/** A favorite toggle must patch its tile, not re-serialise the window. */
+const organizerPatchesInPlace = (bundle) => /function patchStickerTileStates/.test(bundle)
+  && /patchStickerTileStates\(gridHost\)/.test(bundle)
+  && bundle.includes('data-kf-sticker-state="${pinned}:${hidden}"');
+
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
 const unroutedHTML = bundleTargets
@@ -380,12 +434,19 @@ const checks = [
   // Favorites are ordered and scoped. The shelf must render them in the stored
   // order rather than the picker's, or the ordering controls do nothing
   // visible; and the order has to be part of the render signature.
+  ['the organizer grid renders a bounded window with spacers, not the whole library', organizerWindows(source)],
+  ['spacer arithmetic agrees with the grid CSS it stands in for', spacerMathMatchesCss(source)],
+  ['organizer search is debounced rather than firing on every keystroke', organizerDebouncesSearch(source)],
+  ['a favorite or removal patches its tile instead of rebuilding the window', organizerPatchesInPlace(source)],
+  ['the picker offers Most used and Recent shelves over recorded usage',
+    source.includes('rankEmoteUsage(state.emoteUsage') && source.includes('recentEmoteUsage(state.emoteUsage')
+    && source.includes('data-kf-sticker-usage-shelf')],
   ['favorites are scoped per channel and explicitly ordered',
     source.includes('favoritesForChannel')
     && source.includes('toggleStickerFavorite')
     && source.includes('moveStickerFavorite')
     && source.includes('byFavoriteOrder')
-    && source.includes('favoriteKeysInOrder().join')
+    && organizerSignatureCovers(source)
     && source.includes("data-kf-sticker-move=\"up\"")],
 
   // A locked tile must explain itself and link to Kick's own unlock path —
@@ -628,6 +689,22 @@ const redProbes = [
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
   ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  ['window gate would reject an organizer that renders the whole list',
+    !organizerWindows("gridHost.innerHTML = trustedHTML(visible.map(stickerProxyMarkup).join(''));")],
+  ['spacer-math gate would catch CSS drifting from the constants',
+    !spacerMathMatchesCss('const STICKER_TILE_HEIGHT = 62;\nconst STICKER_GRID_GAP = 7;\nconst STICKER_TILE_MIN_WIDTH = 50;\n[data-kf-sticker-grid] { grid-auto-rows: 80px; gap: 7px; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }')],
+  ['spacer-math gate accepts constants that match the CSS',
+    spacerMathMatchesCss('const STICKER_TILE_HEIGHT = 62;\nconst STICKER_GRID_GAP = 7;\nconst STICKER_TILE_MIN_WIDTH = 50;\n[data-kf-sticker-grid] { grid-auto-rows: 62px; gap: 7px; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }')],
+  ['debounce gate would catch a search that re-renders on every keystroke',
+    !organizerDebouncesSearch("search.addEventListener('input', () => renderStickerOrganizer());")],
+  ['in-place gate would catch a toggle that rebuilds the grid',
+    !organizerPatchesInPlace('function renderStickerGrid() { gridHost.innerHTML = build(); }')],
+  ['organizer-signature gate would catch a signature that forgot favorite order',
+    !organizerSignatureCovers("const signature = [\n  view,\n  hidden,\n  assignments,\n  groups,\n].join('x');")],
+  ['organizer-signature gate would catch a missing signature entirely',
+    !organizerSignatureCovers('const other = [favoriteOrder, hidden, assignments, groups];')],
+  ['organizer-signature gate reads past an inner [...set].join inside the array',
+    organizerSignatureCovers("const signature = [\n  favoriteOrder.join(','),\n  [...hidden].join(','),\n  assignments,\n  groups,\n].join('x');")],
   ['module-syntax gate would catch a surviving import',
     withModuleSyntax("'use strict';\nimport { x } from './core.mjs';\nconst y = 1;\n")],
   ['module-syntax gate would catch a surviving export',
