@@ -4,9 +4,21 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+Emote schema 4. Existing libraries migrate without loss.
+
 ### Added
 
 - **Named-channel blocklist.** Specific channels can now be hidden from Home, Browse, Following, and Search through the Content settings. The list is normalized, capped at 200 entries, editable, exportable, and counts toward the fail-open ceiling.
+- **The emote library is now a record you can check Kick against.** Each entry keeps a first-seen and last-seen date, and when Kick renames an emote or replaces its artwork the value at first capture is kept and the entry is flagged. Kick changed emotes users had already pulled in July 2026 and answered with "remastered… clear your cache"; a local record is the only version that can show what changed. Entries carried over from the previous schema keep an unknown first-seen date rather than claiming today.
+- **The collectible facts Kick leaves unexplained**, each with its basis: the daily streak confers no bonus to drop quality or odds, no drop odds are published anywhere in the responses this build reads, duplicate protection is undocumented, and the collectibles page can disagree with the chat emote set. The duplicate count is measured from your own inventory only when Kick returns a per-item quantity — otherwise it is reported as unavailable rather than shown as zero.
+- **Saved layouts are shareable and show who is live.** A layout copies as a kick.com link carrying channel names and nothing else; opening one revalidates every slug through the same rules the grid uses, then strips the parameter so a reload does not silently reopen it. Live status for the grid and every saved layout comes from one bulk request rather than per-channel polling.
+- **The badges Kick's own markup omits now render.** Kick's chat payload carries collectible and global badges the legacy array leaves out, so a client reading only the DOM showed a gap. Badges Kick already drew are skipped, and a badge image that fails to load is replaced by its name rather than an empty box.
+- **API drift detection.** When a normalizer rejects a payload for a shape reason, the endpoint and reason are recorded, and the About page reports accumulated drift instead of silently falling back.
+
+### Changed
+
+- **The realtime transport is now swappable.** Frame parsing and subscription management moved into shared protocol functions and per-provider connection details into a registry, so Kick switching providers is one added entry rather than a rewrite. Kick's own gateway is registered but marked unverified — this project has never contacted it — and a verified provider wins when the broker offers both. An unverified transport that never delivers a frame degrades to reading the page and names itself.
+- The README now corrects a widely repeated claim: a cross-origin WebSocket is not blocked by CORS. What can block Kick's gateway from a page context is the server rejecting the origin or its Cloudflare front requiring a token, and which applies remains untested here.
 
 ## 1.7.0 — 2026-08-15
 

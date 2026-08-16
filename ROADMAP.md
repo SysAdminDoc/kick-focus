@@ -27,13 +27,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 
 ### P2
 
-- [ ] P2 — Snapshot the collectibles inventory locally
-  Why: Kick retroactively changes emotes users already pulled and the collectibles view desyncs from the chat emote set, so a local timestamped record is the only version a user can trust — and this project already owns the persistence and export layer.
-  Evidence: r/KickStreaming 2026-07-24 ("Kick changed 4 of the emotes I pulled") corroborated by Kick Support's "remastered… clear your cache" reply; 2026-07-21 inventory desync report; Daily Rewards launched 2026-07-01 with 244 items.
-  Touches: `src/runtime.js` (sticker library), `src/core.mjs` (schema), Content & Ads library UI.
-  Acceptance: the library records first-seen and last-seen timestamps per sticker and flags entries whose name or asset changed since first capture; the export carries the history; nothing automates claiming and no private endpoint is replayed.
-  Complexity: M
-
 - [ ] P2 — Replace the reverse-mapping translator with forward-only keys
   Why: every translated string is resolved by scanning all 252 dictionary entries to map a possibly-already-translated value back to English, and the whole settings DOM is re-walked on every render.
   Evidence: `tr()` → `canonicalTranslation()` in `src/runtime.js`; `localizeInterface()` walks every text node plus `aria-label`, `placeholder`, and `title`; four English source strings are also translated values of other strings, making the reverse map ambiguous by construction.
@@ -69,35 +62,7 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
 
 ### P1
 
-- [ ] P1 — Make the realtime transport swappable before Kick forces it
-  Why: the anonymous Pusher path can be switched off by a single vendor toggle, and Kick already runs a replacement gateway speaking the same protocol — so the migration is a question of when, not whether.
-  Evidence: Pusher's Authorized Connections feature (out of beta) lets an app owner disconnect clients that never authenticate or join a private/presence channel — exactly our subscription shape. Kick's self-hosted `wss://websockets.kick.com/viewer/v1/connect` is live (Cloudflare-fronted 403 without a token) and speaks the same `pusher:subscribe` / `chatrooms.{id}.v2` / `App\Events\ChatMessageEvent` frames; its token flow is documented in Pkkls/kick-core. The broker's `provider` discriminator and `degraded` state are the migration scaffolding. Hosted Pusher verified still working by anonymous handshake 2026-08-15.
-  Touches: `src/api.mjs` (transport selection), `src/runtime.js` (`connectRealtime`, `onRealtimeFrame`), `test/api.test.js`.
-  Acceptance: frame parsing and subscription management are separated from the connection method so a second transport is an added function rather than a rewrite; an unsupported provider still degrades to the DOM path and says so. Settle open question 2 in RESEARCH.md — whether the gateway is reachable from a page-world content script at all — because a service-worker-only answer means the userscript build can never follow, and that belongs in the docs.
-  Complexity: M
-
 ### P2
-
-- [ ] P2 — Make saved layouts shareable and show who is live
-  Why: path-style layout URLs are the field's de facto sharing format, and live-status on saved layouts is the stickiest feature of the closest competitor.
-  Evidence: MultiKick.com builds grids from `multikick.com/{a}/{b}` and pairs favorites with live indicators; ViewGrid ships shareable grid URLs; multitwitch#49 asked for URL-driven functions. `kick.com/current-viewers?ids[]=` returns bulk live status in one anonymous request (verified 2026-08-15), so the status half is nearly free.
-  Touches: `src/runtime.js` (multi-stream layout UI), `src/api.mjs` (`endpoints.currentViewers`), `src/core.mjs` (layout serialization).
-  Acceptance: a layout can be copied as a link and restored from one, validating every slug before use; saved layouts show which channels are live from a single bulk request rather than per-channel polling.
-  Complexity: M
-
-- [ ] P2 — Surface the collectible facts Kick leaves unexplained
-  Why: this is the strongest unmet demand the community sweep found, and the project already holds the data.
-  Evidence: 7+ distinct users 2026-07-18 to 2026-08-09 confused or burned — the daily streak confers nothing (confirmed by a quoted Kick support reply), duplicate protection is undocumented, drop odds are opaque, unlock state desyncs between the collectibles page and the chat emote set, and Kick retroactively changed already-pulled emotes. Extends the existing "Snapshot the collectibles inventory locally" item rather than replacing it: that one records history, this one explains the mechanics.
-  Touches: `src/runtime.js` (collectibles surface), `src/core.mjs`.
-  Acceptance: the collectibles view states what the streak does and does not do, shows observed duplicate rate from the user's own local history, and flags entries whose name or asset changed since first capture; nothing is claimed that the local record cannot support.
-  Complexity: M
-
-- [ ] P2 — Render collectible badges now that chat payloads carry them
-  Why: Kick added collectible badges to chat identity payloads, and clients that ignore them render gaps where other clients show a badge.
-  Evidence: Kickerino v1.29 (2026-08-02) fixed collectible-emote download freezes and v1.31 (2026-08-08) shipped a collectible-badges appearance fix — two releases in a week driven by the change. `normalizeChatMessage` in `src/api.mjs` already prefers `badges_v2` and captures `image_url`, so the data is parsed but nothing renders it.
-  Touches: `src/runtime.js` (chat surface), `src/api.mjs`.
-  Acceptance: badges present in `badges_v2` render in the chat surface at their correct size, including collectible and global badges the legacy array omits; a missing or broken badge image degrades to text rather than an empty box.
-  Complexity: S
 
 - [ ] P2 — Split the multi-stream and live-data surfaces out of `src/runtime.js`
   Why: the file is 6,179 lines carrying five unrelated concerns, and the two newest are the most testable and least entangled.
