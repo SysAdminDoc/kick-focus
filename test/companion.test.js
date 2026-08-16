@@ -181,4 +181,50 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
       assert.equal(result.messages.at(-1)?.enabled, true);
     }
   });
+
+  test(`${file} pins the blocklist fetch to the configured URL, ignoring the event URL`, async () => {
+    const source = await readFile(resolve(root, file), 'utf8');
+    const env = makeEnvironment();
+    env.context.localStorage.value = JSON.stringify({ content: { reduceTelemetry: false, blocklistUrl: 'https://good.example/list.json' } });
+    vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
+    env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', { detail: { url: 'https://evil.example/steal' } }));
+    const fetchMessage = env.messages.find((message) => message?.type === 'kick-focus:fetch-blocklist');
+    assert.ok(fetchMessage, 'a fetch-blocklist message should be sent');
+    assert.equal(fetchMessage.url, 'https://good.example/list.json');
+  });
+
+  test(`${file} refuses to fetch when no https blocklist URL is configured`, async () => {
+    const source = await readFile(resolve(root, file), 'utf8');
+    const env = makeEnvironment();
+    env.context.localStorage.value = JSON.stringify({ content: { reduceTelemetry: false, blocklistUrl: 'http://insecure/list' } });
+    vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
+    env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', { detail: { url: 'https://evil.example/steal' } }));
+    assert.ok(!env.messages.some((message) => message?.type === 'kick-focus:fetch-blocklist'), 'no fetch for a non-https configured URL');
+  });
+
+  test(`${file} sanitizes announced settings to the popup shape only`, async () => {
+    const source = await readFile(resolve(root, file), 'utf8');
+    const env = makeEnvironment();
+    vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
+    env.document.dispatchEvent(new CustomEventStub('kick-focus:settings-changed', {
+      detail: { settings: JSON.stringify({ content: { reduceTelemetry: true, secret: 'x' }, evil: { drop: 1 } }) },
+    }));
+    const stored = env.published.at(-1)?.settings;
+    assert.deepEqual(Object.keys(stored), ['content']);
+    assert.deepEqual(Object.keys(stored.content), ['reduceTelemetry']);
+    assert.equal(stored.content.reduceTelemetry, true);
+  });
+
+  test(`${file} answers a companion presence ping with the same nonce`, async () => {
+    const source = await readFile(resolve(root, file), 'utf8');
+    const env = makeEnvironment();
+    const pongs = [];
+    env.document.addEventListener('kick-focus:companion-pong', (event) => pongs.push(event.detail));
+    vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
+    env.document.dispatchEvent(new CustomEventStub('kick-focus:companion-ping', { detail: { nonce: 'abc123' } }));
+    assert.equal(pongs.length, 1);
+    const detail = JSON.parse(pongs[0]);
+    assert.equal(detail.nonce, 'abc123');
+    assert.equal(detail.version, 'test');
+  });
 }

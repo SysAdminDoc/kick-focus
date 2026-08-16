@@ -111,6 +111,19 @@ const checks = [
     && source.includes('function clearPrivateData')
     && source.includes('gmDelete(CHANNEL_NOTES_KEY)')
     && source.includes('gmDelete(EMOTE_USAGE_KEY)')],
+  // R-05: privileged transport hardening.
+  ['blocklist fetch is pinned to the configured URL, not the event', bridge.includes('readSettings()?.content?.blocklistUrl')
+    && firefoxBridge.includes('readSettings()?.content?.blocklistUrl')
+    && !bridge.includes('const url = event.detail?.url')],
+  ['bridge sanitizes announced settings before storing them', bridge.includes('function sanitizeSettings')
+    && firefoxBridge.includes('function sanitizeSettings')],
+  ['companion presence is a live nonce round-trip, not a page-set attribute', source.includes('function handshakeCompanion')
+    && source.includes("'kick-focus:companion-pong'")
+    && bridge.includes("'kick-focus:companion-ping'")
+    && firefoxBridge.includes("'kick-focus:companion-ping'")],
+  ['userscript blocklist transport omits ambient cookies', source.includes('anonymous: true')],
+  ['blocklist URL is https-validated at normalize time', source.includes('function normalizeBlocklistUrl')
+    && source.includes('normalizeBlocklistUrl(content.blocklistUrl)')],
   ['offers a three-row one-click favorites shelf', source.includes('stickerQuickProxyMarkup')
     && source.includes('data-kf-sticker-quick-grid')
     && source.includes('max-height: 156px')],
@@ -138,7 +151,7 @@ const checks = [
   ['page world script is the built bundle', content.includes('data-kf-settings-shell')],
   ['bridge runs in the isolated world', isolated?.run_at === 'document_start'],
   ['bridge advertises the companion', bridge.includes('kickFocusCompanion')],
-  ['userscript reports the companion layer', source.includes('kickFocusCompanion')],
+  ['userscript reports the companion layer', source.includes("'kick-focus:companion-ping'")],
   ['extension requests no broad host access', manifest.host_permissions.every((entry) => entry.includes('kick.com'))],
   ['extension loads only local scripts', manifest.content_scripts
     .flatMap((entry) => entry.js)

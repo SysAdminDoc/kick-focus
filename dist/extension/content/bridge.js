@@ -41,17 +41,24 @@ function readSettings() {
   }
 }
 
-function reduceTelemetryEnabled(settings) {
-  return Boolean(settings?.content?.reduceTelemetry);
+// Reduce whatever the page announced to the one field the popup reads, so a
+// forged settings-changed event cannot write arbitrary data into extension
+// storage or flip a ruleset through an unvalidated payload. The page-world
+// script stays the single source of truth for the settings file itself.
+function sanitizeSettings(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const content = raw.content && typeof raw.content === 'object' ? raw.content : {};
+  return { content: { reduceTelemetry: Boolean(content.reduceTelemetry) } };
 }
 
 function publish(settings) {
-  if (!settings) return;
+  const sanitized = sanitizeSettings(settings);
+  if (!sanitized) return;
   try {
-    chrome.storage.local.set({ settings, updatedAt: Date.now() });
+    chrome.storage.local.set({ settings: sanitized, updatedAt: Date.now() });
     chrome.runtime.sendMessage({
       type: 'kick-focus:telemetry-preference',
-      enabled: reduceTelemetryEnabled(settings),
+      enabled: sanitized.content.reduceTelemetry,
     });
   } catch {
     // The service worker may be restarting; the next change re-publishes.
@@ -100,18 +107,35 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', requestSettings, { once: true });
 }
 
-// The page asks the companion to fetch the blocklist from the background,
-// which is CORS-free, so user-supplied HTTPS URLs no longer need the host
-// to set Access-Control-Allow-Origin.
-document.addEventListener('kick-focus:fetch-blocklist', (event) => {
-  const url = event.detail?.url;
-  if (typeof url !== 'string') return;
+// The page asks the companion to fetch the configured blocklist from the
+// background (CORS-free). The URL is read from settings here, never taken from
+// the event: a forged fetch-blocklist event cannot redirect this privileged,
+// cross-origin fetch to an arbitrary host.
+document.addEventListener('kick-focus:fetch-blocklist', () => {
+  const url = readSettings()?.content?.blocklistUrl;
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+    document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
+      detail: JSON.stringify({ ok: false, error: 'no configured blocklist URL' }),
+    }));
+    return;
+  }
   chrome.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist', url }, (response) => {
     void chrome.runtime.lastError;
     document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
       detail: JSON.stringify(response || { ok: false, error: 'no response' }),
     }));
   });
+});
+
+// Presence handshake: the page proves the companion is really present with a
+// live round-trip that echoes a fresh nonce, rather than trusting the
+// page-writable <html> dataset attribute that any page script could set.
+document.addEventListener('kick-focus:companion-ping', (event) => {
+  const nonce = event.detail?.nonce;
+  if (typeof nonce !== 'string') return;
+  document.dispatchEvent(new CustomEvent('kick-focus:companion-pong', {
+    detail: JSON.stringify({ nonce, version: VERSION }),
+  }));
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

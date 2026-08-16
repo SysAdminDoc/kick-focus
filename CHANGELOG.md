@@ -4,6 +4,11 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Security
+
+- **The companion bridge is no longer an open channel for a page to abuse.** A script on kick.com could previously make the companion fetch any HTTPS URL and read the body back, write arbitrary data into extension storage, and toggle the telemetry ruleset through an unvalidated payload — and the "network protection active" claim was read from a page-writable `<html>` attribute anything could set. Now the blocklist fetch is pinned to your configured URL (never a URL supplied in the event), announced settings are reduced to the one field the popup reads before anything is stored, the blocklist URL is validated as a well-formed `https:` URL when settings are saved, and companion presence is proven by a live nonce round-trip instead of a page-set attribute.
+- **The userscript no longer sends your cookies when fetching a remote blocklist.** `GM_xmlhttpRequest` now runs anonymously, so a blocklist URL on any host cannot receive your credentials for that host.
+
 ### Fixed
 
 - **"Reset all settings" now keeps your recorded emote library and actually clears your private data.** It used to do the reverse: it destroyed the library — including the first-seen/rename provenance that cannot be regenerated — while leaving notes, keyword filters, layouts, favorites, not-interested channels, media preferences, usage counts, and multi-stream layouts untouched. A factory reset now clears all of those and preserves the library, and the dialog says so.

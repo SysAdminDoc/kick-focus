@@ -162,6 +162,24 @@ function normalizeShortcut(value, fallback) {
   return cleaned.length > 0 && cleaned.length <= 32 ? cleaned : fallback;
 }
 
+/**
+ * A remote blocklist URL is only accepted when it is a well-formed https URL.
+ * Validated here, at normalize time, so the value that reaches the privileged
+ * companion fetch and the userscript transport can never be a `javascript:`,
+ * `data:`, `http:` or otherwise malformed string.
+ */
+function normalizeBlocklistUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
 function normalizeSettings(input) {
   const source = isRecord(input) ? input : {};
   const layout = isRecord(source.layout) ? source.layout : {};
@@ -230,7 +248,7 @@ function normalizeSettings(input) {
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
-      blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
+      blocklistUrl: normalizeBlocklistUrl(content.blocklistUrl),
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
       liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
       liveChatEvents: bool(content.liveChatEvents, defaults.content.liveChatEvents),
@@ -2864,6 +2882,7 @@ const state = {
   shortcutCapture: null,
   shortcutError: '',
   resetPending: false,
+  companion: { active: false, version: '' },
   watched: new Set(readSessionArray(WATCHED_KEY)),
   favorites: new Set(readPersistentArray(FAVORITES_KEY)),
   dismissed: new Set(readPersistentArray(DISMISSED_KEY)),
@@ -2940,13 +2959,42 @@ const state = {
 };
 
 /**
- * The companion extension marks the document from its isolated world. Its
- * presence means ad requests are blocked at the browser network layer before
- * they are sent, rather than only at the page layer this script can reach.
+ * The companion extension proves its presence with a live nonce round-trip
+ * (handshakeCompanion), not the page-writable <html> dataset attribute that any
+ * page script could set. Its presence means ad requests are blocked at the
+ * browser network layer before they are sent, not only at the page layer.
  */
 function companionInfo() {
-  const version = document.documentElement?.dataset?.kickFocusCompanion || '';
-  return { active: Boolean(version), version };
+  return state.companion?.active
+    ? { active: true, version: state.companion.version }
+    : { active: false, version: '' };
+}
+
+/**
+ * Ask the companion to prove it is really here. A fresh nonce must come back on
+ * the pong, so a stale reply or a pre-set attribute cannot pass; a page script
+ * co-resident on kick.com could still answer, but the bar is a live responder
+ * echoing this session's nonce rather than a static attribute set once.
+ */
+function handshakeCompanion() {
+  const nonce = `kf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const handler = (event) => {
+    let detail = event.detail;
+    try { detail = typeof detail === 'string' ? JSON.parse(detail) : detail; } catch { return; }
+    if (!detail || detail.nonce !== nonce) return;
+    document.removeEventListener('kick-focus:companion-pong', handler);
+    const wasActive = state.companion.active;
+    state.companion = { active: true, version: String(detail.version || '') };
+    if (!wasActive) {
+      if (state.modal && !state.modal.hidden) renderSettingsPage();
+      try { publishSettingsState(); } catch { /* noop */ }
+    }
+  };
+  document.addEventListener('kick-focus:companion-pong', handler);
+  const ping = () => document.dispatchEvent(new CustomEvent('kick-focus:companion-ping', { detail: { nonce } }));
+  ping();
+  // Ping again shortly in case the bridge began listening after the first ping.
+  window.setTimeout(ping, 500);
 }
 
 function readSessionArray(key) {
@@ -6545,6 +6593,9 @@ function fetchBlocklistText(href) {
       GM_xmlhttpRequest({
         method: 'GET',
         url: href,
+        // No ambient cookies: @connect * would otherwise let a blocklist URL on
+        // any host receive the user's credentials for that host.
+        anonymous: true,
         timeout: 8000,
         onload(response) {
           if (response.status >= 200 && response.status < 300) resolve({ text: response.responseText, method: 'userscript' });
@@ -9913,6 +9964,7 @@ function installCompanionBridge() {
   document.addEventListener('kick-focus:set-telemetry', (event) => {
     updateSetting('content.reduceTelemetry', Boolean(event.detail?.enabled));
   });
+  handshakeCompanion();
   openSharedLayoutFromUrl();
 }
 

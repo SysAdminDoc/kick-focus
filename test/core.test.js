@@ -49,7 +49,22 @@ import {
   normalizeEmoteUsage,
   recordEmoteUse,
   USAGE_GLOBAL_LIMIT,
+  normalizeBlocklistUrl,
 } from '../src/core.mjs';
+
+test('a blocklist URL is accepted only when it is a well-formed https URL', () => {
+  assert.equal(normalizeBlocklistUrl('https://example.com/list.json'), 'https://example.com/list.json');
+  assert.equal(normalizeBlocklistUrl('  https://example.com/list.json  '), 'https://example.com/list.json');
+  assert.equal(normalizeBlocklistUrl('http://example.com/list.json'), ''); // not https
+  assert.equal(normalizeBlocklistUrl('javascript:alert(1)'), '');
+  assert.equal(normalizeBlocklistUrl('data:text/plain,hi'), '');
+  assert.equal(normalizeBlocklistUrl('not a url'), '');
+  assert.equal(normalizeBlocklistUrl(''), '');
+  assert.equal(normalizeBlocklistUrl(`https://example.com/${'x'.repeat(3000)}`), ''); // too long
+  // It survives the full settings normalizer round-trip.
+  assert.equal(normalizeSettings({ content: { blocklistUrl: 'http://evil/list' } }).content.blocklistUrl, '');
+  assert.equal(normalizeSettings({ content: { blocklistUrl: 'https://ok/list' } }).content.blocklistUrl, 'https://ok/list');
+});
 
 test('the store registry keeps the library on reset but marks every private store for clearing', () => {
   const byKey = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store]));

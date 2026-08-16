@@ -42,13 +42,23 @@ function readSettings() {
   }
 }
 
+// Reduce whatever the page announced to the one field the popup reads, so a
+// forged settings-changed event cannot write arbitrary data into extension
+// storage or flip a ruleset through an unvalidated payload.
+function sanitizeSettings(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const content = raw.content && typeof raw.content === 'object' ? raw.content : {};
+  return { content: { reduceTelemetry: Boolean(content.reduceTelemetry) } };
+}
+
 function publish(settings) {
-  if (!settings) return;
+  const sanitized = sanitizeSettings(settings);
+  if (!sanitized) return;
   try {
-    api.storage.local.set({ settings, updatedAt: Date.now() });
+    api.storage.local.set({ settings: sanitized, updatedAt: Date.now() });
     api.runtime.sendMessage({
       type: 'kick-focus:telemetry-preference',
-      enabled: Boolean(settings?.content?.reduceTelemetry),
+      enabled: sanitized.content.reduceTelemetry,
     });
   } catch {
     // The page will announce again when it finishes booting.
@@ -75,14 +85,31 @@ function requestSettings() {
 requestSettings();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', requestSettings, { once: true });
 
-document.addEventListener('kick-focus:fetch-blocklist', (event) => {
-  const url = event.detail?.url;
-  if (typeof url !== 'string') return;
+// Pinned to the configured blocklist URL from settings, never taken from the
+// event, so a forged fetch-blocklist event cannot redirect this privileged fetch.
+document.addEventListener('kick-focus:fetch-blocklist', () => {
+  const url = readSettings()?.content?.blocklistUrl;
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+    document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
+      detail: JSON.stringify({ ok: false, error: 'no configured blocklist URL' }),
+    }));
+    return;
+  }
   api.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist', url }, (response) => {
     document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
       detail: JSON.stringify(response || { ok: false, error: 'no response' }),
     }));
   });
+});
+
+// Presence handshake: prove the companion is present with a live nonce
+// round-trip rather than a page-writable <html> dataset attribute.
+document.addEventListener('kick-focus:companion-ping', (event) => {
+  const nonce = event.detail?.nonce;
+  if (typeof nonce !== 'string') return;
+  document.dispatchEvent(new CustomEvent('kick-focus:companion-pong', {
+    detail: JSON.stringify({ nonce, version: VERSION }),
+  }));
 });
 
 api.runtime.onMessage.addListener((message, _sender, sendResponse) => {

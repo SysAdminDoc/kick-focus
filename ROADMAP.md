@@ -54,13 +54,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P0 — data safety, security, correctness, and the single unblock
 
-- [ ] R-05 — Harden every privileged fetch/transport path (bridge forgery, ruleset/storage write, spoofable "protection", cookie-leaking blocklist fetch)
-  Why: any kick.com page script can drive a privileged arbitrary-HTTPS fetch and read the body, permanently disable the telemetry ruleset via unvalidated JSON, and spoof the "network protection active" claim; separately the userscript blocklist transport sends ambient cookies to any host and accepts any URL string with no scheme check.
-  Evidence: phase0-memo #5,#6,#7 + §5B (adopt HIGH) — src/extension/bridge.js:106-115,48-59; background.js:60-77,35-41; runtime.js:173-176,3748-3760; src/core.mjs:211 (blocklistUrl, no scheme check); src/metadata.txt:19 (`@connect *`).
-  Touches: bridge.js/bridge.firefox.js, background.js/background.firefox.js, companionInfo() in runtime.js, fetchBlocklist GM_xmlhttpRequest path in runtime.js; blocklistUrl normalize in core.mjs; settings schema.
-  Acceptance: fetch-blocklist pinned to the configured blocklistUrl only; settings-changed payloads validated against the existing schema before any storage/ruleset write; companion presence proven by round-trip not by `<html>` dataset; GM_xmlhttpRequest sends `anonymous:true` (no ambient cookies); blocklistUrl is https-scheme-validated at normalize time in core.mjs under node:test; guards covered via the companion.test.js vm pattern.
-  Complexity: L
-
 ### P1 — operator demand first, then trust / reliability / accessibility
 
 - [ ] R-06 — Realtime chat-emote harvest (operator-requested)

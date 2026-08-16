@@ -157,6 +157,24 @@ export function normalizeShortcut(value, fallback) {
   return cleaned.length > 0 && cleaned.length <= 32 ? cleaned : fallback;
 }
 
+/**
+ * A remote blocklist URL is only accepted when it is a well-formed https URL.
+ * Validated here, at normalize time, so the value that reaches the privileged
+ * companion fetch and the userscript transport can never be a `javascript:`,
+ * `data:`, `http:` or otherwise malformed string.
+ */
+export function normalizeBlocklistUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
 export function normalizeSettings(input) {
   const source = isRecord(input) ? input : {};
   const layout = isRecord(source.layout) ? source.layout : {};
@@ -225,7 +243,7 @@ export function normalizeSettings(input) {
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
-      blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
+      blocklistUrl: normalizeBlocklistUrl(content.blocklistUrl),
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
       liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
       liveChatEvents: bool(content.liveChatEvents, defaults.content.liveChatEvents),
