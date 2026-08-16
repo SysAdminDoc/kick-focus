@@ -134,6 +134,14 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // A locked tile must explain itself and link to Kick's own unlock path —
+  // and must never enable anything. The link is the only action offered.
+  ['a locked emote says why and links to Kick own unlock path',
+    source.includes('emoteLockState')
+    && source.includes('kf-sticker-lock')
+    && source.includes('Unlock on Kick')
+    && source.includes('/collectibles')],
+
   // Replacing an iframe restarts its stream, so tile reuse is decided by a
   // core function that is tested without a browser rather than inline here.
   // A deletion must annotate its node once: the guard is what stops chat

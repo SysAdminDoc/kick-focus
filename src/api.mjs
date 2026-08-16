@@ -389,6 +389,60 @@ export function normalizeEmoteSets(payload) {
 }
 
 /**
+ * Why an emote is unavailable, and where Kick itself lets you unlock it.
+ *
+ * Entitlement is read across several shapes on purpose. Kick has expressed
+ * subscription state in more than one way, and a single-shape check produces
+ * *false negatives* — the documented failure is a client greying out emotes the
+ * user does own, which is far worse than showing one it cannot confirm. So the
+ * default when nothing says otherwise is unlocked, and only an explicit signal
+ * locks an entry.
+ *
+ * Nothing here enables anything or sends anything. It explains, and links to
+ * Kick's own page.
+ */
+export function emoteLockState(emote, slug = '') {
+  const source = emote && typeof emote === 'object' ? emote : {};
+  const channel = String(slug || source.setName || '').trim();
+
+  // Any of these, in any of the shapes seen, means Kick says it is available.
+  const entitled = source.subscribed ?? source.is_subscribed ?? source.subscription
+    ?? source.entitled ?? source.unlocked ?? source.owned;
+  if (entitled === true || entitled === 1 || (entitled && typeof entitled === 'object')) {
+    return { locked: false, reason: '', unlockUrl: '' };
+  }
+
+  // An explicit denial is the only thing that locks an entry.
+  const denied = source.locked === true
+    || source.is_locked === true
+    || entitled === false || entitled === 0
+    || source.access === 'locked';
+  if (!denied) return { locked: false, reason: '', unlockUrl: '' };
+
+  if (source.collectible || isCollectibleEmote(source.name)) {
+    return {
+      locked: true,
+      reason: 'A collectible you have not pulled yet. These come from Kick’s daily rewards, not from a purchase.',
+      unlockUrl: `${KICK_ORIGIN}/collectibles`,
+    };
+  }
+  if (source.subscribersOnly || source.subscribers_only) {
+    return {
+      locked: true,
+      reason: channel
+        ? `Subscriber emote. Subscribing to ${channel} on Kick unlocks it, and it then works in every chat.`
+        : 'Subscriber emote. Subscribing to this channel on Kick unlocks it, and it then works in every chat.',
+      unlockUrl: channel && isValidSlug(channel) ? `${KICK_ORIGIN}/${encodeURIComponent(channel)}` : '',
+    };
+  }
+  return {
+    locked: true,
+    reason: 'Kick reports this emote as unavailable to your account, without saying why.',
+    unlockUrl: channel && isValidSlug(channel) ? `${KICK_ORIGIN}/${encodeURIComponent(channel)}` : '',
+  };
+}
+
+/**
  * Which typed names resolve to something other than what the user expects.
  *
  * Sub emotes work in every chat, and Kick matches a typed name against a single

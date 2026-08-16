@@ -18,6 +18,7 @@ import {
   realtimeHealth,
   realtimeSubscribeFrame,
   realtimeTransport,
+  emoteLockState,
   normalizeCurrentViewers,
   summarizeCollectibleInventory,
   COLLECTIBLE_FACTS,
@@ -140,6 +141,47 @@ test('frame parsing is shared by every transport and classifies by kind', () => 
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'App\\Events\\SomethingNew', data: {} })).kind, 'other');
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: 'not json' })).kind, 'other');
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: null })).kind, 'other');
+});
+
+test('a locked emote says why, and entitlement tolerates more than one shape', () => {
+  // The documented failure mode is the expensive one: greying out an emote the
+  // user does own. Every shape Kick has used to say "entitled" must be read.
+  for (const owned of [
+    { subscribed: true }, { is_subscribed: true }, { entitled: true },
+    { unlocked: true }, { owned: true }, { subscription: { id: 4 } }, { subscribed: 1 },
+  ]) {
+    const state = emoteLockState({ ...owned, locked: true, subscribersOnly: true });
+    assert.equal(state.locked, false, `${JSON.stringify(owned)} should read as entitled`);
+  }
+
+  // With nothing saying otherwise, the default is unlocked — an unconfirmed
+  // emote is shown, never hidden.
+  assert.equal(emoteLockState({ name: 'KEKW' }).locked, false);
+  assert.equal(emoteLockState({}).locked, false);
+  assert.equal(emoteLockState(null).locked, false);
+  assert.equal(emoteLockState({ subscribersOnly: true }).locked, false);
+
+  // Only an explicit denial locks, and then it explains and links to Kick.
+  const sub = emoteLockState({ locked: true, subscribersOnly: true }, 'xqc');
+  assert.equal(sub.locked, true);
+  assert.match(sub.reason, /Subscribing to xqc/);
+  assert.match(sub.reason, /works in every chat/);
+  assert.equal(sub.unlockUrl, 'https://kick.com/xqc');
+
+  // A collectible is not a purchase, and must not be described as one.
+  const collectible = emoteLockState({ is_locked: true, name: 'collectiblesGoldenLULW' });
+  assert.equal(collectible.locked, true);
+  assert.match(collectible.reason, /daily rewards/);
+  assert.equal(collectible.unlockUrl, 'https://kick.com/collectibles');
+
+  // Kick denying without a reason is reported as exactly that, not invented.
+  const opaque = emoteLockState({ subscribed: false });
+  assert.equal(opaque.locked, true);
+  assert.match(opaque.reason, /without saying why/);
+
+  // A set name that is not a usable slug yields no link rather than a bad one.
+  assert.equal(emoteLockState({ locked: true, subscribersOnly: true }, 'Global Emotes').unlockUrl, '');
+  assert.equal(emoteLockState({ access: 'locked' }, '../evil').unlockUrl, '');
 });
 
 test('live status for every saved layout comes from one bulk request', () => {
