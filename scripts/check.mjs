@@ -123,6 +123,14 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  // The hover card must stay keyed to the save affordance and stay out of the
+  // pointer's way: a card that can be hovered fights the emote for the hover,
+  // and one keyed on "any image in chat" annotates unrelated injected content.
+  ['the chat emote hover card is delegated, key-scoped, and never a pointer target',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('function emoteTooltipText')
+      && bundleSource.includes("closest?.('[data-kf-chat-emote-save]')")
+      && bundleSource.includes('pointer-events: none')
+      && /host\.style\.left = /.test(bundleSource))],
   // An import writes ten stores. Committing them one at a time is how a quota
   // ceiling produces a configuration that is half the file and half the old
   // one, so the import must go through the staged path, not bare per-key sets.

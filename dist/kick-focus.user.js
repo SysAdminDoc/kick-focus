@@ -200,6 +200,56 @@ function findShortcutConflict(shortcuts, capturingKey, candidate) {
   return '';
 }
 
+/** How an emote's access level reads to a user, shared by the library and the chat tooltip. */
+const EMOTE_ACCESS_LABELS = Object.freeze({
+  available: 'Seen available',
+  channel: 'Channel-only',
+  observed: 'Seen in chat',
+  locked: 'Subscriber-only',
+});
+
+function emoteAccessLabel(access) {
+  return EMOTE_ACCESS_LABELS[access] || EMOTE_ACCESS_LABELS.locked;
+}
+
+/**
+ * The lines of the hover card for one chat emote.
+ *
+ * Everything here is already recorded — name, Kick's own set names, access
+ * level, first capture, and whether this name is shadowed by another channel's
+ * emote. It was only reachable by opening the library manager, so a click-to-
+ * save control gave no indication of what it was about to save or whether it
+ * had it already.
+ *
+ * Returns an array of lines so the caller can render each as its own node and
+ * never has to parse a delimiter back out. Empty for anything unnamed, which is
+ * how a non-emote image ends up with no tooltip at all.
+ */
+function emoteTooltipText(entry, collisions = [], saved = false) {
+  if (!isRecord(entry) || typeof entry.name !== 'string' || !entry.name) return [];
+  const lines = [entry.name];
+  // A chat-discovered emote's only "set" is the literal string 'Seen in chat',
+  // which is also its access label — printing both reads as a stutter.
+  const access = emoteAccessLabel(entry.access);
+  const sets = (Array.isArray(entry.nativeGroups) ? entry.nativeGroups : [])
+    .filter((group) => group && group !== access);
+  lines.push(sets.length ? `${sets.join(' · ')} · ${access}` : access);
+  if (Number.isFinite(entry.firstSeen) && entry.firstSeen > 0) {
+    lines.push(`First seen ${new Date(entry.firstSeen).toISOString().slice(0, 10)}`);
+  }
+  // Kick resolves a typed name through one map, so a shared name means one
+  // channel's emote silently sends the other's. Naming the winner is the whole
+  // value of the warning — "shadowed" alone does not say which one you get.
+  const collision = (Array.isArray(collisions) ? collisions : [])
+    .find((item) => isRecord(item) && item.name === entry.name);
+  if (collision) {
+    const winner = isRecord(collision.winner) ? collision.winner.setName : '';
+    lines.push(winner ? `Name shadowed — typing it sends ${winner}` : 'Name shadowed by another set');
+  }
+  lines.push(saved ? 'Saved — click to open in the library' : 'Click to save');
+  return lines;
+}
+
 /**
  * The overlay layers this build can stack, outermost last. The first one that
  * is open is the one on top.
@@ -3235,6 +3285,7 @@ const state = {
   shortcutError: '',
   resetPending: false,
   resetOpener: null,
+  chatEmoteTooltip: null,
   companion: { active: false, version: '' },
   watched: new Set(readSessionArray(WATCHED_KEY)),
   favorites: new Set(readPersistentArray(FAVORITES_KEY)),
@@ -6650,10 +6701,14 @@ function annotateChatSticker(image, sticker) {
   image.setAttribute('role', 'button');
   image.setAttribute('tabindex', '0');
   image.setAttribute('aria-label', `Save ${sticker.name} to Kick Focus favorites`);
-  image.setAttribute('title', `Save ${sticker.name} to your Kick Focus collection`);
+  // No `title`: the hover card replaces it, and a native tooltip would surface
+  // on top of it a second later saying less. The clear path still removes any
+  // title left by an earlier build.
+  image.removeAttribute('title');
 }
 
 function clearChatStickerSaveAffordances() {
+  hideChatEmoteTooltip();
   for (const image of document.querySelectorAll('[data-kf-chat-emote-save]')) {
     delete image.dataset.kfChatEmoteSave;
     if (image.getAttribute('role') === 'button') image.removeAttribute('role');
@@ -6686,6 +6741,95 @@ function flushChatStickerScan() {
     }
   }
   if (observed.size) mergeStickerLibrary(observed.values());
+}
+
+/**
+ * One hover card for the whole chat, reused.
+ *
+ * Delegated rather than per-emote: a busy chat replaces its messages
+ * continuously, so a listener and an element per emote would be created and
+ * discarded hundreds of times a minute. Kept in its own shadow root for the
+ * same reason the rest of the interface is — Kick's chat CSS cannot reach in.
+ */
+function chatEmoteTooltipHost() {
+  if (state.chatEmoteTooltip?.host?.isConnected) return state.chatEmoteTooltip;
+  const host = document.createElement('div');
+  host.id = 'kick-focus-emote-tooltip';
+  host.setAttribute('aria-hidden', 'true');
+  const shadow = host.attachShadow({ mode: 'open' });
+  shadow.innerHTML = `
+    <style>
+      :host {
+        position: fixed;
+        z-index: 2147483000;
+        /* Never a pointer target: the card follows the cursor, and a hover
+           surface under it would fight the emote for the same hover. */
+        pointer-events: none;
+        display: none;
+        max-width: 280px;
+      }
+      :host([data-kf-open="true"]) { display: block; }
+      .card {
+        padding: 8px 10px;
+        border: 1px solid #59645c;
+        border-radius: 8px;
+        background: #151917;
+        color: #f4f7f5;
+        box-shadow: 0 10px 28px rgba(0,0,0,.45);
+        font: 12px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      .card div { white-space: normal; overflow-wrap: anywhere; }
+      .card div:first-child { font-weight: 700; }
+      .card div + div { color: #a5aea8; }
+      .card div[data-warn="true"] { color: #f6b943; }
+    </style>
+    <div class="card" data-kf-tooltip-card></div>`;
+  document.body.append(host);
+  state.chatEmoteTooltip = { host, card: shadow.querySelector('[data-kf-tooltip-card]') };
+  return state.chatEmoteTooltip;
+}
+
+function hideChatEmoteTooltip() {
+  const tooltip = state.chatEmoteTooltip;
+  if (tooltip?.host) tooltip.host.dataset.kfOpen = 'false';
+}
+
+function showChatEmoteTooltip(image) {
+  const key = image?.dataset?.kfChatEmoteSave;
+  // Keyed off the save affordance, so an unrelated injected image never gets a
+  // card even when it happens to sit in a chat message.
+  if (!key) return;
+  const sticker = state.stickerPreferences.library.get(key) || chatStickerInfo(image);
+  const lines = emoteTooltipText(sticker, state.live.collisions, state.stickerPreferences.library.has(key));
+  if (!lines.length) return;
+  const { host, card } = chatEmoteTooltipHost();
+  card.replaceChildren(...lines.map((line, index) => {
+    const row = document.createElement('div');
+    // The first line is the emote's own name — user data, never translated, or
+    // an emote called "View" would be renamed by a dictionary hit. The rest is
+    // this build's prose; composed lines fall through the forward lookup.
+    row.textContent = index === 0 ? line : tr(line);
+    if (index > 0 && line.startsWith('Name shadowed')) row.dataset.warn = 'true';
+    return row;
+  }));
+  host.dataset.kfOpen = 'true';
+  // Clamped after the card is measurable, so a wide entry near an edge is
+  // pulled back on screen instead of being cut off by the viewport.
+  const anchor = image.getBoundingClientRect();
+  const box = host.getBoundingClientRect();
+  const left = Math.min(Math.max(8, anchor.left), Math.max(8, window.innerWidth - box.width - 8));
+  const above = anchor.top - box.height - 8;
+  host.style.left = `${left}px`;
+  host.style.top = `${above >= 8 ? above : Math.min(anchor.bottom + 8, window.innerHeight - box.height - 8)}px`;
+}
+
+function onChatEmoteHover(event) {
+  const image = event.target?.closest?.('[data-kf-chat-emote-save]');
+  if (!image) {
+    hideChatEmoteTooltip();
+    return;
+  }
+  showChatEmoteTooltip(image);
 }
 
 function queueChatStickerScan(nodes) {
@@ -8956,6 +9100,11 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canales ocultos. Cuentan para el límite de seguridad.',
     'channel': 'canal',
     'channels': 'canales',
+    'Seen available': 'Visto como disponible',
+    'Seen in chat': 'Visto en el chat',
+    'Click to save': 'Haz clic para guardar',
+    'Saved — click to open in the library': 'Guardado: haz clic para abrirlo en la biblioteca',
+    'Name shadowed by another set': 'Nombre eclipsado por otro conjunto',
     'No streams yet — add a channel to start.': 'Aún no hay transmisiones: añade un canal para empezar.',
     '{count} of {max} streams': '{count} de {max} transmisiones',
   },
@@ -9290,6 +9439,11 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canais ocultos. Eles contam para o limite de segurança.',
     'channel': 'canal',
     'channels': 'canais',
+    'Seen available': 'Visto como disponível',
+    'Seen in chat': 'Visto no chat',
+    'Click to save': 'Clique para salvar',
+    'Saved — click to open in the library': 'Salvo: clique para abrir na biblioteca',
+    'Name shadowed by another set': 'Nome ofuscado por outro conjunto',
     'No streams yet — add a channel to start.': 'Ainda não há transmissões: adicione um canal para começar.',
     '{count} of {max} streams': '{count} de {max} transmissões',
   },
@@ -9528,6 +9682,14 @@ function buildInterface() {
 
   document.addEventListener('keydown', onGlobalKeydown, true);
   document.addEventListener('click', rememberWatchedCard, true);
+  // Delegated at the document: chat replaces its own nodes constantly, so a
+  // per-emote listener would be attached and dropped hundreds of times a
+  // minute. Keyboard users get the same card on focus.
+  document.addEventListener('mouseover', guard('emote tooltip', onChatEmoteHover), true);
+  document.addEventListener('focusin', guard('emote tooltip', onChatEmoteHover), true);
+  for (const type of ['mouseleave', 'blur', 'wheel', 'scroll']) {
+    document.addEventListener(type, hideChatEmoteTooltip, true);
+  }
 }
 
 function selected(value, expected) {
@@ -9784,13 +9946,9 @@ function renderStickerLibraryManager() {
     const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
     const searchText = `${sticker.name} ${nativeGroups}`.toLowerCase();
-    const accessLabel = sticker.access === 'available'
-      ? 'Seen available'
-      : sticker.access === 'channel'
-        ? 'Channel-only'
-        : sticker.access === 'observed'
-          ? 'Seen in chat'
-          : 'Subscriber-only';
+    // Shared with the chat hover card, so the two cannot describe the same
+    // emote differently.
+    const accessLabel = emoteAccessLabel(sticker.access);
     const changeNote = describeStickerChange(sticker);
     const seenNote = stickerSeenSummary(sticker);
     // A greyed tile with no explanation teaches nothing. Nothing here enables

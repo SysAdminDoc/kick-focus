@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EMOTE_ACCESS_LABELS } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -75,7 +76,16 @@ async function collect() {
     if (keyMatch) locales[current].add(keyMatch[1]);
   }
 
-  const rendered = new Set();
+  // Copy that reaches the screen from core.mjs rather than from runtime.js.
+  // The scanners read runtime.js, so a string composed in core would otherwise
+  // be invisible to this gate — named explicitly instead of widening the scan
+  // to a module that is mostly not user-facing prose.
+  const rendered = new Set([
+    ...Object.values(EMOTE_ACCESS_LABELS),
+    'Click to save',
+    'Saved — click to open in the library',
+    'Name shadowed by another set',
+  ]);
   for (const [, pattern] of SCANNERS) {
     for (const match of src.matchAll(pattern)) {
       for (const group of match.slice(1)) {

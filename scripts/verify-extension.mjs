@@ -378,6 +378,50 @@ try {
       && locale.spanish?.toast === 'Escribe un nombre de canal o una URL.',
     locale.ok ? `count "${locale.english?.count}" -> "${locale.spanish?.count}"; toast "${locale.english?.toast}" -> "${locale.spanish?.toast}"` : locale.why);
 
+  // The hover card is built from a synthetic annotated image rather than from
+  // whatever chat happened to say during the run: the wiring under test is the
+  // delegated listener and the clamping, and waiting for a real emote to arrive
+  // would make this pass or fail on a stranger's typing.
+  const tooltipProbe = await evaluate(pageClient, `(async () => {
+    const settle = () => new Promise((done) => setTimeout(done, 300));
+    const image = document.createElement('img');
+    image.src = 'https://files.kick.com/emotes/000/fullsize';
+    image.dataset.kfChatEmoteSave = 'kf-probe-emote';
+    image.style.cssText = 'position:fixed;left:4px;top:4px;width:28px;height:28px';
+    document.body.append(image);
+    const unrelated = document.createElement('img');
+    unrelated.src = image.src;
+    unrelated.style.cssText = image.style.cssText;
+    document.body.append(unrelated);
+    const readCard = () => {
+      const host = document.getElementById('kick-focus-emote-tooltip');
+      if (!host || host.dataset.kfOpen !== 'true') return null;
+      const style = getComputedStyle(host);
+      return {
+        lines: [...host.shadowRoot.querySelectorAll('[data-kf-tooltip-card] div')].map((n) => n.textContent),
+        pointerEvents: style.pointerEvents,
+        left: parseFloat(style.left),
+      };
+    };
+    image.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    await settle();
+    const shown = readCard();
+    unrelated.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    await settle();
+    const afterUnrelated = readCard();
+    image.remove();
+    unrelated.remove();
+    return { ok: true, shown, afterUnrelated };
+  })()`);
+  const tip = tooltipProbe.value || {};
+  record('the chat emote hover card opens on the save affordance only, and cannot be hovered',
+    tip.ok === true
+      && Array.isArray(tip.shown?.lines) && tip.shown.lines.length >= 2
+      && tip.shown.pointerEvents === 'none'
+      && tip.shown.left >= 8
+      && tip.afterUnrelated === null,
+    tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
+
   // Import now commits every store as one sized transaction instead of ten
   // separate writes, which is a data-loss-shaped change: exercise the real file
   // input rather than trusting that the unit tests covered the wiring.

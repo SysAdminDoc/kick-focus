@@ -65,13 +65,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: `npm run verify` green AND `npm run verify:extension` green after the move (a green offline build alone does not prove a refactor equivalent); no symbol asserted only by `source.includes`; bundle parses under `node --check`.
   Complexity: L
 
-- [ ] R-16 — Enrich the shipped click-to-save emote control with tooltips
-  Why: v1.13.0 makes every Kick chat emote keyboard-clickable, saves it locally, and follows only on an explicit follow gate. The remaining opportunity is to surface the name/set/access/first-seen/collision data already held without making chat visually noisy.
-  Evidence: phase1b E4 — src/runtime.js:1762,3216; FrankerFaceZ #110; BTTV #5925.
-  Touches: pure `emoteTooltipText(entry,collisions)` in core.mjs; delegated mouseover + singleton tooltip in runtime.js, reusing the existing save action.
-  Acceptance: pure function in core.mjs under node:test + delegated tooltip shows name·set·access·shadow-warning and the current saved state; filters by Kick emote identity so unrelated injected images are ignored; tooltip is pointer-events:none and position-clamped.
-  Complexity: M
-
 - [ ] R-17 — Make chat-'observed' emotes usable: copy-name first, gated name-insert second (operator-requested)
   Why: observed emotes are dead weight outside the library manager; users want to use them without an entitlement bypass.
   Evidence: phase1b E5 (design-check CONFIRMED-WITH-CONDITIONS) — src/runtime.js:2716-2717,5811,6249-6258; src/api.mjs:481-482; README.md:105,114.

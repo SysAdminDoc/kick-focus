@@ -175,6 +175,56 @@ export function findShortcutConflict(shortcuts, capturingKey, candidate) {
   return '';
 }
 
+/** How an emote's access level reads to a user, shared by the library and the chat tooltip. */
+export const EMOTE_ACCESS_LABELS = Object.freeze({
+  available: 'Seen available',
+  channel: 'Channel-only',
+  observed: 'Seen in chat',
+  locked: 'Subscriber-only',
+});
+
+export function emoteAccessLabel(access) {
+  return EMOTE_ACCESS_LABELS[access] || EMOTE_ACCESS_LABELS.locked;
+}
+
+/**
+ * The lines of the hover card for one chat emote.
+ *
+ * Everything here is already recorded — name, Kick's own set names, access
+ * level, first capture, and whether this name is shadowed by another channel's
+ * emote. It was only reachable by opening the library manager, so a click-to-
+ * save control gave no indication of what it was about to save or whether it
+ * had it already.
+ *
+ * Returns an array of lines so the caller can render each as its own node and
+ * never has to parse a delimiter back out. Empty for anything unnamed, which is
+ * how a non-emote image ends up with no tooltip at all.
+ */
+export function emoteTooltipText(entry, collisions = [], saved = false) {
+  if (!isRecord(entry) || typeof entry.name !== 'string' || !entry.name) return [];
+  const lines = [entry.name];
+  // A chat-discovered emote's only "set" is the literal string 'Seen in chat',
+  // which is also its access label — printing both reads as a stutter.
+  const access = emoteAccessLabel(entry.access);
+  const sets = (Array.isArray(entry.nativeGroups) ? entry.nativeGroups : [])
+    .filter((group) => group && group !== access);
+  lines.push(sets.length ? `${sets.join(' · ')} · ${access}` : access);
+  if (Number.isFinite(entry.firstSeen) && entry.firstSeen > 0) {
+    lines.push(`First seen ${new Date(entry.firstSeen).toISOString().slice(0, 10)}`);
+  }
+  // Kick resolves a typed name through one map, so a shared name means one
+  // channel's emote silently sends the other's. Naming the winner is the whole
+  // value of the warning — "shadowed" alone does not say which one you get.
+  const collision = (Array.isArray(collisions) ? collisions : [])
+    .find((item) => isRecord(item) && item.name === entry.name);
+  if (collision) {
+    const winner = isRecord(collision.winner) ? collision.winner.setName : '';
+    lines.push(winner ? `Name shadowed — typing it sends ${winner}` : 'Name shadowed by another set');
+  }
+  lines.push(saved ? 'Saved — click to open in the library' : 'Click to save');
+  return lines;
+}
+
 /**
  * The overlay layers this build can stack, outermost last. The first one that
  * is open is the one on top.

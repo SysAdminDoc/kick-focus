@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Added
+
+- **Hovering a chat emote tells you what it is before you save it.** A small card names the emote, the Kick set it belongs to, its access level, when you first saw it, and whether it is already in your collection — all of which was recorded but only reachable by opening the library manager. If another channel's emote shadows the name, the card says which one typing that name actually sends. It follows the keyboard too, never intercepts the pointer, and stays on screen near the edges.
+
 ### Changed
 
 - **Spanish and Portuguese now cover the copy that actually moves.** Toasts, screen-reader announcements, button labels, placeholders, and every count phrase were written straight to the page and never passed through the translator, so ~90 strings — every error message and every accessible label among them — stayed English no matter the language setting. All of them are translated, and count sentences now read naturally in each language rather than gluing a translated word onto an English sentence.

@@ -55,6 +55,7 @@ import {
   mergeMultistream,
   MULTISTREAM_MAX,
   normalizeShortcut,
+  emoteTooltipText,
   findShortcutConflict,
   planStorageCommit,
   topmostOverlayLayer,
@@ -104,6 +105,57 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
+
+test('the chat emote hover card names the set, access, capture and shadowing winner', () => {
+  const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];
+  const entry = {
+    name: 'PogChamp', nativeGroups: ['Seen in chat'], access: 'observed', firstSeen: Date.UTC(2026, 0, 15),
+  };
+  assert.deepEqual(emoteTooltipText(entry, collisions, false), [
+    'PogChamp',
+    // Not "Seen in chat · Seen in chat": a chat-discovered emote's only set name
+    // is its access label, and printing both stutters.
+    'Seen in chat',
+    'First seen 2026-01-15',
+    // Naming the winner is the point: "shadowed" alone does not say which
+    // emote a typed name actually sends.
+    'Name shadowed — typing it sends bigchannel',
+    'Click to save',
+  ]);
+
+  // Already saved: the last line changes, so the card reports state rather than
+  // offering an action that has already happened.
+  assert.equal(emoteTooltipText(entry, collisions, true).at(-1), 'Saved — click to open in the library');
+
+  // A real Kick set name is kept alongside the access level.
+  assert.equal(
+    emoteTooltipText({ name: 'x', nativeGroups: ['Global'], access: 'available' }, [], false)[1],
+    'Global · Seen available',
+  );
+
+  // No collision for this name: name, access, first-seen, action — no warning.
+  assert.deepEqual(emoteTooltipText({ ...entry, name: 'Clean' }, collisions, false), [
+    'Clean', 'Seen in chat', 'First seen 2026-01-15', 'Click to save',
+  ]);
+
+  // Entries recorded before first-seen provenance existed simply omit the line.
+  assert.deepEqual(emoteTooltipText({ name: 'Old', nativeGroups: [], access: 'locked' }, [], false), [
+    'Old', 'Subscriber-only', 'Click to save',
+  ]);
+
+  // Nothing nameable, nothing shown — this is what keeps an unrelated injected
+  // image from getting a card.
+  assert.deepEqual(emoteTooltipText(null, collisions, false), []);
+  assert.deepEqual(emoteTooltipText({ name: '' }, collisions, false), []);
+  assert.deepEqual(emoteTooltipText({ nativeGroups: ['x'] }, collisions, false), []);
+  // A malformed collision entry must not throw or match.
+  assert.equal(emoteTooltipText(entry, [null, 'nope'], false).length, 4);
+  // A collision with no recorded winner still warns, without naming one.
+  assert.equal(
+    emoteTooltipText(entry, [{ name: 'PogChamp' }], false).at(-2),
+    'Name shadowed by another set',
+  );
 });
 
 test('a multi-store write is sized and serialized before any of it is committed', () => {
