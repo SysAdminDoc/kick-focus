@@ -101,6 +101,23 @@ export const TELEMETRY_HOSTS = Object.freeze([
   'reporting.cdndex.io',
 ]);
 
+/**
+ * Telemetry hosts that must never be hard-cancelled at the network layer.
+ *
+ * Blocking litix.io (Mux Data) with a cancel/error triggers an unbounded retry
+ * storm — uAssets #33860 measured 139,182 of 139,189 blocks on this one host,
+ * surfacing to users as #34081 "massive delays entering live streams". The page
+ * realm still answers it with an empty 200 (blockedResponse), which the player
+ * accepts without retrying, so it stays in TELEMETRY_HOSTS for that strategy but
+ * is excluded from the companion's DNR / webRequest cancel set.
+ */
+export const TELEMETRY_NO_CANCEL_HOSTS = Object.freeze(['litix.io']);
+
+/** Telemetry hosts the network layer may hard-cancel without a retry storm. */
+export function cancellableTelemetryHosts() {
+  return TELEMETRY_HOSTS.filter((host) => !TELEMETRY_NO_CANCEL_HOSTS.includes(host));
+}
+
 const RESERVED_ROUTES = new Set([
   'about', 'api', 'auth', 'browse', 'categories', 'community-guidelines',
   'creator-dashboard', 'dashboard', 'dmca', 'download', 'help', 'legal',

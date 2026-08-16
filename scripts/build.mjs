@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AD_HOSTS, TELEMETRY_HOSTS, VERSION } from '../src/core.mjs';
+import { AD_HOSTS, TELEMETRY_HOSTS, cancellableTelemetryHosts, VERSION } from '../src/core.mjs';
 import { renderIcon } from './icons.mjs';
 import { createZip } from './zip.mjs';
 
@@ -80,7 +80,9 @@ const files = [
   ['content/bridge.js', await read('src/extension/bridge.js')],
   ['content/kick-focus.js', `/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`],
   ['rules/ads.json', `${JSON.stringify(ruleset(AD_HOSTS, 1), null, 2)}\n`],
-  ['rules/telemetry.json', `${JSON.stringify(ruleset(TELEMETRY_HOSTS, 1000), null, 2)}\n`],
+  // litix.io is intentionally excluded from the network-layer cancel set: a
+  // hard block there triggers a retry storm. The page realm answers it empty-200.
+  ['rules/telemetry.json', `${JSON.stringify(ruleset(cancellableTelemetryHosts(), 1000), null, 2)}\n`],
 ];
 
 for (const [name, contents] of files) {
@@ -91,7 +93,7 @@ for (const size of [16, 32, 48, 128]) {
   await writeFile(resolve(extensionRoot, `icons/icon-${size}.png`), renderIcon(size));
 }
 
-console.log(`Built dist/extension/ (${AD_HOSTS.length} ad rules, ${TELEMETRY_HOSTS.length} telemetry rules)`);
+console.log(`Built dist/extension/ (${AD_HOSTS.length} ad rules, ${cancellableTelemetryHosts().length} telemetry rules)`);
 
 // Load-unpacked works straight from dist/extension; the archive is for sharing.
 async function collectFrom(base, directory = '', prefix = '') {
@@ -130,7 +132,7 @@ for (const directory of ['content', 'icons']) {
 // Firefox host permissions are generated from the same host lists that drive
 // the page-realm classifier, replacing the former <all_urls> with enumerated
 // hosts so the install prompt names only the sites the extension touches.
-const generatedHostPerms = [...AD_HOSTS, ...TELEMETRY_HOSTS]
+const generatedHostPerms = [...AD_HOSTS, ...cancellableTelemetryHosts()]
   .map((host) => `*://*.${host}/*`);
 const firefoxManifestRaw = (await read('src/extension/manifest.firefox.json')).replaceAll('__VERSION__', VERSION);
 const firefoxManifestObj = JSON.parse(firefoxManifestRaw.replace(
@@ -140,7 +142,7 @@ const firefoxManifestObj = JSON.parse(firefoxManifestRaw.replace(
 const firefoxManifest = `${JSON.stringify(firefoxManifestObj, null, 2)}\n`;
 const firefoxBackground = (await read('src/extension/background.firefox.js'))
   .replace('__AD_HOSTS__', JSON.stringify(AD_HOSTS))
-  .replace('__TELEMETRY_HOSTS__', JSON.stringify(TELEMETRY_HOSTS));
+  .replace('__TELEMETRY_HOSTS__', JSON.stringify(cancellableTelemetryHosts()));
 const firefoxFiles = [
   ['manifest.json', firefoxManifest],
   ['background.js', firefoxBackground],
@@ -158,7 +160,7 @@ for (const size of [16, 32, 48, 128]) {
   await writeFile(resolve(firefoxRoot, `icons/icon-${size}.png`), renderIcon(size));
 }
 
-console.log(`Built dist/extension-firefox/ (${AD_HOSTS.length} ad hosts, ${TELEMETRY_HOSTS.length} telemetry hosts)`);
+console.log(`Built dist/extension-firefox/ (${AD_HOSTS.length} ad hosts, ${cancellableTelemetryHosts().length} telemetry hosts)`);
 
 for (const entry of await readdir(resolve(root, 'dist'))) {
   if (/^kick-focus-firefox-v.*\.zip$/.test(entry)) await rm(resolve(root, 'dist', entry));

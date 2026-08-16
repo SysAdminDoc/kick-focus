@@ -98,13 +98,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: a node:test loads a fixture at each historical schema version and asserts the 1→5 upgrade is lossless (favorites, groups, provenance preserved); a deliberately corrupted intermediate makes it fail.
   Complexity: M
 
-- [ ] R-08 — Resolve the telemetry strategy contradiction (litix.io)
-  Why: the page realm answers blocked telemetry with empty-200 to avoid a retry storm, but the companion DNR ruleset hard-cancels the same hosts, reintroducing the documented 139k-request storm and "massive delays entering live streams."
-  Evidence: uAssets #33860 → #34081; `litix.io` in TELEMETRY_HOSTS (src/core.mjs:98); empty-200 page realm (src/runtime.js:307-310,544); companion hard-cancel via build.mjs:50-61 DNR generation; ads-ssai/community streams.
-  Touches: telemetry ruleset in build.mjs / DNR rule generation; companion background.
-  Acceptance: the companion telemetry strategy matches the page realm (does not hard-cancel litix.io — soft/allow-with-empty-body or dropped from the DNR telemetry ruleset); a gate asserts litix.io is not in the hard-cancel DNR set.
-  Complexity: S
-
 - [ ] R-09 — IVS player ad-break observability (supersedes "Next" item 2)
   Why: the IVS Web Player SDK emits first-party AD_BREAK_STARTED/ENDED, AD_CREATIVE_STARTED, AD_TIME_UPDATE — authoritative read-only ad-break state without touching the manifest or WASM worker.
   Evidence: ads-ssai stream — aws.github.io amazon-ivs-player-docs PlayerEventType/AdBreak; supersedes ROADMAP "Next" item 2.

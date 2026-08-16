@@ -41,7 +41,21 @@ import {
   sanitizeDiagnosticUrl,
   validateRemoteBlocklist,
   validateImportedSettings,
+  TELEMETRY_HOSTS,
+  TELEMETRY_NO_CANCEL_HOSTS,
+  cancellableTelemetryHosts,
 } from '../src/core.mjs';
+
+test('litix.io stays in the telemetry set but out of the network-layer cancel list', () => {
+  // Blocking litix.io hard triggers a retry storm; the page realm answers it
+  // empty-200 instead, so it must never reach the DNR/webRequest cancel set.
+  assert.ok(TELEMETRY_HOSTS.includes('litix.io'));
+  assert.ok(TELEMETRY_NO_CANCEL_HOSTS.includes('litix.io'));
+  assert.ok(!cancellableTelemetryHosts().includes('litix.io'));
+  for (const host of TELEMETRY_HOSTS) {
+    if (!TELEMETRY_NO_CANCEL_HOSTS.includes(host)) assert.ok(cancellableTelemetryHosts().includes(host));
+  }
+});
 
 test('normalization clamps values and keeps core ad defense enabled', () => {
   const value = normalizeSettings({

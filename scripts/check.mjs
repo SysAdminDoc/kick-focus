@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { AD_HOSTS, TELEMETRY_HOSTS, VERSION } from '../src/core.mjs';
+import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, VERSION } from '../src/core.mjs';
 
 const read = (relative) => readFile(resolve(relative), 'utf8');
 const readJson = async (relative) => JSON.parse(await read(relative));
@@ -129,7 +129,11 @@ const checks = [
 
   // Network rules stay in lockstep with the page-realm blocklist
   ['ad ruleset covers every blocked host', adRules.length === AD_HOSTS.length],
-  ['telemetry ruleset covers every telemetry host', telemetryRules.length === TELEMETRY_HOSTS.length],
+  ['telemetry ruleset covers every cancellable telemetry host', telemetryRules.length === cancellableTelemetryHosts().length],
+  ['litix.io is never hard-cancelled at the network layer (retry-storm host)', TELEMETRY_NO_CANCEL_HOSTS.every((host) =>
+    !telemetryRules.some((rule) => rule.condition.urlFilter?.includes(host))
+    && !adRules.some((rule) => rule.condition.urlFilter?.includes(host))
+    && !firefoxBackground.includes(host))],
   ['ad rules block', adRules.every((rule) => rule.action.type === 'block')],
   ['every rule is scoped to kick.com', [...adRules, ...telemetryRules]
     .every((rule) => rule.condition.initiatorDomains?.includes('kick.com'))],
@@ -367,8 +371,10 @@ const checks = [
     && !firefoxBackground.includes('__TELEMETRY_HOSTS__')],
   ['Firefox requests no broad host access', !firefoxManifest.permissions.includes('<all_urls>')],
   ['Firefox does not request the tabs permission', !firefoxManifest.permissions.includes('tabs')],
-  ['Firefox enumerates every ad and telemetry host', [...AD_HOSTS, ...TELEMETRY_HOSTS]
+  ['Firefox enumerates every ad and cancellable telemetry host', [...AD_HOSTS, ...cancellableTelemetryHosts()]
     .every((host) => firefoxManifest.permissions.some((perm) => perm.includes(host)))],
+  ['Firefox does not request host access for the never-cancel telemetry host', TELEMETRY_NO_CANCEL_HOSTS
+    .every((host) => !firefoxManifest.permissions.some((perm) => perm.includes(host)))],
   ['Firefox declares no data collection', firefoxManifest.browser_specific_settings?.gecko
     ?.data_collection_permissions?.required?.[0] === 'none'],
 ];

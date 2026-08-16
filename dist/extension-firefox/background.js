@@ -5,7 +5,7 @@
 
 const api = globalThis.browser || globalThis.chrome;
 const AD_HOSTS = ["imasdk.googleapis.com","pagead2.googlesyndication.com","pubads.g.doubleclick.net","securepubads.g.doubleclick.net","googleads.g.doubleclick.net","partner.googleadservices.com","adservice.google.com","tpc.googlesyndication.com"];
-const TELEMETRY_HOSTS = ["litix.io","browser-intake-datadoghq.com","reporting.cdndex.io"];
+const TELEMETRY_HOSTS = ["browser-intake-datadoghq.com","reporting.cdndex.io"];
 const BADGE_COLOR = '#53fc18';
 let telemetryEnabled = true;
 const blockedByTab = new Map();

@@ -33,7 +33,6 @@
     "*://*.partner.googleadservices.com/*",
     "*://*.adservice.google.com/*",
     "*://*.tpc.googlesyndication.com/*",
-    "*://*.litix.io/*",
     "*://*.browser-intake-datadoghq.com/*",
     "*://*.reporting.cdndex.io/*"
   ],
