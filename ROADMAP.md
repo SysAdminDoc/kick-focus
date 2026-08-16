@@ -60,7 +60,7 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 - [ ] R-35 — Split the multi-stream and live-data surfaces out of `src/runtime.js` (unblocked 2026-08-16)
   Why: was in Roadmap_Blocked.md solely because its acceptance needs the live harness AND no Chromium existed here; Chromium is now installed and `verify:extension` passes 22/22 live, so the blocker is lifted. `src/runtime.js` is ~6,651 lines; moving ~1,500 across the concat boundary is exactly the change the api.mjs-went-missing trap exists for.
-  Evidence: former Roadmap_Blocked P2 entry; CLAUDE.md concat-order + `source.includes` gotchas; build.mjs:11-29 concat order core→api→compatibility→runtime.
+  Evidence: former Roadmap_Blocked P2 entry; the working notes concat-order + `source.includes` gotchas; build.mjs:11-29 concat order core→api→compatibility→runtime.
   Touches: extract multi-stream + live-data into a new bundled module inserted in the correct concat position in build.mjs; keep every export reachable under `node --test` (not just in the hoisted bundle).
   Acceptance: `npm run verify` green AND `npm run verify:extension` green after the move (a green offline build alone does not prove a refactor equivalent); no symbol asserted only by `source.includes`; bundle parses under `node --check`.
   Complexity: L
