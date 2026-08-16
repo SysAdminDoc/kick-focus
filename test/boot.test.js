@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import { HIDEABLE_ELEMENTS } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -261,6 +262,39 @@ test('a page without Trusted Types boots without reaching for the API', { tag: '
   assert.equal(context.trustedTypes, undefined);
   vm.runInNewContext(bundle, context);
   assert.equal(context.window.__kickFocusBooted, true);
+});
+
+test('the adopted sheet carries one hide rule per catalog entry', { tag: 'artifact' }, async () => {
+  // The rules are generated at runtime from HIDEABLE_ELEMENTS, so the bundle
+  // source only holds the generator — grepping it proves nothing. This runs it
+  // and reads the stylesheet that actually reached the document, which is the
+  // only place a catalog entry with a switch and no CSS behind it shows up.
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const constructed = [];
+  class FakeSheet {
+    replaceSync(text) { this.text = String(text); constructed.push(this); }
+  }
+  const context = makeBootEnvironment({ CSSStyleSheet: FakeSheet });
+  context.document.adoptedStyleSheets = [];
+  vm.runInNewContext(bundle, context);
+
+  const css = constructed[0].text;
+  const rules = [...css.matchAll(/html\[data-kf-hidden~="([a-z0-9-]+)"\] \[data-kf-element="([a-z0-9-]+)"\]/g)];
+  assert.deepEqual(
+    rules.map((match) => match[1]),
+    HIDEABLE_ELEMENTS.map((entry) => entry.id),
+    'every hideable element needs its own rule, in catalog order',
+  );
+  for (const [, hiddenId, elementId] of rules) {
+    assert.equal(hiddenId, elementId, 'the root token and the element tag must be the same id or the rule matches nothing');
+  }
+
+  // Red probe: the assertion above must still be able to fail. Drop one rule
+  // from a copy of the same stylesheet and confirm the comparison notices —
+  // otherwise a regex that stopped matching would report perfect coverage.
+  const withoutOne = css.replace(rules[0][0], 'html[data-kf-nothing]');
+  const remaining = [...withoutOne.matchAll(/html\[data-kf-hidden~="([a-z0-9-]+)"\]/g)].map((match) => match[1]);
+  assert.notDeepEqual(remaining, HIDEABLE_ELEMENTS.map((entry) => entry.id), 'the gate cannot detect a missing rule');
 });
 
 test('a mis-ordered const in the bundle is caught by the boot gate (red test)', { tag: 'artifact' }, async () => {

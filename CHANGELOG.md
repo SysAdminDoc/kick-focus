@@ -2,6 +2,18 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.19.0 — 2026-08-16
+
+### Added
+
+- **Switch off Kick's own controls you never use.** A grid on the Layout page turns off eight player controls — miniplayer, clip, theater, fullscreen, the quality gear, volume, share, report — and six sidebar entries: the Home, Browse, Following and Drops links, and the followed and recommended channel lists. Each one is hidden with styling only. Nothing is clicked, nothing is removed from the page, and switching it back on brings it straight back without a reload. The controls are found through the same ordered probe list the rest of the mod uses, so the live gate reports it if Kick renames one of them, rather than the switch quietly hiding nothing.
+- **Always start at the highest quality** (off by default). Opens every stream at the best rung Kick offers on that channel, taking precedence over remembered quality. The rungs are learned from Kick's own quality menu rather than hard-coded, because the set differs per channel — so it does nothing until that menu has been opened once, and it will not open the menu for you to get there sooner. A rung Kick has badged as unavailable to your session is never recorded and never selected: signed out, that is the 1080p60 row, and the best rung becomes 720p60.
+
+### Fixed
+
+- **Remembered quality was written in a format the player does not read.** Kick's player takes its starting quality from `sessionStorage['stream_quality']`, which holds the bare height — `720`, `360`, `0` for Auto — but this build wrote the menu's label there instead, so `720p60` went into a key that expects `720`. Measured against a live channel by picking each rung and reading the key back. The menu fallback beside it never fired either: it only clicked a rung when the control was a `<button>`, and Kick renders these as `div[role="menuitemradio"]`.
+- **A quality label was read from the whole row rather than the rung.** Signed out, Kick puts a sign-in badge beside the top rung, so the row's text is the rung glued to the badge — which ranks fine and is unusable. The label now comes from the rung's own element, and the badge is what marks the row as one this session may not pick.
+
 ## 1.18.2 — 2026-08-16
 
 ### Changed

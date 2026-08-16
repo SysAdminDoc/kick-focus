@@ -904,6 +904,23 @@ function installNetworkDefense() {
   }
 }
 
+/**
+ * One rule per catalog entry, generated so a new hideable control cannot ship
+ * with a settings switch and no stylesheet behind it.
+ *
+ * `~=` matches one whitespace-separated token, so the whole feature is a single
+ * attribute on `<html>` that a settings change rewrites — the tagging pass never
+ * has to walk anything again to *unhide*, and an element still carrying a stale
+ * `data-kf-element` from a switch that was turned back off simply stops
+ * matching. `display: none` rather than `visibility`/`opacity` because a control
+ * left occupying its slot is the layout gap people file bugs about.
+ */
+function hiddenElementCss() {
+  return HIDEABLE_ELEMENTS
+    .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
+    .join('\n    ');
+}
+
 const SITE_CSS = `
   :root {
     --kf-accent: #7cff2b;
@@ -1180,6 +1197,8 @@ const SITE_CSS = `
     html[data-kf-following-rail="false"] :is(main, #main-container) [data-kf-following-rail],
     html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-testid*="recommended" i],
     html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-kf-recommended-rail] { display: none !important; }
+
+    ${hiddenElementCss()}
 
     html[data-kf-density="compact"] :is(main, #main-container) section[class*="grid"],
     html[data-kf-density="compact"] :is(main, #main-container) [class*="group/grid"] { gap: 12px !important; }
@@ -1741,6 +1760,7 @@ function applySettingsAttributes() {
   root.dataset.kfWideGrid = String(layout.wideGrid);
   root.dataset.kfFollowingRail = String(layout.showFollowingRail);
   root.dataset.kfRecommendedRail = String(layout.showRecommendedRail);
+  root.dataset.kfHidden = layout.hidden.join(' ');
   root.dataset.kfMiniPlayerCollision = String(layout.miniPlayerCollision
     && layout.quickButton
     && !state.headerControlHost?.isConnected);
@@ -1819,6 +1839,28 @@ function tagMonetizationSurfaces() {
       testId: control.getAttribute('data-testid'),
     });
     if (kind) control.dataset.kfMonetization = kind;
+  }
+}
+
+/**
+ * Mark the controls the user asked to hide, so the generated CSS can find them.
+ *
+ * Only the ids actually in the hidden set are looked for, which keeps this at
+ * zero queries for the default configuration and bounds it by what the user
+ * chose rather than by the size of the catalog. The tag is a pure
+ * classification — it says what an element *is*, never whether it is currently
+ * hidden — so re-tagging is idempotent, a leftover tag is inert, and a control
+ * Kick re-renders picks its tag back up on the next cycle.
+ */
+function tagHideableElements() {
+  const hidden = state.settings.layout.hidden;
+  if (!hidden.length) return;
+  for (const entry of HIDEABLE_ELEMENTS) {
+    if (!hidden.includes(entry.id)) continue;
+    for (const element of findAllProbe(document, entry.probe).elements) {
+      if (state.root?.contains(element)) continue;
+      if (element.dataset.kfElement !== entry.id) element.dataset.kfElement = entry.id;
+    }
   }
 }
 
@@ -2497,42 +2539,148 @@ function bindMediaElement(video) {
  */
 const QUALITY_SESSION_KEY = 'stream_quality';
 
-function applyQualitySessionKey() {
-  if (!state.settings.content.rememberQuality) return;
+/**
+ * The ladder Kick has been *observed* offering, newline-free and best first.
+ *
+ * "Always start at the highest quality" needs a name to write into the session
+ * key before the player initialises, and the set differs per channel — so this
+ * build learns the labels from Kick's own menu instead of hard-coding a
+ * resolution list that would be wrong for a 720p streamer and stale the day
+ * Kick adds a rung. One consequence worth stating plainly: the preference does
+ * nothing until Kick's quality menu has rendered once, because until then there
+ * is no honest value to write. This build will not open that menu on the user's
+ * behalf to get there sooner.
+ *
+ * Stored in the media-preferences record, which is already registered, backed
+ * up and reset with everything else, as a `|`-joined string so it survives the
+ * primitives-only import normalizer. The key is global rather than per-channel:
+ * it is a hint about what Kick's menu looks like, not a per-channel choice.
+ */
+const QUALITY_LADDER_KEY = 'ladder:global';
+
+/**
+ * The rung's own label, not everything inside the row.
+ *
+ * Kick renders the label in a `<span>` and hangs any entitlement badge beside
+ * it in a sibling `<div>`, so on an anonymous session the top row's
+ * `textContent` is the rung glued to the badge's sign-in prompt. That string
+ * ranks perfectly well and is completely unusable: it is not a label the menu
+ * will ever match on restore, and the rung behind it is one this session may
+ * not have.
+ */
+function qualityControlLabel(control) {
+  const spans = control.querySelectorAll?.('span');
+  if (!spans?.length) return '';
+  return [...spans].map((span) => span.textContent.trim()).filter(Boolean).join(' ');
+}
+
+function qualityControlValue(control) {
+  return String(control.value
+    || control.dataset.quality
+    || control.dataset.resolution
+    || qualityControlLabel(control)
+    || control.textContent
+    || '').trim();
+}
+
+/**
+ * True when Kick attached anything beyond the rung's own label.
+ *
+ * That extra node is the badge Kick uses to say this session cannot pick this
+ * rung — a sign-in prompt while signed out. Detected as "there is content
+ * outside the label span" rather than by matching the badge copy, because the
+ * copy is translated and the structure is not. Kick sets no `aria-disabled`
+ * here, so this is the only marker there is; absent one, no claim is made
+ * either way and the rung is treated as offered.
+ */
+function qualityOptionGated(control) {
+  const label = qualityControlLabel(control);
+  if (!label) return false;
+  const full = String(control.textContent || '').replace(/\s+/g, ' ').trim();
+  return full.replace(/\s+/g, '') !== label.replace(/\s+/g, '');
+}
+
+/** The best option this build has seen Kick offer, or '' if it has seen none. */
+function bestKnownQuality() {
+  const raw = state.mediaPreferences[QUALITY_LADDER_KEY];
+  return typeof raw === 'string' ? bestQualityOption(raw.split('|')) : '';
+}
+
+/**
+ * What the player should start at, or '' to leave Kick's own choice alone.
+ * "Highest" wins over "remembered" when both are on — it is the more specific
+ * instruction, and the alternative is a switch that appears to do nothing on
+ * every channel the user has ever watched.
+ */
+function desiredQuality() {
+  if (state.settings.content.preferBestQuality) {
+    const best = bestKnownQuality();
+    if (best) return best;
+  }
+  if (!state.settings.content.rememberQuality) return '';
   const key = mediaPreferenceKey('quality');
-  if (!key) return;
-  const saved = state.mediaPreferences[key];
-  if (!saved || typeof saved !== 'string') return;
+  const saved = key ? state.mediaPreferences[key] : '';
+  return typeof saved === 'string' ? saved : '';
+}
+
+function applyQualitySessionKey() {
+  const value = qualitySessionValue(desiredQuality());
+  if (!value) return;
   try {
-    if (sessionStorage.getItem(QUALITY_SESSION_KEY) === saved) return;
-    sessionStorage.setItem(QUALITY_SESSION_KEY, saved);
+    if (sessionStorage.getItem(QUALITY_SESSION_KEY) === value) return;
+    sessionStorage.setItem(QUALITY_SESSION_KEY, value);
   } catch {
     // Session storage can be denied; the menu fallback below still applies.
   }
 }
 
+/**
+ * Remember the rungs, ignoring `Auto` (rank 0) and anything unrankable (-1).
+ * A single option is not a ladder — that is a menu still rendering — and the
+ * entry is re-inserted rather than updated in place so the writer's 240-key
+ * bound evicts stale channels ahead of it.
+ */
+function recordQualityLadder(controls) {
+  // A badged rung is one Kick is offering to somebody else. Recording it would
+  // make "the best rung" a rung this session cannot select, which is the same
+  // entitlement inference the emote rules forbid.
+  const offered = controls.filter((control) => !qualityOptionGated(control));
+  const labels = [...new Set(offered.map(qualityControlValue))].filter((label) => qualityRank(label) > 0);
+  if (labels.length < 2) return;
+  const ladder = labels.sort((left, right) => qualityRank(right) - qualityRank(left)).join('|');
+  if (state.mediaPreferences[QUALITY_LADDER_KEY] === ladder) return;
+  delete state.mediaPreferences[QUALITY_LADDER_KEY];
+  state.mediaPreferences[QUALITY_LADDER_KEY] = ladder;
+  gmSet(MEDIA_PREFERENCES_KEY, state.mediaPreferences);
+}
+
 function applyQualityMemory() {
-  if (!state.settings.content.rememberQuality) return;
+  const { rememberQuality, preferBestQuality } = state.settings.content;
+  if (!rememberQuality && !preferBestQuality) return;
   applyQualitySessionKey();
-  const key = mediaPreferenceKey('quality');
-  if (!key) return;
-  const saved = state.mediaPreferences[key];
   // `[role="menuitemradio"]` is what Kick's own quality menu actually renders;
   // the rest are legacy guesses kept only so an older shell still works.
-  const controls = document.querySelectorAll('[role="menuitemradio"], [data-quality], [data-resolution], [data-testid*="quality" i], [aria-label*="quality" i], select[data-kf-quality]');
+  const controls = findAllProbe(document, 'qualityOption').elements;
+  if (preferBestQuality) recordQualityLadder(controls);
+  const wanted = desiredQuality();
   for (const control of controls) {
-    const value = control.value || control.dataset.quality || control.dataset.resolution || control.textContent;
+    const value = qualityControlValue(control);
     if (!value) continue;
     if (control.dataset.kfQualityBound !== 'true') {
       control.dataset.kfQualityBound = 'true';
-      control.addEventListener('change', () => saveMediaPreference('quality', control.value || control.dataset.quality || control.dataset.resolution || control.textContent.trim()));
-      control.addEventListener('click', () => saveMediaPreference('quality', control.value || control.dataset.quality || control.dataset.resolution || control.textContent.trim()));
+      control.addEventListener('change', () => saveMediaPreference('quality', qualityControlValue(control)));
+      control.addEventListener('click', () => saveMediaPreference('quality', qualityControlValue(control)));
     }
-    if (saved && control.dataset.kfQualityRestored !== 'true' && String(value).toLowerCase() === String(saved).toLowerCase() && control instanceof HTMLElement && control.tagName === 'BUTTON') {
+    // Never click a rung Kick badged as unavailable to this session, whatever
+    // the stored preference says.
+    if (qualityOptionGated(control)) continue;
+    // Kick renders these as `div[role="menuitemradio"]`, so the old
+    // `tagName === 'BUTTON'` test meant this fallback never fired at all.
+    if (wanted && control.dataset.kfQualityRestored !== 'true' && value.toLowerCase() === wanted.toLowerCase() && control instanceof HTMLElement && !(control instanceof HTMLSelectElement)) {
       control.click();
       control.dataset.kfQualityRestored = 'true';
-    } else if (saved && control.dataset.kfQualityRestored !== 'true' && control instanceof HTMLSelectElement && [...control.options].some((option) => option.value === saved)) {
-      control.value = saved;
+    } else if (wanted && control.dataset.kfQualityRestored !== 'true' && control instanceof HTMLSelectElement && [...control.options].some((option) => option.value === wanted)) {
+      control.value = wanted;
       control.dispatchEvent(new Event('change', { bubbles: true }));
       control.dataset.kfQualityRestored = 'true';
     }
@@ -4175,6 +4323,7 @@ async function runApplyCycle() {
     applySettingsAttributes();
     tagChatPanel();
     tagMonetizationSurfaces();
+    tagHideableElements();
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
@@ -4359,6 +4508,9 @@ function updateSetting(path, value, message = 'Autosaved') {
   });
   if (path === 'content.rememberVolume' && !state.settings.content.rememberVolume) clearMediaPreferenceKind('volume');
   if (path === 'content.rememberQuality' && !state.settings.content.rememberQuality) clearMediaPreferenceKind('quality');
+  // The ladder is observed for this one feature and for nothing else, so
+  // switching the feature off is also the instruction to forget it.
+  if (path === 'content.preferBestQuality' && !state.settings.content.preferBestQuality) clearMediaPreferenceKind('ladder');
   if (path === 'content.rememberVodPosition' && !state.settings.content.rememberVodPosition) clearMediaPreferenceKind('position');
   if (path === 'content.stickyChatPause' && !state.settings.content.stickyChatPause) {
     state.runtime.chatPaused = false;
@@ -4614,6 +4766,32 @@ const UI_CSS = `
   .kf-segmented button:hover { background: var(--surface-hover); color: var(--text); }
   .kf-segmented button:active { background: var(--surface-selected); }
   .kf-segmented button[aria-pressed="true"] { background: rgba(var(--accent-rgb), .1); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+
+  .kf-hide-grid { display: grid; gap: 14px; width: 100%; }
+  .kf-hide-heading { display: block; margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+  .kf-hide-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .kf-hide-chip {
+    min-height: 32px;
+    padding: 0 11px;
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 680;
+  }
+  .kf-hide-chip:hover { background: var(--surface-hover); color: var(--text); }
+  .kf-hide-chip:active { background: var(--surface-selected); }
+  /* Pressed means hidden, so it reads as struck out rather than as selected —
+     the accent alone would say "on" for a control that is now off. */
+  .kf-hide-chip[aria-pressed="true"] {
+    background: rgba(var(--accent-rgb), .1);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--accent);
+    text-decoration: line-through;
+    text-decoration-color: var(--accent);
+  }
 
   .kf-switch {
     width: 58px;
@@ -5370,6 +5548,24 @@ const TRANSLATIONS = {
     'Widen browse grids': 'Ampliar cuadrículas de exploración',
     'Show Following rail': 'Mostrar barra de seguidos',
     'Show Recommended rail': 'Mostrar barra recomendada',
+    'Hide Kick’s own controls': 'Ocultar los controles propios de Kick',
+    'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only — nothing is clicked or removed, and turning it back on restores it immediately.': 'Desactiva los botones del reproductor y las entradas de la barra lateral que nunca usas. Cada uno se oculta solo con estilos: no se pulsa ni se elimina nada, y al reactivarlo vuelve de inmediato.',
+    'Player controls': 'Controles del reproductor',
+    'Sidebar': 'Barra lateral',
+    'Miniplayer': 'Minirreproductor',
+    'Clip': 'Clip',
+    'Theater mode': 'Modo cine',
+    'Fullscreen': 'Pantalla completa',
+    'Quality menu': 'Menú de calidad',
+    'Volume': 'Volumen',
+    'Share': 'Compartir',
+    'Report': 'Reportar',
+    'Home link': 'Enlace de Inicio',
+    'Browse link': 'Enlace de Explorar',
+    'Following link': 'Enlace de Siguiendo',
+    'Drops link': 'Enlace de Drops',
+    'Followed channel list': 'Lista de canales seguidos',
+    'Recommended channel list': 'Lista de canales recomendados',
     'Sticky compact top bar': 'Barra superior compacta fija',
     'Show quick command button': 'Mostrar botón de comandos',
     'Move mini-player clear of controls': 'Mover el minirreproductor lejos de los controles',
@@ -5524,6 +5720,8 @@ const TRANSLATIONS = {
     'Restore each channel’s volume and mute state from local storage.': 'Restaura el volumen y el estado de silencio de cada canal desde el almacenamiento local.',
     'Remember quality locally': 'Recordar la calidad localmente',
     'Restore a matching quality control when Kick exposes one.': 'Restaura el control de calidad correspondiente cuando Kick lo ofrece.',
+    'Always start at the highest quality': 'Empezar siempre en la calidad más alta',
+    'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.': 'Abre cada directo en la mejor opción que ofrezca Kick, con prioridad sobre la calidad recordada. Las opciones se aprenden del propio menú de calidad de Kick, así que no hace nada hasta que ese menú se haya abierto una vez: no lo abrirá por ti.',
     'Remember VOD position locally': 'Recordar la posición del VOD localmente',
     'Resume finite VODs from the last local playback position.': 'Reanuda los VOD finitos desde la última posición de reproducción local.',
     'Pause chat updates': 'Pausar las actualizaciones del chat',
@@ -5731,6 +5929,24 @@ const TRANSLATIONS = {
     'Widen browse grids': 'Ampliar grades de descoberta',
     'Show Following rail': 'Mostrar barra de Seguindo',
     'Show Recommended rail': 'Mostrar barra de Recomendados',
+    'Hide Kick’s own controls': 'Ocultar os controles do próprio Kick',
+    'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only — nothing is clicked or removed, and turning it back on restores it immediately.': 'Desative os botões do player e os itens da barra lateral que você nunca usa. Cada um é ocultado apenas por estilo: nada é clicado ou removido, e ao reativar ele volta imediatamente.',
+    'Player controls': 'Controles do player',
+    'Sidebar': 'Barra lateral',
+    'Miniplayer': 'Minirreprodutor',
+    'Clip': 'Clipe',
+    'Theater mode': 'Modo cinema',
+    'Fullscreen': 'Tela cheia',
+    'Quality menu': 'Menu de qualidade',
+    'Volume': 'Volume',
+    'Share': 'Compartilhar',
+    'Report': 'Denunciar',
+    'Home link': 'Link de Início',
+    'Browse link': 'Link de Explorar',
+    'Following link': 'Link de Seguindo',
+    'Drops link': 'Link de Drops',
+    'Followed channel list': 'Lista de canais seguidos',
+    'Recommended channel list': 'Lista de canais recomendados',
     'Sticky compact top bar': 'Barra superior compacta fixa',
     'Show quick command button': 'Mostrar botão de comandos',
     'Move mini-player clear of controls': 'Mover miniplayer para longe dos controles',
@@ -5886,6 +6102,8 @@ const TRANSLATIONS = {
     'Restore each channel’s volume and mute state from local storage.': 'Restaura o volume e o estado de mudo de cada canal a partir do armazenamento local.',
     'Remember quality locally': 'Lembrar a qualidade localmente',
     'Restore a matching quality control when Kick exposes one.': 'Restaura o controle de qualidade correspondente quando o Kick o oferece.',
+    'Always start at the highest quality': 'Sempre começar na qualidade mais alta',
+    'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.': 'Abre cada transmissão na melhor opção que o Kick oferecer, com prioridade sobre a qualidade lembrada. As opções são aprendidas do próprio menu de qualidade do Kick, então isso não faz nada até que esse menu seja aberto uma vez: ele não será aberto para você.',
     'Remember VOD position locally': 'Lembrar a posição do VOD localmente',
     'Resume finite VODs from the last local playback position.': 'Retoma os VODs finitos a partir da última posição de reprodução local.',
     'Pause chat updates': 'Pausar as atualizações do chat',
@@ -6331,6 +6549,20 @@ function selectControl(path, current, choices, label) {
   return `<select class="kf-select" data-set="${escapeHtml(path)}" aria-label="${escapeHtml(label)}">${choices.map(([value, optionLabel]) => `<option value="${escapeHtml(value)}"${selected(current, value) ? ' selected' : ''}>${escapeHtml(optionLabel)}</option>`).join('')}</select>`;
 }
 
+/**
+ * A grid of multi-select chips, one per catalog entry, grouped by surface.
+ *
+ * `aria-pressed` rather than a checkbox because these are independent
+ * on/off actions rather than a form to submit, and the same pattern the rest of
+ * this panel already uses for a pressed state.
+ */
+function hideElementGrid(hidden) {
+  return `<div class="kf-hide-grid">${HIDEABLE_GROUPS.map((group) => `<div class="kf-hide-group"><span class="kf-hide-heading">${escapeHtml(tr(group.label))}</span><div class="kf-hide-chips" role="group" aria-label="${escapeHtml(tr(group.label))}">${HIDEABLE_ELEMENTS
+    .filter((entry) => entry.group === group.id)
+    .map((entry) => `<button type="button" class="kf-hide-chip" data-action="toggle-hidden-element" data-element="${escapeHtml(entry.id)}" aria-pressed="${hidden.includes(entry.id)}">${escapeHtml(tr(entry.label))}</button>`)
+    .join('')}</div></div>`).join('')}</div>`;
+}
+
 function pageHeader(title, description, metaLabel, metaValue) {
   return `<div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><div class="kf-page-meta"><span>${escapeHtml(metaLabel)}</span><strong>${escapeHtml(metaValue)}</strong></div></div>`;
 }
@@ -6349,6 +6581,7 @@ function renderLayoutPage() {
       ${row('Widen browse grids', 'Use reclaimed sidebar space for larger, calmer stream cards.', toggle('layout.wideGrid', value.wideGrid, { label: 'Widen browse grids' }))}
       ${row('Show Following rail', 'Keep the Following discovery rail visible when Kick provides it.', toggle('layout.showFollowingRail', value.showFollowingRail, { label: 'Show Following rail' }))}
       ${row('Show Recommended rail', 'Keep recommended stream rows visible in the main content.', toggle('layout.showRecommendedRail', value.showRecommendedRail, { label: 'Show Recommended rail' }))}
+      ${row('Hide Kick’s own controls', 'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only — nothing is clicked or removed, and turning it back on restores it immediately.', hideElementGrid(value.hidden), { wide: true })}
       ${row('Sticky compact top bar', 'Keep search and account controls available while browsing.', toggle('layout.stickyTopbar', value.stickyTopbar, { label: 'Sticky compact top bar' }))}
       ${row('Show quick command button', 'Keep the Focus control beside Get KICKs in Kick’s top header.', toggle('layout.quickButton', value.quickButton, { label: 'Show quick command button' }))}
       ${row('Move mini-player clear of controls', 'Raise Kick’s embedded mini-player only when the Focus control has to use its floating fallback.', toggle('layout.miniPlayerCollision', value.miniPlayerCollision, { label: 'Move mini-player clear of controls' }))}
@@ -6815,6 +7048,7 @@ function renderContentPage() {
     <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">
         ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
         ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
+        ${row('Always start at the highest quality', 'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.', toggle('content.preferBestQuality', value.preferBestQuality, { label: 'Always start at the highest quality' }))}
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
@@ -7026,6 +7260,14 @@ function clearLocalChannelTools() {
   showToast('Local channel tools cleared.');
 }
 
+function toggleHiddenElement(id) {
+  const hidden = state.settings.layout.hidden;
+  if (!HIDEABLE_ELEMENTS.some((entry) => entry.id === id)) return;
+  updateSetting('layout.hidden', hidden.includes(id)
+    ? hidden.filter((entry) => entry !== id)
+    : [...hidden, id]);
+}
+
 function clearMediaPreferenceKind(kind) {
   const prefix = `${kind}:`;
   state.mediaPreferences = Object.fromEntries(Object.entries(state.mediaPreferences).filter(([key]) => !key.startsWith(prefix)));
@@ -7185,6 +7427,7 @@ function onInterfaceClick(event) {
   else if (action === 'undo-import') undoImport();
   else if (action === 'copy-sticker-name') copyStickerName(actionTarget);
   else if (action === 'insert-sticker-name') insertStickerName(actionTarget);
+  else if (action === 'toggle-hidden-element') toggleHiddenElement(actionTarget.dataset.element);
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();

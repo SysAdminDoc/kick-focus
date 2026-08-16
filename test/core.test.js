@@ -68,6 +68,12 @@ import {
   planStorageCommit,
   topmostOverlayLayer,
   OVERLAY_LAYERS,
+  HIDEABLE_ELEMENTS,
+  HIDEABLE_GROUPS,
+  normalizeHiddenElements,
+  qualityRank,
+  bestQualityOption,
+  qualitySessionValue,
   pluralForm,
   sanitizeErrorMessage,
   monetizationKind,
@@ -2112,4 +2118,86 @@ test('export carries usage counts and layouts, and import validates them', { tag
     multistream: { streams: Array.from({ length: 40 }, (_, i) => `c${i}`) },
   }));
   assert.ok(lossy.notes.some((n) => /multi-stream grid to 9 supported channels/.test(n)));
+});
+
+test('the hideable catalog is internally consistent and every entry is reachable', { tag: 'unit' }, () => {
+  const ids = HIDEABLE_ELEMENTS.map((entry) => entry.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids must be unique — they key both the CSS and the settings value');
+  const probes = HIDEABLE_ELEMENTS.map((entry) => entry.probe);
+  assert.equal(new Set(probes).size, probes.length, 'two entries sharing a probe would hide each other');
+  const groups = new Set(HIDEABLE_GROUPS.map((group) => group.id));
+  for (const entry of HIDEABLE_ELEMENTS) {
+    assert.ok(groups.has(entry.group), `${entry.id} is in group ${entry.group}, which the grid does not render`);
+    assert.ok(entry.label && entry.probe, `${entry.id} needs both a label and a probe`);
+    // The id reaches CSS as an attribute-selector token, and a space would
+    // silently split it into two tokens that match nothing.
+    assert.match(entry.id, /^[a-z][a-z0-9-]*$/, `${entry.id} is not a safe attribute token`);
+  }
+});
+
+test('hidden-element ids are validated, deduped, and stored in catalog order', { tag: 'unit' }, () => {
+  assert.deepEqual(normalizeHiddenElements(null), []);
+  assert.deepEqual(normalizeHiddenElements('player-clip'), [], 'a bare string is not a list');
+  assert.deepEqual(normalizeHiddenElements(['player-clip', 'player-clip']), ['player-clip']);
+  assert.deepEqual(normalizeHiddenElements(['nope', 42, null, { id: 'player-pip' }]), [],
+    'an id this build cannot find would sit in the settings file forever');
+  // Clicked in one order, stored in another, so two backups of the same
+  // configuration are the same bytes.
+  assert.deepEqual(
+    normalizeHiddenElements(['sidebar-drops', 'player-pip', ' player-clip ']),
+    ['player-pip', 'player-clip', 'sidebar-drops'],
+  );
+  const settings = normalizeSettings({ layout: { hidden: ['sidebar-home', 'bogus'] } });
+  assert.deepEqual(settings.layout.hidden, ['sidebar-home']);
+  assert.deepEqual(DEFAULT_SETTINGS.layout.hidden, [], 'nothing is hidden until asked for by name');
+});
+
+test('quality labels rank by height then frame rate, and Auto never wins', { tag: 'unit' }, () => {
+  assert.ok(qualityRank('1080p60') > qualityRank('1080p'), 'frame rate breaks a height tie');
+  assert.ok(qualityRank('1080p') > qualityRank('720p60'), 'height outranks frame rate');
+  assert.ok(qualityRank('720p60') > qualityRank('480p'));
+  assert.ok(qualityRank('480p') > qualityRank('360p'));
+  assert.ok(qualityRank('360p') > qualityRank('160p'));
+  assert.ok(qualityRank('Source') > qualityRank('1080p60'), 'a source rung is above every encoded one');
+
+  // Auto is the absence of a choice, not the top of the ladder. Ranking it
+  // highest would make "always start at the highest quality" mean "do nothing".
+  assert.equal(qualityRank('Auto'), 0);
+  assert.equal(qualityRank('Auto (1080p60)'), 0);
+  assert.ok(qualityRank('160p') > qualityRank('Auto'));
+
+  // Unrankable scores below Auto so it can never be written to the player.
+  assert.equal(qualityRank('whatever Kick ships next'), -1);
+  assert.equal(qualityRank(''), -1);
+  assert.equal(qualityRank(null), -1);
+});
+
+test('the best option is picked from what Kick actually offered, or nothing at all', { tag: 'unit' }, () => {
+  assert.equal(bestQualityOption(['Auto', '1080p60', '720p60', '480p', '360p', '160p']), '1080p60');
+  assert.equal(bestQualityOption([' 720p60 ']), '720p60', 'the stored label is trimmed, not the raw text node');
+  // A channel that only offers Auto, and a menu that has not rendered its
+  // options yet, both mean "leave Kick's own choice alone".
+  assert.equal(bestQualityOption(['Auto']), '');
+  assert.equal(bestQualityOption([]), '');
+  assert.equal(bestQualityOption(undefined), '');
+  assert.equal(bestQualityOption(['mystery']), '', 'an unrecognized label is never guessed at');
+});
+
+test('the session key gets the bare height Kick writes, never the menu label', { tag: 'unit' }, () => {
+  // Measured against a live channel on 2026-08-16 by picking each rung and
+  // reading `sessionStorage['stream_quality']` back. Writing the label instead
+  // — which is what this build did before — hands the player a value it does
+  // not recognize, so these five are the whole contract.
+  assert.equal(qualitySessionValue('1080p60'), '1080');
+  assert.equal(qualitySessionValue('720p60'), '720');
+  assert.equal(qualitySessionValue('360p'), '360');
+  assert.equal(qualitySessionValue('160p'), '160');
+  assert.equal(qualitySessionValue('Auto'), '0');
+
+  // Nothing is written for a label that decodes to no plausible height: the
+  // alias rungs are synthetic ranks, not measurements.
+  assert.equal(qualitySessionValue('Source'), '');
+  assert.equal(qualitySessionValue('mystery'), '');
+  assert.equal(qualitySessionValue(''), '');
+  assert.equal(qualitySessionValue(null), '');
 });

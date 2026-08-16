@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compatibilitySnapshot, compatibilitySummary } from '../src/compatibility.mjs';
+import { compatibilitySnapshot, compatibilitySummary, findAllProbe, LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { HIDEABLE_ELEMENTS } from '../src/core.mjs';
 
 class FakeNode {
   constructor({ query = {}, all = {}, parent = null } = {}) {
@@ -72,4 +73,43 @@ test('compatibility self-test is route-aware and names missing hooks', { tag: 'u
   assert.equal(channel.healthy, false);
   assert.deepEqual(channel.missing, ['chat']);
   assert.match(compatibilitySummary(channel), /missing chat/);
+});
+
+test('every hideable element names a probe that exists and is ordered', { tag: 'unit' }, () => {
+  // The catalog stores a probe *name*, so a typo or a renamed hook produces a
+  // switch in the settings panel that silently hides nothing at all.
+  for (const entry of HIDEABLE_ELEMENTS) {
+    const probes = LOCATOR_PROBES[entry.probe];
+    assert.ok(Array.isArray(probes), `${entry.id} names probe ${entry.probe}, which LOCATOR_PROBES does not have`);
+    assert.ok(probes.length >= 2, `${entry.probe} has no fallback; one Kick rename would end the feature`);
+    const ids = probes.map((probe) => probe.id);
+    assert.equal(new Set(ids).size, ids.length, `${entry.probe} repeats a probe id`);
+    for (const probe of probes) assert.ok(probe.selector, `${entry.probe}/${probe.id} has no selector`);
+  }
+});
+
+test('a hideable probe resolves through its ordered fallbacks', { tag: 'unit' }, () => {
+  const button = new FakeNode();
+  const fallback = new FakeNode();
+
+  // Stable hook present: the first probe wins and the fallback is never read.
+  const current = new FakeNode({ all: {
+    '[data-testid="video-player-pip"]': [button],
+    'button:has(> svg[data-ds-icon="ViewMiniplayer"])': [fallback],
+  } });
+  const matched = findAllProbe(current, 'playerPip');
+  assert.deepEqual(matched.elements, [button]);
+  assert.equal(matched.probe, 'pip-testid');
+
+  // Kick drops the testid: the icon probe carries the feature, which is the
+  // whole point of ordering them.
+  const drifted = new FakeNode({ all: {
+    'button:has(> svg[data-ds-icon="ViewMiniplayer"])': [fallback],
+  } });
+  const fellBack = findAllProbe(drifted, 'playerPip');
+  assert.deepEqual(fellBack.elements, [fallback]);
+  assert.equal(fellBack.probe, 'pip-icon');
+
+  // Nothing on the route: no element, and no throw either.
+  assert.deepEqual(findAllProbe(new FakeNode(), 'playerPip'), { elements: [], probe: null });
 });

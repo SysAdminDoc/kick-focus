@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EMOTE_ACCESS_LABELS } from '../src/core.mjs';
+import { EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -82,6 +82,12 @@ async function collect() {
   // to a module that is mostly not user-facing prose.
   const rendered = new Set([
     ...Object.values(EMOTE_ACCESS_LABELS),
+    // The hide-element grid is generated from the catalog, so its chip labels
+    // and group headings never appear as literals in runtime.js for the
+    // scanners to find. Adding a catalog entry therefore has to add two
+    // dictionary entries, and this is what says so.
+    ...HIDEABLE_ELEMENTS.map((entry) => entry.label),
+    ...HIDEABLE_GROUPS.map((group) => group.label),
     'Click to save',
     'Saved — click to open in the library',
     'Name shadowed by another set',

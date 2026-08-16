@@ -866,6 +866,90 @@ try {
       ? `floating opened=${focusButton.floating?.opened}, header opened=${focusButton.header?.opened} (anchor ${focusButton.synthesised ? 'supplied' : 'already present'}), command menu never opened, quick action=${focusButton.action}`
       : focusButton.why);
 
+  // Hiding a Kick control, driven the way a user drives it: the chip in the
+  // settings panel, not a direct write to the settings store. That is what puts
+  // the whole chain under test at once — the click handler, normalization, the
+  // tagging pass, and the generated rule — and it is the half a unit test
+  // cannot reach, because the tagging pass needs Kick's real sidebar.
+  //
+  // `sidebar-browse` is the target because every route carries it, signed in or
+  // not. The probe restores the previous value in a `finally` so a failure
+  // here cannot leave the browse link hidden for the checks that follow.
+  const hideProbe = await evaluate(pageClient, `(async () => {
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 700));
+    const before = JSON.parse(localStorage.getItem('kick-focus:settings') || '{}');
+    // Later probes read controls straight out of the shadow DOM without opening
+    // the panel themselves, so whichever settings page is rendered when this
+    // finishes is the one they get. Put it back.
+    const beforePage = shadow.querySelector('[data-kf-page]')?.dataset.kfCurrentPage || '';
+    const target = () => document.querySelector('li:has(> [data-testid="sidebar-browse"])')
+      || document.querySelector('[data-testid="sidebar-browse"]');
+    if (!target()) return { ok: false, why: 'Kick did not render the browse link on this route' };
+
+    try {
+      shadow.querySelector('[data-action="open-settings"]')?.click();
+      await settle();
+      shadow.querySelector('[data-page="layout"]')?.click();
+      await settle();
+      const chip = () => shadow.querySelector('[data-action="toggle-hidden-element"][data-element="sidebar-browse"]');
+      if (!chip()) return { ok: false, why: 'the hide chip is not on the layout page' };
+
+      const initial = {
+        pressed: chip().getAttribute('aria-pressed'),
+        display: getComputedStyle(target()).display,
+        tagged: target().dataset.kfElement || null,
+      };
+
+      chip().click();
+      await settle();
+      const hidden = {
+        pressed: chip().getAttribute('aria-pressed'),
+        display: getComputedStyle(target()).display,
+        tagged: target().dataset.kfElement || null,
+        root: document.documentElement.dataset.kfHidden,
+        // Hidden must mean styled out, never taken out: the node stays, so
+        // nothing Kick wired to it stops existing.
+        stillInDom: Boolean(target()),
+        stored: (JSON.parse(localStorage.getItem('kick-focus:settings') || '{}').layout || {}).hidden,
+      };
+
+      chip().click();
+      await settle();
+      const restored = {
+        pressed: chip().getAttribute('aria-pressed'),
+        display: getComputedStyle(target()).display,
+      };
+      return { ok: true, initial, hidden, restored };
+    } finally {
+      localStorage.setItem('kick-focus:settings', JSON.stringify(before));
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+      if (beforePage) {
+        shadow.querySelector('[data-page="' + beforePage + '"]')?.click();
+        await settle();
+      }
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+    }
+  })()`);
+  const hide = hideProbe.value || {};
+  record('a hide chip takes a Kick control out of sight, not out of the page, and gives it back',
+    hide.ok === true
+      && hide.initial?.display !== 'none'
+      && hide.hidden?.display === 'none'
+      && hide.hidden?.stillInDom === true
+      && hide.hidden?.tagged === 'sidebar-browse'
+      && hide.hidden?.pressed === 'true'
+      && Array.isArray(hide.hidden?.stored) && hide.hidden.stored.includes('sidebar-browse')
+      && String(hide.hidden?.root || '').split(' ').includes('sidebar-browse')
+      // Reversible, and reversible without a reload.
+      && hide.restored?.display === hide.initial?.display
+      && hide.restored?.pressed === 'false',
+    hide.ok
+      ? `display ${hide.initial?.display} -> ${hide.hidden?.display} -> ${hide.restored?.display}; node kept=${hide.hidden?.stillInDom}, tag=${hide.hidden?.tagged}, stored=${JSON.stringify(hide.hidden?.stored)}`
+      : hide.why);
+
   // Kick DOM drift, measured against the ordered probes the runtime actually
   // uses rather than a second list that would rot separately.
   //

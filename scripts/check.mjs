@@ -410,6 +410,39 @@ const checks = [
     && source.includes('import-channel-emotes')
     && source.includes('channelCatalogEmotes')
     && source.includes('Open artwork')],
+  // Hiding is styling only. A `.remove()`, a `.click()`, or a `hidden = true`
+  // reached from this feature would take a Kick control out of service instead
+  // of out of sight, which is a different promise from the one the panel makes.
+  ['hides Kick controls from the catalog, with styling and nothing else',
+    source.includes('function hiddenElementCss')
+    && source.includes('function tagHideableElements')
+    && source.includes('data-kf-hidden~=')
+    && source.includes("toggle-hidden-element")
+    && !/tagHideableElements[\s\S]{0,600}?\.(remove|click)\(\)/.test(source)],
+  // The whole point of learning the ladder is not guessing at it. A resolution
+  // literal in the quality path is that guess coming back.
+  ['starts at the highest quality only from labels Kick was seen to offer',
+    source.includes('function recordQualityLadder')
+    && source.includes('function bestKnownQuality')
+    && source.includes('function desiredQuality')
+    && source.includes("const QUALITY_LADDER_KEY = 'ladder:global'")
+    && !/(?:QUALITY_LADDER_KEY|bestKnownQuality)[\s\S]{0,400}?['"]\d{3,4}p/.test(source)],
+  // The player reads a bare height; the menu shows a label. Writing the label
+  // into the session key is the defect this build shipped before 1.19.0.
+  ['seeds the player session key through the measured height mapping, not the label',
+    source.includes('function qualitySessionValue')
+    && /sessionStorage\.setItem\(QUALITY_SESSION_KEY, value\)/.test(source)
+    && /const value = qualitySessionValue\(desiredQuality\(\)\)/.test(source)],
+  // An anonymous session sees 1080p60 badged "Login required"; its textContent
+  // is "1080p60Login required" and the rung is not one this session may pick.
+  ['never records or clicks a quality rung Kick badged as unavailable',
+    source.includes('function qualityOptionGated')
+    && source.includes('function qualityControlLabel')
+    && /controls\.filter\(\(control\) => !qualityOptionGated\(control\)\)/.test(source)
+    && /if \(qualityOptionGated\(control\)\) continue;/.test(source)
+    // The badge copy is translated; the structure is not. Matching the words
+    // would work in English only.
+    && !/Login required/.test(source)],
   ['keeps page state separate from navigation actions', source.includes('dataset.kfCurrentPage')
     && !source.includes('page.dataset.page =')],
   ['mounts the Focus control beside Get KICKs', source.includes('ensureHeaderQuickControl')
@@ -871,6 +904,20 @@ const redProbes = [
     withModuleSyntax("'use strict';\nexport function x() {}\n")],
   ['module-syntax gate accepts a stripped bundle',
     !withModuleSyntax("'use strict';\nfunction x() {}\nconst y = 'import { a } from b';\n")],
+  // The two new gates are negative assertions, which are the ones that pass for
+  // the wrong reason. Prove each notices the thing it exists to forbid.
+  ['hide-elements gate would catch a control being removed rather than styled',
+    /tagHideableElements[\s\S]{0,600}?\.(remove|click)\(\)/
+      .test('function tagHideableElements() {\n  for (const e of list) e.remove()\n}')],
+  ['hide-elements gate accepts a tag-only pass',
+    !/tagHideableElements[\s\S]{0,600}?\.(remove|click)\(\)/
+      .test('function tagHideableElements() {\n  for (const e of list) e.dataset.kfElement = id\n}')],
+  ['quality gate would catch a hard-coded resolution beside the ladder',
+    /(?:QUALITY_LADDER_KEY|bestKnownQuality)[\s\S]{0,400}?['"]\d{3,4}p/
+      .test("const QUALITY_LADDER_KEY = 'ladder:global';\nconst fallback = '1080p60';")],
+  ['quality gate accepts a ladder read with no literal rung',
+    !/(?:QUALITY_LADDER_KEY|bestKnownQuality)[\s\S]{0,400}?['"]\d{3,4}p/
+      .test("const QUALITY_LADDER_KEY = 'ladder:global';\nreturn bestQualityOption(raw.split('|'));")],
   ['trusted-types gate would catch a bare innerHTML write',
     /\.innerHTML\s*=(?!\s*trustedHTML\()/.test('node.innerHTML = `<b>x</b>`;')],
   ['trusted-types gate accepts a policy-routed write',

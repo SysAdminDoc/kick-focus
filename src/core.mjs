@@ -1,4 +1,4 @@
-export const VERSION = '1.18.2';
+export const VERSION = '1.19.0';
 export const SETTINGS_SCHEMA = 4;
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -15,6 +15,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     quickButton: true,
     showFollowingRail: true,
     showRecommendedRail: true,
+    // Ids from HIDEABLE_ELEMENTS. Empty by default: nothing of Kick's own
+    // chrome disappears until someone asks for it by name.
+    hidden: [],
     miniPlayerCollision: true,
     playerResizeRecovery: true,
     playerContainVideo: true,
@@ -42,6 +45,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
     reduceTelemetry: true,
     rememberVolume: true,
     rememberQuality: true,
+    // Off by default, and opt-in for the same reason Poor mode is: it spends
+    // the user's bandwidth on their behalf. It also learns before it acts —
+    // see QUALITY_LADDER_KEY in the runtime.
+    preferBestQuality: false,
     rememberVodPosition: true,
     stickyChatPause: false,
     chatHighlights: false,
@@ -99,6 +106,127 @@ export const DEFAULT_SETTINGS = Object.freeze({
     mature: 'B',
   }),
 });
+
+/**
+ * Kick's own controls a user may switch off, and the probe each resolves through.
+ *
+ * Hiding here is CSS only. The element stays in the DOM with its listeners
+ * intact and comes back the instant the switch flips — nothing in this feature
+ * clicks, removes, or reorders anything Kick rendered, so a hidden control is
+ * never a control that stopped working.
+ *
+ * `probe` names a hook in `LOCATOR_PROBES`, which is what puts these selectors
+ * under the same live drift gate as the rest of the shell. They are deliberately
+ * *not* written as literals here: a second selector list is a second thing to
+ * rot, and this one would rot silently because a control that fails to hide
+ * looks exactly like a control the user never switched off.
+ */
+export const HIDEABLE_ELEMENTS = Object.freeze([
+  Object.freeze({ id: 'player-pip', group: 'player', probe: 'playerPip', label: 'Miniplayer' }),
+  Object.freeze({ id: 'player-clip', group: 'player', probe: 'playerClip', label: 'Clip' }),
+  Object.freeze({ id: 'player-theatre', group: 'player', probe: 'playerTheatre', label: 'Theater mode' }),
+  Object.freeze({ id: 'player-fullscreen', group: 'player', probe: 'playerFullscreen', label: 'Fullscreen' }),
+  Object.freeze({ id: 'player-quality', group: 'player', probe: 'playerQuality', label: 'Quality menu' }),
+  Object.freeze({ id: 'player-volume', group: 'player', probe: 'playerVolume', label: 'Volume' }),
+  Object.freeze({ id: 'player-share', group: 'player', probe: 'playerShare', label: 'Share' }),
+  Object.freeze({ id: 'player-report', group: 'player', probe: 'playerReport', label: 'Report' }),
+  Object.freeze({ id: 'sidebar-home', group: 'sidebar', probe: 'sidebarHome', label: 'Home link' }),
+  Object.freeze({ id: 'sidebar-browse', group: 'sidebar', probe: 'sidebarBrowse', label: 'Browse link' }),
+  Object.freeze({ id: 'sidebar-following', group: 'sidebar', probe: 'sidebarFollowing', label: 'Following link' }),
+  Object.freeze({ id: 'sidebar-drops', group: 'sidebar', probe: 'sidebarDrops', label: 'Drops link' }),
+  Object.freeze({ id: 'sidebar-followed-channels', group: 'sidebar', probe: 'sidebarFollowedChannels', label: 'Followed channel list' }),
+  Object.freeze({ id: 'sidebar-recommended-channels', group: 'sidebar', probe: 'sidebarRecommendedChannels', label: 'Recommended channel list' }),
+]);
+
+/** The groups the settings grid renders, in order, with their headings. */
+export const HIDEABLE_GROUPS = Object.freeze([
+  Object.freeze({ id: 'player', label: 'Player controls' }),
+  Object.freeze({ id: 'sidebar', label: 'Sidebar' }),
+]);
+
+const HIDEABLE_ORDER = new Map(HIDEABLE_ELEMENTS.map((entry, index) => [entry.id, index]));
+
+/**
+ * Keep only ids this build actually knows how to find, in catalog order.
+ *
+ * Catalog order rather than the order they were clicked, so the exported value
+ * is the same set however it was reached and a diff of two backups is readable.
+ * An unknown id is dropped rather than kept: it would otherwise sit in the
+ * settings file forever, matching nothing and explaining nothing.
+ */
+export function normalizeHiddenElements(input) {
+  if (!Array.isArray(input)) return [];
+  const kept = new Set();
+  for (const value of input) {
+    const id = typeof value === 'string' ? value.trim() : '';
+    if (HIDEABLE_ORDER.has(id)) kept.add(id);
+  }
+  return [...kept].sort((a, b) => HIDEABLE_ORDER.get(a) - HIDEABLE_ORDER.get(b));
+}
+
+const QUALITY_ALIAS_HEIGHT = new Map([
+  ['source', 100000],
+  ['original', 100000],
+  ['best', 100000],
+  ['high', 720],
+  ['medium', 480],
+  ['low', 360],
+]);
+
+/**
+ * Order Kick's quality labels so the highest one can be picked without knowing
+ * the ladder in advance — Kick offers a different set per channel.
+ *
+ * `Auto` scores 0 on purpose. It is adaptive, so it is the *absence* of a
+ * choice rather than a rung on the ladder, and treating it as the top would
+ * make "always start at the highest quality" mean "change nothing". Anything
+ * unrecognized scores -1 and is never chosen: guessing at an unknown label is
+ * how a mod ends up writing a value the player rejects.
+ */
+export function qualityRank(label) {
+  const text = String(label ?? '').trim().toLowerCase();
+  if (!text) return -1;
+  if (text === 'auto' || text.startsWith('auto ') || text.startsWith('auto(')) return 0;
+  const match = text.match(/(\d{3,4})\s*p\s*(\d{2,3})?/);
+  if (match) return Number(match[1]) * 1000 + Math.min(Number(match[2]) || 30, 999);
+  const height = QUALITY_ALIAS_HEIGHT.get(text);
+  return height ? height * 1000 + 30 : -1;
+}
+
+/**
+ * The value Kick's player reads, which is not the label Kick displays.
+ *
+ * Measured on a live channel 2026-08-16 by picking each rung and reading the
+ * key back: 720p60 writes `720`, 360p writes `360`, 160p writes `160`, and
+ * Auto writes `0`. It is the bare height as a string, every time — so writing
+ * the menu label into `sessionStorage['stream_quality']`, which is what this
+ * build did before, hands the player a value it does not recognize.
+ *
+ * A rank that decodes to an implausible height is the alias table's synthetic
+ * one (`Source`), not a real rung, so it returns '' rather than inventing a
+ * number: that rung can still be clicked, it just cannot be pre-seeded.
+ */
+export function qualitySessionValue(label) {
+  const rank = qualityRank(label);
+  if (rank < 0) return '';
+  if (rank === 0) return '0';
+  const height = Math.floor(rank / 1000);
+  return height > 0 && height <= 4320 ? String(height) : '';
+}
+
+/** The best real option in a list, or '' when the list holds nothing rankable. */
+export function bestQualityOption(labels) {
+  let best = '';
+  let bestRank = 0;
+  for (const label of Array.isArray(labels) ? labels : []) {
+    const rank = qualityRank(label);
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = String(label).trim();
+    }
+  }
+  return best;
+}
 
 export const AD_HOSTS = Object.freeze([
   'imasdk.googleapis.com',
@@ -667,6 +795,7 @@ export function normalizeSettings(input) {
       quickButton: bool(layout.quickButton, defaults.layout.quickButton),
       showFollowingRail: bool(layout.showFollowingRail, defaults.layout.showFollowingRail),
       showRecommendedRail: bool(layout.showRecommendedRail, defaults.layout.showRecommendedRail),
+      hidden: normalizeHiddenElements(layout.hidden),
       miniPlayerCollision: bool(layout.miniPlayerCollision, defaults.layout.miniPlayerCollision),
       playerResizeRecovery: bool(layout.playerResizeRecovery, defaults.layout.playerResizeRecovery),
       playerContainVideo: bool(layout.playerContainVideo, defaults.layout.playerContainVideo),
@@ -695,6 +824,7 @@ export function normalizeSettings(input) {
       reduceTelemetry: bool(content.reduceTelemetry, defaults.content.reduceTelemetry),
       rememberVolume: bool(content.rememberVolume, defaults.content.rememberVolume),
       rememberQuality: bool(content.rememberQuality, defaults.content.rememberQuality),
+      preferBestQuality: bool(content.preferBestQuality, defaults.content.preferBestQuality),
       rememberVodPosition: bool(content.rememberVodPosition, defaults.content.rememberVodPosition),
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),

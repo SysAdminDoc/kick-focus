@@ -46,6 +46,91 @@ export const LOCATOR_PROBES = Object.freeze({
     Object.freeze({ id: 'card-group', selector: '[class*="group/card"]' }),
     Object.freeze({ id: 'card-article', selector: 'article' }),
   ]),
+
+  // Hooks for HIDEABLE_ELEMENTS. Every one of these is route-shaped — the
+  // player bar only exists on a channel and the sidebar sections only appear
+  // when the account has anything in them — so the live gate reports a
+  // fall-through here rather than failing on it.
+  //
+  // The player bar's own buttons carry `data-testid`, which is the stable hook
+  // and always the first probe. The three that do not (quality, share, report)
+  // are found through `data-ds-icon`, the design system's icon name: it is
+  // language-independent, unlike the `aria-label` beside it, so it keeps
+  // working for a user browsing Kick in Spanish. `aria-label` is kept as the
+  // last probe for the day an icon is renamed.
+  playerPip: Object.freeze([
+    Object.freeze({ id: 'pip-testid', selector: '[data-testid="video-player-pip"]' }),
+    Object.freeze({ id: 'pip-icon', selector: 'button:has(> svg[data-ds-icon="ViewMiniplayer"])' }),
+  ]),
+  playerClip: Object.freeze([
+    Object.freeze({ id: 'clip-testid', selector: '[data-testid="video-player-clip"]' }),
+    Object.freeze({ id: 'clip-icon', selector: 'button:has(svg[data-ds-icon="Clip"])' }),
+  ]),
+  playerTheatre: Object.freeze([
+    Object.freeze({ id: 'theatre-testid', selector: '[data-testid="video-player-theatre-mode"]' }),
+    Object.freeze({ id: 'theatre-icon', selector: 'button:has(> svg[data-ds-icon="ViewTheatre"])' }),
+  ]),
+  playerFullscreen: Object.freeze([
+    Object.freeze({ id: 'fullscreen-testid', selector: '[data-testid="video-player-fullscreen"]' }),
+    Object.freeze({ id: 'fullscreen-icon', selector: 'button:has(> svg[data-ds-icon^="Fullscreen"])' }),
+  ]),
+  // No `data-testid` on the gear today, unlike its four neighbours, so the icon
+  // name is the first probe rather than a placeholder that would report a
+  // fall-through on every single run and train the gate to be ignored.
+  playerQuality: Object.freeze([
+    Object.freeze({ id: 'quality-icon', selector: 'button[aria-haspopup="menu"]:has(> svg[data-ds-icon="Settings"])' }),
+    Object.freeze({ id: 'quality-label', selector: 'button[aria-haspopup="menu"][aria-label*="setting" i]' }),
+  ]),
+  playerVolume: Object.freeze([
+    Object.freeze({ id: 'volume-group', selector: 'div[class*="group/volume"]' }),
+    Object.freeze({ id: 'volume-icon-owner', selector: 'div:has(> button > svg[data-ds-icon^="Sound"])' }),
+  ]),
+  playerShare: Object.freeze([
+    Object.freeze({ id: 'share-icon', selector: 'button:has(> svg[data-ds-icon="Share"])' }),
+    Object.freeze({ id: 'share-label', selector: 'button[aria-label*="share" i]' }),
+  ]),
+  playerReport: Object.freeze([
+    Object.freeze({ id: 'report-icon', selector: 'button:has(> svg[data-ds-icon="Report"])' }),
+    Object.freeze({ id: 'report-label', selector: 'button[aria-label*="report" i]' }),
+  ]),
+
+  // The sidebar links are hidden at their list item so the row collapses
+  // instead of leaving a gap. The anchor is the fallback: it is the only child
+  // of an unstyled `<li>`, so hiding it alone still collapses the row.
+  sidebarHome: Object.freeze([
+    Object.freeze({ id: 'sidebar-home-item', selector: 'li:has(> [data-testid="sidebar-home"])' }),
+    Object.freeze({ id: 'sidebar-home-link', selector: '[data-testid="sidebar-home"]' }),
+  ]),
+  sidebarBrowse: Object.freeze([
+    Object.freeze({ id: 'sidebar-browse-item', selector: 'li:has(> [data-testid="sidebar-browse"])' }),
+    Object.freeze({ id: 'sidebar-browse-link', selector: '[data-testid="sidebar-browse"]' }),
+  ]),
+  sidebarFollowing: Object.freeze([
+    Object.freeze({ id: 'sidebar-following-item', selector: 'li:has(> [data-testid="sidebar-following"])' }),
+    Object.freeze({ id: 'sidebar-following-link', selector: '[data-testid="sidebar-following"]' }),
+  ]),
+  sidebarDrops: Object.freeze([
+    Object.freeze({ id: 'sidebar-drops-item', selector: 'li:has(> [data-testid="sidebar-drops"])' }),
+    Object.freeze({ id: 'sidebar-drops-link', selector: '[data-testid="sidebar-drops"]' }),
+  ]),
+  // The whole section, heading icon included — hiding only the channel buttons
+  // would leave a bare heart or antenna glyph floating above nothing.
+  sidebarFollowedChannels: Object.freeze([
+    Object.freeze({ id: 'sidebar-followed-section', selector: 'section:has([data-testid^="sidebar-following-channel-"])' }),
+    Object.freeze({ id: 'sidebar-followed-buttons', selector: '[data-testid^="sidebar-following-channel-"]' }),
+  ]),
+  sidebarRecommendedChannels: Object.freeze([
+    Object.freeze({ id: 'sidebar-recommended-section', selector: 'section:has([data-testid^="sidebar-recommended-channel-"])' }),
+    Object.freeze({ id: 'sidebar-recommended-buttons', selector: '[data-testid^="sidebar-recommended-channel-"]' }),
+  ]),
+
+  // Kick's own quality menu. `[role="menuitemradio"]` is what it renders; the
+  // rest are older guesses kept so a previous shell still reads.
+  qualityOption: Object.freeze([
+    Object.freeze({ id: 'quality-menuitemradio', selector: '[role="menuitemradio"]' }),
+    Object.freeze({ id: 'quality-data', selector: '[data-quality], [data-resolution]' }),
+    Object.freeze({ id: 'quality-legacy', selector: '[data-testid*="quality" i], [aria-label*="quality" i], select[data-kf-quality]' }),
+  ]),
 });
 
 function asRoot(root) {
