@@ -8,6 +8,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - **The live extension proof no longer exits 0 when it verified nothing.** A behavioral gate that reports success without a browser is worse than none, so `verify:extension` and `release:check` now fail loudly when Chromium is absent (set `KF_ALLOW_NO_CHROMIUM=1` to downgrade to a skip on a machine that genuinely cannot install one). The matched-rule readback — which needs `declarativeNetRequestFeedback`, a permission the release manifest deliberately omits so Chrome does not warn about browsing history — is now conditional on that permission rather than failing the shipped artifact, with `ERR_BLOCKED_BY_CLIENT` remaining the authoritative block proof. The isolated companion proof was re-run against live Kick: 22/22 checks pass at 1440×900.
 
+### Internal
+
+- Replaced a literal NUL byte in `src/core.mjs` (the favorites-key separator) with a `\u0000` escape. The runtime string is identical, but the source is now plain text, so ripgrep no longer classifies the settings-schema module as binary — restoring the repo's own re-grep-after-edit safeguard.
+
 ## 1.9.0 — 2026-08-15
 
 Emote schema 5. Existing favorites migrate without loss.

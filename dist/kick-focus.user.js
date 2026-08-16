@@ -837,7 +837,7 @@ function cleanStickerFavorites(input, legacyPinned, hiddenSet) {
   const seen = new Set();
   const add = (key, channel, order) => {
     const scope = favoriteScope(channel);
-    const id = `${scope} ${key}`;
+    const id = `${scope}\u0000${key}`;
     if (!key || hiddenSet.has(key) || seen.has(id)) return;
     seen.add(id);
     entries.push({ key, channel: scope, order: Number.isFinite(order) ? order : entries.length });
