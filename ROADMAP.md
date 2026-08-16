@@ -54,20 +54,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P0 — data safety, security, correctness, and the single unblock
 
-- [ ] R-03 — Make "Reset all settings" destroy nothing irreplaceable and clear everything private
-  Why: reset deletes up to 2400 emote records incl. irreplaceable firstSeen/wasName/wasSrc provenance (the product's only proof Kick edits emotes, unregenerable) while leaving 8 private stores untouched.
-  Evidence: phase0-memo #4 — src/runtime.js:6399-6405,6387,5948,3534-3552; key list runtime.js:2-12; src/core.mjs:787.
-  Touches: runtime.js resetStickerPreferences() call + confirm copy; the 8 store keys (channel-notes, emote-usage, chat-keywords, media-preferences, channel-layouts, favorite-channels, not-interested-channels, multistream).
-  Acceptance: reset preserves the emote library by REQUIRED default (`keepLibrary:true`) — disclosure is NOT an acceptable substitute for destroying unregenerable data — and clears all 8 private stores; a node:test asserts post-reset state matches the R-04 store registry (library retained, private stores gone).
-  Complexity: M
-
-- [ ] R-04 — One source-of-truth store registry; export covers every store; import is safe and pollution-proof
-  Why: export omits 4 of 8 STORAGE_LABELS stores (channel-notes has NO backup path) while the panel says "Exporting now is the only way to keep these"; import replaces library/usage/multistream wholesale with no backup; `emoteUsage.global` is unbounded on write and unnormalized on boot; the import path has no `__proto__` guard.
-  Evidence: phase0-memo #11,#12,#24 — src/runtime.js:6420-6429,5916-5931,5-12,6447-6489,1630-1637; src/core.mjs:1120-1180,1487-1496; security stream (CVE-2026-21710 `__proto__` DoS class).
-  Touches: new store registry constant in core.mjs; exportSettings/STORAGE_LABELS/storageDiagnostics in runtime.js; normalizeEmoteUsage call sites; validateImportedSettings; check.mjs.
-  Acceptance: pure store-registry in core.mjs under node:test + gate in check.mjs asserting export payload covers every registered store; import is confirmed and non-destructive (backup or merge) for library/usage/multistream; `emoteUsage.global` is capped on write and normalized on read; import rejects `__proto__`/`constructor`/`prototype` keys (node:test with a malicious fixture).
-  Complexity: M
-
 - [ ] R-05 — Harden every privileged fetch/transport path (bridge forgery, ruleset/storage write, spoofable "protection", cookie-leaking blocklist fetch)
   Why: any kick.com page script can drive a privileged arbitrary-HTTPS fetch and read the body, permanently disable the telemetry ruleset via unvalidated JSON, and spoof the "network protection active" claim; separately the userscript blocklist transport sends ambient cookies to any host and accepts any URL string with no scheme check.
   Evidence: phase0-memo #5,#6,#7 + §5B (adopt HIGH) — src/extension/bridge.js:106-115,48-59; background.js:60-77,35-41; runtime.js:173-176,3748-3760; src/core.mjs:211 (blocklistUrl, no scheme check); src/metadata.txt:19 (`@connect *`).

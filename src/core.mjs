@@ -1058,6 +1058,114 @@ export function validateRemoteBlocklist(payload) {
  * The caller gets a list of what was dropped so the interface can say so
  * instead of reporting a clean success.
  */
+// Prototype-pollution keys (CVE-2026-21710 class). Every store that writes an
+// untrusted key drops these before the assignment, so a hand-edited import can
+// never reach `obj['__proto__'] = …`. Settings sections stay safe by rebuild.
+const POLLUTION_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Channel-path list (favorites, not-interested), rebuilt with the writer's bound. */
+export function normalizeChannelList(input, limit = 200) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of input) {
+    const path = normalizeChannelPath(raw);
+    if (path && !seen.has(path)) { seen.add(path); out.push(path); }
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Channel notes: path -> note string, rebuilt with the writer's bounds. */
+export function normalizeChannelNotes(input, limit = 100) {
+  if (!isRecord(input)) return {};
+  const out = {};
+  let count = 0;
+  for (const [rawPath, note] of Object.entries(input)) {
+    if (POLLUTION_KEYS.has(rawPath)) continue;
+    const path = normalizeChannelPath(rawPath);
+    if (!path || typeof note !== 'string') continue;
+    out[path] = note.slice(0, 1000);
+    if (++count >= limit) break;
+  }
+  return out;
+}
+
+/** Chat keyword filters: path -> keyword[], rebuilt with the writer's bounds. */
+export function normalizeChatKeywords(input, limit = 100) {
+  if (!isRecord(input)) return {};
+  const out = {};
+  let count = 0;
+  for (const [rawPath, list] of Object.entries(input)) {
+    if (POLLUTION_KEYS.has(rawPath)) continue;
+    const path = normalizeChannelPath(rawPath);
+    if (!path || !Array.isArray(list)) continue;
+    const words = [...new Set(list
+      .filter((word) => typeof word === 'string')
+      .map((word) => word.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 48))
+      .filter(Boolean))].slice(0, 20);
+    if (words.length) out[path] = words;
+    if (++count >= limit) break;
+  }
+  return out;
+}
+
+/** Per-channel layout: path -> {focus,theater,chatHidden,sidebarHidden} booleans. */
+export function normalizeChannelLayouts(input, limit = 50) {
+  if (!isRecord(input)) return {};
+  const out = {};
+  let count = 0;
+  for (const [rawPath, layout] of Object.entries(input)) {
+    if (POLLUTION_KEYS.has(rawPath)) continue;
+    const path = normalizeChannelPath(rawPath);
+    if (!path || !isRecord(layout)) continue;
+    out[path] = {
+      focus: bool(layout.focus, false),
+      theater: bool(layout.theater, false),
+      chatHidden: bool(layout.chatHidden, false),
+      sidebarHidden: bool(layout.sidebarHidden, false),
+    };
+    if (++count >= limit) break;
+  }
+  return out;
+}
+
+/** Volume/quality memory: "kind:path" -> primitive, rebuilt with the writer's bound. */
+export function normalizeMediaPreferences(input, limit = 240) {
+  if (!isRecord(input)) return {};
+  const out = {};
+  let count = 0;
+  for (const [key, value] of Object.entries(input)) {
+    if (POLLUTION_KEYS.has(key)) continue;
+    if (!/^[a-z]+:.+/.test(key) || key.length > 200) continue;
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') continue;
+    out[key] = value;
+    if (++count >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * Assemble the settings export payload from every backup store. Settings are
+ * spread at the root (schema/section keys); the rest are nested under their
+ * registered field. One shaper so the export and its coverage test cannot drift.
+ */
+export function buildSettingsExport(sources) {
+  const source = isRecord(sources) ? sources : {};
+  return {
+    ...(isRecord(source.settings) ? source.settings : {}),
+    stickers: source.stickers ?? null,
+    usage: source.usage ?? null,
+    multistream: source.multistream ?? null,
+    channelLayouts: source.channelLayouts ?? {},
+    favoriteChannels: Array.isArray(source.favoriteChannels) ? source.favoriteChannels : [],
+    dismissedChannels: Array.isArray(source.dismissedChannels) ? source.dismissedChannels : [],
+    chatKeywords: source.chatKeywords ?? {},
+    channelNotes: source.channelNotes ?? {},
+    mediaPreferences: source.mediaPreferences ?? {},
+  };
+}
+
 export function validateImportedSettings(jsonText) {
   let parsed;
   try {
@@ -1086,7 +1194,8 @@ export function validateImportedSettings(jsonText) {
   const stickers = parsed.stickers == null ? null : normalizeStickerPreferences(parsed.stickers);
   const notes = [];
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
-  const known = new Set(['schema', 'stickers', 'usage', 'multistream']);
+  const known = new Set(['schema', 'stickers', 'usage', 'multistream', 'channelLayouts',
+    'favoriteChannels', 'dismissedChannels', 'chatKeywords', 'channelNotes', 'mediaPreferences']);
 
   for (const key of Object.keys(parsed)) {
     if (!known.has(key) && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
@@ -1159,7 +1268,21 @@ export function validateImportedSettings(jsonText) {
     }
   }
 
-  return { ok: true, value, stickers, usage, multistream, notes };
+  // The remaining user-authored stores the export carries. Each is rebuilt from
+  // scratch with the same bounds its writer enforces, and `null` when absent so
+  // the importer only touches what the file actually provided.
+  const channelLayouts = parsed.channelLayouts == null ? null : normalizeChannelLayouts(parsed.channelLayouts);
+  const favoriteChannels = parsed.favoriteChannels == null ? null : normalizeChannelList(parsed.favoriteChannels);
+  const dismissedChannels = parsed.dismissedChannels == null ? null : normalizeChannelList(parsed.dismissedChannels);
+  const chatKeywords = parsed.chatKeywords == null ? null : normalizeChatKeywords(parsed.chatKeywords);
+  const channelNotes = parsed.channelNotes == null ? null : normalizeChannelNotes(parsed.channelNotes);
+  const mediaPreferences = parsed.mediaPreferences == null ? null : normalizeMediaPreferences(parsed.mediaPreferences);
+
+  return {
+    ok: true, value, stickers, usage, multistream,
+    channelLayouts, favoriteChannels, dismissedChannels, chatKeywords, channelNotes, mediaPreferences,
+    notes,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1178,6 +1301,11 @@ export function validateImportedSettings(jsonText) {
  */
 export const USAGE_CHANNEL_LIMIT = 400;
 
+/** The global rollup spans every channel, so it is bounded more loosely — but
+ *  bounded: it was previously capped only on read and grew without limit on
+ *  write, so a long session persisted an ever-larger map. */
+export const USAGE_GLOBAL_LIMIT = 2000;
+
 /**
  * Rebuild a usage store from untrusted input.
  *
@@ -1188,10 +1316,11 @@ export const USAGE_CHANNEL_LIMIT = 400;
  */
 export function normalizeEmoteUsage(input) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
-  const cleanScope = (raw) => {
+  const cleanScope = (raw, limit = USAGE_CHANNEL_LIMIT) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const entries = [];
     for (const [id, value] of Object.entries(raw)) {
+      if (POLLUTION_KEYS.has(id)) continue;
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) continue;
       if (!value || typeof value !== 'object') continue;
       const count = Number(value.count);
@@ -1204,7 +1333,7 @@ export function normalizeEmoteUsage(input) {
       }]);
     }
     entries.sort((a, b) => (b[1].count - a[1].count) || (b[1].lastAt - a[1].lastAt));
-    return Object.fromEntries(entries.slice(0, USAGE_CHANNEL_LIMIT));
+    return Object.fromEntries(entries.slice(0, limit));
   };
 
   const channels = {};
@@ -1215,7 +1344,7 @@ export function normalizeEmoteUsage(input) {
     if (Object.keys(cleaned).length) channels[channel] = cleaned;
     if (Object.keys(channels).length >= 200) break;
   }
-  return { global: cleanScope(source.global), channels };
+  return { global: cleanScope(source.global, USAGE_GLOBAL_LIMIT), channels };
 }
 
 export function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
@@ -1231,6 +1360,8 @@ export function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
     firstAt: globalEntry.firstAt || at,
     lastAt: at,
   };
+  // The global rollup was capped only on read, so it grew without bound on write.
+  next.global = trimUsage(next.global, USAGE_GLOBAL_LIMIT);
   if (channel) {
     const scope = { ...(next.channels[channel] || {}) };
     const entry = scope[id] || { name, count: 0, firstAt: at, lastAt: at };
@@ -1240,12 +1371,12 @@ export function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
   return next;
 }
 
-/** Keep the per-channel map bounded by dropping the least-used entries. */
-function trimUsage(scope) {
+/** Keep a usage map bounded by dropping the least-used entries. */
+function trimUsage(scope, limit = USAGE_CHANNEL_LIMIT) {
   const entries = Object.entries(scope);
-  if (entries.length <= USAGE_CHANNEL_LIMIT) return scope;
+  if (entries.length <= limit) return scope;
   entries.sort((a, b) => (b[1].count - a[1].count) || (b[1].lastAt - a[1].lastAt));
-  return Object.fromEntries(entries.slice(0, USAGE_CHANNEL_LIMIT));
+  return Object.fromEntries(entries.slice(0, limit));
 }
 
 /**
@@ -1545,16 +1676,36 @@ export function isAdPreflightScript(rawUrl, pageOrigin = 'https://kick.com') {
  * difference between "something went wrong" and "your emote library did not
  * save".
  */
-export const STORAGE_LABELS = {
-  'kick-focus:settings': 'settings',
-  'kick-focus:sticker-preferences': 'emote library',
-  'kick-focus:media-preferences': 'volume and quality memory',
-  'kick-focus:chat-keywords': 'chat keyword filters',
-  'kick-focus:channel-notes': 'channel notes',
-  'kick-focus:channel-layouts': 'per-channel layout',
-  'kick-focus:remote-blocklist': 'blocklist cache',
-  'kick-focus:emote-usage': 'emote usage counts',
-};
+/**
+ * Every persistent store the mod owns, in one place, so export coverage,
+ * factory reset, and the diagnostics labels cannot drift apart.
+ *
+ * - `key`    the localStorage / GM key
+ * - `label`  the user-facing name (feeds STORAGE_LABELS)
+ * - `backup` carried by the settings export/import round-trip
+ * - `field`  the export-payload key ('settings' is spread at the root)
+ * - `reset`  cleared by "Reset all settings" (a full factory reset)
+ *
+ * The emote library is deliberately `backup:true, reset:false`: it is the only
+ * irreplaceable store (first-seen provenance cannot be regenerated), so a reset
+ * keeps it — disclosure is not an acceptable substitute for destroying it.
+ */
+export const STORAGE_STORES = Object.freeze([
+  { key: 'kick-focus:settings', label: 'settings', backup: true, field: 'settings', reset: true },
+  { key: 'kick-focus:sticker-preferences', label: 'emote library', backup: true, field: 'stickers', reset: false },
+  { key: 'kick-focus:emote-usage', label: 'emote usage counts', backup: true, field: 'usage', reset: true },
+  { key: 'kick-focus:multistream', label: 'multi-stream layouts', backup: true, field: 'multistream', reset: true },
+  { key: 'kick-focus:channel-layouts', label: 'per-channel layout', backup: true, field: 'channelLayouts', reset: true },
+  { key: 'kick-focus:favorite-channels', label: 'favorite channels', backup: true, field: 'favoriteChannels', reset: true },
+  { key: 'kick-focus:not-interested-channels', label: 'not-interested channels', backup: true, field: 'dismissedChannels', reset: true },
+  { key: 'kick-focus:chat-keywords', label: 'chat keyword filters', backup: true, field: 'chatKeywords', reset: true },
+  { key: 'kick-focus:channel-notes', label: 'channel notes', backup: true, field: 'channelNotes', reset: true },
+  { key: 'kick-focus:media-preferences', label: 'volume and quality memory', backup: true, field: 'mediaPreferences', reset: true },
+  { key: 'kick-focus:remote-blocklist', label: 'blocklist cache', backup: false, reset: false },
+  { key: 'kick-focus:watched-this-session', label: 'watched this session', backup: false, reset: false },
+]);
+
+export const STORAGE_LABELS = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store.label]));
 
 export function storageLabel(key) {
   return STORAGE_LABELS[key] || String(key || '').replace(/^kick-focus:/, '') || 'data';

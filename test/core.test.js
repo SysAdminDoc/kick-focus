@@ -44,7 +44,86 @@ import {
   TELEMETRY_HOSTS,
   TELEMETRY_NO_CANCEL_HOSTS,
   cancellableTelemetryHosts,
+  STORAGE_STORES,
+  buildSettingsExport,
+  normalizeEmoteUsage,
+  recordEmoteUse,
+  USAGE_GLOBAL_LIMIT,
 } from '../src/core.mjs';
+
+test('the store registry keeps the library on reset but marks every private store for clearing', () => {
+  const byKey = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store]));
+  // The library is the one irreplaceable store: backed up, but never reset.
+  assert.equal(byKey['kick-focus:sticker-preferences'].backup, true);
+  assert.equal(byKey['kick-focus:sticker-preferences'].reset, false);
+  for (const key of [
+    'kick-focus:emote-usage', 'kick-focus:multistream', 'kick-focus:channel-layouts',
+    'kick-focus:favorite-channels', 'kick-focus:not-interested-channels',
+    'kick-focus:chat-keywords', 'kick-focus:channel-notes', 'kick-focus:media-preferences',
+  ]) {
+    assert.equal(byKey[key].reset, true, `${key} must be cleared on reset`);
+    assert.equal(byKey[key].backup, true, `${key} must be in the backup`);
+  }
+});
+
+test('the export payload carries every store the registry marks for backup', () => {
+  const probe = buildSettingsExport({
+    settings: { schema: 1, layout: { density: 'compact' } },
+    stickers: { schema: 5 }, usage: { global: {}, channels: {} }, multistream: { streams: [] },
+    channelLayouts: { '/xqc': { focus: true } }, favoriteChannels: ['/xqc'],
+    dismissedChannels: ['/foo'], chatKeywords: { '/xqc': ['spam'] },
+    channelNotes: { '/xqc': 'note' }, mediaPreferences: { 'volume:/xqc': 0.5 },
+  });
+  for (const store of STORAGE_STORES.filter((entry) => entry.backup)) {
+    if (store.field === 'settings') assert.ok('layout' in probe, 'settings are spread at the root');
+    else assert.ok(store.field in probe, `${store.field} present in export`);
+  }
+});
+
+test('import drops prototype-pollution keys in every store and never touches Object.prototype', () => {
+  // Raw JSON (not an object literal, which would set the prototype instead of an
+  // own key) so the pollution keys actually travel through JSON.parse as data.
+  const malicious = '{"layout":{"density":"compact"},"channelNotes":{"__proto__":{"polluted":"yes"},"/xqc":"ok"},"mediaPreferences":{"constructor":1,"volume:/xqc":0.5}}';
+  const result = validateImportedSettings(malicious);
+  assert.ok(result.ok);
+  assert.equal({}.polluted, undefined);
+  assert.ok(!Object.hasOwn(result.channelNotes, '__proto__'));
+  assert.equal(result.channelNotes['/xqc'], 'ok');
+  assert.ok(!Object.hasOwn(result.mediaPreferences, 'constructor'));
+  assert.equal(result.mediaPreferences['volume:/xqc'], 0.5);
+});
+
+test('import round-trips the previously omitted stores with their bounds enforced', () => {
+  const payload = buildSettingsExport({
+    settings: { schema: 1 },
+    favoriteChannels: ['/xqc', 'https://evil.com/haxor', '/xqc'],
+    dismissedChannels: ['/foo'],
+    chatKeywords: { '/xqc': ['SPAM', 'spam', '  '] },
+    channelNotes: { '/xqc': 'x'.repeat(2000) },
+    channelLayouts: { '/xqc': { focus: true, bogus: 1 } },
+    mediaPreferences: { 'volume:/xqc': 0.5, 'bad key': 1 },
+  });
+  const result = validateImportedSettings(JSON.stringify(payload));
+  assert.ok(result.ok);
+  assert.deepEqual(result.favoriteChannels, ['/xqc']); // off-site URL dropped, duplicate deduped
+  assert.deepEqual(result.chatKeywords['/xqc'], ['spam']); // lowercased, deduped, blanks gone
+  assert.equal(result.channelNotes['/xqc'].length, 1000); // capped
+  assert.deepEqual(result.channelLayouts['/xqc'], { focus: true, theater: false, chatHidden: false, sidebarHidden: false });
+  assert.ok(!('bad key' in result.mediaPreferences)); // malformed key rejected
+});
+
+test('emote usage global rollup is capped on both read and write', () => {
+  const oversized = { global: {}, channels: {} };
+  for (let i = 0; i < USAGE_GLOBAL_LIMIT + 500; i += 1) {
+    oversized.global[`e${i}`] = { name: `E${i}`, count: (i % 50) + 1, firstAt: 1, lastAt: i + 1 };
+  }
+  assert.ok(Object.keys(normalizeEmoteUsage(oversized).global).length <= USAGE_GLOBAL_LIMIT);
+  let counts = { global: {}, channels: {} };
+  for (let i = 0; i < USAGE_GLOBAL_LIMIT + 100; i += 1) {
+    counts = recordEmoteUse(counts, { channel: '', id: `id${i}`, name: `N${i}`, at: i + 1 });
+  }
+  assert.ok(Object.keys(counts.global).length <= USAGE_GLOBAL_LIMIT);
+});
 
 test('litix.io stays in the telemetry set but out of the network-layer cancel list', () => {
   // Blocking litix.io hard triggers a retry storm; the page realm answers it

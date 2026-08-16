@@ -10,6 +10,7 @@ const STICKER_PREFERENCES_KEY = 'kick-focus:sticker-preferences';
 const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
 const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const MULTISTREAM_KEY = 'kick-focus:multistream';
+const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 
 // Declared ahead of `state` because writes can happen while `state` is still in
@@ -1628,12 +1629,9 @@ const REALTIME_BACKOFF_MS = [2000, 5000, 15000, 45000];
 const VOLUME_GRACE_MS = 1500;
 
 function readEmoteUsage() {
-  const stored = gmGet(EMOTE_USAGE_KEY, null);
-  if (!stored || typeof stored !== 'object') return { global: {}, channels: {} };
-  return {
-    global: stored.global && typeof stored.global === 'object' ? stored.global : {},
-    channels: stored.channels && typeof stored.channels === 'object' ? stored.channels : {},
-  };
+  // Normalize on boot too: the global rollup used to be capped only on read
+  // through here-nothing, so a stored oversized map was loaded back whole.
+  return normalizeEmoteUsage(gmGet(EMOTE_USAGE_KEY, null));
 }
 
 /**
@@ -4930,7 +4928,7 @@ const TRANSLATIONS = {
     'Reset settings?': '¿Restablecer configuración?',
     'Reset all Kick Focus settings?': '¿Restablecer toda la configuración de Kick Focus?',
     'This restores the defaults for this page.': 'Esto restaura los valores predeterminados de esta página.',
-    'Every preference and shortcut will return to its factory default.': 'Todas las preferencias y atajos volverán a sus valores de fábrica.',
+    'Every preference, shortcut, note, filter, and channel list returns to its factory default. Your recorded emote library is kept.': 'Todas las preferencias, atajos, notas, filtros y listas de canales volverán a sus valores de fábrica. Tu biblioteca de emotes registrada se conserva.',
     'Only the settings on this page will return to their defaults.': 'Solo la configuración de esta página volverá a sus valores predeterminados.',
     'Cancel': 'Cancelar',
     'Reset': 'Restablecer',
@@ -5145,7 +5143,7 @@ const TRANSLATIONS = {
     'Reset settings?': 'Redefinir configurações?',
     'Reset all Kick Focus settings?': 'Redefinir todas as configurações do Kick Focus?',
     'This restores the defaults for this page.': 'Isso restaura os padrões desta página.',
-    'Every preference and shortcut will return to its factory default.': 'Todas as preferências e atalhos voltarão ao padrão de fábrica.',
+    'Every preference, shortcut, note, filter, and channel list returns to its factory default. Your recorded emote library is kept.': 'Todas as preferências, atalhos, notas, filtros e listas de canais voltam ao padrão de fábrica. Sua biblioteca de emotes registrada é mantida.',
     'Only the settings on this page will return to their defaults.': 'Somente as configurações desta página voltarão aos padrões.',
     'Cancel': 'Cancelar',
     'Reset': 'Redefinir',
@@ -5969,8 +5967,8 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
-      <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
-      <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
+      <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group">${gmGet(PRE_IMPORT_BACKUP_KEY, null) ? `<button type="button" class="kf-button" data-action="undo-import">Undo import</button>` : ''}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
+      <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
     ${renderStorageHealthPanel()}
     <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
@@ -6209,6 +6207,7 @@ function onInterfaceClick(event) {
   else if (action === 'confirm-reset') confirmReset();
   else if (action === 'export') exportSettings();
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
+  else if (action === 'undo-import') undoImport();
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'open-multistream') openMultistream();
   else if (action === 'close-multistream') closeMultistream();
@@ -6418,7 +6417,7 @@ function openResetConfirmation(scope) {
   const title = state.shadow.querySelector('[data-kf-confirm-title]');
   const copy = state.shadow.querySelector('[data-kf-confirm-copy]');
   title.textContent = scope === 'all' ? tr('Reset all Kick Focus settings?') : `${tr('Reset')} ${tr(NAV_ITEMS.find(([id]) => id === state.currentPage)?.[1] || 'this page')}?`;
-  copy.textContent = scope === 'all' ? tr('Every preference and shortcut will return to its factory default.') : tr('Only the settings on this page will return to their defaults.');
+  copy.textContent = scope === 'all' ? tr('Every preference, shortcut, note, filter, and channel list returns to its factory default. Your recorded emote library is kept.') : tr('Only the settings on this page will return to their defaults.');
   localizeInterface();
   container.hidden = false;
   container.querySelector('[data-action="cancel-reset"]')?.focus();
@@ -6430,12 +6429,38 @@ function closeResetConfirmation() {
   state.resetPending = false;
 }
 
+// A factory reset clears every private store the registry marks reset:true, but
+// keeps the emote library: its first-seen/wasName/wasSrc provenance is the one
+// thing here that cannot be regenerated, so it is preserved rather than
+// destroyed. Settings and the library are handled by their own resets above.
+function clearPrivateData() {
+  state.emoteUsage = { global: {}, channels: {} };
+  gmDelete(EMOTE_USAGE_KEY);
+  state.multistream = normalizeMultistream({});
+  gmDelete(MULTISTREAM_KEY);
+  if (multistreamOpen()) renderMultistream();
+  gmDelete(CHANNEL_LAYOUT_KEY);
+  state.favorites = new Set();
+  state.dismissed = new Set();
+  gmDelete(FAVORITES_KEY);
+  gmDelete(DISMISSED_KEY);
+  state.chatKeywords = {};
+  state.channelNotes = {};
+  gmDelete(CHAT_KEYWORDS_KEY);
+  gmDelete(CHANNEL_NOTES_KEY);
+  state.mediaPreferences = {};
+  gmDelete(MEDIA_PREFERENCES_KEY);
+}
+
 function confirmReset() {
   const scope = state.resetPending;
   if (scope === 'all') {
     state.settings = normalizeSettings(DEFAULT_SETTINGS);
     gmDelete(STORAGE_KEY);
-    resetStickerPreferences();
+    // keepLibrary is required, not optional: disclosure is not an acceptable
+    // substitute for destroying unregenerable provenance.
+    resetStickerPreferences({ keepLibrary: true });
+    clearPrivateData();
     saveSettings('All settings reset');
   } else {
     const section = { layout: 'layout', appearance: 'appearance', content: 'content', accessibility: 'accessibility' }[state.currentPage];
@@ -6451,16 +6476,26 @@ function confirmReset() {
   announce('Settings reset');
 }
 
+// Everything the About page says is stored travels with the backup, or the
+// backup is not one. Every store the registry marks `backup` is included here.
+function currentExportPayload() {
+  return buildSettingsExport({
+    settings: state.settings,
+    stickers: stickerPreferencesValue(),
+    usage: state.emoteUsage,
+    multistream: state.multistream,
+    channelLayouts: channelLayoutMap(),
+    favoriteChannels: [...state.favorites],
+    dismissedChannels: [...state.dismissed],
+    chatKeywords: state.chatKeywords,
+    channelNotes: state.channelNotes,
+    mediaPreferences: state.mediaPreferences,
+  });
+}
+
 function exportSettings() {
   try {
-    const payload = {
-      ...state.settings,
-      stickers: stickerPreferencesValue(),
-      // Everything the About page says is stored travels with the backup, or
-      // the backup is not one.
-      usage: state.emoteUsage,
-      multistream: state.multistream,
-    };
+    const payload = currentExportPayload();
     const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -6472,10 +6507,55 @@ function exportSettings() {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     const counted = Object.keys(state.emoteUsage.global || {}).length;
-    showToast(`Exported settings, ${state.stickerPreferences.library.size} emotes, ${counted} usage counts, and ${state.multistream.layouts.length} layouts.`);
+    showToast(`Exported settings, ${state.stickerPreferences.library.size} emotes, ${counted} usage counts, ${state.multistream.layouts.length} layouts, and your channels, notes, and filters.`);
   } catch {
     showToast('Could not export settings.', true);
   }
+}
+
+// Apply every store a validated import provided. Each store the file omitted is
+// left untouched (its result field is null), so a partial backup never wipes
+// what it did not carry.
+function applyImportedStores(result) {
+  state.settings = result.value;
+  if (result.stickers) {
+    state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
+    gmSet(STICKER_PREFERENCES_KEY, result.stickers);
+    state.runtime.stickerCatalogDirty = true;
+    state.runtime.stickerLibraryFilter = 'all';
+    state.runtime.stickerLibraryQuery = '';
+  }
+  if (result.usage) {
+    state.emoteUsage = result.usage;
+    gmSet(EMOTE_USAGE_KEY, state.emoteUsage);
+  }
+  if (result.multistream) {
+    state.multistream = result.multistream;
+    persistMultistream();
+    if (multistreamOpen()) renderMultistream();
+  }
+  if (result.channelLayouts) gmSet(CHANNEL_LAYOUT_KEY, result.channelLayouts);
+  if (result.favoriteChannels) {
+    state.favorites = new Set(result.favoriteChannels);
+    persistSet(FAVORITES_KEY, state.favorites);
+  }
+  if (result.dismissedChannels) {
+    state.dismissed = new Set(result.dismissedChannels);
+    persistSet(DISMISSED_KEY, state.dismissed);
+  }
+  if (result.chatKeywords) {
+    state.chatKeywords = result.chatKeywords;
+    gmSet(CHAT_KEYWORDS_KEY, state.chatKeywords);
+  }
+  if (result.channelNotes) {
+    state.channelNotes = result.channelNotes;
+    gmSet(CHANNEL_NOTES_KEY, state.channelNotes);
+  }
+  if (result.mediaPreferences) {
+    state.mediaPreferences = result.mediaPreferences;
+    gmSet(MEDIA_PREFERENCES_KEY, state.mediaPreferences);
+  }
+  saveSettings('Imported');
 }
 
 async function onImportFile(event) {
@@ -6488,38 +6568,43 @@ async function onImportFile(event) {
       showToast(result.error, true);
       return;
     }
-    state.settings = result.value;
-    if (result.stickers) {
-      state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
-      gmSet(STICKER_PREFERENCES_KEY, result.stickers);
-      state.runtime.stickerCatalogDirty = true;
-      state.runtime.stickerLibraryFilter = 'all';
-      state.runtime.stickerLibraryQuery = '';
-    }
-    if (result.usage) {
-      state.emoteUsage = result.usage;
-      gmSet(EMOTE_USAGE_KEY, state.emoteUsage);
-    }
-    if (result.multistream) {
-      state.multistream = result.multistream;
-      persistMultistream();
-      if (multistreamOpen()) renderMultistream();
-    }
-    saveSettings('Imported');
+    // Non-destructive: snapshot the current configuration before overwriting so
+    // the import can be undone, then apply every store the file provided.
+    gmSet(PRE_IMPORT_BACKUP_KEY, currentExportPayload());
+    applyImportedStores(result);
     renderSettingsPage();
     scheduleApply(0);
     // Naming what was not kept, because an import that silently drops half a
     // configuration still reports success otherwise.
     const notes = result.notes || [];
+    const undoHint = ' Previous settings backed up — use Undo import to restore them.';
     if (notes.length === 0) {
-      showToast('Settings imported.');
+      showToast(`Settings imported.${undoHint}`);
     } else {
-      showToast(`Settings imported. ${notes[0]}${notes.length > 1 ? ` (+${notes.length - 1} more)` : ''}`);
-      announce(`Settings imported. ${notes.join(' ')}`);
+      showToast(`Settings imported. ${notes[0]}${notes.length > 1 ? ` (+${notes.length - 1} more)` : ''}${undoHint}`);
+      announce(`Settings imported. ${notes.join(' ')}${undoHint}`);
     }
   } catch {
     showToast('Could not read that settings file.', true);
   }
+}
+
+function undoImport() {
+  const backup = gmGet(PRE_IMPORT_BACKUP_KEY, null);
+  if (!backup) {
+    showToast('No import to undo.', true);
+    return;
+  }
+  const result = validateImportedSettings(JSON.stringify(backup));
+  if (!result.ok) {
+    showToast('The backup could not be restored.', true);
+    return;
+  }
+  applyImportedStores(result);
+  gmDelete(PRE_IMPORT_BACKUP_KEY);
+  renderSettingsPage();
+  scheduleApply(0);
+  showToast('Import undone — your previous settings are back.');
 }
 
 async function copyText(text) {

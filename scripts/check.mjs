@@ -1,6 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, VERSION } from '../src/core.mjs';
+import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, VERSION } from '../src/core.mjs';
+
+const exportProbe = buildSettingsExport({
+  settings: { probe: 1 }, stickers: 1, usage: 1, multistream: 1, channelLayouts: 1,
+  favoriteChannels: [1], dismissedChannels: [1], chatKeywords: 1, channelNotes: 1, mediaPreferences: 1,
+});
 
 const read = (relative) => readFile(resolve(relative), 'utf8');
 const readJson = async (relative) => JSON.parse(await read(relative));
@@ -92,6 +97,20 @@ const checks = [
     && source.includes('function queueStickerPersist')
     && source.includes('if (state.stickerPreferences.hidden.has(sticker.key)) continue')
     && source.includes('state.stickerPreferences.library.delete(key)')],
+  ['export payload covers every registered backup store', STORAGE_STORES.filter((store) => store.backup)
+    .every((store) => (store.field === 'settings' ? ('probe' in exportProbe) : (store.field in exportProbe)))],
+  ['import restores every backup store', source.includes('function applyImportedStores')
+    && source.includes('gmSet(CHANNEL_LAYOUT_KEY, result.channelLayouts)')
+    && source.includes('state.channelNotes = result.channelNotes')
+    && source.includes('state.mediaPreferences = result.mediaPreferences')
+    && source.includes('new Set(result.favoriteChannels)')],
+  ['import drops prototype-pollution keys and is non-destructive', source.includes('POLLUTION_KEYS')
+    && source.includes('PRE_IMPORT_BACKUP_KEY')
+    && source.includes('function undoImport')],
+  ['reset keeps the emote library and clears every private store', source.includes('resetStickerPreferences({ keepLibrary: true })')
+    && source.includes('function clearPrivateData')
+    && source.includes('gmDelete(CHANNEL_NOTES_KEY)')
+    && source.includes('gmDelete(EMOTE_USAGE_KEY)')],
   ['offers a three-row one-click favorites shelf', source.includes('stickerQuickProxyMarkup')
     && source.includes('data-kf-sticker-quick-grid')
     && source.includes('max-height: 156px')],
