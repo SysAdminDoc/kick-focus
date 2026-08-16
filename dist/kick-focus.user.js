@@ -304,6 +304,42 @@ function insertionPlanFor(descriptor, collisions = [], access = '') {
 }
 
 /**
+ * Where each keyword occurs in one run of text, as non-overlapping spans.
+ *
+ * Case-insensitive, sorted, and merged where two keywords overlap or touch, so
+ * the caller can turn each span straight into a Range without producing nested
+ * or duplicate highlights. `limit` caps the total, because a chat that scrolls
+ * for hours can accumulate more matches than are worth painting.
+ */
+function findKeywordSpans(text, keywords, limit = 500) {
+  const haystack = typeof text === 'string' ? text.toLowerCase() : '';
+  const needles = (Array.isArray(keywords) ? keywords : [])
+    .map((keyword) => (typeof keyword === 'string' ? keyword.trim().toLowerCase() : ''))
+    .filter(Boolean);
+  if (!haystack || !needles.length) return [];
+  const spans = [];
+  for (const needle of needles) {
+    let from = 0;
+    for (;;) {
+      const at = haystack.indexOf(needle, from);
+      if (at === -1) break;
+      spans.push({ start: at, end: at + needle.length });
+      from = at + needle.length;
+      if (spans.length >= limit * 4) break;
+    }
+  }
+  spans.sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span.start <= last.end) last.end = Math.max(last.end, span.end);
+    else merged.push({ ...span });
+    if (merged.length >= limit) break;
+  }
+  return merged;
+}
+
+/**
  * Running cost of the apply cycle, so a regression shows up as a number.
  *
  * Kept as plain deltas rather than `performance.measure` entries: measures land
@@ -4483,6 +4519,9 @@ const SITE_CSS = `
     [data-kf-card-actions] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
 
     [data-kf-highlighted="true"] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .07) !important; }
+    /* The matched words, painted from the Custom Highlight registry — no node
+       is written into chat for this. Only colour properties apply here. */
+    ::highlight(kick-focus-keyword) { background-color: rgba(var(--kf-accent-rgb, 124, 255, 43), .32); color: inherit; }
 
     html[data-kf-mini-player-collision="true"] #injected-embedded-channel-player { bottom: 82px !important; }
 
@@ -7563,13 +7602,69 @@ function chatKeywordsForChannel() {
   return Array.isArray(value) ? value.filter((item) => typeof item === 'string').slice(0, 20) : [];
 }
 
+const KEYWORD_HIGHLIGHT_NAME = 'kick-focus-keyword';
+const KEYWORD_RANGE_LIMIT = 400;
+
+/** The Custom Highlight registry, or null where the engine has none. */
+function highlightRegistry() {
+  try {
+    return typeof Highlight === 'function' && typeof CSS !== 'undefined' && CSS.highlights ? CSS.highlights : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearKeywordHighlight() {
+  try { highlightRegistry()?.delete(KEYWORD_HIGHLIGHT_NAME); } catch { /* nothing registered */ }
+}
+
+/**
+ * Mark the messages that match, and paint the matched words themselves.
+ *
+ * The row marker is an attribute Kick's tree already tolerated. The words are
+ * new, and they cost the tree nothing: the Custom Highlight API paints ranges
+ * from a registry the browser owns, so not one node is written into chat —
+ * no <mark> for React to reconcile against, nothing to undo when a message is
+ * recycled, and a message that Kick re-renders simply gets fresh ranges on
+ * the next cycle. Feature-detected; without the API the row marker alone is
+ * what it always was.
+ */
 function applyChatHighlights() {
   const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
-  if (!messages) return;
+  const registry = highlightRegistry();
+  if (!messages) {
+    clearKeywordHighlight();
+    return;
+  }
   const keywords = state.settings.content.chatHighlights ? chatKeywordsForChannel() : [];
+  const ranges = [];
   for (const node of messages.querySelectorAll?.('[data-index], [data-message-id], .group') || []) {
-    const text = (node.textContent || '').toLowerCase();
-    node.dataset.kfHighlighted = String(keywords.some((keyword) => text.includes(keyword.toLowerCase())));
+    const text = node.textContent || '';
+    const hit = keywords.length > 0 && findKeywordSpans(text, keywords, 1).length > 0;
+    node.dataset.kfHighlighted = String(hit);
+    if (hit && registry && ranges.length < KEYWORD_RANGE_LIMIT) collectKeywordRanges(node, keywords, ranges);
+  }
+  if (!registry) return;
+  try {
+    if (ranges.length) registry.set(KEYWORD_HIGHLIGHT_NAME, new Highlight(...ranges));
+    else registry.delete(KEYWORD_HIGHLIGHT_NAME);
+  } catch (error) {
+    logAppError('keyword highlight', error);
+  }
+}
+
+/** Ranges over the text nodes of one message where a keyword occurs. */
+function collectKeywordRanges(root, keywords, ranges) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let textNode = walker.nextNode(); textNode; textNode = walker.nextNode()) {
+    const spans = findKeywordSpans(textNode.nodeValue || '', keywords, KEYWORD_RANGE_LIMIT - ranges.length);
+    for (const span of spans) {
+      const range = document.createRange();
+      range.setStart(textNode, span.start);
+      range.setEnd(textNode, span.end);
+      ranges.push(range);
+      if (ranges.length >= KEYWORD_RANGE_LIMIT) return;
+    }
   }
 }
 
@@ -11449,6 +11544,7 @@ function clearEnhancedPage() {
     }
   }
   removeSiteStyle();
+  clearKeywordHighlight();
   clearTimeout(state.applyTimer);
   state.applyTimer = 0;
   clearInterval(state.playbackDiagnosticsTimer);

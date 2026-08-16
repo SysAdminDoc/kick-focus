@@ -133,6 +133,14 @@ const checks = [
   // written into a shadow root's innerHTML is re-tokenised and re-parsed on
   // every rebuild. The template must not carry the sheet, and every root must
   // adopt through the one feature-detected path.
+  // Keyword highlighting must paint from the registry, never by wrapping words
+  // in nodes: a <mark> inside Kick's chat is something React reconciles against
+  // and something this build then has to undo.
+  ['keyword highlights are painted from the registry, never written into the chat tree',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('new Highlight(...ranges)')
+      && bundleSource.includes('::highlight(kick-focus-keyword)')
+      && bundleSource.includes('function findKeywordSpans')
+      && !/createElement\('mark'\)/.test(bundleSource))],
   // Route changes come from the browser where it can report them; the history
   // wrapper is only ever the fallback, so it must live inside that branch.
   ['route changes are read from the Navigation API with the history wrapper as fallback only',

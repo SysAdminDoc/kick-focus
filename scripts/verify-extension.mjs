@@ -498,6 +498,71 @@ try {
     route.hasNavigationApi === true && route.pushNative === true && route.after === 'browse' && route.back !== 'browse',
     `navigation api=${route.hasNavigationApi} history free of this build=${route.pushNative}; route ${route.before} -> ${route.after} -> ${route.back}`);
 
+  // Keyword highlighting paints matched words from the Custom Highlight
+  // registry, writing no node into chat. There is no chat on Home, so drive a
+  // real channel route, save a keyword through the real settings control, and
+  // stand up a synthetic message list shaped like Kick's — then check that the
+  // registry holds the ranges and that the message markup is byte-identical to
+  // what was inserted.
+  const highlightProbe = await evaluate(pageClient, `(async () => {
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 700));
+    history.pushState(null, '', '/kfprobechannel');
+    await settle();
+    const route = document.documentElement.dataset.kfRoute;
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    shadow.querySelector('[data-page="content"]').click();
+    await settle();
+    const highlightsOn = shadow.querySelector('[data-set="content.chatHighlights"]');
+    if (highlightsOn && highlightsOn.getAttribute('aria-checked') !== 'true') { highlightsOn.click(); await settle(); }
+    const input = shadow.querySelector('[data-kf-chat-keywords]');
+    if (!input) { history.pushState(null, '', '/'); return { ok: false, why: 'no keyword input on ' + route }; }
+    input.value = 'giveaway';
+    shadow.querySelector('[data-action="save-local-channel"]').click();
+    await settle();
+    const list = document.createElement('div');
+    list.setAttribute('data-testid', 'chatroom-messages');
+    const markup = '<div class="group">free GIVEAWAY tonight and another giveaway</div><div class="group">nothing here</div>';
+    list.innerHTML = markup;
+    // Prepended: applyChatHighlights takes the first match in document order,
+    // and on a channel route Kick may have a chat node of its own.
+    document.body.prepend(list);
+    await settle();
+    await settle();
+    const boundToProbe = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages') === list;
+    const rows = [...list.querySelectorAll('.group')].map((row) => row.dataset.kfHighlighted);
+    const highlight = CSS.highlights?.get('kick-focus-keyword');
+    const result = {
+      ok: true, route, rows, boundToProbe, api: typeof Highlight === 'function' && Boolean(CSS.highlights),
+      ranges: highlight ? highlight.size : -1,
+      // No node written into the message: strip only the row attribute this
+      // build has always set and compare against what was inserted.
+      untouched: list.innerHTML.replace(/ data-kf-highlighted="(true|false)"/g, '') === markup,
+      painted: highlight ? [...highlight].map((range) => range.toString()) : [],
+    };
+    list.remove();
+    // Clear the keyword while the control that owns it is still rendered.
+    input.value = '';
+    shadow.querySelector('[data-action="save-local-channel"]')?.click();
+    await settle();
+    history.pushState(null, '', '/');
+    await settle();
+    // Whatever happened, the error log names anything the cycle threw.
+    shadow.querySelector('[data-page="about"]')?.click();
+    await settle();
+    result.errors = String(shadow.querySelector('[data-kf-error-log]')?.textContent || '').trim().slice(0, 200);
+    return result;
+  })()`);
+  const hl = highlightProbe.value || { why: highlightProbe.error || 'probe returned nothing' };
+  record('keyword matches are painted from the Highlight registry with zero nodes written into chat',
+    hl.ok === true && hl.route === 'channel' && hl.api === true
+      && Array.isArray(hl.rows) && hl.rows[0] === 'true' && hl.rows[1] === 'false'
+      && hl.ranges === 2 && hl.untouched === true
+      && Array.isArray(hl.painted) && hl.painted.every((word) => word.toLowerCase() === 'giveaway'),
+    hl.ok ? `route=${hl.route} api=${hl.api} boundToProbe=${hl.boundToProbe} rows=${JSON.stringify(hl.rows)} ranges=${hl.ranges} painted=${JSON.stringify(hl.painted)} markup untouched=${hl.untouched}${hl.errors ? ` | error log: ${hl.errors}` : ''}` : hl.why);
+
   // The site sheet should be adopted, not an element: an element in <head> is
   // the fallback path, and seeing it here would mean the constructed-sheet
   // branch is not the one real Chromium takes.

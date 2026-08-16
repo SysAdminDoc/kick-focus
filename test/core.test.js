@@ -59,6 +59,7 @@ import {
   insertionPlanFor,
   recordApplyCost,
   applyCostSummary,
+  findKeywordSpans,
   findShortcutConflict,
   planStorageCommit,
   topmostOverlayLayer,
@@ -108,6 +109,26 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
+
+test('keyword spans are case-insensitive, sorted, merged, and capped', { tag: 'unit' }, () => {
+  assert.deepEqual(findKeywordSpans('Free GIVEAWAY tonight, giveaway!', ['giveaway']), [
+    { start: 5, end: 13 }, { start: 23, end: 31 },
+  ]);
+  // Two keywords that overlap become one span, never nested highlights.
+  assert.deepEqual(findKeywordSpans('big raid incoming', ['big raid', 'raid']), [{ start: 0, end: 8 }]);
+  // Touching spans merge too.
+  assert.deepEqual(findKeywordSpans('abcd', ['ab', 'cd']), [{ start: 0, end: 4 }]);
+  // Sorted by position regardless of keyword order.
+  assert.deepEqual(findKeywordSpans('x drop y raid', ['raid', 'drop']), [{ start: 2, end: 6 }, { start: 9, end: 13 }]);
+  // The cap bounds a chat that has scrolled for hours.
+  assert.equal(findKeywordSpans('a '.repeat(50), ['a'], 7).length, 7);
+  // Nothing to find, or nothing to look for, is an empty list — not a throw.
+  assert.deepEqual(findKeywordSpans('', ['a']), []);
+  assert.deepEqual(findKeywordSpans('hello', []), []);
+  assert.deepEqual(findKeywordSpans('hello', ['', '  ', null]), []);
+  assert.deepEqual(findKeywordSpans(null, ['a']), []);
+  assert.deepEqual(findKeywordSpans('hello', 'not-a-list'), []);
 });
 
 test('apply-cycle cost accumulates as plain numbers with a sliding recent average', { tag: 'unit' }, () => {

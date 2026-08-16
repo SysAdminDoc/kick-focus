@@ -279,6 +279,42 @@ export function insertionPlanFor(descriptor, collisions = [], access = '') {
 }
 
 /**
+ * Where each keyword occurs in one run of text, as non-overlapping spans.
+ *
+ * Case-insensitive, sorted, and merged where two keywords overlap or touch, so
+ * the caller can turn each span straight into a Range without producing nested
+ * or duplicate highlights. `limit` caps the total, because a chat that scrolls
+ * for hours can accumulate more matches than are worth painting.
+ */
+export function findKeywordSpans(text, keywords, limit = 500) {
+  const haystack = typeof text === 'string' ? text.toLowerCase() : '';
+  const needles = (Array.isArray(keywords) ? keywords : [])
+    .map((keyword) => (typeof keyword === 'string' ? keyword.trim().toLowerCase() : ''))
+    .filter(Boolean);
+  if (!haystack || !needles.length) return [];
+  const spans = [];
+  for (const needle of needles) {
+    let from = 0;
+    for (;;) {
+      const at = haystack.indexOf(needle, from);
+      if (at === -1) break;
+      spans.push({ start: at, end: at + needle.length });
+      from = at + needle.length;
+      if (spans.length >= limit * 4) break;
+    }
+  }
+  spans.sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span.start <= last.end) last.end = Math.max(last.end, span.end);
+    else merged.push({ ...span });
+    if (merged.length >= limit) break;
+  }
+  return merged;
+}
+
+/**
  * Running cost of the apply cycle, so a regression shows up as a number.
  *
  * Kept as plain deltas rather than `performance.measure` entries: measures land
