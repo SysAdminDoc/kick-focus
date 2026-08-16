@@ -54,13 +54,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P0 — data safety, security, correctness, and the single unblock
 
-- [ ] R-01 — Install a real Chromium so the behavioral gate verifies something
-  Why: `release:check` exits 0 with SKIP because no Chromium exists here, proving nothing — while README:138 claims a live proof the repo's own tracker says is impossible.
-  Evidence: phase0-memo #1 — scripts/verify-extension.mjs:64-69; scripts/release-checklist.mjs:32-37,44-50,54; README.md:138.
-  Touches: environment (`npx playwright install chromium` or set CHROME_PATH); scripts/verify-extension.mjs findChromium(); README.md:138; Roadmap_Blocked.md and "Next" items 1/4/5.
-  Acceptance: `npm run release:check` runs the ~18–22 live assertions in verify-extension.mjs:206-413 (DNR blocks a request, LOCATOR_PROBES match live Kick, `window.__kickFocusBooted` true) and FAILS LOUDLY when Chromium is absent instead of exiting 0 on SKIP; README:138's false live-proof claim is corrected or backed by an actual run; "Next" items 1/4/5 and the Roadmap_Blocked runtime.js split are noted unblocked.
-  Complexity: S
-
 - [ ] R-02 — Fix the emote-library cap: evict correctly, free slots on Remove, debounce persist
   Why: at 2400 entries every NEW emote is silently dropped (break keeps oldest) and the truncated store is rewritten in full every scan cycle forever; Remove never frees a slot. (Operator precondition for R-06.)
   Evidence: phase0-memo #8 — src/core.mjs:787-788; src/runtime.js:1608-1613,3089-3126,6106-6122; phase1b E1/E2.
@@ -162,6 +155,13 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Complexity: M
 
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
+
+- [ ] R-35 — Split the multi-stream and live-data surfaces out of `src/runtime.js` (unblocked 2026-08-16)
+  Why: was in Roadmap_Blocked.md solely because its acceptance needs the live harness AND no Chromium existed here; Chromium is now installed and `verify:extension` passes 22/22 live, so the blocker is lifted. `src/runtime.js` is ~6,651 lines; moving ~1,500 across the concat boundary is exactly the change the api.mjs-went-missing trap exists for.
+  Evidence: former Roadmap_Blocked P2 entry; CLAUDE.md concat-order + `source.includes` gotchas; build.mjs:11-29 concat order core→api→compatibility→runtime.
+  Touches: extract multi-stream + live-data into a new bundled module inserted in the correct concat position in build.mjs; keep every export reachable under `node --test` (not just in the hoisted bundle).
+  Acceptance: `npm run verify` green AND `npm run verify:extension` green after the move (a green offline build alone does not prove a refactor equivalent); no symbol asserted only by `source.includes`; bundle parses under `node --check`.
+  Complexity: L
 
 - [ ] R-15 — Remove the NUL byte that makes core.mjs invisible to ripgrep
   Why: a literal U+0000 at core.mjs:816 makes ripgrep classify the settings-schema module as binary, disabling the repo's own re-grep-after-edit safeguard.

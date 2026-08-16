@@ -135,7 +135,7 @@ One caveat worth stating plainly, because it is widely reported the other way ro
 - Primary verified viewport: 1440×900
 - Secondary verified viewport: 1920×1080
 - Authenticated recon routes: Home, Browse, Categories, Category, Following, Drops, Search, and Channel/chat, including the open native emote picker (2026-08-14)
-- Isolated companion proof: Chromium 151, logged out, headed and off-screen at both supported viewports (2026-08-15)
+- Isolated companion proof: Chromium 151, logged out, headed and off-screen — 22/22 live checks pass at 1440×900, repeated at 1920×1080 by `release:check` (2026-08-16)
 - Mobile is intentionally out of scope.
 
 Kick changes frequently. The most brittle hooks are the sidebar and chat selectors documented in [RESEARCH.md](RESEARCH.md). If the player or chat fails, disable Kick Focus first; Kick’s own help center notes that ad/privacy/script blockers can interfere with playback and chat.

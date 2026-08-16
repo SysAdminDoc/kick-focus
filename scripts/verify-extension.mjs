@@ -63,9 +63,19 @@ async function findChromium() {
 
 const CHROME = await findChromium();
 if (!CHROME) {
-  console.log('SKIP  No Chromium found. Set CHROME_PATH to a Chromium binary.');
+  // A behavioral gate that exits 0 without a browser verifies nothing; that is a
+  // failure, not a skip. Downgrade to a skip only when a machine genuinely cannot
+  // run Chromium and the caller opts in explicitly.
+  const allowSkip = process.env.KF_ALLOW_NO_CHROMIUM === '1';
+  console.log(`${allowSkip ? 'SKIP' : 'FAIL'}  No Chromium found. Install one with \`npx playwright install chromium\`, or set CHROME_PATH.`);
   console.log('      Google Chrome stable will not work: it ignores --load-extension.');
-  process.exit(0);
+  if (allowSkip) {
+    console.log('      KF_ALLOW_NO_CHROMIUM=1 is set: treating the missing browser as a soft skip. The live proof did not run.');
+    process.exit(0);
+  }
+  console.error('\nThe live proof cannot verify anything without a browser, so this exits non-zero.');
+  console.error('Set KF_ALLOW_NO_CHROMIUM=1 to downgrade to a skip on a machine that truly cannot install Chromium.');
+  process.exit(1);
 }
 
 const EXT = resolve('dist/extension');
@@ -374,8 +384,19 @@ try {
   record('ad-host probe was blocked by the browser network stack', blockedByClient,
     blockedByClient ? 'ERR_BLOCKED_BY_CLIENT' : `sent=${sent.length} failures=${failedEvents.map((e) => e.params?.errorText).join('|') || 'none'}`);
 
-  const matchedAfter = await evaluate(swClient, 'chrome.declarativeNetRequest.getMatchedRules({}).then(r => JSON.stringify(r.rulesMatchedInfo.map(m => m.rule.ruleId)))');
-  record('DNR reports the matched rule', Boolean(matchedAfter.value && matchedAfter.value !== '[]'), `rules=${matchedAfter.value}`);
+  // getMatchedRules needs declarativeNetRequestFeedback, which the RELEASE
+  // manifest deliberately omits so Chrome does not show "Read your browsing
+  // history". The ERR_BLOCKED_BY_CLIENT proof above is the authority; this
+  // readback is a bonus that only the dev manifest can grant. Asserting it
+  // against the release artifact would fail a gate on an API the shipped
+  // extension cannot call by design, so it is conditional on the permission.
+  const hasFeedback = await evaluate(swClient, "chrome.runtime.getManifest().permissions.includes('declarativeNetRequestFeedback')");
+  if (hasFeedback.value) {
+    const matchedAfter = await evaluate(swClient, 'chrome.declarativeNetRequest.getMatchedRules({}).then(r => JSON.stringify(r.rulesMatchedInfo.map(m => m.rule.ruleId)))');
+    record('DNR reports the matched rule', Boolean(matchedAfter.value && matchedAfter.value !== '[]'), `rules=${matchedAfter.value}`);
+  } else {
+    console.log('INFO  DNR matched-rule readback skipped — the release manifest omits declarativeNetRequestFeedback by design; ERR_BLOCKED_BY_CLIENT above is the authoritative block proof.');
+  }
 
   // 6. The popup is real UI; opening it proves it renders and wires up rather
   //    than merely existing as a file in the package.

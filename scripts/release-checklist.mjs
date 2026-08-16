@@ -51,4 +51,4 @@ for (const [label, size, file] of [
 
 console.log(`\nRelease screenshots, when live Kick was reachable: ${screenshotRoot}`);
 console.log('Compare both captures with the current design references and inspect for overflow, clipped controls, and changed shell geometry before publishing.');
-console.log('If Chromium is unavailable, the live checks print SKIP; the offline gate above still remains authoritative.');
+console.log('The live checks fail the release gate when Chromium is absent (set KF_ALLOW_NO_CHROMIUM=1 to downgrade to a skip); the offline gate above is always authoritative.');
