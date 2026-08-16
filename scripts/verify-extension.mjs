@@ -798,6 +798,54 @@ try {
       && tip.afterUnrelated === null,
     tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
 
+  // The chip on a discovery card, and the convergence behind it. Kick's own
+  // cards are on screen already, so this uses a real one; the "other tab" is a
+  // BroadcastChannel opened from the page, which is exactly what a second tab
+  // would be on this origin — the receiving path, the merge, and the chip
+  // repaint are all the ones that ship.
+  const chipProbe = await evaluate(pageClient, `(async () => {
+    const settle = () => new Promise((done) => setTimeout(done, 400));
+    const before = JSON.parse(localStorage.getItem('kick-focus:multistream') || '{}');
+    try {
+      const chip = document.querySelector('[data-kf-card-action="multi"]');
+      if (!chip) return { ok: false, why: 'no card chip rendered on this page' };
+      const slug = chip.dataset.kfCardSlug;
+      const startedActive = chip.dataset.active === 'true';
+      if (startedActive) chip.click();
+      await settle();
+      chip.click();
+      await settle();
+      const stored = JSON.parse(localStorage.getItem('kick-focus:multistream') || '{}');
+      const added = { active: chip.dataset.active, pressed: chip.getAttribute('aria-pressed'), streams: stored.streams || [] };
+
+      // Another tab removes it. Nothing here touches the grid directly.
+      const channel = new BroadcastChannel('kick-focus:multi');
+      const merged = { ...stored, streams: (stored.streams || []).filter((entry) => entry !== slug) };
+      localStorage.setItem('kick-focus:multistream', JSON.stringify(merged));
+      channel.postMessage({ type: 'converge', added: [], removed: [slug], ts: Date.now() });
+      await settle();
+      const live = document.querySelector('[data-kf-card-slug="' + CSS.escape(slug) + '"]');
+      const converged = { active: live?.dataset.active, text: live?.textContent };
+      channel.close();
+      return { ok: true, slug, added, converged };
+    } finally {
+      localStorage.setItem('kick-focus:multistream', JSON.stringify(before));
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+    }
+  })()`);
+  const chipResult = chipProbe.value || {};
+  record('a discovery card can be collected into the grid without opening it',
+    chipResult.ok === true
+      && chipResult.added?.active === 'true'
+      && chipResult.added?.pressed === 'true'
+      && Array.isArray(chipResult.added?.streams)
+      && chipResult.added.streams.includes(chipResult.slug),
+    chipResult.ok ? `chip for ${chipResult.slug} -> grid ${JSON.stringify(chipResult.added.streams)}` : chipResult.why);
+  record('another tab removing a channel repaints the chip without a reload',
+    chipResult.ok === true && chipResult.converged?.active === 'false' && chipResult.converged?.text === '⊞',
+    chipResult.ok ? `after the broadcast the chip reads active=${chipResult.converged?.active}` : chipResult.why);
+
   // A library at the cap is 2400 tiles, and Kick's own picker needs an account,
   // so the picker is synthesised here: a panel with the shell contract the
   // organizer keys off, filled with enough emote buttons that rendering all of

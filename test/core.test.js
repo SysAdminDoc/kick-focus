@@ -75,6 +75,7 @@ import {
   recentEmoteUsage,
   visibleWindow,
   EMOTE_WINDOW_SIZE,
+  cardSlugFromPath,
 } from '../src/core.mjs';
 
 const usageStore = (global = {}, channels = {}) => ({ global, channels });
@@ -123,6 +124,31 @@ test('ties in the recent shelf resolve the same way every render', { tag: 'unit'
   // order, or the shelf would reshuffle itself between identical renders.
   assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.id), ['c', 'a', 'b']);
   assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.id), recentEmoteUsage(counts).map((entry) => entry.id));
+});
+
+test('a discovery card yields a channel only when it actually points at one', { tag: 'unit' }, () => {
+  assert.equal(cardSlugFromPath('/xqc'), 'xqc');
+  assert.equal(cardSlugFromPath('/xqc/videos'), 'xqc');
+  assert.equal(cardSlugFromPath('/xqc?ref=browse'), 'xqc');
+  assert.equal(cardSlugFromPath('/xqc#chat'), 'xqc');
+  assert.equal(cardSlugFromPath('https://kick.com/xqc'), 'xqc');
+  assert.equal(cardSlugFromPath('https://www.kick.com/xqc/videos'), 'xqc');
+
+  // Kick's own surfaces wear the same card markup; none of them is a channel.
+  for (const path of ['/browse', '/category/just-chatting', '/search?query=x', '/following', '/drops', '/videos/abc']) {
+    assert.equal(cardSlugFromPath(path), '', `${path} is not a channel`);
+  }
+
+  // The return value feeds a grid of embedded players, so a foreign host and a
+  // path-shaped attack both have to come back empty.
+  for (const path of ['https://evil.example/xqc', 'https://kick.com.evil.net/xqc', '//evil.example/xqc',
+    '/../admin', '/-leading', '/a b', '', null, undefined, '/']) {
+    assert.equal(cardSlugFromPath(path), '', `${String(path)} yields no channel`);
+  }
+
+  // Kick accepts an all-digit channel name, so this must not be mistaken for an
+  // id and thrown away.
+  assert.equal(cardSlugFromPath('/1337'), '1337');
 });
 
 test('a list shorter than the window is rendered whole, with no spacers', { tag: 'unit' }, () => {

@@ -1966,6 +1966,7 @@ const multistreamSurface = createMultistream({
   announce,
   showToast,
   syncHeaderMultiState,
+  syncCardMultiState,
   kickFetchJson,
   recordApiDrift,
 });
@@ -1973,12 +1974,15 @@ const {
   addMultistream,
   addPresenceOffer,
   closeMultistream,
+  installMultistreamStorageSync,
   multistreamOpen,
   multistreamPresenceChannel,
+  multistreamSyncChannel,
   openMultistream,
   persistMultistream,
   renderMultistream,
   toggleCurrentChannelInMulti,
+  toggleMultistreamSlug,
 } = multistreamSurface;
 
 function readRemoteBlocklist() {
@@ -2144,9 +2148,61 @@ function applyCardActions(node) {
   }
   const favorite = state.favorites.has(path);
   const dismissed = state.dismissed.has(path);
+  // Collect a channel without opening it. Category tiles and section links wear
+  // the same markup as channel cards, so the chip appears only where the card
+  // actually points at a channel.
+  const slug = cardSlugFromPath(path);
+  const label = escapeHtml(cardLabel(node));
+  const inMulti = Boolean(slug) && multistreamHasSlug(slug);
+  const multiChip = slug
+    ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${inMulti ? 'Remove' : 'Add'} ${label} ${inMulti ? 'from' : 'to'} the multi-stream grid" title="${inMulti ? 'In Multi' : 'Add to Multi'}">${inMulti ? '⊟' : '⊞'}</button>`
+    : '';
+  // Rebuilt only when what it renders changed. The apply cycle runs these over
+  // every card on a discovery page, and replacing the buttons each time both
+  // wasted the work and quietly detached the node under anyone mid-click.
+  const signature = `${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
+  if (actions.dataset.kfCardSignature === signature) return;
+  actions.dataset.kfCardSignature = signature;
   actions.innerHTML = trustedHTML(`
-    <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(cardLabel(node))}">${favorite ? '★' : '☆'}</button>
-    <button type="button" data-kf-card-action="dismiss" aria-label="${dismissed ? 'Restore' : 'Not interested'} ${escapeHtml(cardLabel(node))}">${dismissed ? '↶' : '×'}</button>`);
+    <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${label}">${favorite ? '★' : '☆'}</button>
+    ${multiChip}
+    <button type="button" data-kf-card-action="dismiss" aria-label="${dismissed ? 'Restore' : 'Not interested'} ${label}">${dismissed ? '↶' : '×'}</button>`);
+}
+
+function multistreamHasSlug(slug) {
+  const wanted = String(slug).toLowerCase();
+  return state.multistream.streams.some((entry) => entry.toLowerCase() === wanted);
+}
+
+/**
+ * Repaint the card chips from the grid, without rebuilding a card.
+ *
+ * Another tab adding a channel has to show up here too, and the apply cycle is
+ * not the right latency for a click that happened in a different window.
+ */
+function syncCardMultiState() {
+  for (const button of document.querySelectorAll('[data-kf-card-action="multi"]')) {
+    const slug = button.dataset.kfCardSlug;
+    if (!slug) continue;
+    const inMulti = multistreamHasSlug(slug);
+    if (button.dataset.active === String(inMulti)) continue;
+    button.dataset.active = String(inMulti);
+    button.setAttribute('aria-pressed', String(inMulti));
+    button.textContent = inMulti ? '⊟' : '⊞';
+    button.title = inMulti ? 'In Multi' : 'Add to Multi';
+    // The container's signature has to move with it, or the next apply cycle
+    // would see a stale stamp and rebuild the buttons this just patched.
+    const actions = button.parentElement;
+    if (actions?.dataset.kfCardSignature) {
+      actions.dataset.kfCardSignature = actions.dataset.kfCardSignature.replace(
+        /:(true|false):([^:]*)$/, `:${inMulti}:$2`,
+      );
+    }
+    const label = button.getAttribute('aria-label') || '';
+    button.setAttribute('aria-label', inMulti
+      ? label.replace(/^Add /, 'Remove ').replace(/ to the multi-stream grid$/, ' from the multi-stream grid')
+      : label.replace(/^Remove /, 'Add ').replace(/ from the multi-stream grid$/, ' to the multi-stream grid'));
+  }
 }
 
 function handleCardAction(event) {
@@ -2157,6 +2213,21 @@ function handleCardAction(event) {
   if (!path) return;
   event.preventDefault();
   event.stopPropagation();
+  if (button.dataset.kfCardAction === 'multi') {
+    const result = toggleMultistreamSlug(button.dataset.kfCardSlug || '');
+    if (!result.ok) {
+      showToast(result.error, true);
+      announce(result.error);
+      return;
+    }
+    const total = result.streams.length;
+    showToast(`${result.added ? 'Added' : 'Removed'} ${result.slug} — ${total} of ${MULTISTREAM_MAX}`, false, [
+      { label: 'View', onClick: () => openMultistream() },
+      { label: 'Undo', onClick: () => { toggleMultistreamSlug(result.slug); } },
+    ]);
+    announce(`${result.added ? 'Added' : 'Removed'} ${result.slug}. Now ${total} of ${MULTISTREAM_MAX}.`);
+    return;
+  }
   if (button.dataset.kfCardAction === 'favorite') {
     if (state.favorites.has(path)) state.favorites.delete(path);
     else state.favorites.add(path);
@@ -5409,6 +5480,7 @@ const TRANSLATIONS = {
     'Scale text in the main Kick content area.': 'Escala el texto en el área de contenido principal de Kick.',
     'Set the preferred caption background strength.': 'Define la intensidad preferida del fondo de los subtítulos.',
     'Multi-stream opened': 'Multitransmisión abierta',
+    'Your own multi-stream grid is back.': 'Tu propia cuadrícula de multitransmisión ha vuelto.',
     'Watch several Kick channels in one grid': 'Mira varios canales de Kick en una sola cuadrícula',
     'Freeze animated emotes': 'Congelar los emotes animados',
     'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Solo lectura aquí. Kick impide enviar desde un chat incrustado; abre el canal para hablar.',
@@ -5760,6 +5832,7 @@ const TRANSLATIONS = {
     'Scale text in the main Kick content area.': 'Dimensiona o texto na área de conteúdo principal do Kick.',
     'Set the preferred caption background strength.': 'Define a intensidade preferida do fundo das legendas.',
     'Multi-stream opened': 'Multitransmissão aberta',
+    'Your own multi-stream grid is back.': 'A sua própria grade de multitransmissão voltou.',
     'Watch several Kick channels in one grid': 'Assista a vários canais do Kick em uma única grade',
     'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Somente leitura aqui. O Kick impede o envio a partir de um chat incorporado; abra o canal para falar.',
     'Emote favorites, removals, and custom groups reset.': 'Favoritos, remoções e grupos personalizados de emotes redefinidos.',
@@ -6112,6 +6185,11 @@ function buildInterface() {
   // Opened at boot, not on demand: a tab has to be listening to answer a
   // roll-call it never asked for.
   multistreamPresenceChannel();
+  // Same reason, for convergence: a tab that is not listening when another one
+  // adds a channel would show a stale chip until something else re-rendered it.
+  // Both are enhancements — every commit re-reads the store, which is the truth.
+  multistreamSyncChannel();
+  installMultistreamStorageSync();
   // Delegated at the document: chat replaces its own nodes constantly, so a
   // per-emote listener would be attached and dropped hundreds of times a
   // minute. Keyboard users get the same card on focus.
@@ -8152,6 +8230,10 @@ function installCompanionBridge() {
 function openSharedLayoutFromUrl() {
   const shared = parseMultistreamLink(location.href);
   if (!shared.length) return;
+  // A shared link replaces the grid outright. Someone half way through
+  // collecting channels deserves to be told, and to be able to get them back.
+  const previous = state.multistream;
+  const overwritten = previous.streams.filter((slug) => !shared.some((entry) => entry.toLowerCase() === slug.toLowerCase()));
   state.multistream = normalizeMultistream({
     ...state.multistream,
     streams: shared,
@@ -8169,6 +8251,21 @@ function openSharedLayoutFromUrl() {
   }
   openMultistream();
   announce(`Opened a shared layout with ${shared.length} ${plural(shared.length, 'channel', 'channels')}.`);
+  if (!overwritten.length) return;
+  showToast(`Shared layout replaced ${overwritten.length} ${plural(overwritten.length, 'channel', 'channels')} you had collected.`, false, [
+    {
+      label: 'Undo',
+      onClick: () => {
+        state.multistream = previous;
+        persistMultistream();
+        syncHeaderMultiState();
+        syncCardMultiState();
+        renderMultistream();
+        announce('Your own multi-stream grid is back.');
+      },
+    },
+  ]);
+  announce(`The shared layout replaced ${overwritten.length} ${plural(overwritten.length, 'channel', 'channels')} you had collected.`);
 }
 
 function startWhenBodyExists() {

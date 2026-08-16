@@ -61,7 +61,10 @@ export function createMultistream(host) {
     syncHeaderMultiState,
     kickFetchJson,
     recordApiDrift,
+    syncCardMultiState = () => {},
   } = host;
+
+  let syncChannel = null;
 
   function persistMultistream() {
     gmSet(MULTISTREAM_KEY, state.multistream);
@@ -73,7 +76,94 @@ export function createMultistream(host) {
   function commitMultistream(added = [], removed = []) {
     state.multistream = mergeMultistream(gmGet(MULTISTREAM_KEY, {}), state.multistream, added, removed);
     gmSet(MULTISTREAM_KEY, state.multistream);
+    // A no-op commit is a deliberate re-read (on open, or after a storage
+    // event) and has nothing to tell anyone.
+    if (added.length || removed.length) broadcastMultistream(added, removed);
     return state.multistream;
+  }
+
+  /**
+   * Converge the other tabs.
+   *
+   * The store is the truth and every commit re-reads it, so this is a nudge,
+   * not the mechanism — which is what makes the origin split survivable.
+   * `BroadcastChannel` and `localStorage` are both scoped to one origin, while
+   * the userscript's GM storage is shared across `kick.com` and `www.kick.com`;
+   * tabs that cannot hear each other therefore still converge the next time
+   * either one opens the grid, rather than diverging silently.
+   */
+  function broadcastMultistream(added, removed) {
+    const channel = multistreamSyncChannel();
+    if (!channel) return;
+    try {
+      channel.postMessage({ type: 'converge', added: [...added], removed: [...removed], ts: Date.now() });
+    } catch {
+      // The next re-read still picks this up.
+    }
+  }
+
+  function multistreamSyncChannel() {
+    if (syncChannel || typeof BroadcastChannel !== 'function') return syncChannel;
+    try {
+      syncChannel = new BroadcastChannel('kick-focus:multi');
+      syncChannel.addEventListener('message', (event) => {
+        const message = event?.data;
+        if (!isPlainRecord(message) || message.type !== 'converge') return;
+        applyRemoteMultistream(message.added, message.removed);
+      });
+    } catch {
+      syncChannel = null;
+    }
+    return syncChannel;
+  }
+
+  /**
+   * Fold another tab's add/remove into this one.
+   *
+   * The op is re-derived from storage rather than trusted off the wire, and the
+   * same union runs in every tab, so applying a message twice — or applying one
+   * that this tab already saw through a storage event — lands in the same place.
+   * Nothing is written back, because the tab that sent it already did.
+   */
+  function applyRemoteMultistream(added = [], removed = []) {
+    const addList = (Array.isArray(added) ? added : []).filter((slug) => typeof slug === 'string');
+    const removeList = (Array.isArray(removed) ? removed : []).filter((slug) => typeof slug === 'string');
+    const next = mergeMultistream(gmGet(MULTISTREAM_KEY, {}), state.multistream, addList, removeList);
+    if (JSON.stringify(next.streams) === JSON.stringify(state.multistream.streams)) return false;
+    state.multistream = next;
+    syncHeaderMultiState();
+    syncCardMultiState();
+    renderMultistream();
+    renderPresenceOffer();
+    return true;
+  }
+
+  /**
+   * The extension build stores in `localStorage`, which raises `storage` in
+   * every other tab on the origin. That makes convergence work even where
+   * `BroadcastChannel` does not, and costs one listener.
+   */
+  function installMultistreamStorageSync() {
+    if (typeof window?.addEventListener !== 'function') return;
+    window.addEventListener('storage', (event) => {
+      if (event?.key !== MULTISTREAM_KEY) return;
+      applyRemoteMultistream();
+    });
+  }
+
+  /** Add or remove one channel, from wherever the gesture came from. */
+  function toggleMultistreamSlug(raw) {
+    const slug = parseChannelInput(raw);
+    if (!slug) return { ok: false, error: 'Enter a Kick channel name or a kick.com link.' };
+    const inGrid = state.multistream.streams.some((entry) => entry.toLowerCase() === slug.toLowerCase());
+    if (!inGrid && state.multistream.streams.length >= MULTISTREAM_MAX) {
+      return { ok: false, error: `Multi-stream is full at ${MULTISTREAM_MAX} of ${MULTISTREAM_MAX}.` };
+    }
+    const result = inGrid ? commitMultistream([], [slug]) : commitMultistream([slug]);
+    syncHeaderMultiState();
+    syncCardMultiState();
+    renderMultistream();
+    return { ok: true, slug, added: !inGrid, streams: result.streams };
   }
 
   /**
@@ -151,6 +241,10 @@ export function createMultistream(host) {
     if (!backdrop) return;
     state.lastFocused = document.activeElement;
     backdrop.hidden = false;
+    // Re-read on open. A tab that was asleep, on the other origin, or simply
+    // not listening when another one added a channel picks it up here — which
+    // is why the broadcast can be an enhancement rather than a dependency.
+    commitMultistream();
     // Someone asking the system for reduced motion should not be handed nine
     // autoplaying videos. They mount paused with a visible way to start.
     installMultistreamSuspension();
@@ -539,10 +633,13 @@ export function createMultistream(host) {
   return {
     addMultistream,
     addPresenceOffer,
+    applyRemoteMultistream,
     closeMultistream,
     commitMultistream,
+    installMultistreamStorageSync,
     multistreamOpen,
     multistreamPresenceChannel,
+    multistreamSyncChannel,
     openMultistream,
     persistMultistream,
     refreshMultistreamLive,
@@ -552,5 +649,6 @@ export function createMultistream(host) {
     requestMultistreamPresence,
     resolveMultistreamLive,
     toggleCurrentChannelInMulti,
+    toggleMultistreamSlug,
   };
 }

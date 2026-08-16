@@ -174,6 +174,10 @@ globalThis.document = {
   __listeners: {},
 };
 globalThis.matchMedia = () => ({ matches: false });
+globalThis.window = {
+  __storage: [],
+  addEventListener(type, handler) { if (type === 'storage') globalThis.window.__storage.push(handler); },
+};
 globalThis.IntersectionObserver = class {
   constructor(callback, options) { this.callback = callback; this.options = options; this.observed = []; }
   observe(node) { this.observed.push(node); }
@@ -207,7 +211,7 @@ test('every function the surface hands back can be called against a stub host', 
   // but throws a ReferenceError here. Calling all fifteen is the check.
   const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha' } });
   const surface = createMultistream(host);
-  assert.equal(Object.keys(surface).length, 15);
+  assert.equal(Object.keys(surface).length, 19);
 
   dom.backdrop.hidden = false;
   for (const [name, fn] of Object.entries(surface)) {
@@ -402,6 +406,94 @@ test('closing the grid drops every player document', { tag: 'unit' }, () => {
   assert.equal(framesIn(dom.grid).length, 0, 'no iframe is left decoding behind a hidden backdrop');
   assert.equal(state.multistreamSuspended.size, 0);
   assert.equal(state.observers.multistream, null);
+});
+
+test('an add is broadcast once, and applying it twice lands in the same place', { tag: 'unit' }, () => {
+  const { host: a, state: aState, store } = makeHost({ multistream: { streams: ['alpha'] } });
+  const surfaceA = createMultistream(a);
+  surfaceA.multistreamSyncChannel();
+  const sync = channels.at(-1);
+  assert.equal(sync.name, 'kick-focus:multi');
+
+  surfaceA.commitMultistream(['beta']);
+  assert.deepEqual(sync.posted, [{ type: 'converge', added: ['beta'], removed: [], ts: sync.posted[0].ts }]);
+
+  // A second tab, sharing the same store, hears it.
+  const { host: b, state: bState } = makeHost({ multistream: { streams: ['alpha'] } });
+  b.gmGet = (name, fallback) => (store.has(name) ? store.get(name) : fallback);
+  b.gmSet = (name, value) => store.set(name, value);
+  const surfaceB = createMultistream(b);
+  surfaceB.multistreamSyncChannel();
+  const syncB = channels.at(-1);
+
+  assert.equal(syncB.listener !== null, true);
+  syncB.listener({ data: sync.posted[0] });
+  assert.deepEqual([...bState.multistream.streams].sort(), ['alpha', 'beta']);
+
+  // Idempotent: the same message again, and a storage event that carries no
+  // message at all, both leave it exactly where it was.
+  assert.equal(surfaceB.applyRemoteMultistream(['beta'], []), false, 'a repeat changes nothing');
+  assert.equal(surfaceB.applyRemoteMultistream(), false);
+  assert.deepEqual([...bState.multistream.streams].sort(), ['alpha', 'beta']);
+
+  // The extension build has no shared GM store, so the same convergence has to
+  // arrive through a storage event instead. It reaches the same union.
+  globalThis.window.__storage.length = 0;
+  surfaceB.installMultistreamStorageSync();
+  const onStorage = globalThis.window.__storage.at(-1);
+  store.set('kick-focus:multistream', normalizeMultistream({ streams: ['alpha', 'beta', 'delta'] }));
+  onStorage({ key: 'unrelated' });
+  assert.deepEqual([...bState.multistream.streams].sort(), ['alpha', 'beta'], 'another key is not our business');
+  onStorage({ key: 'kick-focus:multistream' });
+  assert.deepEqual([...bState.multistream.streams].sort(), ['alpha', 'beta', 'delta']);
+
+  // And the receiving tab never writes back, so it cannot echo.
+  assert.deepEqual(syncB.posted, []);
+  assert.deepEqual([...aState.multistream.streams].sort(), ['alpha', 'beta']);
+});
+
+test('a re-read on open picks up what a tab never heard broadcast', { tag: 'unit' }, () => {
+  const { host, state, store, dom } = makeHost({ multistream: { streams: ['alpha'] } });
+  const surface = createMultistream(host);
+  surface.multistreamSyncChannel();
+  const sync = channels.at(-1);
+
+  // Another origin — a www.kick.com tab in the userscript build, sharing GM
+  // storage but not this BroadcastChannel — added a channel while this tab was
+  // not listening. The store is the truth, and opening re-reads it.
+  store.set('kick-focus:multistream', normalizeMultistream({ streams: ['alpha', 'gamma'] }));
+  surface.openMultistream();
+
+  assert.deepEqual([...state.multistream.streams].sort(), ['alpha', 'gamma']);
+  assert.deepEqual(sync.posted, [], 'a re-read is not an op and tells nobody');
+  assert.equal(dom.backdrop.hidden, false);
+});
+
+test('the card chip toggles one channel and refuses a full grid', { tag: 'unit' }, () => {
+  const painted = [];
+  const { host, state, calls } = makeHost({ host: { syncCardMultiState: () => painted.push(true) } });
+  const surface = createMultistream(host);
+
+  const added = surface.toggleMultistreamSlug('https://kick.com/alpha/videos');
+  assert.deepEqual(added, { ok: true, slug: 'alpha', added: true, streams: ['alpha'] });
+  assert.equal(painted.length, 1, 'the chips repaint without waiting for an apply cycle');
+  assert.equal(calls.headerSyncs, 1);
+
+  const removed = surface.toggleMultistreamSlug('alpha');
+  assert.equal(removed.added, false);
+  assert.deepEqual(state.multistream.streams, []);
+
+  assert.deepEqual(surface.toggleMultistreamSlug('https://example.com/alpha'),
+    { ok: false, error: 'Enter a Kick channel name or a kick.com link.' });
+
+  state.multistream = normalizeMultistream({
+    streams: Array.from({ length: MULTISTREAM_MAX }, (_v, index) => `chan${index}`),
+  });
+  const full = surface.toggleMultistreamSlug('alpha');
+  assert.equal(full.ok, false);
+  assert.match(full.error, /full at 9 of 9/);
+  // A full grid still lets you take one out.
+  assert.equal(surface.toggleMultistreamSlug('chan0').added, false);
 });
 
 test('only a plain record is treated as a message payload', { tag: 'unit' }, () => {

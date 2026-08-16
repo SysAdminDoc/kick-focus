@@ -6,6 +6,9 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Added
 
+- **Collect a channel into multi-stream straight from a card.** Every stream card on Home, Browse, Following and Search gets a chip that adds it to the grid without opening it, showing whether it is already in there. Category tiles and section links wear the same card markup on Kick and deliberately do not get the chip.
+- **Tabs converge.** Adding or removing a channel in one Kick tab now updates the others as it happens, rather than the next time you open the grid. The stored grid remains the single source of truth and is re-read on every change and every open, so tabs that cannot hear each other — a `www.kick.com` tab beside a `kick.com` one — still agree; the live update is a convenience on top, not the mechanism.
+- **A shared `?kf-multi=` link now says what it replaced**, with an Undo that puts your own grid back, instead of silently overwriting a set you were part way through collecting.
 - **"Most used" and "Recent" shelves in the emote picker.** Two shelves over the usage Kick Focus already counts — one ordered by how often you send an emote, one by how recently — scoped to the channel you are in and falling back to your overall history for anything you have not sent there yet. They are presentational: nothing here sends, repeats, or schedules a send.
 
 ### Changed

@@ -58,13 +58,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
 
-- [ ] R-19 — Per-card "+ Multi" chip on discovery surfaces + cross-tab converge + shared-link toast (operator-requested)
-  Why: collect channels without opening them, converge adds across tabs, and warn when `?kf-multi=` silently overwrites a mid-collection set. (M4 chip + M5 cross-tab BroadcastChannel convergence + M7 toast; M5 alone is the heavy part.)
-  Evidence: phase1b M4/M5/M7 (design-check CONFIRMED-WITH-CONDITIONS) — src/runtime.js:2628-2666,7035-7055; bridge.js:81; src/metadata.txt:10-18.
-  Touches: pure `cardSlugFromPath`/`mergePresence` in core.mjs; third button in applyCardActions; BroadcastChannel('kick-focus:multi'); openSharedLayoutFromUrl toast.
-  Acceptance: pure slug/merge functions in core.mjs under node:test + hover chip renders active state against state.multistream; BroadcastChannel add/remove ops are set-union idempotent with re-read-on-open covering missed broadcasts (extension builds fully supported via shared localStorage + storage events; userscript gets GM_addValueChangeListener as an ENHANCEMENT not a correctness dependency; kick.com vs www.kick.com origin split handled); shared-link boot shows an overwrite toast.
-  Complexity: L
-
 ### P3 — differentiators, larger bets, future-proofing
 
 - [ ] R-25 — Colon-trigger autocomplete popup (operator-requested)

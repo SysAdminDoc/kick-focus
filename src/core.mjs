@@ -1935,6 +1935,38 @@ export const PRESENCE_TTL_MS = 30_000;
  * Slugs are validated exactly as the grid validates them, because an answer
  * arrives over a channel any script on the origin can post to.
  */
+/**
+ * Path segments Kick uses for its own surfaces. A discovery card links to a
+ * channel, but the same markup wraps category tiles and section links, and
+ * "browse" is not a channel no matter how channel-shaped the path looks.
+ */
+const NON_CHANNEL_SEGMENTS = new Set([
+  'about', 'api', 'browse', 'categories', 'category', 'clips', 'dashboard', 'drops', 'following',
+  'help', 'legal', 'messages', 'popout', 'privacy', 'profile', 'search', 'settings', 'shop',
+  'store', 'subscriptions', 'support', 'terms', 'user', 'video', 'videos', 'wallet',
+]);
+
+/**
+ * The channel a discovery card points at, or '' if it points at anything else.
+ *
+ * Accepts what a card's `href` actually yields — a path, a path with a query or
+ * hash, or a full URL — and refuses a host that is not Kick's, because the
+ * return value feeds a grid of embedded players.
+ */
+export function cardSlugFromPath(path) {
+  const raw = String(path ?? '').trim();
+  if (!raw) return '';
+  let rest = raw;
+  const absolute = /^https?:\/\/([^/]+)(\/.*)?$/i.exec(raw);
+  if (absolute) {
+    if (!/(^|\.)kick\.com$/i.test(absolute[1])) return '';
+    rest = absolute[2] || '';
+  }
+  const [first] = rest.split(/[?#]/)[0].split('/').filter(Boolean);
+  if (!first || NON_CHANNEL_SEGMENTS.has(first.toLowerCase())) return '';
+  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(first) ? first : '';
+}
+
 export function mergePresence(entries, now = 0) {
   const seen = new Map();
   for (const entry of Array.isArray(entries) ? entries : []) {
