@@ -11,6 +11,7 @@ const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
 const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
+const LAST_CRASH_KEY = 'kick-focus:last-crash';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 
 // Declared ahead of `state` because writes can happen while `state` is still in
@@ -87,6 +88,8 @@ const state = {
     shells: 0,
     lastMatch: 'None yet',
     entries: [],
+    errors: [],
+    lastCrash: readLastCrash(),
   },
   shortcutCapture: null,
   shortcutError: '',
@@ -4111,6 +4114,7 @@ function scheduleApply(delay = 50) {
   clearTimeout(state.applyTimer);
   state.applyTimer = window.setTimeout(() => {
     if (state.runtime.suspended) return;
+    try {
     state.applyPendingSince = 0;
     const currentPath = location.pathname;
     state.route = routeKind(location.href);
@@ -4152,6 +4156,9 @@ function scheduleApply(delay = 50) {
     state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
     updateCompatibilityInPlace();
     syncQuickButton();
+    } catch (error) {
+      logAppError('apply cycle', error);
+    }
   }, effective);
 }
 
@@ -5683,9 +5690,9 @@ function buildInterface() {
   state.commandList = shadow.querySelector('[data-kf-command-list]');
   state.quickButton = shadow.querySelector('[data-kf-quick]');
 
-  shadow.addEventListener('click', onInterfaceClick);
-  shadow.addEventListener('change', onInterfaceChange);
-  shadow.addEventListener('input', onInterfaceInput);
+  shadow.addEventListener('click', guard('settings click', onInterfaceClick));
+  shadow.addEventListener('change', guard('settings change', onInterfaceChange));
+  shadow.addEventListener('input', guard('settings input', onInterfaceInput));
   state.commandInput.addEventListener('input', renderCommands);
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
@@ -5812,6 +5819,63 @@ function renderAppearancePage() {
         </div>
       </aside>
     </div>`;
+}
+
+/**
+ * Observability for the mod's own failures. A client mod on a churning site
+ * fails silently otherwise. Uncaught errors from the mod's own entry points are
+ * captured to a bounded local ring buffer the user can view and copy (sanitized,
+ * no query strings), and the last one persists across reload. Nothing is sent.
+ */
+function logAppError(context, error) {
+  const record = {
+    at: Date.now(),
+    context: String(context).slice(0, 80),
+    message: sanitizeErrorMessage(error?.message ?? error),
+  };
+  state.diagnostics.errors.unshift(record);
+  state.diagnostics.errors = state.diagnostics.errors.slice(0, 30);
+  state.diagnostics.lastCrash = record;
+  try { gmSet(LAST_CRASH_KEY, record); } catch { /* a failed write must not recurse */ }
+  const panel = state.shadow?.querySelector('[data-kf-error-log]');
+  if (panel) panel.innerHTML = errorLogRows();
+  const summary = state.shadow?.querySelector('[data-kf-last-crash]');
+  if (summary) summary.textContent = lastCrashSummary();
+}
+
+/** Wrap one of the mod's own entry points so a throw is logged, not lost. */
+function guard(label, fn) {
+  return function guarded(...args) {
+    try {
+      return fn.apply(this, args);
+    } catch (error) {
+      logAppError(label, error);
+      return undefined;
+    }
+  };
+}
+
+function readLastCrash() {
+  const stored = gmGet(LAST_CRASH_KEY, null);
+  if (!stored || typeof stored !== 'object' || typeof stored.message !== 'string') return null;
+  return {
+    at: Number(stored.at) || 0,
+    context: String(stored.context || '').slice(0, 80),
+    message: sanitizeErrorMessage(stored.message),
+  };
+}
+
+function lastCrashSummary() {
+  const crash = state.diagnostics.lastCrash;
+  if (!crash) return 'No crash recorded.';
+  const when = crash.at ? new Date(crash.at).toISOString().slice(0, 19).replace('T', ' ') : 'unknown time';
+  return `Last: ${crash.context} — ${crash.message} (${when})`;
+}
+
+function errorLogRows() {
+  const errors = state.diagnostics.errors;
+  if (!errors.length) return '<tr><td colspan="3" class="kf-muted">No errors recorded this session.</td></tr>';
+  return errors.map((entry) => `<tr><td>${escapeHtml(new Date(entry.at).toISOString().slice(11, 19))}</td><td>${escapeHtml(entry.context)}</td><td>${escapeHtml(entry.message)}</td></tr>`).join('');
 }
 
 function protectionRows() {
@@ -6072,6 +6136,7 @@ function renderContentPage() {
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Local channel tools</h3><p>Channel keywords and private notes stay on this device.</p></div></div>${localChannelTools()}</section>
     ${remoteBlocklistControls()}
     <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Protection log</h3><p>Sanitized in-memory diagnostics; query strings are never retained.</p></div></div><div class="kf-panel"><table class="kf-table"><thead><tr><th>Time</th><th>Layer</th><th>Match</th><th>Action</th></tr></thead><tbody data-kf-protection-log>${protectionRows()}</tbody></table></div></section>
+    <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Error log</h3><p data-kf-last-crash>${escapeHtml(lastCrashSummary())}</p></div><button type="button" class="kf-button kf-button-small" data-action="copy-error-log">Copy error log</button></div><div class="kf-panel"><table class="kf-table"><thead><tr><th>Time</th><th>Where</th><th>Message</th></tr></thead><tbody data-kf-error-log>${errorLogRows()}</tbody></table></div></section>
     <div class="kf-notice">${companion.active
       ? 'The companion extension blocks known ad hosts at the browser network layer. Server-side stitched media is still delivered inside the stream itself.'
       : 'Userscript interception is best-effort and can be bypassed by browser or server-side delivery. Browser-level request guarantees require an extension ruleset.'}</div>`;
@@ -6408,6 +6473,7 @@ function onInterfaceClick(event) {
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
   else if (action === 'undo-import') undoImport();
   else if (action === 'copy-diagnostics') copyDiagnostics();
+  else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
   else if (action === 'close-multistream') closeMultistream();
   else if (action === 'multistream-add') {
@@ -6826,6 +6892,14 @@ async function copyText(text) {
       return false;
     }
   }
+}
+
+function copyErrorLog() {
+  const lines = state.diagnostics.errors.length
+    ? state.diagnostics.errors.map((entry) => `${new Date(entry.at).toISOString()} [${entry.context}] ${entry.message}`)
+    : ['No errors recorded this session.'];
+  const text = `Kick Focus ${VERSION} error log\n${lastCrashSummary()}\n\n${lines.join('\n')}`;
+  copyText(text).then((copied) => showToast(copied ? 'Error log copied.' : 'Could not copy the error log.', !copied));
 }
 
 async function copyDiagnostics() {

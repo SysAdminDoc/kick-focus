@@ -108,6 +108,11 @@ const checks = [
     && source.includes("nativeGroups: ['Seen in chat']")
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
+  ['captures the mod own failures to a local, sanitized error log', source.includes('function logAppError')
+    && source.includes('function guard(')
+    && source.includes("logAppError('apply cycle'")
+    && source.includes('data-kf-error-log')
+    && source.includes('LAST_CRASH_KEY')],
   ['settings a11y: focus and scroll survive re-render, toasts announce, sliders are labelled', source.includes('function focusRestoreKey')
     && source.includes('restore.focus({ preventScroll: true })')
     && source.includes('role="status" aria-live="polite"')

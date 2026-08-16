@@ -195,6 +195,21 @@ export function pluralForm(count, forms, locale = 'en') {
 }
 
 /**
+ * Strip query strings and long opaque tokens from an error message before it is
+ * shown in the diagnostics log or copied, matching the protection log's "query
+ * strings are never retained" discipline. Nothing is sent anywhere; this only
+ * keeps a local record from carrying a session token or a channel id.
+ */
+export function sanitizeErrorMessage(message, limit = 300) {
+  return String(message ?? '')
+    .replace(/[?#][^\s'")]*/g, '')          // drop query strings and fragments
+    .replace(/[A-Za-z0-9_-]{40,}/g, '…')    // drop long opaque tokens / ids
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, limit);
+}
+
+/**
  * A remote blocklist URL is only accepted when it is a well-formed https URL.
  * Validated here, at normalize time, so the value that reaches the privileged
  * companion fetch and the userscript transport can never be a `javascript:`,

@@ -56,7 +56,16 @@ import {
   normalizeShortcut,
   findShortcutConflict,
   pluralForm,
+  sanitizeErrorMessage,
 } from '../src/core.mjs';
+
+test('sanitizeErrorMessage strips query strings and long tokens for the local error log', () => {
+  assert.equal(sanitizeErrorMessage('Failed at https://kick.com/api/v1/log?token=abc123'), 'Failed at https://kick.com/api/v1/log');
+  assert.equal(sanitizeErrorMessage('id abcdefghijklmnopqrstuvwxyz0123456789ABCD done'), 'id … done');
+  assert.equal(sanitizeErrorMessage(new Error('boom').message), 'boom');
+  assert.equal(sanitizeErrorMessage(null), '');
+  assert.ok(sanitizeErrorMessage('x'.repeat(500)).length <= 300);
+});
 
 test('pluralForm follows CLDR locale rules, including the es/pt "many" category English lacks', () => {
   assert.equal(pluralForm(1, { one: 'emote', other: 'emotes' }, 'en'), 'emote');

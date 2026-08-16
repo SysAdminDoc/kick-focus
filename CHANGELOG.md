@@ -4,7 +4,9 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+
+- **A local error log on the About page.** Kick Focus now captures uncaught errors from its own code — the apply cycle and settings interactions — to a bounded in-session log you can view and copy, with a last-crash summary that persists across reload. Messages are sanitized the same way the protection log is (no query strings or long tokens), and nothing is ever sent anywhere. A client mod on a site that changes as often as Kick should not fail silently.
 
 ## 1.10.0 — 2026-08-16
 

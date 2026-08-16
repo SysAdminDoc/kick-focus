@@ -79,13 +79,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: `npm run verify` green AND `npm run verify:extension` green after the move (a green offline build alone does not prove a refactor equivalent); no symbol asserted only by `source.includes`; bundle parses under `node --check`.
   Complexity: L
 
-- [ ] R-33 — Add a failure-observability surface (log + last-crash)
-  Why: no dimension could find any way failures surface — no log surface, no crash file — though the project's own conventions require one; a client mod on a churning site fails silently today.
-  Evidence: phase0-memo §4 (coverage gaps: "no log surface, no crash file, and the project's own convention requires one"); the About page already carries a "protection log"/"diagnostics" surface to extend.
-  Touches: a bounded in-memory ring buffer + a "Diagnostics" panel on the About page; a stored last-error record; window 'error'/'unhandledrejection' capture scoped to the mod's own frames.
-  Acceptance: uncaught errors from the mod's own code are captured to a bounded local log the user can view and copy (sanitized, no query strings — matching the existing protection-log discipline); a last-crash summary persists across reload; nothing is sent anywhere.
-  Complexity: M
-
 - [ ] R-16 — In-chat emote tooltips + favorite-from-chat (operator-requested)
   Why: KF enhances nothing about emotes in the stream today though name/set/access/first-seen/collision data is already held.
   Evidence: phase1b E4 — src/runtime.js:1762,3216; FrankerFaceZ #110; BTTV #5925.
