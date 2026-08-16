@@ -775,7 +775,36 @@ function cleanStickerAssignments(input, groupIds) {
   return assignments;
 }
 
-function cleanStickerLibrary(input) {
+const STICKER_LIBRARY_LIMIT = 2400;
+
+/**
+ * Evict the recorded library down to `limit` without discarding anything the
+ * user acted on. A naive FIFO truncation kept the oldest entries and dropped
+ * every NEW one once the cap was hit; this drops the most disposable records
+ * instead — `observed` (chat-only) before `locked`, oldest `lastSeen` first —
+ * and never evicts an `available` emote or one that is favorited or assigned.
+ * Returns the retained list and how many entries were dropped.
+ */
+function evictStickerLibrary(library, limit = STICKER_LIBRARY_LIMIT, protectedKeys = new Set()) {
+  const list = Array.isArray(library) ? library : [...library];
+  if (list.length <= limit) return { library: list, evicted: 0 };
+  const keep = protectedKeys instanceof Set ? protectedKeys : new Set(protectedKeys);
+  const isProtected = (entry) => entry.access === 'available' || keep.has(entry.key);
+  const rank = (entry) => (entry.access === 'observed' ? 0 : 1);
+  const evictable = list
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !isProtected(entry))
+    .sort((a, b) => {
+      if (rank(a.entry) !== rank(b.entry)) return rank(a.entry) - rank(b.entry);
+      const ageDifference = cleanCaptureTime(a.entry.lastSeen) - cleanCaptureTime(b.entry.lastSeen);
+      return ageDifference || a.index - b.index;
+    });
+  const dropCount = Math.min(list.length - limit, evictable.length);
+  const dropped = new Set(evictable.slice(0, dropCount).map(({ index }) => index));
+  return { library: list.filter((_, index) => !dropped.has(index)), evicted: dropCount };
+}
+
+function cleanStickerLibrary(input, hiddenSet = new Set()) {
   if (!Array.isArray(input)) return [];
   const library = [];
   const keys = new Set();
@@ -784,7 +813,8 @@ function cleanStickerLibrary(input) {
     const key = cleanStickerKeys([raw.key], 1)[0];
     const name = cleanStickerText(raw.name, 80);
     const src = cleanStickerAssetUrl(raw.src);
-    if (!key || !name || !src || keys.has(key)) continue;
+    // A removed key is a slot the user freed; never re-materialise it here.
+    if (!key || !name || !src || keys.has(key) || hiddenSet.has(key)) continue;
     keys.add(key);
     const entry = {
       key,
@@ -808,7 +838,9 @@ function cleanStickerLibrary(input) {
     const wasSrc = cleanStickerAssetUrl(raw.wasSrc);
     if (wasSrc && wasSrc !== src) entry.wasSrc = wasSrc;
     library.push(entry);
-    if (library.length >= 2400) break;
+    // A generous hard ceiling bounds a crafted import; evictStickerLibrary does
+    // the real capping and protects the records the user actually acted on.
+    if (library.length >= STICKER_LIBRARY_LIMIT * 2) break;
   }
   return library;
 }
@@ -935,16 +967,28 @@ function normalizeStickerPreferences(input) {
   const groupIds = new Set(groups.map((group) => group.id));
   const activeGroup = groupIds.has(source.activeGroup) ? source.activeGroup : '';
   const view = enumValue(source.view, ['all', 'pinned', 'native', 'group'], 'all');
+  const favorites = cleanStickerFavorites(source.favorites, source.pinned, hiddenSet);
+  const assignments = cleanStickerAssignments(source.assignments, groupIds);
+  // Favorited or assigned emotes are protected from eviction: the user filed them.
+  const protectedKeys = new Set([
+    ...favorites.map((favorite) => favorite.key),
+    ...assignments.map((assignment) => assignment.key),
+  ]);
+  const library = evictStickerLibrary(
+    cleanStickerLibrary(source.library, hiddenSet),
+    STICKER_LIBRARY_LIMIT,
+    protectedKeys,
+  ).library;
   return {
     schema: STICKER_PREFERENCES_SCHEMA,
-    favorites: cleanStickerFavorites(source.favorites, source.pinned, hiddenSet),
+    favorites,
     hidden,
     view: view === 'group' && !activeGroup ? 'all' : view,
     showHidden: bool(source.showHidden, false),
     activeGroup,
     groups,
-    assignments: cleanStickerAssignments(source.assignments, groupIds),
-    library: cleanStickerLibrary(source.library),
+    assignments,
+    library,
   };
 }
 
@@ -5666,10 +5710,34 @@ function sameStickerRecord(a, b) {
   return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 }
 
+/**
+ * Writing the whole ~0.5 MB library on every scan cycle was the jank source, so
+ * merges from chat and the picker debounce the write. Direct user actions (pin,
+ * hide, remove, assign) still persist synchronously through
+ * saveStickerOrganization; only the continuous background merges are deferred.
+ */
+let stickerPersistTimer = 0;
+function flushStickerPersist() {
+  if (stickerPersistTimer) { clearTimeout(stickerPersistTimer); stickerPersistTimer = 0; }
+  persistStickerPreferences();
+  for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
+    summary.textContent = stickerLibrarySummary();
+  }
+}
+function queueStickerPersist() {
+  if (stickerPersistTimer) return;
+  stickerPersistTimer = window.setTimeout(flushStickerPersist, 1500);
+}
+// A tab closing mid-debounce would otherwise lose its last observations.
+window.addEventListener('pagehide', () => { if (stickerPersistTimer) flushStickerPersist(); });
+
 function mergeStickerLibrary(observed) {
   let changed = false;
   const now = Date.now();
   for (const sticker of observed) {
+    // A removed emote stays removed: never re-record it, and stop the rewrite
+    // loop where a hidden entry was re-merged and re-persisted every cycle.
+    if (state.stickerPreferences.hidden.has(sticker.key)) continue;
     const existing = state.stickerPreferences.library.get(sticker.key);
     const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...(sticker.nativeGroups || [])])].slice(0, 20);
     const incomingAccess = sticker.available
@@ -5703,7 +5771,7 @@ function mergeStickerLibrary(observed) {
     }
   }
   if (!changed) return false;
-  persistStickerPreferences();
+  queueStickerPersist();
   for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
     summary.textContent = stickerLibrarySummary();
   }
@@ -8238,7 +8306,8 @@ function stickerLibrarySummary() {
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
   const observed = library.filter((sticker) => sticker.access === 'observed').length;
   const changed = countChangedStickers(library);
-  return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}`;
+  const atCapacity = library.length >= STICKER_LIBRARY_LIMIT;
+  return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}${atCapacity ? ` · full (${STICKER_LIBRARY_LIMIT}); oldest chat-only emotes drop first` : ''}`;
 }
 
 /** First/last capture in the user's terms; '' for entries recorded before schema 4. */
@@ -8328,7 +8397,7 @@ function renderStickerLibraryManager() {
         <div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="New custom group name" aria-label="New emote group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>
         ${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : ''}
         <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New emotes from chat and the picker are merged automatically and included in export.</span></div>
-        ${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded emotes match this filter.' : 'Watch chat or open Kick’s emote picker to begin the library. New emotes are saved whenever Kick exposes them.'}</div>`}
+        ${filter === 'removed' ? `<div class="kf-notice">Removed emotes are no longer stored, which frees their library slots. ${state.stickerPreferences.hidden.size} ${state.stickerPreferences.hidden.size === 1 ? 'emote is' : 'emotes are'} kept out of the library.${state.stickerPreferences.hidden.size ? ` <button type="button" class="kf-button kf-button-small" data-action="restore-removed-stickers">Restore all removed</button>` : ''}</div>` : cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded emotes match this filter.' : 'Watch chat or open Kick’s emote picker to begin the library. New emotes are saved whenever Kick exposes them.'}</div>`}
       </div>
     </section>`;
 }
@@ -8693,12 +8762,20 @@ function toggleLibrarySticker(target, kind) {
     saveStickerOrganization(isFavorited(key) ? 'Emote favorited.' : 'Emote favorite removed.');
     return;
   }
-  if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
-  else {
-    state.stickerPreferences.hidden.add(key);
-    state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
-  }
-  saveStickerOrganization(state.stickerPreferences.hidden.has(key) ? 'Emote removed from the shelf.' : 'Emote restored.');
+  // Remove frees the library slot for real: delete the record, remember the key
+  // so a live scan does not re-record it, and drop any favorite or assignment
+  // that referenced it. Restore is a bulk action in the Removed view.
+  state.stickerPreferences.hidden.add(key);
+  state.stickerPreferences.library.delete(key);
+  state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
+  state.stickerPreferences.assignments.delete(key);
+  saveStickerOrganization('Emote removed and its slot freed.');
+}
+
+function restoreRemovedStickers() {
+  if (!state.stickerPreferences.hidden.size) return;
+  state.stickerPreferences.hidden = new Set();
+  saveStickerOrganization('Removed emotes will return to the library as they are seen again.');
 }
 
 function assignLibrarySticker(selectElement) {
@@ -8908,6 +8985,7 @@ function onInterfaceClick(event) {
   else if (action === 'delete-sticker-group') deleteStickerGroup(actionTarget);
   else if (action === 'favorite-library-sticker') toggleLibrarySticker(actionTarget, 'favorite');
   else if (action === 'remove-library-sticker') toggleLibrarySticker(actionTarget, 'remove');
+  else if (action === 'restore-removed-stickers') restoreRemovedStickers();
   else if (action === 'cancel-shortcut') {
     state.shortcutCapture = null;
     state.shortcutError = '';

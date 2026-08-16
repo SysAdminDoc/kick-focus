@@ -3086,10 +3086,34 @@ function sameStickerRecord(a, b) {
   return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 }
 
+/**
+ * Writing the whole ~0.5 MB library on every scan cycle was the jank source, so
+ * merges from chat and the picker debounce the write. Direct user actions (pin,
+ * hide, remove, assign) still persist synchronously through
+ * saveStickerOrganization; only the continuous background merges are deferred.
+ */
+let stickerPersistTimer = 0;
+function flushStickerPersist() {
+  if (stickerPersistTimer) { clearTimeout(stickerPersistTimer); stickerPersistTimer = 0; }
+  persistStickerPreferences();
+  for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
+    summary.textContent = stickerLibrarySummary();
+  }
+}
+function queueStickerPersist() {
+  if (stickerPersistTimer) return;
+  stickerPersistTimer = window.setTimeout(flushStickerPersist, 1500);
+}
+// A tab closing mid-debounce would otherwise lose its last observations.
+window.addEventListener('pagehide', () => { if (stickerPersistTimer) flushStickerPersist(); });
+
 function mergeStickerLibrary(observed) {
   let changed = false;
   const now = Date.now();
   for (const sticker of observed) {
+    // A removed emote stays removed: never re-record it, and stop the rewrite
+    // loop where a hidden entry was re-merged and re-persisted every cycle.
+    if (state.stickerPreferences.hidden.has(sticker.key)) continue;
     const existing = state.stickerPreferences.library.get(sticker.key);
     const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...(sticker.nativeGroups || [])])].slice(0, 20);
     const incomingAccess = sticker.available
@@ -3123,7 +3147,7 @@ function mergeStickerLibrary(observed) {
     }
   }
   if (!changed) return false;
-  persistStickerPreferences();
+  queueStickerPersist();
   for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
     summary.textContent = stickerLibrarySummary();
   }
@@ -5658,7 +5682,8 @@ function stickerLibrarySummary() {
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
   const observed = library.filter((sticker) => sticker.access === 'observed').length;
   const changed = countChangedStickers(library);
-  return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}`;
+  const atCapacity = library.length >= STICKER_LIBRARY_LIMIT;
+  return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}${atCapacity ? ` · full (${STICKER_LIBRARY_LIMIT}); oldest chat-only emotes drop first` : ''}`;
 }
 
 /** First/last capture in the user's terms; '' for entries recorded before schema 4. */
@@ -5748,7 +5773,7 @@ function renderStickerLibraryManager() {
         <div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="New custom group name" aria-label="New emote group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>
         ${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : ''}
         <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New emotes from chat and the picker are merged automatically and included in export.</span></div>
-        ${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded emotes match this filter.' : 'Watch chat or open Kick’s emote picker to begin the library. New emotes are saved whenever Kick exposes them.'}</div>`}
+        ${filter === 'removed' ? `<div class="kf-notice">Removed emotes are no longer stored, which frees their library slots. ${state.stickerPreferences.hidden.size} ${state.stickerPreferences.hidden.size === 1 ? 'emote is' : 'emotes are'} kept out of the library.${state.stickerPreferences.hidden.size ? ` <button type="button" class="kf-button kf-button-small" data-action="restore-removed-stickers">Restore all removed</button>` : ''}</div>` : cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded emotes match this filter.' : 'Watch chat or open Kick’s emote picker to begin the library. New emotes are saved whenever Kick exposes them.'}</div>`}
       </div>
     </section>`;
 }
@@ -6113,12 +6138,20 @@ function toggleLibrarySticker(target, kind) {
     saveStickerOrganization(isFavorited(key) ? 'Emote favorited.' : 'Emote favorite removed.');
     return;
   }
-  if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
-  else {
-    state.stickerPreferences.hidden.add(key);
-    state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
-  }
-  saveStickerOrganization(state.stickerPreferences.hidden.has(key) ? 'Emote removed from the shelf.' : 'Emote restored.');
+  // Remove frees the library slot for real: delete the record, remember the key
+  // so a live scan does not re-record it, and drop any favorite or assignment
+  // that referenced it. Restore is a bulk action in the Removed view.
+  state.stickerPreferences.hidden.add(key);
+  state.stickerPreferences.library.delete(key);
+  state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
+  state.stickerPreferences.assignments.delete(key);
+  saveStickerOrganization('Emote removed and its slot freed.');
+}
+
+function restoreRemovedStickers() {
+  if (!state.stickerPreferences.hidden.size) return;
+  state.stickerPreferences.hidden = new Set();
+  saveStickerOrganization('Removed emotes will return to the library as they are seen again.');
 }
 
 function assignLibrarySticker(selectElement) {
@@ -6328,6 +6361,7 @@ function onInterfaceClick(event) {
   else if (action === 'delete-sticker-group') deleteStickerGroup(actionTarget);
   else if (action === 'favorite-library-sticker') toggleLibrarySticker(actionTarget, 'favorite');
   else if (action === 'remove-library-sticker') toggleLibrarySticker(actionTarget, 'remove');
+  else if (action === 'restore-removed-stickers') restoreRemovedStickers();
   else if (action === 'cancel-shortcut') {
     state.shortcutCapture = null;
     state.shortcutError = '';

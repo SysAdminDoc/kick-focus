@@ -6,6 +6,9 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- **The recorded emote library no longer silently drops new emotes once it fills up.** At 2,400 entries the old cap kept the *oldest* records and discarded every newly seen emote, and it rewrote the whole ~0.5 MB store on every scan cycle. Now the library evicts the most disposable records first — chat-only (`observed`) before locked, oldest-seen first — and never evicts an emote you have available, favorited, or filed in a custom group, so a full library makes room for a new emote instead of ignoring it. Background merges from chat and the picker are debounced into one write (and flushed when the tab closes) rather than rewriting on every cycle.
+- **Removing an emote now frees its library slot.** "Remove" previously only hid the record, so it still counted toward the cap and kept being re-recorded from chat. It now deletes the record, keeps the emote out until you restore it, and the Removed view offers a single "Restore all removed" action.
+
 - **The live extension proof no longer exits 0 when it verified nothing.** A behavioral gate that reports success without a browser is worse than none, so `verify:extension` and `release:check` now fail loudly when Chromium is absent (set `KF_ALLOW_NO_CHROMIUM=1` to downgrade to a skip on a machine that genuinely cannot install one). The matched-rule readback — which needs `declarativeNetRequestFeedback`, a permission the release manifest deliberately omits so Chrome does not warn about browsing history — is now conditional on that permission rather than failing the shipped artifact, with `ERR_BLOCKED_BY_CLIENT` remaining the authoritative block proof. The isolated companion proof was re-run against live Kick: 22/22 checks pass at 1440×900.
 
 ### Internal

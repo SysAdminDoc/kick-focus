@@ -751,7 +751,36 @@ function cleanStickerAssignments(input, groupIds) {
   return assignments;
 }
 
-function cleanStickerLibrary(input) {
+export const STICKER_LIBRARY_LIMIT = 2400;
+
+/**
+ * Evict the recorded library down to `limit` without discarding anything the
+ * user acted on. A naive FIFO truncation kept the oldest entries and dropped
+ * every NEW one once the cap was hit; this drops the most disposable records
+ * instead — `observed` (chat-only) before `locked`, oldest `lastSeen` first —
+ * and never evicts an `available` emote or one that is favorited or assigned.
+ * Returns the retained list and how many entries were dropped.
+ */
+export function evictStickerLibrary(library, limit = STICKER_LIBRARY_LIMIT, protectedKeys = new Set()) {
+  const list = Array.isArray(library) ? library : [...library];
+  if (list.length <= limit) return { library: list, evicted: 0 };
+  const keep = protectedKeys instanceof Set ? protectedKeys : new Set(protectedKeys);
+  const isProtected = (entry) => entry.access === 'available' || keep.has(entry.key);
+  const rank = (entry) => (entry.access === 'observed' ? 0 : 1);
+  const evictable = list
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !isProtected(entry))
+    .sort((a, b) => {
+      if (rank(a.entry) !== rank(b.entry)) return rank(a.entry) - rank(b.entry);
+      const ageDifference = cleanCaptureTime(a.entry.lastSeen) - cleanCaptureTime(b.entry.lastSeen);
+      return ageDifference || a.index - b.index;
+    });
+  const dropCount = Math.min(list.length - limit, evictable.length);
+  const dropped = new Set(evictable.slice(0, dropCount).map(({ index }) => index));
+  return { library: list.filter((_, index) => !dropped.has(index)), evicted: dropCount };
+}
+
+function cleanStickerLibrary(input, hiddenSet = new Set()) {
   if (!Array.isArray(input)) return [];
   const library = [];
   const keys = new Set();
@@ -760,7 +789,8 @@ function cleanStickerLibrary(input) {
     const key = cleanStickerKeys([raw.key], 1)[0];
     const name = cleanStickerText(raw.name, 80);
     const src = cleanStickerAssetUrl(raw.src);
-    if (!key || !name || !src || keys.has(key)) continue;
+    // A removed key is a slot the user freed; never re-materialise it here.
+    if (!key || !name || !src || keys.has(key) || hiddenSet.has(key)) continue;
     keys.add(key);
     const entry = {
       key,
@@ -784,7 +814,9 @@ function cleanStickerLibrary(input) {
     const wasSrc = cleanStickerAssetUrl(raw.wasSrc);
     if (wasSrc && wasSrc !== src) entry.wasSrc = wasSrc;
     library.push(entry);
-    if (library.length >= 2400) break;
+    // A generous hard ceiling bounds a crafted import; evictStickerLibrary does
+    // the real capping and protects the records the user actually acted on.
+    if (library.length >= STICKER_LIBRARY_LIMIT * 2) break;
   }
   return library;
 }
@@ -911,16 +943,28 @@ export function normalizeStickerPreferences(input) {
   const groupIds = new Set(groups.map((group) => group.id));
   const activeGroup = groupIds.has(source.activeGroup) ? source.activeGroup : '';
   const view = enumValue(source.view, ['all', 'pinned', 'native', 'group'], 'all');
+  const favorites = cleanStickerFavorites(source.favorites, source.pinned, hiddenSet);
+  const assignments = cleanStickerAssignments(source.assignments, groupIds);
+  // Favorited or assigned emotes are protected from eviction: the user filed them.
+  const protectedKeys = new Set([
+    ...favorites.map((favorite) => favorite.key),
+    ...assignments.map((assignment) => assignment.key),
+  ]);
+  const library = evictStickerLibrary(
+    cleanStickerLibrary(source.library, hiddenSet),
+    STICKER_LIBRARY_LIMIT,
+    protectedKeys,
+  ).library;
   return {
     schema: STICKER_PREFERENCES_SCHEMA,
-    favorites: cleanStickerFavorites(source.favorites, source.pinned, hiddenSet),
+    favorites,
     hidden,
     view: view === 'group' && !activeGroup ? 'all' : view,
     showHidden: bool(source.showHidden, false),
     activeGroup,
     groups,
-    assignments: cleanStickerAssignments(source.assignments, groupIds),
-    library: cleanStickerLibrary(source.library),
+    assignments,
+    library,
   };
 }
 

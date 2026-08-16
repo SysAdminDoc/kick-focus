@@ -54,13 +54,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P0 — data safety, security, correctness, and the single unblock
 
-- [ ] R-02 — Fix the emote-library cap: evict correctly, free slots on Remove, debounce persist
-  Why: at 2400 entries every NEW emote is silently dropped (break keeps oldest) and the truncated store is rewritten in full every scan cycle forever; Remove never frees a slot. (Operator precondition for R-06.)
-  Evidence: phase0-memo #8 — src/core.mjs:787-788; src/runtime.js:1608-1613,3089-3126,6106-6122; phase1b E1/E2.
-  Touches: pure `evictStickerLibrary(library,limit)` + `stickerLibrarySummary` in core.mjs; runtime.js merge/persist path + `queueStickerPersist`; check.mjs:85-90.
-  Acceptance: pure function in core.mjs under node:test + gate in check.mjs — never evicts `access:'available'`/favorited/assigned, evicts `observed` by oldest lastSeen, Remove deletes the Map entry, summary surfaces eviction/full count; persist debounced ~1500ms (queueStickerPersist) with sync writes kept only for user pin/hide.
-  Complexity: M
-
 - [ ] R-03 — Make "Reset all settings" destroy nothing irreplaceable and clear everything private
   Why: reset deletes up to 2400 emote records incl. irreplaceable firstSeen/wasName/wasSrc provenance (the product's only proof Kick edits emotes, unregenerable) while leaving 8 private stores untouched.
   Evidence: phase0-memo #4 — src/runtime.js:6399-6405,6387,5948,3534-3552; key list runtime.js:2-12; src/core.mjs:787.

@@ -88,6 +88,10 @@ const checks = [
     && source.includes("nativeGroups: ['Seen in chat']")
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
+  ['caps the emote library without dropping new or acted-on records', source.includes('function evictStickerLibrary')
+    && source.includes('function queueStickerPersist')
+    && source.includes('if (state.stickerPreferences.hidden.has(sticker.key)) continue')
+    && source.includes('state.stickerPreferences.library.delete(key)')],
   ['offers a three-row one-click favorites shelf', source.includes('stickerQuickProxyMarkup')
     && source.includes('data-kf-sticker-quick-grid')
     && source.includes('max-height: 156px')],

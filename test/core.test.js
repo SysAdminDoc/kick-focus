@@ -27,6 +27,8 @@ import {
   neutralizePlaybackPayload,
   nextApplyDelay,
   normalizeStickerPreferences,
+  evictStickerLibrary,
+  STICKER_LIBRARY_LIMIT,
   normalizeSettings,
   STICKER_PREFERENCES_SCHEMA,
   FAVORITES_PER_SCOPE_LIMIT,
@@ -234,6 +236,56 @@ test('sticker library keeps portable metadata, custom groups, and one assignment
   assert.deepEqual(value.library[0].nativeGroups, ['Global']);
   assert.equal(value.library[1].access, 'observed');
   assert.equal(normalizeStickerPreferences({ view: 'group', activeGroup: 'missing' }).view, 'all');
+});
+
+test('eviction protects available, favorited, and assigned emotes and drops oldest chat-only first', () => {
+  const at = (day) => Date.UTC(2026, 0, day);
+  const entry = (key, access, lastSeen) => ({
+    key, id: key.slice(3), name: key, src: `https://files.kick.com/emotes/${key.slice(3)}/fullsize`,
+    nativeGroups: [], access, firstSeen: lastSeen, lastSeen,
+  });
+  const library = [
+    entry('id:available-old', 'available', at(1)), // available: never evicted, even though oldest
+    entry('id:observed-old', 'observed', at(2)),   // oldest observed -> first to go
+    entry('id:favorited', 'observed', at(3)),      // observed but favorited -> protected
+    entry('id:assigned', 'observed', at(4)),       // observed but assigned -> protected
+    entry('id:locked-old', 'locked', at(5)),       // locked evicts only after observed
+    entry('id:observed-new', 'observed', at(9)),   // newest observed -> kept over the old one
+  ];
+  const protectedKeys = new Set(['id:favorited', 'id:assigned']);
+  const { library: kept, evicted } = evictStickerLibrary(library, 5, protectedKeys);
+  assert.equal(evicted, 1);
+  assert.deepEqual(kept.map((item) => item.key).sort(), [
+    'id:assigned', 'id:available-old', 'id:favorited', 'id:locked-old', 'id:observed-new',
+  ]);
+  // The oldest chat-only entry is the one that went; nothing protected did.
+  assert.ok(!kept.some((item) => item.key === 'id:observed-old'));
+});
+
+test('a full library evicts an old observed entry rather than dropping the new one', () => {
+  // The R-06 precondition: at the cap, a newly-seen emote must be recorded.
+  const base = (n) => ({
+    key: `id:${n}`, id: String(n), name: `E${n}`, src: `https://files.kick.com/emotes/${n}/fullsize`,
+    nativeGroups: ['Seen in chat'], access: 'observed', firstSeen: 1, lastSeen: n,
+  });
+  const full = Array.from({ length: STICKER_LIBRARY_LIMIT }, (_, index) => base(index + 1));
+  const withNew = [...full, base(STICKER_LIBRARY_LIMIT + 1000)]; // freshest lastSeen
+  const value = normalizeStickerPreferences({ schema: STICKER_PREFERENCES_SCHEMA, library: withNew });
+  assert.equal(value.library.length, STICKER_LIBRARY_LIMIT);
+  assert.ok(value.library.some((item) => item.key === `id:${STICKER_LIBRARY_LIMIT + 1000}`), 'the new emote survives');
+  assert.ok(!value.library.some((item) => item.key === 'id:1'), 'the oldest observed emote is evicted');
+});
+
+test('removed keys are never re-materialised into the library on normalize', () => {
+  const value = normalizeStickerPreferences({
+    schema: STICKER_PREFERENCES_SCHEMA,
+    hidden: ['id:gone'],
+    library: [
+      { key: 'id:gone', id: 'gone', name: 'Gone', src: 'https://files.kick.com/emotes/gone/fullsize', nativeGroups: [], access: 'observed' },
+      { key: 'id:kept', id: 'kept', name: 'Kept', src: 'https://files.kick.com/emotes/kept/fullsize', nativeGroups: [], access: 'observed' },
+    ],
+  });
+  assert.deepEqual(value.library.map((item) => item.key), ['id:kept']);
 });
 
 test('route classifier covers every audited desktop surface', () => {
