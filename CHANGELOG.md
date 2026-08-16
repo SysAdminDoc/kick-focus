@@ -15,6 +15,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - **Importing a backup is now all-or-nothing.** An import used to write its ten stores one after another, so a browser storage limit reached part-way left a configuration that was half the imported file and half the old one, with nothing to say where the seam was. The whole set is now sized and checked before anything is written, a refusal explains itself and changes nothing, and Undo import stays available if a restore fails. Userscript builds commit the set in a single batched write on Tampermonkey 5.3+ and Violentmonkey.
 
+### Internal
+
+- The test suite adopts Node's own tooling with no new dependencies: tests are tagged so pure logic can run without a build (`npm run test:unit`), API-shape assertions tolerate Kick adding fields without going quiet about wrong ones, and a coverage gate names any source file no test reaches. That gate immediately found four — `runtime.js` and the three extension entry points were absent from the coverage table entirely, which made the reported percentage look better than it was. Each now states where it is actually covered. jsdom, happy-dom, and Node's built-in localStorage remain deliberately unadopted.
+
 ### Fixed
 
 - **Escape cancels the reset prompt instead of tearing down all of Settings.** Answering "no" to a confirmation no longer closes the modal and discards the page you were working on, and the prompt now keeps Tab inside itself rather than letting focus wander the obscured settings behind it. Cancelling returns focus to the control you pressed.

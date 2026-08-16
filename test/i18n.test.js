@@ -45,7 +45,7 @@ async function readLocales() {
   return locales;
 }
 
-test('no locale declares the same key twice', async () => {
+test('no locale declares the same key twice', { tag: 'unit' }, async () => {
   const locales = await readLocales();
   for (const [locale, keys] of locales) {
     const seen = new Set();
@@ -62,7 +62,7 @@ test('no locale declares the same key twice', async () => {
   }
 });
 
-test('the translator is forward-only and never renames a language', async () => {
+test('the translator is forward-only and never renames a language', { tag: 'unit' }, async () => {
   const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
 
   // The reverse map was ambiguous by construction: several English source
@@ -88,7 +88,7 @@ test('the translator is forward-only and never renames a language', async () => 
   }
 });
 
-test('every locale covers the same strings', async () => {
+test('every locale covers the same strings', { tag: 'unit' }, async () => {
   const locales = await readLocales();
   const union = new Set([...locales.values()].flat());
   for (const [locale, keys] of locales) {

@@ -31,7 +31,7 @@ import { rankEmoteUsage, recordEmoteUse, unusedEmotes } from '../src/core.mjs';
 
 // Shapes below are from first-hand captures against the live site on 2026-08-15.
 
-test('the realtime broker is read rather than assumed to be Pusher', () => {
+test('the realtime broker is read rather than assumed to be Pusher', { tag: 'unit' }, () => {
   const live = normalizeRealtimeConnection({
     data: {
       connections: [{ credentials: { app_key: '32cbd69e4b950bf97679', cluster: 'us2' }, provider: 'PUSHER' }],
@@ -61,7 +61,7 @@ test('the realtime broker is read rather than assumed to be Pusher', () => {
   );
 });
 
-test('a second realtime transport is an added entry, not a rewrite', () => {
+test('a second realtime transport is an added entry, not a rewrite', { tag: 'unit' }, () => {
   // The seam: every transport supplies credentials + a URL, and nothing else.
   // Frame parsing and subscription management below are shared by all of them.
   for (const transport of Object.values(REALTIME_TRANSPORTS)) {
@@ -114,7 +114,7 @@ test('a second realtime transport is an added entry, not a rewrite', () => {
   );
 });
 
-test('frame parsing is shared by every transport and classifies by kind', () => {
+test('frame parsing is shared by every transport and classifies by kind', { tag: 'unit' }, () => {
   // Subscription management is one function, so a new transport reuses it.
   assert.equal(
     realtimeSubscribeFrame('chatrooms.88.v2'),
@@ -146,7 +146,7 @@ test('frame parsing is shared by every transport and classifies by kind', () => 
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: null })).kind, 'other');
 });
 
-test('a locked emote says why, and entitlement tolerates more than one shape', () => {
+test('a locked emote says why, and entitlement tolerates more than one shape', { tag: 'unit' }, () => {
   // The documented failure mode is the expensive one: greying out an emote the
   // user does own. Every shape Kick has used to say "entitled" must be read.
   for (const owned of [
@@ -187,7 +187,7 @@ test('a locked emote says why, and entitlement tolerates more than one shape', (
   assert.equal(emoteLockState({ access: 'locked' }, '../evil').unlockUrl, '');
 });
 
-test('live status for every saved layout comes from one bulk request', () => {
+test('live status for every saved layout comes from one bulk request', { tag: 'unit' }, () => {
   // Kick's own sidebar reads this endpoint; one call answers for every channel.
   assert.equal(endpoints.currentViewers([7, 8]), 'https://kick.com/current-viewers?ids[]=7&ids[]=8');
   assert.equal(endpoints.currentViewers([7, 7, '']), 'https://kick.com/current-viewers?ids[]=7');
@@ -220,7 +220,7 @@ test('live status for every saved layout comes from one bulk request', () => {
   assert.equal(normalizeChannel({ id: 5 }).livestreamId, 0);
 });
 
-test('the duplicate rate is measured, or reported as unavailable — never guessed', () => {
+test('the duplicate rate is measured, or reported as unavailable — never guessed', { tag: 'unit' }, () => {
   // Kick returning a quantity is the only thing that makes duplicates knowable.
   const counted = summarizeCollectibleInventory([
     { id: 1, quantity: 3 },
@@ -270,7 +270,7 @@ test('the duplicate rate is measured, or reported as unavailable — never guess
   }
 });
 
-test('realtime channel names keep Kick\'s inconsistent separators', () => {
+test('realtime channel names keep Kick\'s inconsistent separators', { tag: 'unit' }, () => {
   // Dot and underscore are *different* channels carrying different events.
   // Subscribing to the wrong one succeeds and then never delivers.
   assert.deepEqual(
@@ -280,7 +280,7 @@ test('realtime channel names keep Kick\'s inconsistent separators', () => {
   assert.deepEqual(realtimeChannels({}), []);
 });
 
-test('a socket that is open but silent is not reported as healthy', () => {
+test('a socket that is open but silent is not reported as healthy', { tag: 'unit' }, () => {
   assert.equal(realtimeHealth({ connected: false }).state, 'offline');
   assert.equal(realtimeHealth({ connected: true, lastFrameAt: 1000, now: 2000 }).state, 'live');
 
@@ -295,7 +295,7 @@ test('a socket that is open but silent is not reported as healthy', () => {
   assert.equal(realtimeHealth({ connected: true, unparsable: 20, now: 1 }).state, 'unparsable');
 });
 
-test('emote sets keep access honest when the public catalog carries no entitlement', () => {
+test('emote sets keep access honest when the public catalog carries no entitlement', { tag: 'unit' }, () => {
   const result = normalizeEmoteSets([
     {
       id: 12, name: 'lacobraaa', slug: 'lacobraaa',
@@ -313,12 +313,18 @@ test('emote sets keep access honest when the public catalog carries no entitleme
   assert.equal(result.emotes.length, 4);
 
   const golden = result.emotes.find((emote) => emote.name === 'collectiblesGoldenLULW');
-  assert.equal(golden.collectible, true);
-  assert.equal(golden.url, 'https://files.kick.com/emotes/5748003/fullsize');
+  // partialDeepStrictEqual, not deepStrictEqual: this asserts the fields the
+  // mod depends on and stays quiet about the rest, so enriching the normalizer
+  // (or Kick adding a field we pass through) does not fail a test that is not
+  // about either. Missing or wrong values still fail.
   // subscribers_only doubles as Kick's platform-wide usability flag, which is
   // inverted from what the name suggests.
-  assert.equal(golden.usableEverywhere, true);
-  assert.equal(golden.entitlement, 'unknown');
+  assert.partialDeepStrictEqual(golden, {
+    collectible: true,
+    url: 'https://files.kick.com/emotes/5748003/fullsize',
+    usableEverywhere: true,
+    entitlement: 'unknown',
+  });
   assert.equal(catalogEmoteAccess(golden), 'locked');
   assert.equal(result.emotes.find((emote) => emote.name === 'cobraHi').usableEverywhere, false);
   assert.equal(catalogEmoteAccess(result.emotes.find((emote) => emote.name === 'cobraHi')), 'channel');
@@ -348,7 +354,7 @@ test('emote sets keep access honest when the public catalog carries no entitleme
   assert.equal(malformed.emotes.length, 0);
 });
 
-test('follow-gated emotes require an explicit Kick marker before account mutation', () => {
+test('follow-gated emotes require an explicit Kick marker before account mutation', { tag: 'unit' }, () => {
   assert.deepEqual(emoteFollowRequirement({ name: 'ordinary' }, 'chessbrah'), {
     required: false,
     followed: false,
@@ -364,16 +370,14 @@ test('follow-gated emotes require an explicit Kick marker before account mutatio
     { id: 20, name: 'FollowMe', followers_only: true, is_following: false },
     { id: 21, name: 'AlreadyFollowed', requires_follow: true, followed: true },
   ] }]).emotes;
-  assert.equal(locked.sourceSlug, 'chessbrah');
-  assert.equal(locked.requiresFollow, true);
-  assert.equal(locked.followed, false);
+  assert.partialDeepStrictEqual(locked, { sourceSlug: 'chessbrah', requiresFollow: true, followed: false });
   assert.equal(catalogEmoteAccess(locked), 'locked');
   assert.equal(catalogEmoteAccess(available), 'channel');
   assert.match(emoteLockState(locked).reason, /Follow chessbrah/);
   assert.equal(endpoints.followChannel('chessbrah'), 'https://kick.com/api/v2/channels/chessbrah/follow');
 });
 
-test('cross-channel catalog import selects only the requested channel set', () => {
+test('cross-channel catalog import selects only the requested channel set', { tag: 'unit' }, () => {
   const catalog = normalizeEmoteSets([
     { id: 12, name: 'target', emotes: [{ id: 1, name: 'TargetFree', subscribers_only: false }] },
     { id: 13, name: 'another', emotes: [{ id: 2, name: 'OtherSub', subscribers_only: true }] },
@@ -385,7 +389,7 @@ test('cross-channel catalog import selects only the requested channel set', () =
   assert.deepEqual(channelCatalogEmotes(catalog, '../target'), []);
 });
 
-test('shadowed emote names name the winner Kick will actually send', () => {
+test('shadowed emote names name the winner Kick will actually send', { tag: 'unit' }, () => {
   const { emotes } = normalizeEmoteSets([
     { id: 1, name: 'channelA', emotes: [{ id: 10, name: 'KEKW', subscribers_only: true }] },
     { id: 2, name: 'channelB', emotes: [{ id: 20, name: 'KEKW', subscribers_only: true }] },
@@ -400,7 +404,7 @@ test('shadowed emote names name the winner Kick will actually send', () => {
   assert.deepEqual(collisions[0].sets, ['channelA', 'channelB']);
 });
 
-test('chat wire tokens are parsed to ids, because names are not identities', () => {
+test('chat wire tokens are parsed to ids, because names are not identities', { tag: 'unit' }, () => {
   const segments = parseEmoteTokens('hey [emote:37226:KEKW] nice [emote:5748003:collectiblesGoldenLULW]');
   assert.deepEqual(segments, [
     { type: 'text', value: 'hey ' },
@@ -415,7 +419,7 @@ test('chat wire tokens are parsed to ids, because names are not identities', () 
   assert.equal(parseEmoteTokens('[emote:1:a]').length, 1);
 });
 
-test('chat messages prefer badges_v2 and survive a missing identity', () => {
+test('chat messages prefer badges_v2 and survive a missing identity', { tag: 'unit' }, () => {
   const message = normalizeChatMessage({
     id: 'abc', content: 'gg [emote:37226:KEKW]', created_at: '2026-08-15T00:00:00Z',
     sender: {
@@ -439,7 +443,7 @@ test('chat messages prefer badges_v2 and survive a missing identity', () => {
   assert.equal(normalizeChatMessage({}), null);
 });
 
-test('a deleted message explains why, which no DOM scraper can see', () => {
+test('a deleted message explains why, which no DOM scraper can see', { tag: 'unit' }, () => {
   const ai = normalizeDeletion({ message: { id: 'm1' }, aiModerated: true, violatedRules: ['bullying'] });
   assert.equal(ai.aiModerated, true);
   assert.deepEqual(ai.rules, ['bullying']);
@@ -455,7 +459,7 @@ test('a deleted message explains why, which no DOM scraper can see', () => {
   assert.equal(normalizeDeletion({}), null);
 });
 
-test('usage counting produces the ranking Kick itself does not have', () => {
+test('usage counting produces the ranking Kick itself does not have', { tag: 'unit' }, () => {
   let counts = { global: {}, channels: {} };
   for (let i = 0; i < 3; i += 1) counts = recordEmoteUse(counts, { channel: 'xqc', id: '37226', name: 'KEKW', at: i });
   counts = recordEmoteUse(counts, { channel: 'xqc', id: '900', name: 'cobraHi', at: 9 });
@@ -487,7 +491,7 @@ test('usage counting produces the ranking Kick itself does not have', () => {
   assert.equal(recordEmoteUse(counts, { channel: 'xqc' }), counts);
 });
 
-test('rarity is joined on evidence and stays silent when the evidence is weak', () => {
+test('rarity is joined on evidence and stays silent when the evidence is weak', { tag: 'unit' }, () => {
   const { emotes } = normalizeEmoteSets([{
     id: 1, name: 'chan',
     emotes: [
@@ -533,7 +537,7 @@ test('rarity is joined on evidence and stays silent when the evidence is weak', 
   assert.equal(none.coverage, 0);
 });
 
-test('wide collectibles are measured, never guessed from the name', () => {
+test('wide collectibles are measured, never guessed from the name', { tag: 'unit' }, () => {
   // Kick renders at double width only when the name is prefixed AND the loaded
   // image is actually wide. Either alone squashes or stretches something.
   assert.equal(emoteAspect('collectiblesWide', 112, 56), 'wide');
@@ -544,7 +548,7 @@ test('wide collectibles are measured, never guessed from the name', () => {
   assert.equal(emoteAspect('collectiblesWide', undefined, undefined), 'square');
 });
 
-test('endpoint builders stay on Kick and encode their inputs', () => {
+test('endpoint builders stay on Kick and encode their inputs', { tag: 'unit' }, () => {
   assert.equal(endpoints.emoteSets('la cobra/../x'), 'https://kick.com/emotes/la%20cobra%2F..%2Fx');
   assert.equal(endpoints.chatHistory(88), 'https://web.kick.com/api/v1/chat/88/history');
   assert.equal(endpoints.realtimeChat(88, 'uuid'), 'https://web.kick.com/api/v1/realtime/chat/88/client/uuid/connection');
@@ -556,7 +560,7 @@ test('endpoint builders stay on Kick and encode their inputs', () => {
   }
 });
 
-test('channel identity survives an offline or reshaped payload', () => {
+test('channel identity survives an offline or reshaped payload', { tag: 'unit' }, () => {
   const live = normalizeChannel({
     id: 42, user_id: 7, slug: 'lacobraaa', chatroom: { id: 88 }, followers_count: 1234,
     livestream: { is_live: true, viewer_count: 900, session_title: 'hi', is_mature: false, language: 'en', categories: [{ slug: 'slots' }] },
@@ -573,7 +577,7 @@ test('channel identity survives an offline or reshaped payload', () => {
   assert.equal(normalizeChannel({ slug: 'x' }), null, 'an id-less payload is not a channel');
 });
 
-test('channel input accepts whatever a person is likely to paste', async () => {
+test('channel input accepts whatever a person is likely to paste', { tag: 'unit' }, async () => {
   const { parseChannelInput, playerEmbedUrl, chatEmbedUrl, isValidSlug } = await import('../src/api.mjs');
   assert.equal(parseChannelInput('xqc'), 'xqc');
   assert.equal(parseChannelInput('  @xQc  '), 'xQc');
@@ -596,7 +600,7 @@ test('channel input accepts whatever a person is likely to paste', async () => {
   assert.equal(chatEmbedUrl('xqc'), 'https://kick.com/popout/xqc/chat');
 });
 
-test('realtime frames are treated as untrusted input', () => {
+test('realtime frames are treated as untrusted input', { tag: 'unit' }, () => {
   // The socket is an anonymous public subscription, so nothing about the
   // transport guarantees the shape or size of what arrives.
 

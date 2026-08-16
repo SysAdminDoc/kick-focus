@@ -127,7 +127,7 @@ async function loadFirefoxBackground() {
   return { listener, badges };
 }
 
-test('the Firefox background cancels ad requests from Firefox-shaped details', async () => {
+test('the Firefox background cancels ad requests from Firefox-shaped details', { tag: 'artifact' }, async () => {
   const { listener, badges } = await loadFirefoxBackground();
   assert.ok(listener, 'no onBeforeRequest listener was registered');
 
@@ -159,7 +159,7 @@ test('the Firefox background cancels ad requests from Firefox-shaped details', a
   assert.ok(badges.length >= 4, 'blocked requests should paint a badge count');
 });
 
-test('the Firefox background leaves other sites and benign requests alone', async () => {
+test('the Firefox background leaves other sites and benign requests alone', { tag: 'artifact' }, async () => {
   const { listener } = await loadFirefoxBackground();
 
   // Not a Kick page — the companion must never change how another site loads.

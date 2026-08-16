@@ -26,7 +26,7 @@ class FakeNode {
   }
 }
 
-test('ordered compatibility probes match current and localized shell shapes', () => {
+test('ordered compatibility probes match current and localized shell shapes', { tag: 'unit' }, () => {
   const main = new FakeNode({
     all: {
       '[data-testid="livestream-results-card"], [data-testid="stream-card"]': [new FakeNode()],
@@ -57,7 +57,7 @@ test('ordered compatibility probes match current and localized shell shapes', ()
   });
 });
 
-test('compatibility self-test is route-aware and names missing hooks', () => {
+test('compatibility self-test is route-aware and names missing hooks', { tag: 'unit' }, () => {
   const main = new FakeNode();
   const sidebar = new FakeNode();
   const root = new FakeNode({ query: {

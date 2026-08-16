@@ -97,7 +97,7 @@ async function collect() {
   return { locales, rendered };
 }
 
-test('the parser finds the dictionaries and the rendered strings', async () => {
+test('the parser finds the dictionaries and the rendered strings', { tag: 'unit' }, async () => {
   const { locales, rendered } = await collect();
   // Guard the guard: if these regexes stop matching, every assertion below
   // passes vacuously and the gate becomes decorative.
@@ -108,7 +108,7 @@ test('the parser finds the dictionaries and the rendered strings', async () => {
   assert.ok(rendered.size > 100, `parsed only ${rendered.size} rendered strings — suspect the parser`);
 });
 
-test('each scanner still matches its own surface, so none can silently go blind', async () => {
+test('each scanner still matches its own surface, so none can silently go blind', { tag: 'unit' }, async () => {
   // A scanner whose regex stops matching contributes nothing and takes the
   // strings it used to cover out of the gate without failing anything. Every
   // one of them must find something in the real source.
@@ -125,7 +125,7 @@ test('each scanner still matches its own surface, so none can silently go blind'
   assert.deepEqual(markupHits, ['Real copy'], 'markup attributes must be scanned as copy');
 });
 
-test('every rendered string has an entry in every locale', async () => {
+test('every rendered string has an entry in every locale', { tag: 'unit' }, async () => {
   const { locales, rendered } = await collect();
   const names = Object.keys(locales);
   const missing = [...rendered].filter((s) => names.some((n) => !locales[n].has(s)));

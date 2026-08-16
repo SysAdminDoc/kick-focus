@@ -160,14 +160,14 @@ function makeBootEnvironment() {
   return context;
 }
 
-test('the built bundle boots in a stubbed environment without a TDZ or bad const order', async () => {
+test('the built bundle boots in a stubbed environment without a TDZ or bad const order', { tag: 'artifact' }, async () => {
   const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
   const context = makeBootEnvironment();
   vm.runInNewContext(bundle, context);
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
-test('a mis-ordered const in the bundle is caught by the boot gate (red test)', async () => {
+test('a mis-ordered const in the bundle is caught by the boot gate (red test)', { tag: 'artifact' }, async () => {
   const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
   // Inject a temporal-dead-zone read right after the boot guard: a const is read
   // before its declaration. A correct bundle never does this; this proves the

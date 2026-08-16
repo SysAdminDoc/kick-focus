@@ -86,13 +86,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: CSS is adopted once per shadow root (may drop `!important` armor where the adopted sheet wins ties); route changes read from the Navigation API with history monkey-patching removed; search highlights write zero nodes into Kick's tree; all features are feature-detected (never version-sniffed) so the Firefox artifact degrades cleanly; a before/after perf.measure shows the apply-cycle cost drop.
   Complexity: L
 
-- [ ] R-22 — Adopt stable zero-dep node:test upgrades
-  Why: Node 22/24 shipped partialDeepStrictEqual, snapshots, test tags and coverage-include-all that raise the testing floor without a single package.
-  Evidence: testing stream — assert.partialDeepStrictEqual (v24/v22.17), --experimental-test-tag-filter (v24.19/v26.2), --test-coverage-include-all (v26.7.0), expectFailure (v24.14.0).
-  Touches: existing test suite assertions; a tag split for offline vs live-browser gates; coverage config.
-  Acceptance: API-drift assertions use partialDeepStrictEqual (tolerant of added fields); offline and live-browser gates are tag-separated in one suite; coverage-include-all runs and exposes wholly-untested files; jsdom/happy-dom and Node's built-in localStorage are explicitly NOT adopted.
-  Complexity: M
-
 ### P3 — differentiators, larger bets, future-proofing
 
 - [ ] R-25 — Colon-trigger autocomplete popup (operator-requested)

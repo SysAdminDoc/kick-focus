@@ -66,7 +66,7 @@ import {
   monetizationKind,
 } from '../src/core.mjs';
 
-test('sanitizeErrorMessage strips query strings and long tokens for the local error log', () => {
+test('sanitizeErrorMessage strips query strings and long tokens for the local error log', { tag: 'unit' }, () => {
   assert.equal(sanitizeErrorMessage('Failed at https://kick.com/api/v1/log?token=abc123'), 'Failed at https://kick.com/api/v1/log');
   assert.equal(sanitizeErrorMessage('id abcdefghijklmnopqrstuvwxyz0123456789ABCD done'), 'id … done');
   assert.equal(sanitizeErrorMessage(new Error('boom').message), 'boom');
@@ -74,7 +74,7 @@ test('sanitizeErrorMessage strips query strings and long tokens for the local er
   assert.ok(sanitizeErrorMessage('x'.repeat(500)).length <= 300);
 });
 
-test('pluralForm follows CLDR locale rules, including the es/pt "many" category English lacks', () => {
+test('pluralForm follows CLDR locale rules, including the es/pt "many" category English lacks', { tag: 'unit' }, () => {
   assert.equal(pluralForm(1, { one: 'emote', other: 'emotes' }, 'en'), 'emote');
   assert.equal(pluralForm(3, { one: 'emote', other: 'emotes' }, 'en'), 'emotes');
   assert.equal(new Intl.PluralRules('en').select(1000000), 'other'); // English never "many"
@@ -90,7 +90,7 @@ test('pluralForm follows CLDR locale rules, including the es/pt "many" category 
   assert.equal(pluralForm(1, { other: 'b' }, 'en'), 'b');
 });
 
-test('normalizeShortcut canonicalizes case and spacing, rejecting empty and overlong', () => {
+test('normalizeShortcut canonicalizes case and spacing, rejecting empty and overlong', { tag: 'unit' }, () => {
   assert.equal(normalizeShortcut('ctrl + k', 'X'), 'Ctrl+K');
   assert.equal(normalizeShortcut('  shift+ALT+p ', 'X'), 'Shift+Alt+P');
   assert.equal(normalizeShortcut('f', 'X'), 'F');
@@ -99,7 +99,7 @@ test('normalizeShortcut canonicalizes case and spacing, rejecting empty and over
   assert.equal(normalizeShortcut('a'.repeat(40), 'FB'), 'FB');
 });
 
-test('shortcut reassignment rejects a value already bound to another action (README claim)', () => {
+test('shortcut reassignment rejects a value already bound to another action (README claim)', { tag: 'unit' }, () => {
   const shortcuts = { focus: 'F', chat: 'C', settings: 'Alt+K' };
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'F'), 'focus');
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'f'), 'focus'); // case-insensitive
@@ -108,7 +108,7 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
 });
 
-test('an emote insertion plan carries the plain name and never the wire token', () => {
+test('an emote insertion plan carries the plain name and never the wire token', { tag: 'unit' }, () => {
   const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];
 
   const plain = insertionPlanFor({ name: 'KEKW', id: 4821 }, [], 'observed');
@@ -153,7 +153,7 @@ function plan_has_no_id(plan) {
   return !JSON.stringify(plan).includes('4821');
 }
 
-test('the chat emote hover card names the set, access, capture and shadowing winner', () => {
+test('the chat emote hover card names the set, access, capture and shadowing winner', { tag: 'unit' }, () => {
   const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];
   const entry = {
     name: 'PogChamp', nativeGroups: ['Seen in chat'], access: 'observed', firstSeen: Date.UTC(2026, 0, 15),
@@ -204,7 +204,7 @@ test('the chat emote hover card names the set, access, capture and shadowing win
   );
 });
 
-test('a multi-store write is sized and serialized before any of it is committed', () => {
+test('a multi-store write is sized and serialized before any of it is committed', { tag: 'unit' }, () => {
   const plan = planStorageCommit([['a', { x: 1 }], ['b', [1, 2, 3]]]);
   assert.equal(plan.ok, true);
   assert.equal(plan.staged.length, 2);
@@ -233,7 +233,7 @@ test('a multi-store write is sized and serialized before any of it is committed'
   assert.equal(planStorageCommit([]).ok, true);
 });
 
-test('a quota failure part-way through an import leaves the prior state intact', () => {
+test('a quota failure part-way through an import leaves the prior state intact', { tag: 'unit' }, () => {
   // The store the runtime writes into, plus a backend that starts failing after
   // the second key — the shape of a quota ceiling reached mid-import.
   const store = new Map([['settings', 'old-settings'], ['library', 'old-library']]);
@@ -272,7 +272,7 @@ test('a quota failure part-way through an import leaves the prior state intact',
   assert.equal(store.has('notes'), false);
 });
 
-test('the reset alertdialog owns focus and Escape while it is open, not the settings shell', () => {
+test('the reset alertdialog owns focus and Escape while it is open, not the settings shell', { tag: 'unit' }, () => {
   // The defect: the prompt is nested inside the settings shell, so the trap
   // scoped to settings and Tab walked the obscured page behind the dialog,
   // while Escape closed all of Settings instead of only the prompt.
@@ -286,7 +286,7 @@ test('the reset alertdialog owns focus and Escape while it is open, not the sett
   assert.equal(afterCancel.selector, '[data-kf-settings-shell]');
 });
 
-test('every overlay ranks the same way for Tab and for Escape', () => {
+test('every overlay ranks the same way for Tab and for Escape', { tag: 'unit' }, () => {
   // These two ladders were written separately and disagreed: the trap ranked the
   // command menu above settings, Escape ranked settings above the command menu.
   assert.equal(topmostOverlayLayer({ command: true, settings: true }).layer, 'command');
@@ -307,7 +307,7 @@ test('every overlay ranks the same way for Tab and for Escape', () => {
   }
 });
 
-test('multi-stream merge survives two tabs adding different channels', () => {
+test('multi-stream merge survives two tabs adding different channels', { tag: 'unit' }, () => {
   // Tab A boots with [x], adds a. Tab B boots with [x] (stale), adds b after A wrote.
   const afterA = mergeMultistream({ streams: ['x'] }, { streams: ['x', 'a'] }, ['a'], []);
   assert.deepEqual(afterA.streams, ['x', 'a']);
@@ -315,19 +315,19 @@ test('multi-stream merge survives two tabs adding different channels', () => {
   assert.deepEqual([...afterB.streams].sort(), ['a', 'b', 'x']); // A's add survived B's write
 });
 
-test('multi-stream merge applies this tab removal without dropping another tab add', () => {
+test('multi-stream merge applies this tab removal without dropping another tab add', { tag: 'unit' }, () => {
   const merged = mergeMultistream({ streams: ['x', 'a'] }, { streams: ['x'] }, [], ['x']);
   assert.deepEqual(merged.streams, ['a']);
 });
 
-test('multi-stream merge preserves this tab order and caps at the max', () => {
+test('multi-stream merge preserves this tab order and caps at the max', { tag: 'unit' }, () => {
   const reordered = mergeMultistream({ streams: ['a', 'b'] }, { streams: ['b', 'a'] }, [], []);
   assert.deepEqual(reordered.streams, ['b', 'a']);
   const many = Array.from({ length: MULTISTREAM_MAX + 3 }, (_, index) => `c${index}`);
   assert.equal(mergeMultistream({ streams: [] }, { streams: [] }, many, []).streams.length, MULTISTREAM_MAX);
 });
 
-test('chat-frame emotes become CDN-scoped observations, deduped by id', () => {
+test('chat-frame emotes become CDN-scoped observations, deduped by id', { tag: 'unit' }, () => {
   const url = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
   const observations = observationsFromChatEmotes([
     { type: 'emote', id: '37226', name: 'PogChamp' },
@@ -348,7 +348,7 @@ test('chat-frame emotes become CDN-scoped observations, deduped by id', () => {
   assert.equal(observationsFromChatEmotes('nope', url).length, 0);
 });
 
-test('a blocklist URL is accepted only when it is a well-formed https URL', () => {
+test('a blocklist URL is accepted only when it is a well-formed https URL', { tag: 'unit' }, () => {
   assert.equal(normalizeBlocklistUrl('https://example.com/list.json'), 'https://example.com/list.json');
   assert.equal(normalizeBlocklistUrl('  https://example.com/list.json  '), 'https://example.com/list.json');
   assert.equal(normalizeBlocklistUrl('http://example.com/list.json'), ''); // not https
@@ -362,7 +362,7 @@ test('a blocklist URL is accepted only when it is a well-formed https URL', () =
   assert.equal(normalizeSettings({ content: { blocklistUrl: 'https://ok/list' } }).content.blocklistUrl, 'https://ok/list');
 });
 
-test('the store registry keeps the library on reset but marks every private store for clearing', () => {
+test('the store registry keeps the library on reset but marks every private store for clearing', { tag: 'unit' }, () => {
   const byKey = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store]));
   // The library is the one irreplaceable store: backed up, but never reset.
   assert.equal(byKey['kick-focus:sticker-preferences'].backup, true);
@@ -377,7 +377,7 @@ test('the store registry keeps the library on reset but marks every private stor
   }
 });
 
-test('the export payload carries every store the registry marks for backup', () => {
+test('the export payload carries every store the registry marks for backup', { tag: 'unit' }, () => {
   const probe = buildSettingsExport({
     settings: { schema: 1, layout: { density: 'compact' } },
     stickers: { schema: 5 }, usage: { global: {}, channels: {} }, multistream: { streams: [] },
@@ -391,7 +391,7 @@ test('the export payload carries every store the registry marks for backup', () 
   }
 });
 
-test('import drops prototype-pollution keys in every store and never touches Object.prototype', () => {
+test('import drops prototype-pollution keys in every store and never touches Object.prototype', { tag: 'unit' }, () => {
   // Raw JSON (not an object literal, which would set the prototype instead of an
   // own key) so the pollution keys actually travel through JSON.parse as data.
   const malicious = '{"layout":{"density":"compact"},"channelNotes":{"__proto__":{"polluted":"yes"},"/xqc":"ok"},"mediaPreferences":{"constructor":1,"volume:/xqc":0.5}}';
@@ -404,7 +404,7 @@ test('import drops prototype-pollution keys in every store and never touches Obj
   assert.equal(result.mediaPreferences['volume:/xqc'], 0.5);
 });
 
-test('import round-trips the previously omitted stores with their bounds enforced', () => {
+test('import round-trips the previously omitted stores with their bounds enforced', { tag: 'unit' }, () => {
   const payload = buildSettingsExport({
     settings: { schema: 1 },
     favoriteChannels: ['/xqc', 'https://evil.com/haxor', '/xqc'],
@@ -423,7 +423,7 @@ test('import round-trips the previously omitted stores with their bounds enforce
   assert.ok(!('bad key' in result.mediaPreferences)); // malformed key rejected
 });
 
-test('emote usage global rollup is capped on both read and write', () => {
+test('emote usage global rollup is capped on both read and write', { tag: 'unit' }, () => {
   const oversized = { global: {}, channels: {} };
   for (let i = 0; i < USAGE_GLOBAL_LIMIT + 500; i += 1) {
     oversized.global[`e${i}`] = { name: `E${i}`, count: (i % 50) + 1, firstAt: 1, lastAt: i + 1 };
@@ -436,7 +436,7 @@ test('emote usage global rollup is capped on both read and write', () => {
   assert.ok(Object.keys(counts.global).length <= USAGE_GLOBAL_LIMIT);
 });
 
-test('litix.io stays in the telemetry set but out of the network-layer cancel list', () => {
+test('litix.io stays in the telemetry set but out of the network-layer cancel list', { tag: 'unit' }, () => {
   // Blocking litix.io hard triggers a retry storm; the page realm answers it
   // empty-200 instead, so it must never reach the DNR/webRequest cancel set.
   assert.ok(TELEMETRY_HOSTS.includes('litix.io'));
@@ -447,7 +447,7 @@ test('litix.io stays in the telemetry set but out of the network-layer cancel li
   }
 });
 
-test('normalization clamps values and keeps core ad defense enabled', () => {
+test('normalization clamps values and keeps core ad defense enabled', { tag: 'unit' }, () => {
   const value = normalizeSettings({
     layout: { chatWidth: 900, sidebar: 'wild' },
     content: { blockAds: false },
@@ -465,7 +465,7 @@ test('normalization clamps values and keeps core ad defense enabled', () => {
   assert.equal(value.accessibility.captionOpacity, 0);
 });
 
-test('v2 migrates the former desktop defaults without overwriting custom layout choices', () => {
+test('v2 migrates the former desktop defaults without overwriting custom layout choices', { tag: 'unit' }, () => {
   const migrated = normalizeSettings({ schema: 1, layout: { sidebar: 'compact', chatWidth: 380 } });
   // Track the constant, not a literal: this assertion is about the migration,
   // and pinning the number makes every later schema bump look like a failure.
@@ -478,7 +478,7 @@ test('v2 migrates the former desktop defaults without overwriting custom layout 
   assert.equal(custom.layout.chatWidth, 455);
 });
 
-test('Poor mode is opt-in and identifies only spending controls', () => {
+test('Poor mode is opt-in and identifies only spending controls', { tag: 'unit' }, () => {
   assert.equal(DEFAULT_SETTINGS.content.hideMonetization, false);
   assert.equal(normalizeSettings({ content: { hideMonetization: true } }).content.hideMonetization, true);
   assert.equal(normalizeSettings({ content: { hideMonetization: 'yes' } }).content.hideMonetization, false);
@@ -500,7 +500,7 @@ test('Poor mode is opt-in and identifies only spending controls', () => {
   assert.equal(monetizationKind({ text: 'Subscription settings' }), '');
 });
 
-test('emote preferences keep favorites, removals, and view modes bounded and local', () => {
+test('emote preferences keep favorites, removals, and view modes bounded and local', { tag: 'unit' }, () => {
   // Schema 4 and earlier stored a flat `pinned` array. Position in it was the
   // order, so it migrates to ordered global favorites with nothing lost.
   const value = normalizeStickerPreferences({
@@ -527,7 +527,7 @@ test('emote preferences keep favorites, removals, and view modes bounded and loc
   );
 });
 
-test('favorites are scoped per channel with a global fallback', () => {
+test('favorites are scoped per channel with a global fallback', { tag: 'unit' }, () => {
   const favorites = normalizeStickerPreferences({
     favorites: [
       { key: 'id:g1', channel: '', order: 0 },
@@ -559,7 +559,7 @@ test('favorites are scoped per channel with a global fallback', () => {
   assert.deepEqual(favoritesForChannel(undefined, 'xqc'), []);
 });
 
-test('favorites can be reordered explicitly, within their own scope only', () => {
+test('favorites can be reordered explicitly, within their own scope only', { tag: 'unit' }, () => {
   let favorites = normalizeStickerPreferences({
     favorites: [
       { key: 'a', channel: '', order: 0 },
@@ -587,7 +587,7 @@ test('favorites can be reordered explicitly, within their own scope only', () =>
   assert.deepEqual(favoritesForChannel(moveStickerFavorite(favorites, 'nope', '', -1), ''), ['c', 'a', 'b']);
 });
 
-test('toggling a favorite touches one scope and respects the ceiling', () => {
+test('toggling a favorite touches one scope and respects the ceiling', { tag: 'unit' }, () => {
   let favorites = [];
 
   favorites = toggleStickerFavorite(favorites, 'a', '');
@@ -617,7 +617,7 @@ test('toggling a favorite touches one scope and respects the ceiling', () => {
   assert.equal(scoped.filter((entry) => entry.channel === 'xqc').length, 1);
 });
 
-test('a hidden emote can never be favorited, in any scope', () => {
+test('a hidden emote can never be favorited, in any scope', { tag: 'unit' }, () => {
   // Hidden wins, or the shelf keeps offering an emote the user just removed.
   const value = normalizeStickerPreferences({
     hidden: ['id:gone'],
@@ -631,7 +631,7 @@ test('a hidden emote can never be favorited, in any scope', () => {
   assert.deepEqual(favoritesForChannel(value.favorites, 'xqc'), ['id:kept']);
 });
 
-test('sticker library keeps portable metadata, catalog access, custom groups, and one assignment per sticker', () => {
+test('sticker library keeps portable metadata, catalog access, custom groups, and one assignment per sticker', { tag: 'unit' }, () => {
   const value = normalizeStickerPreferences({
     schema: 3,
     view: 'group',
@@ -666,7 +666,7 @@ test('sticker library keeps portable metadata, catalog access, custom groups, an
   assert.equal(normalizeStickerPreferences({ view: 'group', activeGroup: 'missing' }).view, 'all');
 });
 
-test('eviction protects available, favorited, and assigned emotes and drops oldest chat-only first', () => {
+test('eviction protects available, favorited, and assigned emotes and drops oldest chat-only first', { tag: 'unit' }, () => {
   const at = (day) => Date.UTC(2026, 0, day);
   const entry = (key, access, lastSeen) => ({
     key, id: key.slice(3), name: key, src: `https://files.kick.com/emotes/${key.slice(3)}/fullsize`,
@@ -690,7 +690,7 @@ test('eviction protects available, favorited, and assigned emotes and drops olde
   assert.ok(!kept.some((item) => item.key === 'id:observed-old'));
 });
 
-test('a full library evicts an old observed entry rather than dropping the new one', () => {
+test('a full library evicts an old observed entry rather than dropping the new one', { tag: 'unit' }, () => {
   // The R-06 precondition: at the cap, a newly-seen emote must be recorded.
   const base = (n) => ({
     key: `id:${n}`, id: String(n), name: `E${n}`, src: `https://files.kick.com/emotes/${n}/fullsize`,
@@ -704,7 +704,7 @@ test('a full library evicts an old observed entry rather than dropping the new o
   assert.ok(!value.library.some((item) => item.key === 'id:1'), 'the oldest observed emote is evicted');
 });
 
-test('removed keys are never re-materialised into the library on normalize', () => {
+test('removed keys are never re-materialised into the library on normalize', { tag: 'unit' }, () => {
   const value = normalizeStickerPreferences({
     schema: STICKER_PREFERENCES_SCHEMA,
     hidden: ['id:gone'],
@@ -716,7 +716,7 @@ test('removed keys are never re-materialised into the library on normalize', () 
   assert.deepEqual(value.library.map((item) => item.key), ['id:kept']);
 });
 
-test('the emote preferences migrate losslessly from every historical schema to the current schema', () => {
+test('the emote preferences migrate losslessly from every historical schema to the current schema', { tag: 'unit' }, () => {
   const cdn = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
   const day = Date.UTC(2026, 0, 10);
 
@@ -783,7 +783,7 @@ test('the emote preferences migrate losslessly from every historical schema to t
   assert.ok(!('wasName' in clean.library[0]), 'wasName equal to name must not be recorded');
 });
 
-test('emote library preserves the source and follow-gate evidence used by click-to-save', () => {
+test('emote library preserves the source and follow-gate evidence used by click-to-save', { tag: 'unit' }, () => {
   const value = normalizeStickerPreferences({
     schema: 6,
     library: [{
@@ -806,7 +806,7 @@ test('emote library preserves the source and follow-gate evidence used by click-
   assert.equal(value.library[0].subscribersOnly, false);
 });
 
-test('route classifier covers every audited desktop surface', () => {
+test('route classifier covers every audited desktop surface', { tag: 'unit' }, () => {
   assert.equal(routeKind('https://kick.com/'), 'home');
   assert.equal(routeKind('/browse'), 'browse');
   assert.equal(routeKind('/browse/categories'), 'categories');
@@ -820,7 +820,7 @@ test('route classifier covers every audited desktop surface', () => {
   assert.equal(routeKind('/creator-dashboard'), 'other');
 });
 
-test('ad hosts and optional telemetry are separated from first-party playback', () => {
+test('ad hosts and optional telemetry are separated from first-party playback', { tag: 'unit' }, () => {
   assert.equal(classifyRequest('https://imasdk.googleapis.com/pal/sdkloader/pal.js').category, 'advertising');
   assert.equal(classifyRequest('https://pubads.g.doubleclick.net/adsid/integrator.json').blocked, true);
   assert.equal(classifyRequest('https://4g1csfd6d0egt72a3mo5kgi77.litix.io/', { reduceTelemetry: true }).category, 'telemetry');
@@ -828,13 +828,13 @@ test('ad hosts and optional telemetry are separated from first-party playback', 
   assert.equal(classifyRequest('https://web.kick.com/api/v1/stream/123/playback', { reduceTelemetry: true }).blocked, false);
 });
 
-test('diagnostic URLs never preserve query strings or long identifiers', () => {
+test('diagnostic URLs never preserve query strings or long identifiers', { tag: 'unit' }, () => {
   const value = sanitizeDiagnosticUrl('https://web.kick.com/api/v1/stream/01a00174-9260-7c4d-958b-e555d56d4566/playback?token=secret');
   assert.equal(value, 'web.kick.com/api/v1/stream/:id/playback');
   assert.equal(value.includes('secret'), false);
 });
 
-test('content labels distinguish casino, mature, promoted, and drops surfaces', () => {
+test('content labels distinguish casino, mature, promoted, and drops surfaces', { tag: 'unit' }, () => {
   assert.deepEqual(detectContentLabels('LIVE Slots & Casino 18+ Sponsored Kick Drops'), {
     casino: true,
     mature: true,
@@ -843,13 +843,13 @@ test('content labels distinguish casino, mature, promoted, and drops surfaces', 
   });
 });
 
-test('settings import reports malformed and future schemas', () => {
+test('settings import reports malformed and future schemas', { tag: 'unit' }, () => {
   assert.equal(validateImportedSettings('{oops').ok, false);
   assert.match(validateImportedSettings('{"schema":99}').error, /newer/);
   assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').value.layout.chatWidth, 410);
 });
 
-test('settings import names whatever it could not keep', () => {
+test('settings import names whatever it could not keep', { tag: 'unit' }, () => {
   // A value outside the supported range is clamped, and the change is stated
   // rather than silently applied.
   const clamped = validateImportedSettings('{"schema":1,"layout":{"chatWidth":9000}}');
@@ -871,7 +871,7 @@ test('settings import names whatever it could not keep', () => {
   assert.deepEqual(clean.notes, []);
 });
 
-test('settings import round-trips the sticker library without treating it as an unknown section', () => {
+test('settings import round-trips the sticker library without treating it as an unknown section', { tag: 'unit' }, () => {
   const imported = validateImportedSettings(JSON.stringify({
     schema: 1,
     stickers: {
@@ -890,7 +890,7 @@ test('settings import round-trips the sticker library without treating it as an 
   assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Emote schema 99/);
 });
 
-test('sticker import names dropped entries rather than reporting a bare count', () => {
+test('sticker import names dropped entries rather than reporting a bare count', { tag: 'unit' }, () => {
   // Two valid entries plus one missing its asset URL: the dropped one is named.
   const result = validateImportedSettings(JSON.stringify({
     schema: 1,
@@ -916,7 +916,7 @@ test('sticker import names dropped entries rather than reporting a bare count', 
   assert.ok(/^1 sticker/.test(note), 'expected singular phrasing for one dropped entry');
 });
 
-test('hidden channels normalize and round-trip through settings', () => {
+test('hidden channels normalize and round-trip through settings', { tag: 'unit' }, () => {
   // A channel path or URL is normalized to a clean path.
   assert.equal(normalizeChannelPath('xQc'), '/xqc');
   assert.equal(normalizeChannelPath('https://kick.com/Creator/'), '/creator');
@@ -930,7 +930,7 @@ test('hidden channels normalize and round-trip through settings', () => {
   assert.deepEqual(settings.content.hiddenChannels, ['/a', '/b', '/c']);
 });
 
-test('remote blocklists accept data-only entries and reject executable or unknown fields', () => {
+test('remote blocklists accept data-only entries and reject executable or unknown fields', { tag: 'unit' }, () => {
   const valid = validateRemoteBlocklist({
     schema: 1,
     channels: ['https://kick.com/Creator-One/', '/creator-two'],
@@ -945,7 +945,7 @@ test('remote blocklists accept data-only entries and reject executable or unknow
   assert.equal(validateRemoteBlocklist({ channels: [42] }).ok, false);
 });
 
-test('filtering fails open when it would hide most of a grid', () => {
+test('filtering fails open when it would hide most of a grid', { tag: 'unit' }, () => {
   // A grid that is mostly promotional is far more likely to be a labelling
   // change than the truth, so nothing is hidden and the caller is told why.
   const suspended = filterDecision(12, 7);
@@ -962,21 +962,21 @@ test('filtering fails open when it would hide most of a grid', () => {
   assert.equal(filterDecision(12, 4).apply, false);
 });
 
-test('filter ceiling ignores samples too small to judge', () => {
+test('filter ceiling ignores samples too small to judge', { tag: 'unit' }, () => {
   // A channel page may legitimately show two cards, both filtered.
   assert.equal(filterDecision(FILTER_MIN_SAMPLE - 1, FILTER_MIN_SAMPLE - 1).apply, true);
   assert.equal(filterDecision(0, 0).apply, true);
   assert.equal(filterDecision(1, 1).apply, true);
 });
 
-test('filter decision tolerates nonsense counts', () => {
+test('filter decision tolerates nonsense counts', { tag: 'unit' }, () => {
   assert.equal(filterDecision(-3, 5).apply, true);
   assert.equal(filterDecision(10, 999).apply, false);
   assert.equal(filterDecision(undefined, undefined).apply, true);
   assert.equal(filterDecision(10, 999).hidden, 10);
 });
 
-test('apply delay is capped so a busy page cannot starve the work', () => {
+test('apply delay is capped so a busy page cannot starve the work', { tag: 'unit' }, () => {
   // Fresh request: the caller's debounce is honoured.
   assert.equal(nextApplyDelay(80, 0), 80);
 
@@ -992,7 +992,7 @@ test('apply delay is capped so a busy page cannot starve the work', () => {
   assert.equal(nextApplyDelay(undefined, undefined), 0);
 });
 
-test('structured card evidence outranks prose', () => {
+test('structured card evidence outranks prose', { tag: 'unit' }, () => {
   // The failure this replaces: ordinary titles reading as promotional content.
   const beat = detectContentLabels('DJ set - Drop the beat! | Music', {
     categories: ['music'],
@@ -1023,7 +1023,7 @@ test('structured card evidence outranks prose', () => {
   assert.equal(real.mature, true);
 });
 
-test('label detection falls back to text only without structured evidence', () => {
+test('label detection falls back to text only without structured evidence', { tag: 'unit' }, () => {
   const fallback = detectContentLabels('Slots & Casino 18+', {});
   assert.equal(fallback.casino, true);
   assert.equal(fallback.mature, true);
@@ -1035,7 +1035,7 @@ test('label detection falls back to text only without structured evidence', () =
   assert.equal(detectContentLabels('casino talk', { badges: ['LIVE'], categories: ['irl'] }).casino, false);
 });
 
-test('the ceiling yields to an explicit category page', () => {
+test('the ceiling yields to an explicit category page', { tag: 'unit' }, () => {
   // Browsing /category/slots with the casino filter on should empty the page:
   // that is the filter working, not a labelling failure.
   const category = filterDecision(24, 24, { route: 'category' });
@@ -1047,7 +1047,7 @@ test('the ceiling yields to an explicit category page', () => {
   assert.equal(filterDecision(24, 24).apply, false);
 });
 
-test('playback payloads have their ad flags cleared', () => {
+test('playback payloads have their ad flags cleared', { tag: 'unit' }, () => {
   const payload = JSON.stringify({
     playback_url: { live: 'https://stream.kick.com/x.m3u8' },
     video_session: { auto_ads_enabled: true, id: 'abc' },
@@ -1080,7 +1080,7 @@ test('playback payloads have their ad flags cleared', () => {
   assert.equal(parsed.video_player.player.player_name, 'ivs');
 });
 
-test('playback rewriting leaves unrelated or clean payloads alone', () => {
+test('playback rewriting leaves unrelated or clean payloads alone', { tag: 'unit' }, () => {
   assert.equal(neutralizePlaybackPayload('not json').changed, false);
   assert.equal(neutralizePlaybackPayload('').changed, false);
   assert.equal(neutralizePlaybackPayload('[1,2,3]').changed, false);
@@ -1089,7 +1089,7 @@ test('playback rewriting leaves unrelated or clean payloads alone', () => {
   assert.equal(neutralizePlaybackPayload('{"video_player":{"player":{}}}').changed, false);
 });
 
-test('playback URLs are recognised across endpoint shapes', () => {
+test('playback URLs are recognised across endpoint shapes', { tag: 'unit' }, () => {
   assert.equal(isPlaybackUrl('https://web.kick.com/api/v1/stream/abc-123/playback'), true);
   assert.equal(isPlaybackUrl('https://web.kick.com/api/v2/channels/x/playback?foo=1'), true);
   assert.equal(isPlaybackUrl('/stream/abc/playback'), true);
@@ -1098,7 +1098,7 @@ test('playback URLs are recognised across endpoint shapes', () => {
   assert.equal(isPlaybackUrl(''), false);
 });
 
-test('injection timing is described from what the page already contained', () => {
+test('injection timing is described from what the page already contained', { tag: 'unit' }, () => {
   // Ideal: nothing has parsed yet.
   assert.equal(describeInjection({ readyState: 'loading', scriptCount: 0, hasBody: false }).grade, 'first');
 
@@ -1114,7 +1114,7 @@ test('injection timing is described from what the page already contained', () =>
   assert.equal(describeInjection({}).grade, 'first');
 });
 
-test('ad stack drift is reported instead of passing silently', () => {
+test('ad stack drift is reported instead of passing silently', { tag: 'unit' }, () => {
   // Nothing seen yet says so, rather than implying health.
   assert.equal(assessAdStack({ sawPlayback: false }).status, 'unknown');
 
@@ -1135,7 +1135,7 @@ test('ad stack drift is reported instead of passing silently', () => {
   assert.equal(absent.drifted, true);
 });
 
-test('emote access merging handles a first observation and never downgrades access', () => {
+test('emote access merging handles a first observation and never downgrades access', { tag: 'unit' }, () => {
   assert.equal(preferredStickerAccess(undefined, 'observed'), 'observed');
   assert.equal(preferredStickerAccess(undefined, 'channel'), 'channel');
   assert.equal(preferredStickerAccess('available', 'observed'), 'available');
@@ -1144,7 +1144,7 @@ test('emote access merging handles a first observation and never downgrades acce
   assert.equal(preferredStickerAccess('unknown', 'unknown'), 'locked');
 });
 
-test('the emote library records when Kick changes an emote under the user', () => {
+test('the emote library records when Kick changes an emote under the user', { tag: 'unit' }, () => {
   const day1 = Date.UTC(2026, 0, 10);
   const day2 = Date.UTC(2026, 5, 20);
   const day3 = Date.UTC(2026, 7, 1);
@@ -1202,7 +1202,7 @@ test('the emote library records when Kick changes an emote under the user', () =
   assert.equal(countChangedStickers(undefined), 0);
 });
 
-test('emote history survives the export round-trip and rejects impossible dates', () => {
+test('emote history survives the export round-trip and rejects impossible dates', { tag: 'unit' }, () => {
   const seen = Date.UTC(2026, 2, 3);
   const imported = validateImportedSettings(JSON.stringify({
     schema: SETTINGS_SCHEMA,
@@ -1244,7 +1244,7 @@ test('emote history survives the export round-trip and rejects impossible dates'
   assert.equal(noop.stickers.library[0].wasName, undefined);
 });
 
-test('a layout link carries channel names and nothing else, and is revalidated on the way in', () => {
+test('a layout link carries channel names and nothing else, and is revalidated on the way in', { tag: 'unit' }, () => {
   const link = multistreamLayoutLink(['xQc', 'Adin_Ross']);
   assert.equal(link, 'https://kick.com/?kf-multi=xQc%2CAdin_Ross');
   assert.deepEqual(parseMultistreamLink(link), ['xQc', 'Adin_Ross']);
@@ -1268,7 +1268,7 @@ test('a layout link carries channel names and nothing else, and is revalidated o
   assert.equal(multistreamLayoutLink(['../nope']), '');
 });
 
-test('chat badges fill the gap Kick leaves without duplicating what it drew', () => {
+test('chat badges fill the gap Kick leaves without duplicating what it drew', { tag: 'unit' }, () => {
   const collectible = 'https://ext.cdn.kick.com/chat/badges/collectible-gold.svg';
   const sub = 'https://ext.cdn.kick.com/chat/badges/sub.svg';
 
@@ -1306,7 +1306,7 @@ test('chat badges fill the gap Kick leaves without duplicating what it drew', ()
   assert.deepEqual(chatBadgesToRender(undefined), []);
 });
 
-test('API drift is accumulated and reported instead of silently falling back', () => {
+test('API drift is accumulated and reported instead of silently falling back', { tag: 'unit' }, () => {
   // No drift is the normal case.
   const clean = assessApiDrift([]);
   assert.equal(clean.drifted, false);
@@ -1329,7 +1329,7 @@ test('API drift is accumulated and reported instead of silently falling back', (
   assert.equal(deduped.count, 1);
 });
 
-test('failed writes are named and recovered writes clear themselves', () => {
+test('failed writes are named and recovered writes clear themselves', { tag: 'unit' }, () => {
   let registry = {};
 
   // A failure names the data in the user's words, not the storage key.
@@ -1355,7 +1355,7 @@ test('failed writes are named and recovered writes clear themselves', () => {
   assert.equal(describeStorageFailures(registry), null);
 });
 
-test('storage size is reported largest-first in units a person reads', () => {
+test('storage size is reported largest-first in units a person reads', { tag: 'unit' }, () => {
   const report = approximateStorageBytes({
     'kick-focus:settings': { a: 1 },
     'kick-focus:sticker-preferences': { library: new Array(400).fill('collectiblesGoldenLULW') },
@@ -1374,7 +1374,7 @@ test('storage size is reported largest-first in units a person reads', () => {
   assert.equal(formatBytes(5 * 1024 * 1024), '5.00 MB');
 });
 
-test('imported keys hidden by the prototype chain are reported, not swallowed', () => {
+test('imported keys hidden by the prototype chain are reported, not swallowed', { tag: 'unit' }, () => {
   const payload = JSON.parse('{"schema":2,"layout":{"__proto__":{"polluted":true},"constructor":1,"toString":"x","density":"compact"}}');
   const result = validateImportedSettings(JSON.stringify(payload));
   assert.equal(result.ok, true);
@@ -1389,7 +1389,7 @@ test('imported keys hidden by the prototype chain are reported, not swallowed', 
   assert.equal(result.value.layout.density, 'compact');
 });
 
-test('ad preflight scripts are matched exactly, not by hostname alone', () => {
+test('ad preflight scripts are matched exactly, not by hostname alone', { tag: 'unit' }, () => {
   const origin = 'https://kick.com';
 
   // The three Kick actually waits on before it will request playback.
@@ -1408,7 +1408,7 @@ test('ad preflight scripts are matched exactly, not by hostname alone', () => {
   assert.equal(isAdPreflightScript('not a url at all', 'also not a url'), false);
 });
 
-test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', async () => {
+test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', { tag: 'unit' }, async () => {
   const {
     MULTISTREAM_MAX, addMultistreamChannel, multistreamColumns,
     normalizeMultistream, removeMultistreamChannel, saveMultistreamLayout,
@@ -1457,7 +1457,7 @@ test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', a
   assert.equal(multistreamColumns(0), 1);
 });
 
-test('adding a channel never recreates a tile that is already playing', async () => {
+test('adding a channel never recreates a tile that is already playing', { tag: 'unit' }, async () => {
   const { planMultistreamTiles, normalizeMultistream, addMultistreamChannel } = await import('../src/core.mjs');
 
   // Replacing an <iframe> restarts its stream, so the nine already playing must
@@ -1496,7 +1496,7 @@ test('adding a channel never recreates a tile that is already playing', async ()
   }
 });
 
-test('exactly one tile is ever unmuted, across every reachable grid state', async () => {
+test('exactly one tile is ever unmuted, across every reachable grid state', { tag: 'unit' }, async () => {
   const { normalizeMultistream, multistreamTileMuted } = await import('../src/core.mjs');
 
   // The rule is load-bearing: a nine-way grid that gets it wrong is nine
@@ -1523,7 +1523,7 @@ test('exactly one tile is ever unmuted, across every reachable grid state', asyn
   assert.equal(empty.streams.filter((slug) => !multistreamTileMuted(empty, slug)).length, 0);
 });
 
-test('pausing and muting the grid are separate controls', async () => {
+test('pausing and muting the grid are separate controls', { tag: 'unit' }, async () => {
   const { normalizeMultistream, multistreamTileMuted } = await import('../src/core.mjs');
 
   const grid = normalizeMultistream({ streams: ['a', 'b', 'c'], focus: 'b' });
@@ -1556,7 +1556,7 @@ test('pausing and muting the grid are separate controls', async () => {
   assert.equal(junk.muted, false);
 });
 
-test('suspended tiles unload, but never the one carrying audio', async () => {
+test('suspended tiles unload, but never the one carrying audio', { tag: 'unit' }, async () => {
   const { normalizeMultistream, multistreamTileActive } = await import('../src/core.mjs');
   const grid = normalizeMultistream({ streams: ['a', 'b', 'c'], focus: 'b' });
 
@@ -1581,7 +1581,7 @@ test('suspended tiles unload, but never the one carrying audio', async () => {
   assert.equal(multistreamTileActive(null, 'a', new Set()), true);
 });
 
-test('export carries usage counts and layouts, and import validates them', async () => {
+test('export carries usage counts and layouts, and import validates them', { tag: 'unit' }, async () => {
   const { normalizeEmoteUsage } = await import('../src/core.mjs');
 
   // A full round-trip of everything the About page claims is stored.
