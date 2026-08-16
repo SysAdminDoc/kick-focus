@@ -63,12 +63,12 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: the i18n-coverage gate scans toast/announce/attribute literals and fails on any without a dictionary entry in every locale; every newly-scanned string is translated (reviewed, not bulk-machine-translated); remaining count words use `plural()`.
   Complexity: L
 
-- [ ] R-12 — Fix the accessibility regressions the audit enumerated on a product that ships an accessibility page
-  Why: whole-page innerHTML replacement drops focus/scroll on every toggle; forced-colors erases every selected state; toasts have no live region; the reset dialog's focus trap escapes into obscured content; sliders lack aria-valuetext; the "larger targets"/"reduce motion" settings are inert for the mod's own controls.
-  Evidence: phase0-memo #3,#18,#19,#26,#27,#28,#29 — src/runtime.js:4119,5965-5968,4611-4630,5482-5483,6661-6669,3528,5427-5436,6786-6798,5540-5553,6352-6360,4306-4314,1296,1266,1236.
-  Touches: preserve focus/scroll via the existing rememberStickerGridScroll pattern; forced-colors state rules in UI_CSS; role/aria-live on toast + save nodes reusing the sr-only region at runtime.js:5483; reset alertdialog trapFocus scope + Escape handling; slider aria-valuetext + real accessible names; make largeTargets/reduceMotion CSS actually key the mod's own controls.
-  Acceptance: toggling a setting deep in a page keeps focus and scroll position; forced-colors shows which switch/theme/accent/page is selected; toasts announce via a live region (errors as role="alert"); the reset dialog traps focus to itself and Escape cancels only the dialog; sliders expose aria-valuetext and non-dotted names; largeTargets/reduceMotion visibly affect `.kf-switch`/`.kf-ms-bar`; a fixture or node:test asserts the aria wiring.
-  Complexity: L
+- [ ] R-37 — Finish the accessibility pass: reset-dialog focus trap + inert density/motion controls
+  Why: R-12 landed the highest-value fixes (focus + scroll survive a setting toggle; toasts announce via a live region with errors as role=alert; sliders expose aria-valuetext + readable names; forced-colors shows selected switch/page state). Two enumerated defects remain: the reset `alertdialog`'s focus trap escapes into obscured content and Escape closes all of Settings rather than only the dialog; and the "larger targets" / "reduce motion" accessibility settings do not actually key the mod's own controls (`.kf-switch`, `.kf-ms-bar`).
+  Evidence: phase0-memo #26,#27,#29 — reset dialog trapFocus scope + Escape handling; largeTargets/reduceMotion CSS wiring to the mod's own controls.
+  Touches: reset alertdialog focus-trap scope + Escape handling in the settings modal; density/motion CSS that keys `.kf-switch`/`.kf-ms-bar` and friends off the accessibility settings.
+  Acceptance: the reset dialog traps focus to itself and Escape cancels only the dialog (not the whole Settings modal); largeTargets/reduceMotion visibly change the mod's own controls; a fixture or node:test asserts the aria wiring.
+  Complexity: M
 
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
 

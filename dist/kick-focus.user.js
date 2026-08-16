@@ -7731,6 +7731,15 @@ const UI_CSS = `
     }
     .kf-panel, .kf-settings-shell, .kf-command-shell { border: 1px solid CanvasText; }
     .kf-storage-alert { border: 2px solid CanvasText; }
+    /* Forced colors erase custom backgrounds, so every selected/checked/current
+       state needs a system-color marker or "on" looks identical to "off". */
+    .kf-switch { border: 1px solid CanvasText; }
+    .kf-switch[aria-checked="true"] { background: Highlight; }
+    .kf-switch[aria-checked="true"]::after { background: Canvas; }
+    [aria-checked="true"], [aria-selected="true"], [aria-pressed="true"], [aria-current="page"] {
+      outline: 2px solid Highlight;
+      outline-offset: 1px;
+    }
   }
 
   /* Kick publishes no drop odds and documents no duplicate protection, so this
@@ -8588,7 +8597,7 @@ function buildInterface() {
       <button type="button" class="kf-button kf-button-small" data-action="open-storage-diagnostics">Details</button>
       <button type="button" class="kf-button kf-button-small" data-action="dismiss-storage-alert">Dismiss</button>
     </div>
-    <div class="kf-toast" data-kf-toast hidden></div>
+    <div class="kf-toast" data-kf-toast role="status" aria-live="polite" aria-atomic="true" hidden></div>
     <div class="kf-sr-only" aria-live="polite" data-kf-live></div>
   `;
   document.body.append(root);
@@ -8659,7 +8668,11 @@ function row(title, description, control, options = {}) {
 }
 
 function range(path, current, minimum, maximum, left, right, suffix = '') {
-  return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" aria-label="${escapeHtml(path)}"></div><span>${escapeHtml(right)}</span></div>`;
+  // A readable accessible name instead of the dotted setting path, and
+  // aria-valuetext so a screen reader hears "70%" rather than a bare "70".
+  const label = path.split('.').pop().replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
+  const valueText = `${current}${suffix}`;
+  return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" aria-label="${escapeHtml(label)}" aria-valuetext="${escapeHtml(valueText)}"></div><span>${escapeHtml(right)}</span></div>`;
 }
 
 function selectControl(path, current, choices, label) {
@@ -9061,10 +9074,27 @@ function renderAboutPage() {
     <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
 }
 
+// A stable selector for the focused control, so focus can be restored to the
+// equivalent element after the page's innerHTML is replaced.
+function focusRestoreKey(element) {
+  for (const attr of ['data-set', 'data-action', 'data-shortcut', 'data-kf-sticker-key',
+    'data-kf-sticker-assignment', 'data-kf-sticker-library-filter', 'data-kf-sticker-library-search', 'data-page']) {
+    const value = element.getAttribute(attr);
+    if (value != null) return `[${attr}="${value.replace(/["\\]/g, '\\$&')}"]`;
+  }
+  return '';
+}
+
 function renderSettingsPage() {
   if (!state.shadow) return;
   const page = state.shadow.querySelector('[data-kf-page]');
   const previousPage = page.dataset.kfCurrentPage;
+  // Preserve focus and scroll across the innerHTML replacement, or a keyboard
+  // user toggling a setting deep in a page is thrown back to the top on every
+  // change and loses their place entirely.
+  const active = state.shadow.activeElement;
+  const focusKey = active && page.contains(active) ? focusRestoreKey(active) : '';
+  const scrollTop = page.scrollTop;
   const renderer = {
     layout: renderLayoutPage,
     appearance: renderAppearancePage,
@@ -9075,7 +9105,15 @@ function renderSettingsPage() {
   page.innerHTML = renderer();
   page.dataset.kfCurrentPage = state.currentPage;
   state.shadow.querySelector('[data-kf-settings-shell]').dataset.kfCurrentPage = state.currentPage;
-  if (previousPage && previousPage !== state.currentPage) page.scrollTop = 0;
+  if (previousPage && previousPage !== state.currentPage) {
+    page.scrollTop = 0;
+  } else {
+    page.scrollTop = scrollTop;
+    if (focusKey) {
+      const restore = page.querySelector(focusKey);
+      if (restore) restore.focus({ preventScroll: true });
+    }
+  }
   for (const button of state.shadow.querySelectorAll('[data-page]')) {
     button.setAttribute('aria-current', button.dataset.page === state.currentPage ? 'page' : 'false');
   }
@@ -9885,6 +9923,9 @@ function showToast(message, isError = false, actions = []) {
     toast.append(button);
   }
   toast.dataset.error = String(isError);
+  // Errors interrupt (assertive); routine confirmations wait their turn (polite).
+  toast.setAttribute('role', isError ? 'alert' : 'status');
+  toast.setAttribute('aria-live', isError ? 'assertive' : 'polite');
   toast.hidden = false;
   clearTimeout(showToast.timer);
   // Action toasts stay long enough to be clicked; plain toasts clear quickly.

@@ -108,6 +108,12 @@ const checks = [
     && source.includes("nativeGroups: ['Seen in chat']")
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
+  ['settings a11y: focus and scroll survive re-render, toasts announce, sliders are labelled', source.includes('function focusRestoreKey')
+    && source.includes('restore.focus({ preventScroll: true })')
+    && source.includes('role="status" aria-live="polite"')
+    && source.includes("setAttribute('role', isError ? 'alert' : 'status')")
+    && source.includes('aria-valuetext=')
+    && source.includes('.kf-switch[aria-checked="true"] { background: Highlight; }')],
   ['pluralization is locale-correct via Intl.PluralRules, not a hand n===1 rule', source.includes('function pluralForm')
     && source.includes('new Intl.PluralRules')
     && source.includes('function plural(')],
