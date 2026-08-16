@@ -2,10 +2,11 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
-## Unreleased
+## 1.15.0 — 2026-08-16
 
 ### Changed
 
+- **The settings interface meets WCAG 2.2 AA on target size, focus, and reflow.** Every control now has a 24×24 CSS pixel floor that density and the 90% interface scale cannot shrink it below, focusing a control near the bottom of a page no longer parks it underneath the sticky footer, and the interface reflows at 200% zoom without a horizontal scrollbar. Verified by measurement on the live site — 228 controls across all five settings pages, zero violations.
 - **Ready for the day Kick turns on Trusted Types.** Kick currently ships no Content Security Policy, but `require-trusted-types-for 'script'` would make every `innerHTML` write in the page throw — including all of this build's own interface, which would simply stop appearing. Markup now goes through a feature-detected policy of its own. It deliberately does not claim the `default` policy, which would vouch for every other script on the page, Kick's included. Four writes that only cleared a node no longer produce markup at all.
 
 ## 1.14.0 — 2026-08-16

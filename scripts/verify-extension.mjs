@@ -378,6 +378,76 @@ try {
       && locale.spanish?.toast === 'Escribe un nombre de canal o una URL.',
     locale.ok ? `count "${locale.english?.count}" -> "${locale.spanish?.count}"; toast "${locale.english?.toast}" -> "${locale.spanish?.toast}"` : locale.why);
 
+  // WCAG 2.2 target size and reflow, measured rather than reasoned about: both
+  // are properties of computed layout at a given density and zoom, which no
+  // amount of reading the stylesheet establishes.
+  const a11ySizeProbe = await evaluate(pageClient, `(async () => {
+    const host = document.getElementById('kick-focus-root');
+    const shadow = host && host.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 400));
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    await settle();
+    const undersized = [];
+    let scanned = 0;
+    for (const page of ['layout', 'appearance', 'content', 'accessibility', 'about']) {
+      shadow.querySelector('[data-page="' + page + '"]').click();
+      await settle();
+      for (const node of shadow.querySelectorAll('[data-kf-settings-shell] button, [data-kf-settings-shell] select, [data-kf-settings-shell] [role="switch"]')) {
+        const rect = node.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) continue; // not rendered
+        scanned += 1;
+        if (rect.width < 24 || rect.height < 24) {
+          undersized.push(page + ':' + (node.dataset.action || node.dataset.set || node.className) + '=' + Math.round(rect.width) + 'x' + Math.round(rect.height));
+        }
+      }
+      // 2.4.11: focusing the last control must not leave it under the sticky footer.
+      const controls = [...shadow.querySelectorAll('[data-kf-page] button, [data-kf-page] select')];
+      const last = controls[controls.length - 1];
+      if (last) {
+        last.focus();
+        await settle();
+        const rect = last.getBoundingClientRect();
+        const footer = shadow.querySelector('.kf-footer')?.getBoundingClientRect();
+        if (footer && rect.bottom > footer.top + 1 && rect.top < footer.bottom) {
+          undersized.push(page + ':focus-obscured-by-footer');
+        }
+      }
+    }
+    return { ok: true, undersized, scanned };
+  })()`);
+  const sizes = a11ySizeProbe.value || {};
+  // The count is part of the assertion: "no control was too small" is trivially
+  // true of no controls, and a selector that stopped matching would report a
+  // clean pass forever.
+  record('every settings control clears the 24px target minimum and focus is never under the sticky footer',
+    sizes.ok === true && sizes.scanned > 40 && Array.isArray(sizes.undersized) && sizes.undersized.length === 0,
+    sizes.ok ? `${sizes.scanned} controls measured, ${sizes.undersized.length} violations${sizes.undersized.length ? ': ' + sizes.undersized.slice(0, 4).join(', ') : ''}` : sizes.why);
+
+  // WCAG 2.2 1.4.10 Reflow: 200% zoom must not produce a horizontal scrollbar.
+  // Emulated as half the CSS viewport, which is what doubling the zoom does.
+  await pageClient.send('Emulation.setDeviceMetricsOverride', {
+    width: Math.round(VIEWPORT_WIDTH / 2), height: Math.round(VIEWPORT_HEIGHT / 2),
+    deviceScaleFactor: 1, mobile: false,
+  });
+  const reflow = await evaluate(pageClient, `(() => {
+    const shell = document.getElementById('kick-focus-root')?.shadowRoot?.querySelector('[data-kf-settings-shell]');
+    const rect = shell?.getBoundingClientRect();
+    return {
+      viewport: window.innerWidth,
+      documentOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      shellOverflow: rect ? Math.round(rect.width - window.innerWidth) : null,
+    };
+  })()`);
+  const zoom = reflow.value || {};
+  record('the interface reflows at 200% zoom without a horizontal scrollbar',
+    zoom.documentOverflow <= 0 && zoom.shellOverflow !== null && zoom.shellOverflow <= 0,
+    `at ${zoom.viewport}px CSS width: document overflow ${zoom.documentOverflow}px, settings shell overflow ${zoom.shellOverflow}px`);
+  await pageClient.send('Emulation.setDeviceMetricsOverride', {
+    width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, deviceScaleFactor: 1, mobile: false,
+  });
+
   // Chromium exposes the Trusted Types API even where no CSP enforces it, so
   // this run takes the policy branch: every innerHTML write in the interface
   // below already went through createHTML. Asserted rather than assumed,

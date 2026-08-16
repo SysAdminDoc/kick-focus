@@ -1,9 +1,9 @@
-/* Kick Focus 1.14.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.15.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.14.0';
+const VERSION = '1.15.0';
 const SETTINGS_SCHEMA = 4;
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -8526,6 +8526,27 @@ const UI_CSS = `
       outline: 2px solid Highlight;
       outline-offset: 1px;
     }
+  }
+
+  /* WCAG 2.2 2.5.8 Target Size (Minimum): 24x24 CSS px, and it is measured for
+     pointers generally, not just touch. Density and the 90% interface scale
+     both shrink controls, so this is a floor under every one of them rather
+     than a size for any particular control — the comfortable sizes above still
+     win wherever they are larger. */
+  :host :is(button, a[href], input, select, textarea, [role="button"], [role="switch"], [role="option"]) {
+    min-width: 24px;
+    min-height: 24px;
+  }
+  /* Inline links inside prose are exempt in 2.5.8 and a 24px floor on them
+     would space paragraphs out oddly. */
+  :host p a[href], :host small a[href], :host li a[href] { min-width: 0; min-height: 0; }
+
+  /* WCAG 2.2 2.4.11 Focus Not Obscured. The settings modal has a sticky header
+     and footer, and scrolling a control into view puts it flush against the
+     edge — which is exactly where those sit, so the thing that just received
+     focus ends up underneath them. */
+  :host [data-kf-page] :is(button, a[href], input, select, textarea, [role="switch"]) {
+    scroll-margin-block: 72px;
   }
 
   /* The accessibility settings apply to this mod's own controls too. The site

@@ -123,9 +123,3 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: the emote key schema carries a platformId prefix with a tested migration from the current keys; bound to the next schema bump.
   Complexity: M
 
-- [ ] R-32 — Close remaining WCAG 2.2 AA gaps on the mod's own chrome
-  Why: density controls can drive icon buttons under 24px, sticky/floating chrome can obscure focus, and 80 absolute-px font sizes threaten 200%-zoom reflow.
-  Evidence: a11y-i18n stream — WCAG 2.2 2.5.8 Target Size (24×24, mouse-inclusive), 2.4.11 Focus Not Obscured, 1.4.10 Reflow.
-  Touches: density/target-size CSS; focus-scroll for sticky chrome; relative font units in UI_CSS.
-  Acceptance: all icon buttons stay ≥24×24 CSS px at every density; focused controls are never obscured by sticky chrome; the UI reflows without horizontal scroll at 200% zoom.
-  Complexity: M
