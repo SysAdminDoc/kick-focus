@@ -29,6 +29,9 @@ import {
   nextApplyDelay,
   normalizeStickerPreferences,
   platformStickerKey,
+  mergePresence,
+  presenceOffer,
+  PRESENCE_TTL_MS,
   evictStickerLibrary,
   STICKER_LIBRARY_LIMIT,
   normalizeSettings,
@@ -110,6 +113,45 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
+
+test('a roll-call collects open tabs, expires stale answers, and offers only what fits', { tag: 'unit' }, () => {
+  const now = 1_000_000;
+  const fresh = now - 1000;
+  const stale = now - PRESENCE_TTL_MS - 1;
+
+  assert.deepEqual(mergePresence([
+    { slug: 'xqc', ts: fresh },
+    { slug: 'adin_ross', ts: fresh },
+  ], now), ['adin_ross', 'xqc']);
+
+  // A tab that closed, crashed, or slept stops appearing on its own — there is
+  // no goodbye message to miss.
+  assert.deepEqual(mergePresence([{ slug: 'gone', ts: stale }], now), []);
+
+  // The same channel in two tabs counts once, keeping the fresher timestamp.
+  assert.deepEqual(mergePresence([{ slug: 'xqc', ts: stale }, { slug: 'xqc', ts: fresh }], now), ['xqc']);
+
+  // Answers arrive over a channel any script on the origin can post to, so a
+  // slug is validated exactly as the grid validates it.
+  assert.deepEqual(mergePresence([
+    { slug: '../evil', ts: fresh },
+    { slug: '<script>', ts: fresh },
+    { slug: 'a'.repeat(80), ts: fresh },
+    { slug: '', ts: fresh },
+    { slug: 'ok', ts: 'soon' },
+    { slug: 'ok2', ts: now + PRESENCE_TTL_MS * 2 }, // a clock far in the future
+    'not-an-object',
+    null,
+  ], now), []);
+  assert.deepEqual(mergePresence(null, now), []);
+
+  // The offer excludes what the grid already holds, case-insensitively.
+  assert.deepEqual(presenceOffer(['xqc', 'adin_ross', 'trainwreck'], ['XQC']), ['adin_ross', 'trainwreck']);
+  // And never offers more than the remaining room.
+  assert.deepEqual(presenceOffer(['a', 'b', 'c'], ['x', 'y'], 4), ['a', 'b']);
+  assert.deepEqual(presenceOffer(['a'], ['x'], 1), []);
+  assert.deepEqual(presenceOffer(null, null), []);
 });
 
 test('emote keys carry a platform prefix, and every store migrates together losslessly', { tag: 'unit' }, () => {

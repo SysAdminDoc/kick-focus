@@ -57,6 +57,7 @@ const state = {
   shadow: null,
   siteStyle: null,
   siteSheet: null,
+  presence: { channel: null, answers: [], offer: [] },
   modal: null,
   command: null,
   commandInput: null,
@@ -79,6 +80,7 @@ const state = {
     suspended: false,
     routeSource: '',
     applyRunning: false,
+    presenceRequested: false,
     stickerGridScrollTop: null,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
@@ -2473,6 +2475,86 @@ function commitMultistream(added = [], removed = []) {
   return state.multistream;
 }
 
+/**
+ * Ask the other tabs which channel they are on, and collect the answers.
+ *
+ * Zero new permissions: `BroadcastChannel` is same-origin by construction, so
+ * this reaches other kick.com tabs and nothing else, in both the userscript and
+ * the extension builds. Request/response rather than a maintained roster —
+ * there is no join or leave message to miss, a tab that has gone simply does
+ * not answer, and every answer carries its own timestamp so a stale one expires
+ * on its own. Nothing but a channel slug is ever put on the wire.
+ */
+function multistreamPresenceChannel() {
+  if (state.presence.channel || typeof BroadcastChannel !== 'function') return state.presence.channel;
+  try {
+    const channel = new BroadcastChannel('kick-focus:presence');
+    channel.addEventListener('message', (event) => {
+      const message = event?.data;
+      if (!isPlainRecord(message)) return;
+      if (message.type === 'who') {
+        // Answer only from a channel page; nothing else has a slug to report.
+        const slug = currentChannelSlug();
+        if (slug) channel.postMessage({ type: 'here', slug, ts: Date.now() });
+        return;
+      }
+      if (message.type === 'here') {
+        state.presence.answers.push({ slug: message.slug, ts: message.ts });
+        renderPresenceOffer();
+      }
+    });
+    state.presence.channel = channel;
+  } catch {
+    // No cross-tab roll-call; every other multi-stream path is unaffected.
+  }
+  return state.presence.channel;
+}
+
+function isPlainRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function currentChannelSlug() {
+  if (routeKind(location.href) !== 'channel') return '';
+  const slug = location.pathname.split('/').filter(Boolean)[0] || '';
+  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug) ? slug : '';
+}
+
+function requestMultistreamPresence() {
+  const channel = multistreamPresenceChannel();
+  if (!channel) return;
+  state.presence.answers = [];
+  renderPresenceOffer();
+  try {
+    channel.postMessage({ type: 'who', ts: Date.now() });
+  } catch {
+    // The offer simply stays empty.
+  }
+}
+
+function renderPresenceOffer() {
+  const button = state.shadow?.querySelector('[data-kf-presence-add]');
+  if (!button) return;
+  const present = mergePresence(state.presence.answers, Date.now());
+  const offer = presenceOffer(present, state.multistream.streams, MULTISTREAM_MAX);
+  state.presence.offer = offer;
+  button.hidden = offer.length === 0;
+  button.textContent = trf('Add open tabs ({count})', { count: offer.length });
+  button.title = offer.join(', ');
+}
+
+function addPresenceOffer() {
+  const offer = state.presence.offer.slice();
+  if (!offer.length) return;
+  const result = commitMultistream(offer, []);
+  renderMultistream();
+  renderPresenceOffer();
+  showToast(trf('Added {count} from your other tabs — {total} of {max}', {
+    count: offer.length, total: result.streams.length, max: MULTISTREAM_MAX,
+  }));
+  announce(trf('Added {count} channels from your other tabs.', { count: offer.length }));
+}
+
 function openMultistream() {
   const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
   if (!backdrop) return;
@@ -2485,6 +2567,10 @@ function openMultistream() {
     state.multistream = normalizeMultistream({ ...state.multistream, paused: true });
   }
   renderMultistream();
+  // Asked on open rather than kept up to date in the background: the answer is
+  // only ever looked at here, and a standing roster would mean every tab
+  // chattering for a list nobody is reading.
+  requestMultistreamPresence();
   backdrop.querySelector('[data-kf-multistream-input]')?.focus();
   announce(tr('Multi-stream opened'));
   // Fire-and-forget: live status is an enhancement, and every path already
@@ -6191,6 +6277,9 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canales ocultos. Cuentan para el límite de seguridad.',
     'channel': 'canal',
     'channels': 'canales',
+    'Add open tabs ({count})': 'Añadir pestañas abiertas ({count})',
+    'Added {count} from your other tabs — {total} of {max}': 'Se añadieron {count} de tus otras pestañas: {total} de {max}',
+    'Added {count} channels from your other tabs.': 'Se añadieron {count} canales de tus otras pestañas.',
     'Apply cycle cost': 'Coste del ciclo de aplicación',
     'No apply cycle has run yet.': 'Aún no se ha ejecutado ningún ciclo de aplicación.',
     'Type an emote name into chat': 'Escribir el nombre de un emote en el chat',
@@ -6538,6 +6627,9 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canais ocultos. Eles contam para o limite de segurança.',
     'channel': 'canal',
     'channels': 'canais',
+    'Add open tabs ({count})': 'Adicionar abas abertas ({count})',
+    'Added {count} from your other tabs — {total} of {max}': 'Foram adicionados {count} das suas outras abas: {total} de {max}',
+    'Added {count} channels from your other tabs.': 'Foram adicionados {count} canais das suas outras abas.',
     'Apply cycle cost': 'Custo do ciclo de aplicação',
     'No apply cycle has run yet.': 'Nenhum ciclo de aplicação foi executado ainda.',
     'Type an emote name into chat': 'Digitar o nome de um emote no chat',
@@ -6707,6 +6799,7 @@ function buildInterface() {
           <label class="kf-sr-only" for="kf-ms-input">Add a Kick channel</label>
           <input id="kf-ms-input" data-kf-multistream-input type="search" autocomplete="off" placeholder="Add a channel or paste a kick.com link…">
           <button type="button" class="kf-button kf-button-primary kf-button-small" data-action="multistream-add">Add</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-add-open-tabs" data-kf-presence-add hidden></button>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-pause" data-kf-multistream-pause aria-pressed="false">Pause all</button>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-mute" data-kf-multistream-mute aria-pressed="false">Mute all</button>
           <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
@@ -6791,6 +6884,9 @@ function buildInterface() {
 
   document.addEventListener('keydown', onGlobalKeydown, true);
   document.addEventListener('click', rememberWatchedCard, true);
+  // Opened at boot, not on demand: a tab has to be listening to answer a
+  // roll-call it never asked for.
+  multistreamPresenceChannel();
   // Delegated at the document: chat replaces its own nodes constantly, so a
   // per-emote listener would be attached and dropped hundreds of times a
   // minute. Keyboard users get the same card on focus.
@@ -7686,6 +7782,7 @@ function onInterfaceClick(event) {
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
   else if (action === 'close-multistream') closeMultistream();
+  else if (action === 'multistream-add-open-tabs') addPresenceOffer();
   else if (action === 'multistream-add') {
     const input = state.shadow.querySelector('[data-kf-multistream-input]');
     addMultistream(input?.value || '');

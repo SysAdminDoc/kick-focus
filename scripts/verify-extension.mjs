@@ -508,6 +508,53 @@ try {
   // lossless against a store written by the previous build, so write one in the
   // legacy shape, reload, and count what survived — a unit test cannot prove
   // the real storage path re-reads and re-writes it correctly.
+  // The roll-call only means anything with a second tab actually answering, so
+  // open one on a channel and ask from this one. Nothing is stubbed: two real
+  // pages, the real BroadcastChannel, the real button.
+  const secondTab = await (async () => {
+    const c = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await c.ready;
+    const r = await c.send('Target.createTarget', { url: 'https://kick.com/xqc' });
+    c.close();
+    return r.result.targetId;
+  })();
+  await sleep(9000);
+  const presence = await evaluate(pageClient, `(async () => {
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 900));
+    shadow.querySelector('[data-action="open-multistream"]')?.click();
+    if (shadow.querySelector('[data-kf-multistream-backdrop]')?.hidden !== false) {
+      shadow.querySelector('[data-kf-quick]').click();
+      shadow.querySelector('[data-action="command:multistream"]')?.click();
+    }
+    await settle();
+    const button = shadow.querySelector('[data-kf-presence-add]');
+    const offered = { hidden: button?.hidden, label: String(button?.textContent || ''), title: String(button?.title || '') };
+    // Take the offer and confirm the grid actually gained the channel.
+    if (button && !button.hidden) button.click();
+    await settle();
+    const streams = [...shadow.querySelectorAll('[data-kf-multistream-tile]')].length;
+    const stored = JSON.parse(localStorage.getItem('kick-focus:multistream') || '{}');
+    shadow.querySelector('[data-action="close-multistream"]')?.click();
+    return { ok: true, offered, streams, stored: stored.streams || [] };
+  })()`);
+  const pres = presence.value || { why: presence.error || 'probe returned nothing' };
+  record('a second Kick tab answers the roll-call and its channel can be added in one click',
+    pres.ok === true && pres.offered?.hidden === false
+      && /Add open tabs \(1\)/.test(pres.offered?.label || '')
+      && /xqc/i.test(pres.offered?.title || '')
+      && Array.isArray(pres.stored) && pres.stored.some((slug) => /^xqc$/i.test(slug)),
+    pres.ok ? `offer="${pres.offered?.label}" tabs="${pres.offered?.title}" grid now ${JSON.stringify(pres.stored)}` : pres.why);
+  await (async () => {
+    const c = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await c.ready;
+    await c.send('Target.closeTarget', { targetId: secondTab });
+    c.close();
+  })();
+  // Leave the grid as it was found.
+  await evaluate(pageClient, `(() => { localStorage.removeItem('kick-focus:multistream'); return true; })()`);
+
   // Driven through the real import path rather than by seeding localStorage and
   // reloading: the outgoing page flushes its own in-memory library on pagehide,
   // which overwrites a seeded store before the new page can read it. An old

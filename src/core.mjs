@@ -1860,6 +1860,47 @@ export function parseMultistreamLink(href) {
   return cleanSlugList(value.split(','));
 }
 
+/** How long a tab's roll-call answer is trusted before it is treated as gone. */
+export const PRESENCE_TTL_MS = 30_000;
+
+/**
+ * Fold roll-call answers into the set of channels open in other tabs.
+ *
+ * Every answer carries the tab's own timestamp, so an entry expires on its own
+ * rather than needing a goodbye message — a tab that is closed, crashed, or
+ * simply asleep stops appearing without anything having to notice it left.
+ * Slugs are validated exactly as the grid validates them, because an answer
+ * arrives over a channel any script on the origin can post to.
+ */
+export function mergePresence(entries, now = 0) {
+  const seen = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!isRecord(entry)) continue;
+    const slug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
+    const ts = Number(entry.ts);
+    if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
+    if (!Number.isFinite(ts) || now - ts > PRESENCE_TTL_MS || ts > now + PRESENCE_TTL_MS) continue;
+    const key = slug.toLowerCase();
+    // The freshest answer for a slug wins, so two tabs on the same channel
+    // count once and the newer timestamp is the one that expires it.
+    const prior = seen.get(key);
+    if (!prior || ts > prior.ts) seen.set(key, { slug, ts });
+  }
+  return [...seen.values()].sort((a, b) => a.slug.localeCompare(b.slug)).map((entry) => entry.slug);
+}
+
+/**
+ * Which of the present channels are worth offering, given what the grid holds.
+ * Returns the slugs not already in the grid, capped at the remaining room.
+ */
+export function presenceOffer(present, streams, max = MULTISTREAM_MAX) {
+  const have = new Set((Array.isArray(streams) ? streams : []).map((slug) => String(slug).toLowerCase()));
+  const room = Math.max(0, max - have.size);
+  return (Array.isArray(present) ? present : [])
+    .filter((slug) => !have.has(String(slug).toLowerCase()))
+    .slice(0, room);
+}
+
 export function normalizeMultistream(input) {
   const source = isRecord(input) ? input : {};
   const streams = cleanSlugList(source.streams);

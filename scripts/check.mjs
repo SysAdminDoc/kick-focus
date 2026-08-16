@@ -133,6 +133,15 @@ const checks = [
   // written into a shadow root's innerHTML is re-tokenised and re-parsed on
   // every rebuild. The template must not carry the sheet, and every root must
   // adopt through the one feature-detected path.
+  // The roll-call must stay a request/response over a same-origin channel with
+  // nothing but a slug on the wire, and must need no new permission.
+  ['the cross-tab roll-call is same-origin, slug-only, and permission-free',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes("new BroadcastChannel('kick-focus:presence')")
+      && bundleSource.includes('function mergePresence')
+      && bundleSource.includes("message.type === 'who'")
+      && bundleSource.includes("channel.postMessage({ type: 'here', slug, ts: Date.now() })"))],
+  ['the companion still requests no tabs permission for the roll-call',
+    !JSON.stringify(manifest).includes('"tabs"') && !JSON.stringify(firefoxManifest).includes('"tabs"')],
   // The library, favorites, removals and group assignments are all keyed by the
   // same string. Migrating them anywhere but the one shared cleaner would move
   // some and not others, and a favorite would stop matching its library entry.

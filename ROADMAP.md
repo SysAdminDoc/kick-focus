@@ -88,13 +88,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: pure ranking in core.mjs under node:test (prefix>substring; tiebreak favorite/per-channel-usage/global-usage/name-length; Chatterino #1962/#3440 collisions as fixtures); insertion reuses R-17's boundary — plain NAME only, never the wire token, NO auto-send ever; mouse-only click-to-accept is the shipped default — Tab/arrow/Enter capture ships ONLY on explicit operator sign-off (no-new-shortcuts rule).
   Complexity: L
 
-- [ ] R-27 — "Add open tabs (n)" roll-call (operator-requested)
-  Why: tabs-to-grid UX with zero permissions in both builds.
-  Evidence: phase1b M6 — BroadcastChannel request/response; after R-19.
-  Touches: pure `mergePresence(entries,now)` in core.mjs; BC roll-call in runtime.js.
-  Acceptance: pure function in core.mjs under node:test + a BC request collects each open tab's slug into a one-click "Add open tabs (n)" offer with stale entries expiring by ts; zero new permissions.
-  Complexity: M
-
 - [ ] R-28 — Kick Drops read-only viewer panel
   Why: a fully-documented first-party surface nobody surfaces read-only; MSI 2026/Riot partnership is a demand driver.
   Evidence: kick-platform + kick-mods streams — docs.kick.com /drops routes (/campaigns, /coming-soon, /claimed, Inventory).

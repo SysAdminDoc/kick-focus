@@ -12,6 +12,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Added
 
+- **"Add open tabs" builds a grid from the channels you already have open.** Opening multi-stream asks your other Kick tabs which channel they are on and offers them in one click. It needs no new permission in either build and nothing but a channel name is ever exchanged — a tab you have closed simply stops answering, so the offer is never stale.
 - The About page reports what each page-change pass costs, and the figure travels with the diagnostics copy.
 
 ### Internal
