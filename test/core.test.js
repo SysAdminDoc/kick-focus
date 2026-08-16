@@ -55,7 +55,24 @@ import {
   MULTISTREAM_MAX,
   normalizeShortcut,
   findShortcutConflict,
+  pluralForm,
 } from '../src/core.mjs';
+
+test('pluralForm follows CLDR locale rules, including the es/pt "many" category English lacks', () => {
+  assert.equal(pluralForm(1, { one: 'emote', other: 'emotes' }, 'en'), 'emote');
+  assert.equal(pluralForm(3, { one: 'emote', other: 'emotes' }, 'en'), 'emotes');
+  assert.equal(new Intl.PluralRules('en').select(1000000), 'other'); // English never "many"
+
+  for (const locale of ['es', 'pt']) {
+    const rules = new Intl.PluralRules(locale);
+    const manyCount = [1000000, 2000000, 1000000000].find((n) => rules.select(n) === 'many');
+    assert.ok(manyCount, `${locale} should expose a "many" category a hand n===1 rule misses`);
+    assert.equal(pluralForm(manyCount, { one: 'x', many: 'muchos', other: 'otros' }, locale), 'muchos');
+  }
+  // A missing category form falls back to `other`; a bad locale does too.
+  assert.equal(pluralForm(5, { one: 'a', other: 'b' }, 'es'), 'b');
+  assert.equal(pluralForm(1, { other: 'b' }, 'en'), 'b');
+});
 
 test('normalizeShortcut canonicalizes case and spacing, rejecting empty and overlong', () => {
   assert.equal(normalizeShortcut('ctrl + k', 'X'), 'Ctrl+K');

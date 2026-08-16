@@ -198,6 +198,27 @@ function findShortcutConflict(shortcuts, capturingKey, candidate) {
 }
 
 /**
+ * Locale-correct plural selection.
+ *
+ * English has only one/other, but CLDR 48 gives both es and pt a "many"
+ * category, so a hand-built `n === 1 ? word : word + 's'` is wrong in those
+ * locales. `forms` maps Intl.PluralRules categories (one/few/many/other/…) to
+ * strings; the CLDR category for the count and locale chooses one, falling back
+ * to `other`. Intl.PluralRules is Baseline since 2019 and needs no dependency.
+ */
+function pluralForm(count, forms, locale = 'en') {
+  const value = Number(count);
+  const source = forms && typeof forms === 'object' ? forms : {};
+  let category = 'other';
+  try {
+    category = new Intl.PluralRules(String(locale || 'en')).select(Number.isFinite(value) ? value : 0);
+  } catch {
+    category = 'other';
+  }
+  return source[category] ?? source.other ?? '';
+}
+
+/**
  * A remote blocklist URL is only accepted when it is a well-formed https URL.
  * Validated here, at normalize time, so the value that reaches the privileged
  * companion fetch and the userscript transport can never be a `javascript:`,
@@ -6551,7 +6572,7 @@ function renderStickerOrganizer() {
   if (organizer.dataset.kfStickerSignature === signature) return;
   organizer.dataset.kfStickerSignature = signature;
   const view = state.stickerPreferences.view;
-  const countLabel = `${visible.length} ${visible.length === 1 ? 'emote' : 'emotes'}`;
+  const countLabel = `${visible.length} ${plural(visible.length, 'emote', 'emotes')}`;
   const unavailableLabel = unavailableCount
     ? `<span data-kf-sticker-locked>${unavailableCount} locked by Kick</span>`
     : '';
@@ -8438,6 +8459,11 @@ function tr(value) {
   return TRANSLATIONS[activeLocale()]?.[source] || source;
 }
 
+/** Locale-aware count word: es and pt have a "many" category English lacks. */
+function plural(count, one, other) {
+  return pluralForm(count, { one, other }, activeLocale());
+}
+
 function localizeInterface(root = state.shadow) {
   if (!root) return;
   const walk = (node) => {
@@ -10287,7 +10313,7 @@ function openSharedLayoutFromUrl() {
     // A URL this build cannot rewrite is not a reason to refuse the layout.
   }
   openMultistream();
-  announce(`Opened a shared layout with ${shared.length} channel${shared.length === 1 ? '' : 's'}.`);
+  announce(`Opened a shared layout with ${shared.length} ${plural(shared.length, 'channel', 'channels')}.`);
 }
 
 function startWhenBodyExists() {

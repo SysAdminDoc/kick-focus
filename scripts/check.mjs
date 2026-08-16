@@ -108,6 +108,9 @@ const checks = [
     && source.includes("nativeGroups: ['Seen in chat']")
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
+  ['pluralization is locale-correct via Intl.PluralRules, not a hand n===1 rule', source.includes('function pluralForm')
+    && source.includes('new Intl.PluralRules')
+    && source.includes('function plural(')],
   ['one-click add-to-multi is race-safe and lives in the header', source.includes('function mergeMultistream')
     && source.includes('function commitMultistream')
     && source.includes('function toggleCurrentChannelInMulti')

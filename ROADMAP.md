@@ -56,12 +56,12 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P1 — operator demand first, then trust / reliability / accessibility
 
-- [ ] R-11 — i18n correctness + coverage
-  Why: the hand-built "1 emote / N emotes" plural is wrong in es AND pt (CLDR 48 gives both a "many" category), ~83 strings are never translated, and showToast writes textContent without localizing so ~30 toasts stay English.
-  Evidence: phase0-memo #15 — src/runtime.js:5376-5386,4091,6661-6669; test/i18n-coverage.test.js:39-49; a11y-i18n stream (CLDR 48, Intl.PluralRules Baseline since 2019).
-  Touches: Intl.PluralRules in the plural helper; localize showToast/announce/attribute literals; extend i18n-coverage gate scanner.
-  Acceptance: pure plural helper uses Intl.PluralRules (verified against es/pt "many" under node:test); i18n-coverage gate scans toast/announce/attribute literals (not just row()/pageHeader()/tr()) and fails on the missing ~83 strings until translated.
-  Complexity: M
+- [ ] R-36 — Localize dynamic copy: toasts, announces, and attribute literals (i18n coverage sweep)
+  Why: the Intl.PluralRules plural helper landed (R-11 part 1), but ~83 rendered strings and ~30 toast/announce messages still bypass the translation path — showToast/announce write raw textContent, so they stay English in es/pt (the forward-only translator falls back gracefully, so this is a coverage gap, not a bug). This is a large, quality-sensitive content task (≈226 es+pt entries) that benefits from review, so it is split out from the plural-correctness fix rather than machine-translated in bulk.
+  Evidence: phase0-memo #15; test/i18n-coverage.test.js:39-49 (scanner covers only row()/pageHeader()/tr()); the new `plural()` helper is ready to localize count words once the surrounding strings are.
+  Touches: route showToast/announce messages through tr(); add es/pt dictionary entries; extend the i18n-coverage scanner to also match showToast('…'), announce('…'), and aria-label/title/placeholder literals; wire remaining inline `n===1?'':'s'` sites through `plural()`.
+  Acceptance: the i18n-coverage gate scans toast/announce/attribute literals and fails on any without a dictionary entry in every locale; every newly-scanned string is translated (reviewed, not bulk-machine-translated); remaining count words use `plural()`.
+  Complexity: L
 
 - [ ] R-12 — Fix the accessibility regressions the audit enumerated on a product that ships an accessibility page
   Why: whole-page innerHTML replacement drops focus/scroll on every toggle; forced-colors erases every selected state; toasts have no live region; the reset dialog's focus trap escapes into obscured content; sliders lack aria-valuetext; the "larger targets"/"reduce motion" settings are inert for the mod's own controls.
