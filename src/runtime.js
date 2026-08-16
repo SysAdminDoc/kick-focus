@@ -94,6 +94,7 @@ const state = {
     entries: [],
     errors: [],
     lastCrash: readLastCrash(),
+    apply: {},
   },
   shortcutCapture: null,
   shortcutError: '',
@@ -4529,6 +4530,7 @@ function scheduleApply(delay = 50) {
   clearTimeout(state.applyTimer);
   state.applyTimer = window.setTimeout(() => {
     if (state.runtime.suspended) return;
+    const started = performance.now();
     try {
     state.applyPendingSince = 0;
     const currentPath = location.pathname;
@@ -4574,8 +4576,18 @@ function scheduleApply(delay = 50) {
     syncQuickButton();
     } catch (error) {
       logAppError('apply cycle', error);
+    } finally {
+      state.diagnostics.apply = recordApplyCost(state.diagnostics.apply, performance.now() - started);
+      updateApplyCostInPlace();
     }
   }, effective);
+}
+
+function updateApplyCostInPlace() {
+  const node = state.shadow?.querySelector('[data-kf-apply-cost]');
+  // The empty-state sentence is a dictionary key; a composed count phrase is
+  // its own answer. Marked no-translate on the node, so translate at write.
+  if (node) node.textContent = tr(applyCostSummary(state.diagnostics.apply));
 }
 
 function installSpaHooks() {
@@ -5969,6 +5981,8 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canales ocultos. Cuentan para el límite de seguridad.',
     'channel': 'canal',
     'channels': 'canales',
+    'Apply cycle cost': 'Coste del ciclo de aplicación',
+    'No apply cycle has run yet.': 'Aún no se ha ejecutado ningún ciclo de aplicación.',
     'Type an emote name into chat': 'Escribir el nombre de un emote en el chat',
     'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Añade una acción Escribir en el chat junto a Copiar nombre en la biblioteca de emotes. Escribe solo el nombre en la posición del cursor y se detiene ahí: nunca el código interno, nunca un id, y nunca envía el mensaje.',
     'That emote has no plain name to copy.': 'Ese emote no tiene un nombre simple que copiar.',
@@ -6314,6 +6328,8 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canais ocultos. Eles contam para o limite de segurança.',
     'channel': 'canal',
     'channels': 'canais',
+    'Apply cycle cost': 'Custo do ciclo de aplicação',
+    'No apply cycle has run yet.': 'Nenhum ciclo de aplicação foi executado ainda.',
     'Type an emote name into chat': 'Digitar o nome de um emote no chat',
     'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Adiciona uma ação Digitar no chat ao lado de Copiar nome na biblioteca de emotes. Digita apenas o nome na posição do cursor e para por aí: nunca o código interno, nunca um id, e nunca envia a mensagem.',
     'That emote has no plain name to copy.': 'Esse emote não tem um nome simples para copiar.',
@@ -7178,6 +7194,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
+      <div class="kf-action-row"><div><h3>Apply cycle cost</h3><p data-kf-apply-cost data-kf-no-translate>${escapeHtml(tr(applyCostSummary(state.diagnostics.apply)))}</p></div></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group">${gmGet(PRE_IMPORT_BACKUP_KEY, null) ? `<button type="button" class="kf-button" data-action="undo-import">Undo import</button>` : ''}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
@@ -8002,6 +8019,7 @@ async function copyDiagnostics() {
       removedShells: state.diagnostics.shells,
       lastMatch: state.diagnostics.lastMatch,
     },
+    applyCycle: applyCostSummary(state.diagnostics.apply),
     settingsSchema: SETTINGS_SCHEMA,
   };
   const copied = await copyText(JSON.stringify(summary, null, 2));

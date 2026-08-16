@@ -85,6 +85,7 @@ async function collect() {
     'Click to save',
     'Saved — click to open in the library',
     'Name shadowed by another set',
+    'No apply cycle has run yet.',
   ]);
   for (const [, pattern] of SCANNERS) {
     for (const match of src.matchAll(pattern)) {

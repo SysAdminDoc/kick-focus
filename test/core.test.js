@@ -57,6 +57,8 @@ import {
   normalizeShortcut,
   emoteTooltipText,
   insertionPlanFor,
+  recordApplyCost,
+  applyCostSummary,
   findShortcutConflict,
   planStorageCommit,
   topmostOverlayLayer,
@@ -106,6 +108,32 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
+
+test('apply-cycle cost accumulates as plain numbers with a sliding recent average', { tag: 'unit' }, () => {
+  let stats = recordApplyCost({}, 12);
+  stats = recordApplyCost(stats, 4);
+  stats = recordApplyCost(stats, 30);
+  assert.equal(stats.count, 3);
+  assert.equal(stats.last, 30);
+  assert.equal(stats.max, 30);
+  assert.equal(stats.total, 46);
+  assert.deepEqual(stats.recent, [12, 4, 30]);
+  assert.equal(applyCostSummary(stats), '3 runs · last 30 ms · recent avg 15 ms · max 30 ms');
+
+  // A slow first paint must not dominate forever: the recent window slides.
+  for (let i = 0; i < 25; i += 1) stats = recordApplyCost(stats, 2);
+  assert.equal(stats.recent.length, 20);
+  assert.match(applyCostSummary(stats), /recent avg 2 ms · max 30 ms/);
+
+  // Garbage in leaves the record untouched rather than poisoning the average.
+  assert.deepEqual(recordApplyCost(stats, NaN), stats);
+  assert.deepEqual(recordApplyCost(stats, -1), stats);
+  assert.equal(recordApplyCost(null, 5).count, 1);
+  assert.equal(applyCostSummary({}), 'No apply cycle has run yet.');
+  assert.equal(applyCostSummary(null), 'No apply cycle has run yet.');
+  // Sub-10ms values keep one decimal, so a fast cycle is not rounded to 0.
+  assert.match(applyCostSummary(recordApplyCost({}, 0.44)), /last 0\.4 ms/);
 });
 
 test('an emote insertion plan carries the plain name and never the wire token', { tag: 'unit' }, () => {

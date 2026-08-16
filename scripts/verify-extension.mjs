@@ -378,6 +378,28 @@ try {
       && locale.spanish?.toast === 'Escribe un nombre de canal o una URL.',
     locale.ok ? `count "${locale.english?.count}" -> "${locale.spanish?.count}"; toast "${locale.english?.toast}" -> "${locale.spanish?.toast}"` : locale.why);
 
+  // The apply cycle's cost is a diagnostic the About page shows. Reading it here
+  // gives every live run a number to compare against the last one, so a
+  // regression is visible in the log rather than only in someone's fan noise.
+  const applyCost = await evaluate(pageClient, `(async () => {
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 400));
+    // Let a few cycles land on top of the ones the page load already caused.
+    for (let i = 0; i < 4; i += 1) { document.body.append(document.createComment('kf-poke')); await settle(); }
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    shadow.querySelector('[data-page="about"]').click();
+    await settle();
+    const text = String(shadow.querySelector('[data-kf-apply-cost]')?.textContent || '');
+    const match = text.match(/(\\d+) runs · last ([\\d.]+) ms · recent avg ([\\d.]+) ms · max ([\\d.]+) ms/);
+    return { ok: true, text, runs: match ? Number(match[1]) : 0, recentAvg: match ? Number(match[3]) : null, max: match ? Number(match[4]) : null };
+  })()`);
+  const cost = applyCost.value || {};
+  record('the apply cycle reports its own cost on the About page',
+    cost.ok === true && cost.runs > 3 && Number.isFinite(cost.recentAvg),
+    cost.ok ? cost.text : cost.why);
+
   // WCAG 2.2 target size and reflow, measured rather than reasoned about: both
   // are properties of computed layout at a given density and zoom, which no
   // amount of reading the stylesheet establishes.

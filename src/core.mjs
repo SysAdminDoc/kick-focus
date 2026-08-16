@@ -279,6 +279,40 @@ export function insertionPlanFor(descriptor, collisions = [], access = '') {
 }
 
 /**
+ * Running cost of the apply cycle, so a regression shows up as a number.
+ *
+ * Kept as plain deltas rather than `performance.measure` entries: measures land
+ * in the page's own performance timeline, where Kick's instrumentation could
+ * read them, and this build's rule is that its identity never leaks into page
+ * globals. The number is what matters, and it is shown on the About page and
+ * carried in the diagnostics copy.
+ */
+export function recordApplyCost(stats, ms) {
+  const prior = isRecord(stats) ? stats : {};
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value < 0) return { ...prior };
+  const count = (Number(prior.count) || 0) + 1;
+  const total = (Number(prior.total) || 0) + value;
+  return {
+    count,
+    total,
+    last: value,
+    max: Math.max(Number(prior.max) || 0, value),
+    // Recent average over a sliding window, so a slow first paint does not
+    // dominate the figure forever.
+    recent: [...(Array.isArray(prior.recent) ? prior.recent : []), value].slice(-20),
+  };
+}
+
+export function applyCostSummary(stats) {
+  if (!isRecord(stats) || !(Number(stats.count) > 0)) return 'No apply cycle has run yet.';
+  const recent = Array.isArray(stats.recent) && stats.recent.length ? stats.recent : [stats.last];
+  const recentAvg = recent.reduce((sum, value) => sum + value, 0) / recent.length;
+  const fmt = (value) => (value >= 10 ? Math.round(value) : Math.round(value * 10) / 10);
+  return `${stats.count} runs · last ${fmt(stats.last)} ms · recent avg ${fmt(recentAvg)} ms · max ${fmt(stats.max)} ms`;
+}
+
+/**
  * The overlay layers this build can stack, outermost last. The first one that
  * is open is the one on top.
  *
