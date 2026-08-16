@@ -57,6 +57,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === 'kick-focus:fetch-blocklist') {
+    const url = String(message.url || '');
+    if (!url.startsWith('https://')) {
+      sendResponse({ ok: false, error: 'HTTPS required' });
+      return true;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    fetch(url, { credentials: 'omit', cache: 'no-store', signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then((text) => sendResponse({ ok: true, text }))
+      .catch((error) => sendResponse({ ok: false, error: String(error) }))
+      .finally(() => clearTimeout(timeout));
+    return true;
+  }
+
   if (message?.type === 'kick-focus:reset-count') {
     blockedByTab.delete(message.tabId);
     paintBadge(message.tabId);

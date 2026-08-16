@@ -75,6 +75,16 @@ function requestSettings() {
 requestSettings();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', requestSettings, { once: true });
 
+document.addEventListener('kick-focus:fetch-blocklist', (event) => {
+  const url = event.detail?.url;
+  if (typeof url !== 'string') return;
+  api.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist', url }, (response) => {
+    document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
+      detail: JSON.stringify(response || { ok: false, error: 'no response' }),
+    }));
+  });
+});
+
 api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'kick-focus:open-settings') {
     document.dispatchEvent(new CustomEvent('kick-focus:open-settings'));

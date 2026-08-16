@@ -81,6 +81,23 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }));
     return true;
   }
+  if (message?.type === 'kick-focus:fetch-blocklist') {
+    const url = String(message.url || '');
+    if (!url.startsWith('https://')) {
+      sendResponse({ ok: false, error: 'HTTPS required' });
+      return true;
+    }
+    fetch(url, { credentials: 'omit', cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then((text) => sendResponse({ ok: true, text }))
+      .catch((error) => sendResponse({ ok: false, error: String(error) }))
+      .finally(() => {});
+    return true;
+  }
+
   if (message?.type === 'kick-focus:reset-count') {
     blockedByTab.delete(message.tabId);
     paintBadge(message.tabId);

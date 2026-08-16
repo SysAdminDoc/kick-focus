@@ -100,6 +100,20 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', requestSettings, { once: true });
 }
 
+// The page asks the companion to fetch the blocklist from the background,
+// which is CORS-free, so user-supplied HTTPS URLs no longer need the host
+// to set Access-Control-Allow-Origin.
+document.addEventListener('kick-focus:fetch-blocklist', (event) => {
+  const url = event.detail?.url;
+  if (typeof url !== 'string') return;
+  chrome.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist', url }, (response) => {
+    void chrome.runtime.lastError;
+    document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
+      detail: JSON.stringify(response || { ok: false, error: 'no response' }),
+    }));
+  });
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'kick-focus:open-settings') {
     document.dispatchEvent(new CustomEvent('kick-focus:open-settings'));

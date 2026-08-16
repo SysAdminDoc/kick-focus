@@ -134,6 +134,11 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  ['blocklist fetch prefers a CORS-free transport', source.includes('fetchBlocklistText')
+    && source.includes('GM_xmlhttpRequest')
+    && source.includes('kick-focus:fetch-blocklist')
+    && source.includes('kick-focus:blocklist-result')],
+
   ['reports storage writes that fail instead of losing data', source.includes('noteStorageResult')
     && source.includes('describeStorageFailures')
     && source.includes('data-kf-storage-alert')

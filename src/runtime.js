@@ -2209,7 +2209,7 @@ function readRemoteBlocklist() {
   const stored = gmGet(REMOTE_BLOCKLIST_KEY, null);
   const result = validateRemoteBlocklist(stored?.payload);
   if (!stored || !result.ok || typeof stored.source !== 'string') {
-    return { source: '', fetchedAt: 0, attemptedAt: 0, channels: new Set(), categories: new Set(), keywords: new Set(), status: 'off' };
+    return { source: '', fetchedAt: 0, attemptedAt: 0, channels: new Set(), categories: new Set(), keywords: new Set(), status: 'off', method: '' };
   }
   return {
     source: stored.source,
@@ -2219,6 +2219,7 @@ function readRemoteBlocklist() {
     categories: new Set(result.value.categories),
     keywords: new Set(result.value.keywords),
     status: 'ready',
+    method: stored.method || '',
   };
 }
 
@@ -3367,7 +3368,10 @@ function remoteBlocklistSummary() {
   if (!state.settings.content.blocklistSubscription) return 'Optional remote blocklist is off. No remote data is fetched.';
   if (!state.settings.content.blocklistUrl) return 'Add an HTTPS URL to enable the data-only subscription.';
   if (remote.status === 'loading') return 'Fetching and validating the blocklist…';
-  if (remote.status === 'ready') return `Active: ${remote.channels.size} channels, ${remote.categories.size} categories, and ${remote.keywords.size} keywords. Last checked ${new Date(remote.fetchedAt).toLocaleString()}.`;
+  if (remote.status === 'ready') {
+    const via = remote.method === 'companion' ? ' via companion' : remote.method === 'userscript' ? ' via manager' : '';
+    return `Active${via}: ${remote.channels.size} channels, ${remote.categories.size} categories, and ${remote.keywords.size} keywords. Last checked ${new Date(remote.fetchedAt).toLocaleString()}.`;
+  }
   if (remote.status === 'stale') return 'The last valid blocklist is stale; the subscription will retry on its next interval.';
   if (remote.status === 'error') return 'The last blocklist refresh failed. Existing valid data was kept if it came from the same URL.';
   return 'No valid blocklist has been loaded yet.';
@@ -3382,9 +3386,67 @@ function updateRemoteBlocklistInPlace() {
 
 function clearRemoteBlocklist() {
   gmDelete(REMOTE_BLOCKLIST_KEY);
-  state.remoteBlocklist = { source: '', fetchedAt: 0, attemptedAt: 0, channels: new Set(), categories: new Set(), keywords: new Set(), status: 'off' };
+  state.remoteBlocklist = { source: '', fetchedAt: 0, attemptedAt: 0, channels: new Set(), categories: new Set(), keywords: new Set(), status: 'off', method: '' };
   updateRemoteBlocklistInPlace();
   scheduleApply(0);
+}
+
+/**
+ * Fetch text from a URL using the best available transport:
+ *   1. Companion background (CORS-free, service-worker fetch)
+ *   2. GM_xmlhttpRequest (CORS-free, userscript manager)
+ *   3. Page-realm fetch (subject to CORS, last resort)
+ *
+ * Returns { text, method } on success; throws on failure.
+ */
+function fetchBlocklistText(href) {
+  // Strategy 1: companion extension background fetch (CORS-free).
+  if (companionInfo().active) {
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(new Error('companion timeout')), 10000);
+      const handler = (event) => {
+        window.clearTimeout(timer);
+        document.removeEventListener('kick-focus:blocklist-result', handler);
+        try {
+          const result = typeof event.detail === 'string' ? JSON.parse(event.detail) : event.detail;
+          if (!result?.ok) throw new Error(result?.error || 'companion fetch failed');
+          resolve({ text: result.text, method: 'companion' });
+        } catch (error) {
+          reject(error);
+        }
+      };
+      document.addEventListener('kick-focus:blocklist-result', handler);
+      document.dispatchEvent(new CustomEvent('kick-focus:fetch-blocklist', { detail: { url: href } }));
+    });
+  }
+
+  // Strategy 2: GM_xmlhttpRequest (CORS-free, userscript sandbox).
+  if (typeof GM_xmlhttpRequest === 'function') {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: href,
+        timeout: 8000,
+        onload(response) {
+          if (response.status >= 200 && response.status < 300) resolve({ text: response.responseText, method: 'userscript' });
+          else reject(new Error(`HTTP ${response.status}`));
+        },
+        onerror() { reject(new Error('GM_xmlhttpRequest network error')); },
+        ontimeout() { reject(new Error('GM_xmlhttpRequest timeout')); },
+      });
+    });
+  }
+
+  // Strategy 3: page-realm fetch (subject to CORS).
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8000);
+  return fetch(href, { credentials: 'omit', cache: 'no-store', signal: controller.signal })
+    .then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    })
+    .then((text) => ({ text, method: 'page' }))
+    .finally(() => window.clearTimeout(timeout));
 }
 
 function scheduleRemoteBlocklistSync(force = false) {
@@ -3412,14 +3474,8 @@ function scheduleRemoteBlocklistSync(force = false) {
   state.remoteBlocklist.attemptedAt = now;
   state.remoteBlocklist.status = 'loading';
   updateRemoteBlocklistInPlace();
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 8000);
-  fetch(url.href, { credentials: 'omit', cache: 'no-store', signal: controller.signal })
-    .then((response) => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.text();
-    })
-    .then((text) => {
+  fetchBlocklistText(url.href)
+    .then(({ text, method }) => {
       if (text.length > 512 * 1024) throw new Error('blocklist too large');
       const result = validateRemoteBlocklist(JSON.parse(text));
       if (!result.ok) throw new Error(result.error);
@@ -3432,9 +3488,10 @@ function scheduleRemoteBlocklistSync(force = false) {
         categories: new Set(payload.categories),
         keywords: new Set(payload.keywords),
         status: 'ready',
+        method,
       };
-      gmSet(REMOTE_BLOCKLIST_KEY, { source: url.href, fetchedAt: state.remoteBlocklist.fetchedAt, payload });
-      recordProtection('Blocklist', { category: 'local', label: `validated ${payload.channels.length + payload.categories.length + payload.keywords.length} entries` });
+      gmSet(REMOTE_BLOCKLIST_KEY, { source: url.href, fetchedAt: state.remoteBlocklist.fetchedAt, method, payload });
+      recordProtection('Blocklist', { category: 'local', label: `validated ${payload.channels.length + payload.categories.length + payload.keywords.length} entries via ${method}` });
       scheduleApply(0);
     })
     .catch(() => {
@@ -3442,7 +3499,6 @@ function scheduleRemoteBlocklistSync(force = false) {
       updateRemoteBlocklistInPlace();
     })
     .finally(() => {
-      window.clearTimeout(timeout);
       state.remoteSyncInFlight = false;
       updateRemoteBlocklistInPlace();
     });
