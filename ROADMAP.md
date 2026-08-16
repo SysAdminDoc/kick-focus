@@ -63,13 +63,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: a read-only listener attaches to Kick's own player instance and drives an "ad break" countdown indicator; observes only (never scrubs, never opts out via the signed JWT); NEEDS LIVE VALIDATION that the player instance is page-world reachable — if it is not, record the finding in RESEARCH.md and close the item rather than reaching into the worker.
   Complexity: M (optimistic — evaporates to S-doc if the player instance proves page-world-unreachable)
 
-- [ ] R-10 — Add a boot-execution gate that actually runs runtime.js
-  Why: no offline gate executes the product — a TDZ read or bad const ordering across the four-module concat passes every offline gate and surfaces only in the (currently unrun) live harness.
-  Evidence: phase0-memo #2 — package.json:9; test/companion.test.js:89-128; src/runtime.js:39-166,7057-7083.
-  Touches: new test using the companion.test.js `vm.runInNewContext` + stub pattern against the built bundle.
-  Acceptance: a node:test boots the concatenated bundle in vm with hand-written stubs and asserts it reaches its boot marker; a deliberately mis-ordered const makes the test fail (expectFailure).
-  Complexity: M
-
 - [ ] R-11 — i18n correctness + coverage
   Why: the hand-built "1 emote / N emotes" plural is wrong in es AND pt (CLDR 48 gives both a "many" category), ~83 strings are never translated, and showToast writes textContent without localizing so ~30 toasts stay English.
   Evidence: phase0-memo #15 — src/runtime.js:5376-5386,4091,6661-6669; test/i18n-coverage.test.js:39-49; a11y-i18n stream (CLDR 48, Intl.PluralRules Baseline since 2019).

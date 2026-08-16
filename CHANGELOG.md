@@ -27,6 +27,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Internal
 
+- A boot-execution gate now runs the concatenated bundle in a stubbed environment and asserts it bootstraps without a temporal-dead-zone read or bad const ordering across the four-module concat — a class of failure that previously passed every offline gate and surfaced only in the live browser harness. A companion red test injects a mis-ordered const and asserts the gate catches it.
 - The emote-preferences migration from every historical schema (1 through 5) to the current schema is now covered by a test that asserts favorites, custom groups, assignments, and Kick-edit provenance survive the upgrade losslessly — the highest-risk previously untested area, which the reset/backup changes above all touch.
 - Replaced a literal NUL byte in `src/core.mjs` (the favorites-key separator) with a `\u0000` escape. The runtime string is identical, but the source is now plain text, so ripgrep no longer classifies the settings-schema module as binary — restoring the repo's own re-grep-after-edit safeguard.
 
