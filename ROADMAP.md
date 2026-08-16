@@ -79,13 +79,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: pure slug/merge functions in core.mjs under node:test + hover chip renders active state against state.multistream; BroadcastChannel add/remove ops are set-union idempotent with re-read-on-open covering missed broadcasts (extension builds fully supported via shared localStorage + storage events; userscript gets GM_addValueChangeListener as an ENHANCEMENT not a correctness dependency; kick.com vs www.kick.com origin split handled); shared-link boot shows an overwrite toast.
   Complexity: L
 
-- [ ] R-20 — Platform modernization that removes code / improves perf (both engines)
-  Why: constructable adoptedStyleSheets, Navigation API, Custom Highlight API, content-visibility and scheduler.yield delete re-parsing, history monkey-patching, DOM writes and long tasks — all Baseline on both target engines.
-  Evidence: web-platform + perf-storage streams — adoptedStyleSheets (Baseline 2025-09-27), Navigation API (2026-01-13/FF147), Custom Highlight API (2026-03-24), content-visibility (2025-09-15, 232ms→30ms), scheduler.yield (Chrome 129/FF142).
-  Touches: shadow-root CSS injection; the MutationObserver/URL-polling apply cycle; search highlight; emote grid rendering.
-  Acceptance: CSS is adopted once per shadow root (may drop `!important` armor where the adopted sheet wins ties); route changes read from the Navigation API with history monkey-patching removed; search highlights write zero nodes into Kick's tree; all features are feature-detected (never version-sniffed) so the Firefox artifact degrades cleanly; a before/after perf.measure shows the apply-cycle cost drop.
-  Complexity: L
-
 ### P3 — differentiators, larger bets, future-proofing
 
 - [ ] R-25 — Colon-trigger autocomplete popup (operator-requested)

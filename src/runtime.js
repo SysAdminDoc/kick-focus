@@ -78,6 +78,7 @@ const state = {
     chatPaused: false,
     suspended: false,
     routeSource: '',
+    applyRunning: false,
     stickerGridScrollTop: null,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
@@ -1417,7 +1418,10 @@ const SITE_CSS = `
       scrollbar-gutter: stable !important;
       padding: 3px 2px 6px !important;
     }
-    [data-kf-sticker-item] { min-width: 0 !important; text-align: center !important; }
+    /* The picker grid scrolls inside a capped height and can hold hundreds of
+       tiles. Skipping layout and paint for the off-screen ones is what keeps
+       opening it cheap; the intrinsic size holds the scroll height steady. */
+    [data-kf-sticker-item] { min-width: 0 !important; text-align: center !important; content-visibility: auto !important; contain-intrinsic-size: auto 62px !important; }
     [data-kf-sticker-proxy] {
       display: flex !important;
       align-items: center !important;
@@ -4664,10 +4668,41 @@ function scheduleApply(delay = 50) {
   if (!state.applyPendingSince) state.applyPendingSince = now;
   const effective = nextApplyDelay(delay, now - state.applyPendingSince);
   clearTimeout(state.applyTimer);
-  state.applyTimer = window.setTimeout(() => {
-    if (state.runtime.suspended) return;
-    const started = performance.now();
-    try {
+  state.applyTimer = window.setTimeout(runApplyCycle, effective);
+}
+
+/** Hand control back to the browser mid-cycle, where the engine offers it. */
+function yieldToInput() {
+  try {
+    return typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function' ? scheduler.yield() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One pass over the page.
+ *
+ * Split in two with a yield between: the first half is everything the user
+ * would see as broken if it lagged — ad shells, filters, layout, chrome — and
+ * the second is bookkeeping that can wait a task. `scheduler.yield()` returns
+ * to the browser so a click or keystroke queued behind this work is handled,
+ * then resumes at the front of the queue rather than the back, which is what
+ * separates it from a `setTimeout(0)` that would put this work behind
+ * everything else on the page.
+ *
+ * Where the API is absent the two halves run in one task exactly as before, so
+ * no engine gets slower. The cost measure sums the two halves and excludes the
+ * yield, so the number stays comparable to the pre-yield baseline.
+ */
+async function runApplyCycle() {
+  // A cycle already mid-yield must not be joined by a second one: they would
+  // interleave writes to the same DOM. The pending timer reschedules anyway.
+  if (state.runtime.suspended || state.runtime.applyRunning) return;
+  state.runtime.applyRunning = true;
+  let elapsed = 0;
+  let started = performance.now();
+  try {
     state.applyPendingSince = 0;
     const currentPath = location.pathname;
     state.route = routeKind(location.href);
@@ -4703,6 +4738,17 @@ function scheduleApply(delay = 50) {
     // Fire-and-forget: every live path already falls back to the DOM, so a
     // rejected promise here must never interrupt the apply cycle.
     refreshLiveChannel().catch(() => {});
+
+    const resume = yieldToInput();
+    if (resume) {
+      elapsed += performance.now() - started;
+      await resume;
+      // The panic switch, a route change, or a teardown can all land during the
+      // yield. Re-read rather than trusting what was true a task ago.
+      if (state.runtime.suspended) return;
+      started = performance.now();
+    }
+
     replayPendingDeletions();
     replayPendingBadges();
     renderStickerOrganizer();
@@ -4711,13 +4757,13 @@ function scheduleApply(delay = 50) {
     state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
     updateCompatibilityInPlace();
     syncQuickButton();
-    } catch (error) {
-      logAppError('apply cycle', error);
-    } finally {
-      state.diagnostics.apply = recordApplyCost(state.diagnostics.apply, performance.now() - started);
-      updateApplyCostInPlace();
-    }
-  }, effective);
+  } catch (error) {
+    logAppError('apply cycle', error);
+  } finally {
+    state.runtime.applyRunning = false;
+    state.diagnostics.apply = recordApplyCost(state.diagnostics.apply, elapsed + (performance.now() - started));
+    updateApplyCostInPlace();
+  }
 }
 
 function updateApplyCostInPlace() {
@@ -5258,7 +5304,12 @@ const UI_CSS = `
   .kf-sticker-group-row .kf-text { min-height: 34px; padding-block: 6px; }
   .kf-sticker-library-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 13px 0 8px; color: var(--muted); font-size: 10px; }
   .kf-sticker-library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 470px; overflow: auto; padding-right: 4px; scrollbar-gutter: stable; }
-  .kf-sticker-library-item { min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; }
+  /* The library scrolls inside a fixed height, so most of its cards are off
+     screen at any moment. content-visibility lets the browser skip layout and
+     paint for those entirely; contain-intrinsic-size supplies the height it
+     would have had, so the scrollbar stays honest and does not jump as cards
+     are rendered. Unsupported engines ignore both and render as before. */
+  .kf-sticker-library-item { min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; content-visibility: auto; contain-intrinsic-size: auto 86px; }
   .kf-sticker-library-item[data-removed="true"] { opacity: .58; }
   .kf-sticker-library-image { width: 52px; height: 52px; display: grid; place-items: center; padding: 5px; border: 1px solid #343a36; border-radius: 4px; background: #151916; }
   .kf-sticker-library-image img { width: 100%; height: 100%; object-fit: contain; }

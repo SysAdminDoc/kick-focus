@@ -2,6 +2,18 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## Unreleased
+
+### Changed
+
+- **Keyword matches are highlighted, not just the message.** The words themselves are now painted, and Kick Focus writes nothing into Kick's chat to do it — the browser paints them from a registry, so there is no markup for Kick to reconcile against and nothing to undo when a message scrolls away. Overlapping keywords produce one highlight rather than nested ones.
+- **The interface is measurably lighter.** Stylesheets are parsed once and shared by reference instead of being re-parsed for every panel and every panic-switch restore; off-screen emote tiles skip layout and paint entirely; and the work Kick Focus does on each page change is split so a click or keystroke is never stuck behind it. On the live site the per-cycle cost went from 2.6 ms average / 7.6 ms worst case to 1.8 ms / 3.2 ms.
+- **Kick Focus no longer replaces the browser's history functions** where the browser can report navigation itself, so nothing of this build is visible on `history.pushState` to any other script on the page.
+
+### Added
+
+- The About page reports what each page-change pass costs, and the figure travels with the diagnostics copy.
+
 ## 1.15.0 — 2026-08-16
 
 ### Changed

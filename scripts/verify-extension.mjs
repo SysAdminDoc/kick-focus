@@ -393,12 +393,18 @@ try {
     await settle();
     const text = String(shadow.querySelector('[data-kf-apply-cost]')?.textContent || '');
     const match = text.match(/(\\d+) runs · last ([\\d.]+) ms · recent avg ([\\d.]+) ms · max ([\\d.]+) ms/);
-    return { ok: true, text, runs: match ? Number(match[1]) : 0, recentAvg: match ? Number(match[3]) : null, max: match ? Number(match[4]) : null };
+    return {
+      ok: true, text, runs: match ? Number(match[1]) : 0,
+      recentAvg: match ? Number(match[3]) : null, max: match ? Number(match[4]) : null,
+      yields: typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function',
+    };
   })()`);
   const cost = applyCost.value || {};
-  record('the apply cycle reports its own cost on the About page',
-    cost.ok === true && cost.runs > 3 && Number.isFinite(cost.recentAvg),
-    cost.ok ? cost.text : cost.why);
+  // The cost is a number to compare run over run, and the yield branch must be
+  // the one this engine takes — otherwise the split is untested here.
+  record('the apply cycle yields to input and reports its own cost',
+    cost.ok === true && cost.runs > 3 && Number.isFinite(cost.recentAvg) && cost.yields === true,
+    cost.ok ? `${cost.text} | scheduler.yield available=${cost.yields}` : cost.why);
 
   // WCAG 2.2 target size and reflow, measured rather than reasoned about: both
   // are properties of computed layout at a given density and zoom, which no

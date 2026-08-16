@@ -133,6 +133,20 @@ const checks = [
   // written into a shadow root's innerHTML is re-tokenised and re-parsed on
   // every rebuild. The template must not carry the sheet, and every root must
   // adopt through the one feature-detected path.
+  // The apply cycle yields between its visible half and its bookkeeping half,
+  // and must refuse to interleave with itself across that yield.
+  ['the apply cycle yields to input and cannot re-enter across the yield',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('function yieldToInput')
+      && bundleSource.includes("typeof scheduler.yield === 'function'")
+      && bundleSource.includes('state.runtime.applyRunning = true')
+      && /if \(state\.runtime\.suspended \|\| state\.runtime\.applyRunning\) return;/.test(bundleSource)
+      // Re-checked after the await, because the panic switch can land mid-yield.
+      && /await resume;[\s\S]{0,240}state\.runtime\.suspended\) return;/.test(bundleSource))],
+  // Off-screen emote tiles skip layout and paint; the intrinsic size keeps the
+  // scroll height honest so the bar does not jump as cards render.
+  ['off-screen emote tiles are skipped with a stated intrinsic size',
+    bundleTargets.every(([, bundleSource]) => (bundleSource.match(/content-visibility: auto/g) || []).length >= 2
+      && (bundleSource.match(/contain-intrinsic-size:/g) || []).length >= 2)],
   // Keyword highlighting must paint from the registry, never by wrapping words
   // in nodes: a <mark> inside Kick's chat is something React reconciles against
   // and something this build then has to undo.
