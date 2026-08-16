@@ -137,6 +137,7 @@ const state = {
     unparsable: 0,
     subscribed: [],
     deletions: new Map(),
+    pendingBadges: new Map(),
     reconnectAt: 0,
     reconnectAttempts: 0,
     provider: '',
@@ -1387,6 +1388,34 @@ const SITE_CSS = `
     html[data-kf-sidebar="dropdown"] #sidebar-wrapper { transition: none; }
   }
 
+  /* Badges Kick's own markup omits. badges_v2 carries collectible and global
+     badges the legacy array does not, so these fill a gap rather than restyle
+     what Kick already drew. Sized to sit on the identity line. */
+  .kf-chat-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-right: 4px;
+    vertical-align: text-bottom;
+  }
+  .kf-chat-badge {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    border-radius: 3px;
+  }
+  .kf-chat-badge-text {
+    padding: 1px 5px;
+    border: 1px solid var(--kf-border-strong);
+    border-radius: 3px;
+    color: var(--kf-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
   /* Why a message disappeared. The DOM only removes the node; the realtime
      event carries the reason, and no DOM-scraping tool can see it. */
   .kf-deletion-note {
@@ -1842,9 +1871,12 @@ function onRealtimeFrame(event) {
 }
 
 function onRealtimeChatMessage(payload) {
-  if (!state.settings.content.countEmoteUsage) return;
+  const settings = state.settings.content;
+  if (!settings.countEmoteUsage && !settings.showChatBadges) return;
   const message = normalizeChatMessage(payload);
-  if (!message?.emotes.length) return;
+  if (!message) return;
+  if (settings.showChatBadges && message.badges.length) queueChatBadges(message);
+  if (!settings.countEmoteUsage || !message.emotes.length) return;
   // Only the local user's own sends are counted. Counting everyone's would
   // measure the channel, not the person, and the shelf exists to rank what
   // *this* user actually reaches for.
@@ -1855,6 +1887,90 @@ function onRealtimeChatMessage(payload) {
     state.emoteUsage = recordEmoteUse(state.emoteUsage, { channel, id: emote.id, name: emote.name, at });
   }
   queueUsagePersist();
+}
+
+/**
+ * Kick's chat identity payload carries `badges_v2`, which includes the
+ * collectible and global badges the legacy array omits entirely — so a client
+ * reading only the rendered DOM shows a gap where other clients show a badge.
+ *
+ * A realtime frame routinely arrives before Kick has rendered the message, so
+ * an unrenderable badge set is held briefly and retried on the apply cycle
+ * rather than dropped. The map only holds messages still waiting for a node,
+ * which is a handful even in a fast chat.
+ */
+const CHAT_BADGE_WAIT_MS = 30_000;
+
+function queueChatBadges(message) {
+  if (renderChatBadges(message)) return;
+  state.live.pendingBadges.set(message.id, { message, at: Date.now() });
+  if (state.live.pendingBadges.size > 200) {
+    const oldest = state.live.pendingBadges.keys().next().value;
+    state.live.pendingBadges.delete(oldest);
+  }
+}
+
+function replayPendingBadges() {
+  if (!state.settings.content.showChatBadges || !state.live.pendingBadges.size) return;
+  const now = Date.now();
+  for (const [id, entry] of state.live.pendingBadges) {
+    if (renderChatBadges(entry.message) || now - entry.at > CHAT_BADGE_WAIT_MS) {
+      state.live.pendingBadges.delete(id);
+    }
+  }
+}
+
+function chatMessageNode(id) {
+  return document.querySelector(`[data-index="${CSS.escape(id)}"], [data-message-id="${CSS.escape(id)}"], [data-chat-entry="${CSS.escape(id)}"]`);
+}
+
+/**
+ * Render the badges Kick's own markup left out. Returns whether the message
+ * node was found, which is what decides between done and retry.
+ *
+ * Badges already drawn by Kick are skipped by image URL, so this adds to the
+ * identity rather than duplicating it. Every value here came through
+ * `normalizeChatMessage`, which bounds the strings and accepts an image only
+ * as an https URL on a Kick host; nodes are still built with textContent
+ * rather than markup.
+ */
+function renderChatBadges(message) {
+  const node = chatMessageNode(message.id);
+  if (!node) return false;
+  if (node.dataset.kfBadgesDrawn === 'true') return true;
+  node.dataset.kfBadgesDrawn = 'true';
+
+  const drawn = new Set([...node.querySelectorAll('img')].map((image) => image.src));
+  const missing = chatBadgesToRender(message.badges, drawn);
+  if (!missing.length) return true;
+
+  const strip = document.createElement('span');
+  strip.className = 'kf-chat-badges';
+  strip.dataset.kfChatBadges = 'true';
+  for (const badge of missing) {
+    if (!badge.image) {
+      strip.append(chatBadgeText(badge.label));
+      continue;
+    }
+    const image = document.createElement('img');
+    image.className = 'kf-chat-badge';
+    image.alt = badge.label;
+    image.title = badge.label;
+    image.loading = 'lazy';
+    // A broken badge image must read as the badge, not as an empty box.
+    image.addEventListener('error', () => image.replaceWith(chatBadgeText(badge.label)), { once: true });
+    image.src = badge.image;
+    strip.append(image);
+  }
+  node.prepend(strip);
+  return true;
+}
+
+function chatBadgeText(label) {
+  const text = document.createElement('span');
+  text.className = 'kf-chat-badge-text';
+  text.textContent = label;
+  return text;
 }
 
 /**
@@ -3698,6 +3814,7 @@ function scheduleApply(delay = 50) {
     // rejected promise here must never interrupt the apply cycle.
     refreshLiveChannel().catch(() => {});
     replayPendingDeletions();
+    replayPendingBadges();
     renderStickerOrganizer();
     applyChatHighlights();
     applyPlaybackDiagnostics();
@@ -4707,6 +4824,8 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidad cómoda',
     'Use compact density': 'Usar densidad compacta',
     'Change discovery spacing and save it': 'Cambia y guarda el espaciado del descubrimiento',
+    'Show badges Kick leaves out': 'Mostrar insignias que Kick omite',
+    'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.': 'La respuesta del chat de Kick incluye insignias globales y de coleccionables que su propio marcado omite, dejando un hueco donde otros clientes muestran una insignia. Si la imagen no carga, se sustituye por su nombre.',
     'Hidden channels': 'Canales ocultos',
     'Hide specific channels from Home, Browse, Following, and Search.': 'Oculta canales específicos de Inicio, Explorar, Siguiendo y Búsqueda.',
     'No channels hidden. Use the input above or the ✕ action on a card.': 'No hay canales ocultos. Usa el campo de arriba o la acción ✕ en una tarjeta.',
@@ -4917,6 +5036,8 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidade confortável',
     'Use compact density': 'Usar densidade compacta',
     'Change discovery spacing and save it': 'Altera e salva o espaçamento da descoberta',
+    'Show badges Kick leaves out': 'Mostrar selos que o Kick omite',
+    'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.': 'A resposta do chat do Kick traz selos globais e de colecionáveis que a própria marcação omite, deixando uma lacuna onde outros clientes mostram um selo. Se a imagem não carregar, ela é substituída pelo nome.',
     'Hidden channels': 'Canais ocultos',
     'Hide specific channels from Home, Browse, Following, and Search.': 'Oculte canais específicos de Início, Explorar, Seguindo e Busca.',
     'No channels hidden. Use the input above or the ✕ action on a card.': 'Nenhum canal oculto. Use o campo acima ou a ação ✕ em um card.',
@@ -5424,6 +5545,7 @@ function renderLiveDataSection(value) {
         ${row('Load the emote catalog from Kick', 'Read the full channel, global, and emoji sets with their real entitlement, instead of scraping the picker. Falls back to the picker if the response changes shape.', toggle('content.liveEmoteCatalog', value.liveEmoteCatalog, { label: 'Load the emote catalog from Kick' }))}
         ${row('Follow live chat events', 'Subscribe to the same realtime chat feed Kick’s own client uses. The provider is read from Kick rather than hardcoded.', toggle('content.liveChatEvents', value.liveChatEvents, { label: 'Follow live chat events' }))}
         ${row('Explain removed messages', 'Kick’s automatic moderation removes messages without saying why. The realtime event carries the reason; the page does not.', toggle('content.showModerationReasons', value.showModerationReasons, { label: 'Explain removed messages' }))}
+        ${row('Show badges Kick leaves out', 'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.', toggle('content.showChatBadges', value.showChatBadges, { label: 'Show badges Kick leaves out' }))}
         ${row('Count emote usage', 'Kick’s own “Frequently Used” never counts anything, so no real ranking exists. This one is yours, stored locally and exported with your library.', toggle('content.countEmoteUsage', value.countEmoteUsage, { label: 'Count emote usage' }))}
         ${row('Show collectible rarity', 'Kick publishes rarity on card art and identity in the picker, with no key joining them. Rarity is shown only where the match is confident.', toggle('content.showEmoteRarity', value.showEmoteRarity, { label: 'Show collectible rarity' }))}
         ${row('Warn about shadowed emote names', 'Subscriber emotes work in every chat and Kick resolves typed names through one map, so two channels sharing a name means one silently sends the other’s.', toggle('content.warnShadowedEmotes', value.warnShadowedEmotes, { label: 'Warn about shadowed emote names' }))}

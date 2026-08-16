@@ -55,6 +55,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     liveEmoteCatalog: true,
     liveChatEvents: true,
     showModerationReasons: true,
+    showChatBadges: true,
     countEmoteUsage: true,
     showEmoteRarity: true,
     warnShadowedEmotes: true,
@@ -208,6 +209,7 @@ export function normalizeSettings(input) {
       liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
       liveChatEvents: bool(content.liveChatEvents, defaults.content.liveChatEvents),
       showModerationReasons: bool(content.showModerationReasons, defaults.content.showModerationReasons),
+      showChatBadges: bool(content.showChatBadges, defaults.content.showChatBadges),
       countEmoteUsage: bool(content.countEmoteUsage, defaults.content.countEmoteUsage),
       showEmoteRarity: bool(content.showEmoteRarity, defaults.content.showEmoteRarity),
       warnShadowedEmotes: bool(content.warnShadowedEmotes, defaults.content.warnShadowedEmotes),
@@ -426,6 +428,35 @@ export function assessAdStack(observed = {}) {
     unknownKeys: [],
     summary: `Matches the ad stack confirmed on ${AD_STACK_BASELINE.date}.`,
   };
+}
+
+/**
+ * Decide which chat badges this build has to draw itself.
+ *
+ * Kick renders some badges in its own markup but omits the collectible and
+ * global ones `badges_v2` carries, so the job is to fill that gap without
+ * duplicating what is already on screen. An image URL is the only reliable
+ * identity — badge `type` is absent on some entries and `text` is localised —
+ * so a badge whose image Kick already drew is skipped, and a badge with no
+ * image at all is kept because it cannot be matched and reads as text anyway.
+ */
+export function chatBadgesToRender(badges, drawnImageUrls = []) {
+  if (!Array.isArray(badges)) return [];
+  const drawn = drawnImageUrls instanceof Set ? drawnImageUrls : new Set(drawnImageUrls);
+  const seen = new Set();
+  const render = [];
+  for (const badge of badges) {
+    if (!badge || typeof badge !== 'object') continue;
+    const label = badge.text || badge.type;
+    if (!label) continue;
+    if (badge.image && drawn.has(badge.image)) continue;
+    // A payload repeating the same badge must not draw it twice.
+    const key = badge.image || `text:${label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    render.push({ label, image: badge.image || '' });
+  }
+  return render;
 }
 
 /**

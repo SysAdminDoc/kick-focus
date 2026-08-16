@@ -134,6 +134,14 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // The degradation path is the point: an unreachable badge image must read as
+  // the badge's name, never as an empty box.
+  ['renders the chat badges Kick omits and degrades a broken image to text',
+    source.includes('chatBadgesToRender')
+    && source.includes('kf-chat-badge')
+    && source.includes('chatBadgeText')
+    && source.includes("image.addEventListener('error'")],
+
   ['ships a named-channel blocklist for discovery surfaces', source.includes('localChannelBlocked')
     && source.includes('data-kf-hidden-channel-input')
     && source.includes('add-hidden-channel')

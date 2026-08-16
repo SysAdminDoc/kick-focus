@@ -11,6 +11,7 @@ import {
   FILTER_MIN_SAMPLE,
   assessAdStack,
   assessApiDrift,
+  chatBadgesToRender,
   normalizeChannelPath,
   classifyRequest,
   describeInjection,
@@ -435,6 +436,44 @@ test('ad stack drift is reported instead of passing silently', () => {
   const absent = assessAdStack({ sawPlayback: true, playbackSdkKeys: [] });
   assert.equal(absent.status, 'absent');
   assert.equal(absent.drifted, true);
+});
+
+test('chat badges fill the gap Kick leaves without duplicating what it drew', () => {
+  const collectible = 'https://ext.cdn.kick.com/chat/badges/collectible-gold.svg';
+  const sub = 'https://ext.cdn.kick.com/chat/badges/sub.svg';
+
+  // Kick already drew the subscriber badge; only the collectible is ours.
+  const render = chatBadgesToRender(
+    [
+      { type: 'subscriber', text: 'Subscriber', image: sub },
+      { type: 'collectible', text: 'Golden', image: collectible },
+    ],
+    [sub],
+  );
+  assert.equal(render.length, 1);
+  assert.equal(render[0].label, 'Golden');
+  assert.equal(render[0].image, collectible);
+
+  // A badge with no image cannot be matched against the DOM, so it is kept and
+  // will render as text rather than an empty box.
+  const textOnly = chatBadgesToRender([{ type: 'og', text: 'OG' }], [sub]);
+  assert.deepEqual(textOnly, [{ label: 'OG', image: '' }]);
+
+  // `type` stands in when `text` is absent, and an entry with neither is dropped
+  // rather than drawing a blank badge.
+  assert.equal(chatBadgesToRender([{ type: 'vip' }])[0].label, 'vip');
+  assert.deepEqual(chatBadgesToRender([{ image: collectible }]), []);
+  assert.deepEqual(chatBadgesToRender([{}, null, 'nope']), []);
+
+  // A payload repeating a badge must not draw it twice.
+  assert.equal(chatBadgesToRender([
+    { text: 'OG', image: collectible },
+    { text: 'OG', image: collectible },
+  ]).length, 1);
+
+  // Nothing to draw when Kick already drew everything, and junk input is empty.
+  assert.deepEqual(chatBadgesToRender([{ text: 'Sub', image: sub }], new Set([sub])), []);
+  assert.deepEqual(chatBadgesToRender(undefined), []);
 });
 
 test('API drift is accumulated and reported instead of silently falling back', () => {
