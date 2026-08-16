@@ -29,13 +29,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 
 ### P3
 
-- [ ] P3 — Scope sticker favorites per channel with explicit ordering
-  Why: the field's best data model, and it closes four separate long-open requests no competitor has shipped (FFZ custom sort open since 2021, FFZ frequently-used, Xtra per-channel favourites, Chatterino favourites).
-  Evidence: NipahTV keys favorites on a compound `[platformId+channelId+emoteHid]` with an `orderIndex` and embeds a full emote snapshot so a favorite survives its set unloading; usage counts are per channel; writes batch through a pending-changes map.
-  Touches: `src/core.mjs` (sticker schema — note an uncommitted 2→3 bump is already in flight), `src/runtime.js` (shelf, library manager).
-  Acceptance: favorites can be ordered manually, are scoped per channel with a global fallback, and survive the channel's set not being loaded; existing preferences migrate without loss.
-  Complexity: L
-
 ### API and emote-catalog work (added 2026-08-15 from the Kick API + emote tooling research)
 
 Gate for this whole group: the deferred list rules out "replay of private endpoints". These items read endpoints the page already calls, same-origin, read-only, inheriting the user's own session, and every one keeps the existing DOM path as fallback. Settle that boundary before starting.

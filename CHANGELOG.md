@@ -6,6 +6,18 @@ All notable changes are documented here. Dates use ISO 8601.
 
 _Nothing yet._
 
+## 1.9.0 — 2026-08-15
+
+Emote schema 5. Existing favorites migrate without loss.
+
+### Added
+
+- **Emote favorites are now ordered, and can be scoped to one channel.** A favorite you save on a channel appears only there, above your global ones; global favorites still follow you everywhere. Order is explicit and set with the ‹ › controls in the favorites view — Kick's own "Frequently Used" ranks nothing, so this is the only real ordering available. New favorites stay global by default, so nothing you already had moves; the Content settings choose otherwise.
+
+  Favorites keep working when the channel's emote set is not loaded, because the library already stores a full snapshot for every recorded emote.
+
+  Previous versions stored a flat favorites list with no scope. Position in that list *was* the order, so it carries over as your global order with nothing lost.
+
 ## 1.8.0 — 2026-08-15
 
 Emote schema 4. Existing libraries migrate without loss.
