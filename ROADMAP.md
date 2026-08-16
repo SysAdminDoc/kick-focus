@@ -63,13 +63,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: the i18n-coverage gate scans toast/announce/attribute literals and fails on any without a dictionary entry in every locale; every newly-scanned string is translated (reviewed, not bulk-machine-translated); remaining count words use `plural()`.
   Complexity: L
 
-- [ ] R-37 — Finish the accessibility pass: reset-dialog focus trap + inert density/motion controls
-  Why: R-12 landed the highest-value fixes (focus + scroll survive a setting toggle; toasts announce via a live region with errors as role=alert; sliders expose aria-valuetext + readable names; forced-colors shows selected switch/page state). Two enumerated defects remain: the reset `alertdialog`'s focus trap escapes into obscured content and Escape closes all of Settings rather than only the dialog; and the "larger targets" / "reduce motion" accessibility settings do not actually key the mod's own controls (`.kf-switch`, `.kf-ms-bar`).
-  Evidence: phase0-memo #26,#27,#29 — reset dialog trapFocus scope + Escape handling; largeTargets/reduceMotion CSS wiring to the mod's own controls.
-  Touches: reset alertdialog focus-trap scope + Escape handling in the settings modal; density/motion CSS that keys `.kf-switch`/`.kf-ms-bar` and friends off the accessibility settings.
-  Acceptance: the reset dialog traps focus to itself and Escape cancels only the dialog (not the whole Settings modal); largeTargets/reduceMotion visibly change the mod's own controls; a fixture or node:test asserts the aria wiring.
-  Complexity: M
-
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
 
 - [ ] R-35 — Split the multi-stream and live-data surfaces out of `src/runtime.js` (unblocked 2026-08-16)

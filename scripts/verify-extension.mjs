@@ -286,6 +286,75 @@ try {
   const mounted = await evaluate(pageClient, 'Boolean(document.querySelector("#kick-focus-root, [data-kf-root]")) || Boolean(window.__kickFocusNetworkDefenseV1)');
   record('kick focus runtime active on page', mounted.value === true);
 
+  // The accessibility settings and the modal focus ladder are about this mod's
+  // own chrome, not Kick's markup, so they are proven by driving the real UI
+  // rather than by reading source. Both were defects a green offline build
+  // reported as healthy: the density/motion settings were written at <html>,
+  // where they cannot reach into the shadow root the controls actually live in,
+  // and Escape on the reset prompt tore down the whole Settings modal.
+  const shadowProbe = await evaluate(pageClient, `(async () => {
+    const host = document.getElementById('kick-focus-root');
+    if (!host || !host.shadowRoot) return { ok: false, why: 'no shadow host' };
+    const shadow = host.shadowRoot;
+    const q = (selector) => shadow.querySelector(selector);
+    // The apply cycle is throttled, never synchronous — reading the host in the
+    // same tick as the click measures the state before the setting landed.
+    const settle = () => new Promise((done) => setTimeout(done, 600));
+    const read = () => {
+      const control = q('.kf-switch');
+      return { flag: host.dataset.kfLargeTargets, height: control ? getComputedStyle(control).minHeight : '' };
+    };
+    q('[data-page="accessibility"]').click();
+    await settle();
+    const before = read();
+    q('[data-set="accessibility.largeTargets"]').click();
+    await settle();
+    const after = read();
+    q('[data-set="accessibility.largeTargets"]').click();
+    await settle();
+    const restored = read();
+    return { ok: true, before, after, restored };
+  })()`);
+  const density = shadowProbe.value || {};
+  record('larger targets restyles the mod own shadow controls, not just Kick markup',
+    density.ok === true
+      && density.before?.flag === 'false' && density.after?.flag === 'true'
+      && density.restored?.flag === 'false'
+      && density.before?.height !== density.after?.height
+      && density.after?.height === '40px',
+    density.ok ? `.kf-switch min-height ${density.before?.height} -> ${density.after?.height} -> ${density.restored?.height}` : density.why);
+
+  const escapeProbe = await evaluate(pageClient, `(() => {
+    const host = document.getElementById('kick-focus-root');
+    const shadow = host && host.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const q = (selector) => shadow.querySelector(selector);
+    const press = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    const open = () => ({
+      settings: q('[data-kf-settings-backdrop]').hidden === false,
+      confirm: q('[data-kf-confirm]').hidden === false,
+    });
+    q('[data-kf-quick]').click();
+    q('[data-action="command:settings"]').click();
+    if (!open().settings) return { ok: false, why: 'settings did not open' };
+    q('[data-action="reset-page"]').click();
+    const prompted = open();
+    const focusedPrompt = shadow.activeElement
+      && shadow.activeElement.closest('.kf-confirm-card') !== null;
+    press();
+    const afterEscape = open();
+    press();
+    return { ok: true, prompted, focusedPrompt, afterEscape, closed: open() };
+  })()`);
+  const esc = escapeProbe.value || {};
+  record('Escape on the reset prompt cancels only the prompt, leaving Settings open',
+    esc.ok === true
+      && esc.prompted?.settings === true && esc.prompted?.confirm === true
+      && esc.focusedPrompt === true
+      && esc.afterEscape?.confirm === false && esc.afterEscape?.settings === true
+      && esc.closed?.settings === false,
+    esc.ok ? 'prompt closed, settings survived, second Escape closed settings' : esc.why);
+
   // These describe how Kick Focus treats Kick's own markup, so they are only
   // meaningful when Kick's markup is present. Reported as skipped rather than
   // passed when it is not.

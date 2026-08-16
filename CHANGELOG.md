@@ -4,7 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- **Escape cancels the reset prompt instead of tearing down all of Settings.** Answering "no" to a confirmation no longer closes the modal and discards the page you were working on, and the prompt now keeps Tab inside itself rather than letting focus wander the obscured settings behind it. Cancelling returns focus to the control you pressed.
+- **"Larger pointer targets" and "Reduce motion" now apply to Kick Focus's own controls.** Both settings only ever restyled Kick's markup: the mod's interface lives in a shadow root that the site-level rules cannot reach, so switches, buttons, and the multi-stream tile bar ignored them. Larger targets also pins the tile bar open, since a pointer-limited user may never trigger its hover reveal.
 
 ## 1.13.0 — 2026-08-16
 

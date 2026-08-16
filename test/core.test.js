@@ -56,6 +56,8 @@ import {
   MULTISTREAM_MAX,
   normalizeShortcut,
   findShortcutConflict,
+  topmostOverlayLayer,
+  OVERLAY_LAYERS,
   pluralForm,
   sanitizeErrorMessage,
   monetizationKind,
@@ -101,6 +103,41 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
+
+test('the reset alertdialog owns focus and Escape while it is open, not the settings shell', () => {
+  // The defect: the prompt is nested inside the settings shell, so the trap
+  // scoped to settings and Tab walked the obscured page behind the dialog,
+  // while Escape closed all of Settings instead of only the prompt.
+  const withPrompt = topmostOverlayLayer({ settings: true, resetConfirm: true });
+  assert.equal(withPrompt.layer, 'resetConfirm');
+  assert.equal(withPrompt.selector, '.kf-confirm-card');
+
+  // Cancelling the prompt hands both back to the settings shell, not to nothing.
+  const afterCancel = topmostOverlayLayer({ settings: true, resetConfirm: false });
+  assert.equal(afterCancel.layer, 'settings');
+  assert.equal(afterCancel.selector, '[data-kf-settings-shell]');
+});
+
+test('every overlay ranks the same way for Tab and for Escape', () => {
+  // These two ladders were written separately and disagreed: the trap ranked the
+  // command menu above settings, Escape ranked settings above the command menu.
+  assert.equal(topmostOverlayLayer({ command: true, settings: true }).layer, 'command');
+  assert.equal(topmostOverlayLayer({ multistream: true, command: true, settings: true }).layer, 'multistream');
+  // Multi-stream outranks even the prompt: its cross-origin player frames cannot
+  // be focus-managed at all, so containment at the host is the only control.
+  assert.equal(topmostOverlayLayer({ multistream: true, resetConfirm: true, settings: true }).layer, 'multistream');
+  assert.equal(topmostOverlayLayer({}), null);
+  assert.equal(topmostOverlayLayer({ settings: false }), null);
+  assert.equal(topmostOverlayLayer(null), null);
+  // Only an explicit `true` opens a layer, so a stray truthy element reference
+  // cannot promote a hidden overlay to the top of the ladder.
+  assert.equal(topmostOverlayLayer({ settings: 'yes' }), null);
+  // Every layer names a selector the interface actually mounts.
+  assert.equal(OVERLAY_LAYERS.length, 4);
+  for (const [layer, selector] of OVERLAY_LAYERS) {
+    assert.ok(layer && typeof selector === 'string' && selector.length > 1, `${layer} needs a selector`);
+  }
 });
 
 test('multi-stream merge survives two tabs adding different channels', () => {

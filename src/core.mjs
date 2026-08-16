@@ -176,6 +176,35 @@ export function findShortcutConflict(shortcuts, capturingKey, candidate) {
 }
 
 /**
+ * The overlay layers this build can stack, outermost last. The first one that
+ * is open is the one on top.
+ *
+ * The reset alertdialog is nested *inside* the settings shell, which is exactly
+ * why this has to be a shared decision: the focus trap scoped itself to the
+ * settings shell and let Tab walk the page the dialog was obscuring, while
+ * Escape closed all of Settings rather than the prompt the user meant to
+ * decline. Tab and Escape now read the same ladder, so they cannot drift again
+ * (they already had — the trap ranked the command menu above settings and
+ * Escape ranked settings above the command menu).
+ */
+export const OVERLAY_LAYERS = [
+  ['multistream', '.kf-ms-shell'],
+  ['command', '.kf-command-shell'],
+  ['resetConfirm', '.kf-confirm-card'],
+  ['settings', '[data-kf-settings-shell]'],
+];
+
+/**
+ * Which layer owns focus and Escape right now, or null if none is open.
+ * `open` maps a layer name to whether it is currently shown.
+ */
+export function topmostOverlayLayer(open) {
+  if (!isRecord(open)) return null;
+  const found = OVERLAY_LAYERS.find(([layer]) => open[layer] === true);
+  return found ? { layer: found[0], selector: found[1] } : null;
+}
+
+/**
  * Locale-correct plural selection.
  *
  * English has only one/other, but CLDR 48 gives both es and pt a "many"

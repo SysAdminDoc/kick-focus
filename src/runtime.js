@@ -98,6 +98,7 @@ const state = {
   shortcutCapture: null,
   shortcutError: '',
   resetPending: false,
+  resetOpener: null,
   companion: { active: false, version: '' },
   watched: new Set(readSessionArray(WATCHED_KEY)),
   favorites: new Set(readPersistentArray(FAVORITES_KEY)),
@@ -1564,6 +1565,17 @@ function applySettingsAttributes() {
     || (accessibility.reduceMotion && matchMedia('(prefers-reduced-motion: reduce)').matches));
   root.dataset.kfFocusVisible = String(accessibility.focusVisible);
   root.dataset.kfLargeTargets = String(accessibility.largeTargets);
+  // The mod's own chrome lives in a shadow root, where a selector rooted at
+  // <html> cannot reach it — so these settings styled Kick's controls and left
+  // ours untouched. `:host-context()` would cross the boundary but Firefox has
+  // never implemented it, so mirror the flags onto the host and key `:host()`
+  // off them instead, which every target engine supports.
+  const uiHost = state.shadow?.host;
+  if (uiHost) {
+    uiHost.dataset.kfLargeTargets = String(accessibility.largeTargets);
+    uiHost.dataset.kfReduceMotion = String(accessibility.reduceMotion);
+    uiHost.dataset.kfFocusVisible = String(accessibility.focusVisible);
+  }
   root.dataset.kfFocus = String(state.runtime.focus);
   root.dataset.kfTheater = String(state.runtime.theater);
   root.dataset.kfChatPaused = String(state.runtime.chatPaused);
@@ -5121,6 +5133,27 @@ const UI_CSS = `
     }
   }
 
+  /* The accessibility settings apply to this mod's own controls too. The site
+     rules cannot reach in here, so these mirror them off the host attributes
+     written by applySettingsAttributes. WCAG 2.5.8 wants 24px minimum; the
+     comfortable size is 40px, matching what the site rules give Kick. */
+  :host([data-kf-large-targets="true"]) :is(button, a[href], input, select, textarea) { min-height: 40px; }
+  :host([data-kf-large-targets="true"]) .kf-switch { min-width: 74px; }
+  :host([data-kf-large-targets="true"]) .kf-icon-button { min-width: 40px; }
+  :host([data-kf-large-targets="true"]) .kf-ms-bar :is(button, .kf-ms-link) { min-height: 32px; padding: 6px 10px; }
+  /* The tile bar reveals on hover, which a pointer-limited user may never
+     trigger; larger targets implies it stays put. */
+  :host([data-kf-large-targets="true"]) .kf-ms-bar { opacity: 1; }
+
+  :host([data-kf-reduce-motion="true"]) *,
+  :host([data-kf-reduce-motion="true"]) *::before,
+  :host([data-kf-reduce-motion="true"]) *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+
   /* Kick publishes no drop odds and documents no duplicate protection, so this
      states what is known and attributes it, rather than filling the gap. */
   .kf-fact-list { margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -6092,6 +6125,9 @@ function buildInterface() {
   // both persist. Replay whatever failed so it is not lost to mount ordering.
   renderStorageWarning();
   renderCommands();
+  // The host's accessibility flags are written by applySettingsAttributes, which
+  // has already run at least once by now against a host that did not exist yet.
+  applySettingsAttributes();
 
   try {
     if (typeof GM_registerMenuCommand === 'function') {
@@ -7186,6 +7222,9 @@ function closeSettings() {
 
 function openResetConfirmation(scope) {
   state.resetPending = scope;
+  // Where focus came from, so cancelling returns the user to the control they
+  // pressed rather than to the top of the dialog's container.
+  state.resetOpener = state.shadow.activeElement || null;
   const container = state.shadow.querySelector('[data-kf-confirm]');
   const title = state.shadow.querySelector('[data-kf-confirm-title]');
   const copy = state.shadow.querySelector('[data-kf-confirm-copy]');
@@ -7200,6 +7239,16 @@ function closeResetConfirmation() {
   const container = state.shadow?.querySelector('[data-kf-confirm]');
   if (container) container.hidden = true;
   state.resetPending = false;
+  // The opener can be inside the settings page, which a following render
+  // replaces; renderSettingsPage re-restores by key from there, so handing
+  // focus back here is correct in both cases.
+  const opener = state.resetOpener;
+  state.resetOpener = null;
+  if (opener?.isConnected) {
+    try { opener.focus(); } catch { /* noop */ }
+  } else {
+    try { state.shadow?.querySelector('[data-kf-page]')?.focus?.(); } catch { /* noop */ }
+  }
 }
 
 // A factory reset clears every private store the registry marks reset:true, but
@@ -7708,11 +7757,23 @@ function isTypingTarget(target) {
  * stops are cross-origin player frames whose interiors cannot be focus-managed
  * at all. Containment at the host is the only control available there.
  */
+function resetConfirmationOpen() {
+  const container = state.shadow?.querySelector('[data-kf-confirm]');
+  return Boolean(container && !container.hidden);
+}
+
+function overlayOpenState() {
+  return {
+    multistream: multistreamOpen(),
+    command: Boolean(state.command && !state.command.hidden),
+    resetConfirm: resetConfirmationOpen(),
+    settings: Boolean(state.modal && !state.modal.hidden),
+  };
+}
+
 function topmostOverlayShell() {
-  if (multistreamOpen()) return state.shadow?.querySelector('.kf-ms-shell');
-  if (state.command && !state.command.hidden) return state.shadow?.querySelector('.kf-command-shell');
-  if (state.modal && !state.modal.hidden) return state.shadow?.querySelector('[data-kf-settings-shell]');
-  return null;
+  const top = topmostOverlayLayer(overlayOpenState());
+  return top ? state.shadow?.querySelector(top.selector) : null;
 }
 
 function trapFocus(event) {
@@ -7769,22 +7830,22 @@ function onGlobalKeydown(event) {
     return;
   }
 
-  if (multistreamOpen() && event.key === 'Escape') {
-    event.preventDefault();
-    closeMultistream();
-    return;
-  }
-  if (!state.modal.hidden && event.key === 'Escape') {
-    event.preventDefault();
-    closeSettings();
-    return;
+  // Escape cancels the innermost open surface, off the same ladder the focus
+  // trap uses. Closing all of Settings from a confirmation prompt discards the
+  // page the user was working on to answer a question they only declined.
+  if (event.key === 'Escape') {
+    const top = topmostOverlayLayer(overlayOpenState())?.layer;
+    if (top) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (top === 'multistream') closeMultistream();
+      else if (top === 'command') closeCommandMenu();
+      else if (top === 'resetConfirm') closeResetConfirmation();
+      else closeSettings();
+      return;
+    }
   }
   if (trapFocus(event)) return;
-  if (!state.command.hidden && event.key === 'Escape') {
-    event.preventDefault();
-    closeCommandMenu();
-    return;
-  }
 
   const shortcut = eventShortcut(event);
   const isGlobalCombo = shortcut === state.settings.shortcuts.command || shortcut === state.settings.shortcuts.settings;
