@@ -1,5 +1,5 @@
 export const VERSION = '1.12.0';
-export const SETTINGS_SCHEMA = 3;
+export const SETTINGS_SCHEMA = 4;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     stickyChatPause: false,
     chatHighlights: false,
     organizeChatStickers: true,
+    clickChatEmotes: true,
     // Where a newly favorited emote lands. Global by default: changing this
     // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
@@ -293,6 +294,7 @@ export function normalizeSettings(input) {
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
+      clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
@@ -521,6 +523,14 @@ export function assessAdStack(observed = {}) {
     unknownKeys: [],
     summary: `Matches the ad stack confirmed on ${AD_STACK_BASELINE.date}.`,
   };
+}
+
+/** Keep the strongest known emote access without dereferencing a missing record. */
+export function preferredStickerAccess(existingAccess, incomingAccess) {
+  const accessRank = { observed: 0, locked: 1, channel: 2, available: 3 };
+  const incoming = Object.hasOwn(accessRank, incomingAccess) ? incomingAccess : 'locked';
+  if (!Object.hasOwn(accessRank, existingAccess)) return incoming;
+  return accessRank[existingAccess] >= accessRank[incoming] ? existingAccess : incoming;
 }
 
 /**
@@ -773,7 +783,7 @@ export function monetizationKind({ text = '', ariaLabel = '', title = '', testId
   return '';
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 6;
+export const STICKER_PREFERENCES_SCHEMA = 7;
 
 /**
  * Timestamps travel through the settings export, so an imported file can carry
@@ -940,6 +950,10 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
         .map((group) => cleanStickerText(group, 80))
         .filter(Boolean))].slice(0, 20),
       access: enumValue(raw.access, ['available', 'channel', 'observed', 'locked'], 'available'),
+      sourceSlug: favoriteScope(raw.sourceSlug),
+      requiresFollow: raw.requiresFollow === true,
+      followed: raw.followed === true,
+      subscribersOnly: raw.subscribersOnly === true,
       // Schema 4. Entries captured before it carry 0, which reads as unknown
       // rather than as a date the record cannot actually support.
       firstSeen: cleanCaptureTime(raw.firstSeen),

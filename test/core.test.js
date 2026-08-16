@@ -14,6 +14,7 @@ import {
   chatBadgesToRender,
   countChangedStickers,
   describeStickerChange,
+  preferredStickerAccess,
   recordStickerObservation,
   stickerChangedSinceCapture,
   multistreamLayoutLink,
@@ -511,7 +512,7 @@ test('removed keys are never re-materialised into the library on normalize', () 
   assert.deepEqual(value.library.map((item) => item.key), ['id:kept']);
 });
 
-test('the emote preferences migrate losslessly from every historical schema to 6', () => {
+test('the emote preferences migrate losslessly from every historical schema to the current schema', () => {
   const cdn = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
   const day = Date.UTC(2026, 0, 10);
 
@@ -576,6 +577,29 @@ test('the emote preferences migrate losslessly from every historical schema to 6
     library: [{ key: 'id:7', id: '7', name: 'Same', src: cdn(7), nativeGroups: [], access: 'available', wasName: 'Same' }],
   });
   assert.ok(!('wasName' in clean.library[0]), 'wasName equal to name must not be recorded');
+});
+
+test('emote library preserves the source and follow-gate evidence used by click-to-save', () => {
+  const value = normalizeStickerPreferences({
+    schema: 6,
+    library: [{
+      key: 'id:88',
+      id: '88',
+      name: 'FollowWave',
+      src: 'https://files.kick.com/emotes/88/fullsize',
+      nativeGroups: ['chessbrah'],
+      access: 'locked',
+      sourceSlug: 'chessbrah',
+      requiresFollow: true,
+      followed: false,
+      subscribersOnly: false,
+    }],
+  });
+  assert.equal(value.schema, STICKER_PREFERENCES_SCHEMA);
+  assert.equal(value.library[0].sourceSlug, 'chessbrah');
+  assert.equal(value.library[0].requiresFollow, true);
+  assert.equal(value.library[0].followed, false);
+  assert.equal(value.library[0].subscribersOnly, false);
 });
 
 test('route classifier covers every audited desktop surface', () => {
@@ -905,6 +929,15 @@ test('ad stack drift is reported instead of passing silently', () => {
   const absent = assessAdStack({ sawPlayback: true, playbackSdkKeys: [] });
   assert.equal(absent.status, 'absent');
   assert.equal(absent.drifted, true);
+});
+
+test('emote access merging handles a first observation and never downgrades access', () => {
+  assert.equal(preferredStickerAccess(undefined, 'observed'), 'observed');
+  assert.equal(preferredStickerAccess(undefined, 'channel'), 'channel');
+  assert.equal(preferredStickerAccess('available', 'observed'), 'available');
+  assert.equal(preferredStickerAccess('channel', 'locked'), 'channel');
+  assert.equal(preferredStickerAccess('observed', 'available'), 'available');
+  assert.equal(preferredStickerAccess('unknown', 'unknown'), 'locked');
 });
 
 test('the emote library records when Kick changes an emote under the user', () => {

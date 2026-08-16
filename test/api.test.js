@@ -19,6 +19,7 @@ import {
   realtimeSubscribeFrame,
   realtimeTransport,
   emoteLockState,
+  emoteFollowRequirement,
   catalogEmoteAccess,
   channelCatalogEmotes,
   normalizeCurrentViewers,
@@ -347,6 +348,31 @@ test('emote sets keep access honest when the public catalog carries no entitleme
   assert.equal(malformed.emotes.length, 0);
 });
 
+test('follow-gated emotes require an explicit Kick marker before account mutation', () => {
+  assert.deepEqual(emoteFollowRequirement({ name: 'ordinary' }, 'chessbrah'), {
+    required: false,
+    followed: false,
+    slug: 'chessbrah',
+  });
+  assert.deepEqual(emoteFollowRequirement({ followers_only: true, is_following: false }, 'chessbrah'), {
+    required: true,
+    followed: false,
+    slug: 'chessbrah',
+  });
+
+  const [locked, available] = normalizeEmoteSets([{ id: 1, name: 'chessbrah', slug: 'chessbrah', emotes: [
+    { id: 20, name: 'FollowMe', followers_only: true, is_following: false },
+    { id: 21, name: 'AlreadyFollowed', requires_follow: true, followed: true },
+  ] }]).emotes;
+  assert.equal(locked.sourceSlug, 'chessbrah');
+  assert.equal(locked.requiresFollow, true);
+  assert.equal(locked.followed, false);
+  assert.equal(catalogEmoteAccess(locked), 'locked');
+  assert.equal(catalogEmoteAccess(available), 'channel');
+  assert.match(emoteLockState(locked).reason, /Follow chessbrah/);
+  assert.equal(endpoints.followChannel('chessbrah'), 'https://kick.com/api/v2/channels/chessbrah/follow');
+});
+
 test('cross-channel catalog import selects only the requested channel set', () => {
   const catalog = normalizeEmoteSets([
     { id: 12, name: 'target', emotes: [{ id: 1, name: 'TargetFree', subscribers_only: false }] },
@@ -518,14 +544,14 @@ test('wide collectibles are measured, never guessed from the name', () => {
   assert.equal(emoteAspect('collectiblesWide', undefined, undefined), 'square');
 });
 
-test('endpoints are same-origin, read-only, and encode their inputs', () => {
+test('endpoint builders stay on Kick and encode their inputs', () => {
   assert.equal(endpoints.emoteSets('la cobra/../x'), 'https://kick.com/emotes/la%20cobra%2F..%2Fx');
   assert.equal(endpoints.chatHistory(88), 'https://web.kick.com/api/v1/chat/88/history');
   assert.equal(endpoints.realtimeChat(88, 'uuid'), 'https://web.kick.com/api/v1/realtime/chat/88/client/uuid/connection');
   // Bulk live status in one request instead of N per-channel polls.
   assert.equal(endpoints.currentViewers([1, 2, 2, '']), 'https://kick.com/current-viewers?ids[]=1&ids[]=2');
 
-  for (const url of [endpoints.channel('x'), endpoints.emoteSets('x'), endpoints.collectibles(), endpoints.chatHistory(1)]) {
+  for (const url of [endpoints.channel('x'), endpoints.followChannel('x'), endpoints.emoteSets('x'), endpoints.collectibles(), endpoints.chatHistory(1)]) {
     assert.match(url, /^https:\/\/(web\.)?kick\.com\//, 'every endpoint must stay on Kick');
   }
 });

@@ -6,7 +6,8 @@
  * unit-tested against payload shapes captured from the live site on 2026-08-15.
  *
  * Boundaries this module holds to, deliberately:
- *   - Read-only. No endpoint here mutates anything on Kick.
+ *   - Request-free. This module only builds URLs and normalizes data. Runtime
+ *     owns the single deliberate Follow mutation used by click-to-save.
  *   - Same-origin, inheriting whatever session the page already has. Nothing
  *     handles, stores or forwards a credential.
  *   - Only endpoints Kick's own client already calls from the page.
@@ -24,6 +25,7 @@ export function emoteImageUrl(id, size = 'fullsize') {
 
 export const endpoints = {
   channel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}`,
+  followChannel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}/follow`,
   emoteSets: (slug) => `${KICK_ORIGIN}/emotes/${encodeURIComponent(slug)}`,
   chatSettings: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/chat/settings`,
   chatHistory: (chatroomId) => `${KICK_WEB_ORIGIN}/api/v1/chat/${encodeURIComponent(chatroomId)}/history`,
@@ -349,12 +351,34 @@ function emoteEntitlement(source) {
 }
 
 /**
+ * A follow must never be inferred from an ordinary channel emote. Kick's own
+ * help says channel emotes are local to that chat; a follow gate is actionable
+ * only when the response explicitly carries one of the known gate fields.
+ */
+export function emoteFollowRequirement(emote, slug = '') {
+  const source = emote && typeof emote === 'object' ? emote : {};
+  const required = source.requiresFollow === true
+    || source.requires_follow === true
+    || source.followRequired === true
+    || source.follow_required === true
+    || source.followersOnly === true
+    || source.followers_only === true
+    || source.follow_only === true;
+  const value = source.followed ?? source.is_following ?? source.following;
+  const followed = value === true || value === 1 || Boolean(value && typeof value === 'object');
+  const candidate = String(slug || source.sourceSlug || source.slug || source.setName || '').trim();
+  return { required, followed, slug: isValidSlug(candidate) ? candidate : '' };
+}
+
+/**
  * What an API-only catalog entry may honestly claim before the native picker
  * corroborates it. Public artwork is not proof that the account can send it.
  */
 export function catalogEmoteAccess(emote) {
   const source = emote && typeof emote === 'object' ? emote : {};
   if (source.kind === 'global' || source.kind === 'emoji') return 'available';
+  const follow = emoteFollowRequirement(source);
+  if (follow.required && !follow.followed) return 'locked';
   if (!source.subscribersOnly && !source.subscribers_only) return 'channel';
   return (source.entitlement || emoteEntitlement(source)) === 'granted' ? 'available' : 'locked';
 }
@@ -381,21 +405,27 @@ export function normalizeEmoteSets(payload) {
     if (!rawSet || typeof rawSet !== 'object') continue;
     const kind = setKind(rawSet.name);
     const setName = typeof rawSet.name === 'string' && rawSet.name ? rawSet.name : (rawSet.slug || 'Channel');
+    const sourceSlugCandidate = typeof rawSet.slug === 'string' && rawSet.slug ? rawSet.slug : setName;
+    const sourceSlug = kind === 'channel' && isValidSlug(sourceSlugCandidate) ? sourceSlugCandidate : '';
     const list = Array.isArray(rawSet.emotes) ? rawSet.emotes : [];
     const normalized = [];
     for (const raw of list) {
       const id = raw?.id;
       const name = raw?.name;
       if ((typeof id !== 'number' && typeof id !== 'string') || typeof name !== 'string' || !name) continue;
+      const follow = emoteFollowRequirement({ ...rawSet, ...raw }, sourceSlug);
       const entry = {
         id: String(id),
         name,
         setId: rawSet.id == null ? null : String(rawSet.id),
         setName,
+        sourceSlug,
         kind,
         channelId: raw.channel_id == null ? null : String(raw.channel_id),
         // Kick's flag: subscriber emotes are usable platform-wide.
         subscribersOnly: Boolean(raw.subscribers_only),
+        requiresFollow: follow.required,
+        followed: follow.followed,
         usableEverywhere: kind !== 'channel' || Boolean(raw.subscribers_only),
         entitlement: emoteEntitlement(raw),
         collectible: isCollectibleEmote(name),
@@ -443,6 +473,17 @@ export function channelCatalogEmotes(catalog, slug) {
 export function emoteLockState(emote, slug = '') {
   const source = emote && typeof emote === 'object' ? emote : {};
   const channel = String(slug || source.setName || '').trim();
+  const follow = emoteFollowRequirement(source, channel);
+
+  if (follow.required && !follow.followed) {
+    return {
+      locked: true,
+      reason: follow.slug
+        ? `Follow ${follow.slug} on Kick to use this channel emote.`
+        : 'Follow the source channel on Kick to use this channel emote.',
+      unlockUrl: follow.slug ? `${KICK_ORIGIN}/${encodeURIComponent(follow.slug)}` : '',
+    };
+  }
 
   // Any of these, in any of the shapes seen, means Kick says it is available.
   const entitled = source.subscribed ?? source.is_subscribed ?? source.subscription
