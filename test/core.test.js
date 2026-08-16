@@ -190,6 +190,32 @@ test('settings import round-trips the sticker library without treating it as an 
   assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Sticker schema 99/);
 });
 
+test('sticker import names dropped entries rather than reporting a bare count', () => {
+  // Two valid entries plus one missing its asset URL: the dropped one is named.
+  const result = validateImportedSettings(JSON.stringify({
+    schema: 1,
+    stickers: {
+      schema: 2,
+      pinned: [],
+      hidden: [],
+      groups: [],
+      assignments: [],
+      library: [
+        { key: 'id:1', id: '1', name: 'GoodOne', src: 'https://files.kick.com/emotes/1/fullsize', nativeGroups: [], access: 'available' },
+        { key: 'id:2', id: '2', name: 'MissingSrc', nativeGroups: [], access: 'available' },
+        { key: 'id:3', id: '3', name: 'AlsoGood', src: 'https://files.kick.com/emotes/3/fullsize', nativeGroups: [], access: 'available' },
+      ],
+    },
+  }));
+  assert.equal(result.ok, true);
+  assert.equal(result.stickers.library.length, 2);
+  // The note names what was dropped, not just the count.
+  const note = result.notes.find((n) => /could not be kept/.test(n));
+  assert.ok(note, 'expected a note naming the dropped sticker');
+  assert.ok(note.includes('MissingSrc'), `expected "MissingSrc" in the note: ${note}`);
+  assert.ok(/^1 sticker/.test(note), 'expected singular phrasing for one dropped entry');
+});
+
 test('remote blocklists accept data-only entries and reject executable or unknown fields', () => {
   const valid = validateRemoteBlocklist({
     schema: 1,

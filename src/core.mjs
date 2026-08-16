@@ -787,8 +787,21 @@ export function validateImportedSettings(jsonText) {
   }
 
   if (stickers) {
-    const stickerFields = ['pinned', 'hidden', 'groups', 'assignments', 'library'];
-    for (const field of stickerFields) {
+    // Name which library entries were dropped instead of reporting only a count,
+    // because an import that silently loses entries undermines the trust the
+    // export/import round-trip exists to provide.
+    if (Array.isArray(parsed.stickers.library)) {
+      const keptKeys = new Set(stickers.library.map((entry) => entry.key));
+      const dropped = parsed.stickers.library
+        .filter((entry) => isRecord(entry) && entry.name && entry.key && !keptKeys.has(entry.key))
+        .map((entry) => String(entry.name).slice(0, 80));
+      if (dropped.length) {
+        const sample = dropped.slice(0, 5).join(', ');
+        const suffix = dropped.length > 5 ? ` and ${dropped.length - 5} more` : '';
+        notes.push(`${dropped.length} sticker${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`);
+      }
+    }
+    for (const field of ['pinned', 'hidden', 'groups', 'assignments']) {
       if (Array.isArray(parsed.stickers[field]) && parsed.stickers[field].length !== stickers[field].length) {
         notes.push(`Adjusted sticker ${field} to supported entries.`);
       }
