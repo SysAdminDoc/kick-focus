@@ -27,13 +27,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 
 ### P2
 
-- [ ] P2 — Replace the reverse-mapping translator with forward-only keys
-  Why: every translated string is resolved by scanning all 252 dictionary entries to map a possibly-already-translated value back to English, and the whole settings DOM is re-walked on every render.
-  Evidence: `tr()` → `canonicalTranslation()` in `src/runtime.js`; `localizeInterface()` walks every text node plus `aria-label`, `placeholder`, and `title`; four English source strings are also translated values of other strings, making the reverse map ambiguous by construction.
-  Touches: `src/runtime.js` (`TRANSLATIONS`, `tr`, `localizeInterface`, settings render paths).
-  Acceptance: markup carries stable keys and lookup is a single forward map with no reverse scan and no double-translation on re-render; the language picker shows endonyms (`Español`, `Português`) in every locale rather than translating language names.
-  Complexity: M
-
 ### P3
 
 - [ ] P3 — Scope sticker favorites per channel with explicit ordering
@@ -64,18 +57,5 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
 
 ### P2
 
-- [ ] P2 — Split the multi-stream and live-data surfaces out of `src/runtime.js`
-  Why: the file is 6,179 lines carrying five unrelated concerns, and the two newest are the most testable and least entangled.
-  Evidence: `src/runtime.js` now holds site styling, content filtering, the settings UI, the Kick live-data client, and the multi-stream surface. The build concatenates with `export` stripped, so extraction costs nothing at runtime, and the bundle-completeness gate in `scripts/check.mjs` covers any file added to its `moduleFiles` list.
-  Touches: new `src/multistream.js` and `src/live.js`, `scripts/build.mjs`, `scripts/check.mjs`.
-  Acceptance: both surfaces move without behaviour change, the new files are covered by the bundle-export gate, and `npm run verify` plus the live harness both stay green — a green build alone does not prove a refactor equivalent.
-  Complexity: M
-
 ### P3
 
-- [ ] P3 — Test the multi-stream invariants that only the live harness currently checks
-  Why: three load-bearing behaviours are asserted only by a headed browser run that `npm run verify` does not execute.
-  Evidence: tile reuse across renders (replacing an `<iframe>` restarts its stream), the single-unmuted-tile rule in `applyMultistreamAudio`, and `normalizeDeletion` to `annotateDeletedMessage` have no offline coverage; `test/companion.test.js` shows the pattern for running built code against stubs.
-  Touches: `test/`, possibly `src/runtime.js` for testability seams.
-  Acceptance: offline tests assert that adding a channel does not recreate existing tiles, that exactly one tile is ever unmuted, and that a deletion annotates the right node once; they fail if any invariant is broken.
-  Complexity: M
