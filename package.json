@@ -1,6 +1,6 @@
 {
   "name": "kick-focus-userscript",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "private": true,
   "description": "Desktop-first layout, accessibility, content filters, and ad defense for Kick.com, shipped as a userscript and an optional Manifest V3 companion extension.",
   "type": "module",

@@ -6134,7 +6134,7 @@ function buildInterface() {
   // Adopted after the markup lands: innerHTML replaces every child, which would
   // take the fallback <style> element with it if it were appended first.
   shadow.innerHTML = trustedHTML(`
-    <button type="button" class="kf-quick" data-kf-quick data-action="open-command" aria-label="Open Kick Focus command menu">Focus</button>
+    <button type="button" class="kf-quick" data-kf-quick data-action="open-settings" aria-label="Open Kick Focus settings">Focus</button>
     <div class="kf-backdrop" data-kf-settings-backdrop hidden>
       <section class="kf-settings" data-kf-settings-shell role="dialog" aria-modal="true" aria-labelledby="kf-settings-title">
         <header class="kf-header">
@@ -7172,7 +7172,8 @@ function onInterfaceClick(event) {
   const actionTarget = event.target.closest('[data-action]');
   if (!actionTarget) return;
   const action = actionTarget.dataset.action;
-  if (action === 'open-command') openCommandMenu();
+  if (action === 'open-settings') openSettings();
+  else if (action === 'open-command') openCommandMenu();
   else if (action === 'toggle-panic') togglePanicSwitch();
   else if (action === 'close-settings') closeSettings();
   else if (action === 'reset-page') openResetConfirmation('page');
@@ -8565,7 +8566,7 @@ function ensureHeaderQuickControl() {
     host.dataset.kfHeaderControl = 'true';
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = trustedHTML(`
-      <button type="button" data-kf-header-focus aria-label="Open Kick Focus command menu" title="Kick Focus">
+      <button type="button" data-kf-header-focus aria-label="Open Kick Focus settings" title="Kick Focus">
         <img src="__KICK_FOCUS_ICON__" alt="">
         <span data-kf-header-control-label>Focus</span>
       </button>
@@ -8582,8 +8583,11 @@ function ensureHeaderQuickControl() {
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      // Straight to settings. This is the one visible entry point most people
+      // ever press, and a command palette is a poor front door for it — the
+      // menu is still a keystroke away on the configured shortcut.
       if (state.runtime.suspended) togglePanicSwitch();
-      else openCommandMenu();
+      else openSettings();
     });
     // Multi-stream is a headline feature; burying it in a settings page is not
     // "easily add multiple streams".
@@ -8642,7 +8646,7 @@ function syncQuickButton() {
   const headerMounted = shouldShow ? ensureHeaderQuickControl() : false;
   if (!shouldShow) state.headerControlHost?.remove?.();
   const label = tr(state.runtime.suspended ? 'Resume' : 'Focus');
-  const accessibleLabel = tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Open Kick Focus command menu');
+  const accessibleLabel = tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Open Kick Focus settings');
   if (state.headerControlButton) {
     state.headerControlButton.querySelector('[data-kf-header-control-label]').textContent = label;
     state.headerControlButton.setAttribute('aria-label', accessibleLabel);
@@ -8658,7 +8662,7 @@ function syncQuickButton() {
     state.quickButton.setAttribute('aria-label', accessibleLabel);
     return;
   }
-  state.quickButton.dataset.action = 'open-command';
+  state.quickButton.dataset.action = 'open-settings';
   state.quickButton.textContent = label;
   state.quickButton.setAttribute('aria-label', accessibleLabel);
   state.quickButton.hidden = !shouldShow || headerMounted;

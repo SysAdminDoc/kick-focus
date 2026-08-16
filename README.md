@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.18.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.18.1-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -37,7 +37,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 1. Install a current desktop userscript manager such as Tampermonkey or Violentmonkey.
 2. Open `dist/kick-focus.user.js` in the manager, or create a new userscript and paste that file into the editor.
 3. Save it, ensure it is enabled for `https://kick.com/*`, and reload Kick.
-4. Use the **Focus** button, press `Ctrl+K`, or choose **Open Kick Focus settings** from the manager menu.
+4. Press the **Focus** button in Kick's header to open settings, press `Ctrl+K` for the command menu, or choose **Open Kick Focus settings** from the manager menu.
 
 The script is not published or auto-updated. `dist/kick-focus.user.js` is the canonical install artifact in this repository.
 

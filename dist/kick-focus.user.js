@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.18.0
+// @version      1.18.1
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -23,7 +23,7 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.18.0';
+const VERSION = '1.18.1';
 const SETTINGS_SCHEMA = 4;
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -11321,7 +11321,7 @@ function buildInterface() {
   // Adopted after the markup lands: innerHTML replaces every child, which would
   // take the fallback <style> element with it if it were appended first.
   shadow.innerHTML = trustedHTML(`
-    <button type="button" class="kf-quick" data-kf-quick data-action="open-command" aria-label="Open Kick Focus command menu">Focus</button>
+    <button type="button" class="kf-quick" data-kf-quick data-action="open-settings" aria-label="Open Kick Focus settings">Focus</button>
     <div class="kf-backdrop" data-kf-settings-backdrop hidden>
       <section class="kf-settings" data-kf-settings-shell role="dialog" aria-modal="true" aria-labelledby="kf-settings-title">
         <header class="kf-header">
@@ -12359,7 +12359,8 @@ function onInterfaceClick(event) {
   const actionTarget = event.target.closest('[data-action]');
   if (!actionTarget) return;
   const action = actionTarget.dataset.action;
-  if (action === 'open-command') openCommandMenu();
+  if (action === 'open-settings') openSettings();
+  else if (action === 'open-command') openCommandMenu();
   else if (action === 'toggle-panic') togglePanicSwitch();
   else if (action === 'close-settings') closeSettings();
   else if (action === 'reset-page') openResetConfirmation('page');
@@ -13752,7 +13753,7 @@ function ensureHeaderQuickControl() {
     host.dataset.kfHeaderControl = 'true';
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = trustedHTML(`
-      <button type="button" data-kf-header-focus aria-label="Open Kick Focus command menu" title="Kick Focus">
+      <button type="button" data-kf-header-focus aria-label="Open Kick Focus settings" title="Kick Focus">
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt="">
         <span data-kf-header-control-label>Focus</span>
       </button>
@@ -13769,8 +13770,11 @@ function ensureHeaderQuickControl() {
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      // Straight to settings. This is the one visible entry point most people
+      // ever press, and a command palette is a poor front door for it — the
+      // menu is still a keystroke away on the configured shortcut.
       if (state.runtime.suspended) togglePanicSwitch();
-      else openCommandMenu();
+      else openSettings();
     });
     // Multi-stream is a headline feature; burying it in a settings page is not
     // "easily add multiple streams".
@@ -13829,7 +13833,7 @@ function syncQuickButton() {
   const headerMounted = shouldShow ? ensureHeaderQuickControl() : false;
   if (!shouldShow) state.headerControlHost?.remove?.();
   const label = tr(state.runtime.suspended ? 'Resume' : 'Focus');
-  const accessibleLabel = tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Open Kick Focus command menu');
+  const accessibleLabel = tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Open Kick Focus settings');
   if (state.headerControlButton) {
     state.headerControlButton.querySelector('[data-kf-header-control-label]').textContent = label;
     state.headerControlButton.setAttribute('aria-label', accessibleLabel);
@@ -13845,7 +13849,7 @@ function syncQuickButton() {
     state.quickButton.setAttribute('aria-label', accessibleLabel);
     return;
   }
-  state.quickButton.dataset.action = 'open-command';
+  state.quickButton.dataset.action = 'open-settings';
   state.quickButton.textContent = label;
   state.quickButton.setAttribute('aria-label', accessibleLabel);
   state.quickButton.hidden = !shouldShow || headerMounted;

@@ -799,6 +799,73 @@ try {
       && tip.afterUnrelated === null,
     tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
 
+  // The Focus button is the one control most people ever press, and nothing
+  // asserted that pressing it did anything at all — the settings panel was only
+  // ever opened here through the `kick-focus:open-settings` event, which skips
+  // the button entirely. This clicks the real control in Kick's own header.
+  const focusButtonProbe = await evaluate(pageClient, `(async () => {
+    const settle = (ms = 400) => new Promise((done) => setTimeout(done, ms));
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    const shell = shadow?.querySelector('[data-kf-settings-backdrop]');
+    if (!shell) return { ok: false, why: 'no settings backdrop' };
+    // Start closed, so "already open" cannot be mistaken for success.
+    shadow.querySelector('[data-action="close-settings"]')?.click();
+    await settle();
+    const before = shell.hidden;
+
+    const floating = shadow.querySelector('[data-kf-quick]');
+    if (!floating) return { ok: false, why: 'no floating Focus button' };
+
+    // The header control mounts beside Kick's "Get KICKs" nav, which only
+    // exists for a signed-in account — so logged out, only the floating button
+    // is ever reachable, and the control the user actually presses would go
+    // untested. Supply the anchor so the real header button mounts and gets
+    // clicked here too.
+    let anchor = document.querySelector('[data-testid="kicks-top-nav"]');
+    const synthesised = !anchor;
+    if (synthesised) {
+      const nav = document.createElement('nav');
+      nav.style.cssText = 'position:fixed;left:-3000px;top:0';
+      anchor = document.createElement('button');
+      anchor.setAttribute('data-testid', 'kicks-top-nav');
+      nav.append(anchor);
+      document.body.append(nav);
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+    }
+    const header = document.getElementById('kick-focus-header-control')?.shadowRoot?.querySelector('[data-kf-header-focus]');
+
+    const press = async (button) => {
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      await settle();
+      const wasHidden = shell.hidden;
+      button.click();
+      await settle();
+      const nowHidden = shell.hidden;
+      const command = shadow.querySelector('[data-kf-command-backdrop]')?.hidden === false;
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      await settle();
+      return { opened: wasHidden === true && nowHidden === false, command };
+    };
+
+    const result = { ok: true, before, action: floating.dataset.action, synthesised };
+    result.floating = await press(floating);
+    result.header = header ? await press(header) : null;
+    if (synthesised) { anchor.parentElement?.remove(); window.dispatchEvent(new CustomEvent('kick-focus:routechange')); await settle(); }
+    return result;
+  })()`);
+  const focusButton = focusButtonProbe.value || {};
+  record('both Focus buttons open settings, and neither opens the command menu',
+    focusButton.ok === true
+      && focusButton.floating?.opened === true && focusButton.floating?.command === false
+      // The header button is the one that shows for a signed-in account, so it
+      // has to be exercised, not merely skipped when Kick did not render it.
+      && focusButton.header?.opened === true && focusButton.header?.command === false
+      && focusButton.action === 'open-settings',
+    focusButton.ok
+      ? `floating opened=${focusButton.floating?.opened}, header opened=${focusButton.header?.opened} (anchor ${focusButton.synthesised ? 'supplied' : 'already present'}), command menu never opened, quick action=${focusButton.action}`
+      : focusButton.why);
+
   // Kick DOM drift, measured against the ordered probes the runtime actually
   // uses rather than a second list that would rot separately.
   //

@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.18.1 — 2026-08-16
+
+### Fixed
+
+- **The Focus button now opens settings.** It used to open the command menu, which for signed-in users appeared to do nothing at all. The command menu is unchanged and still on its keyboard shortcut. Nothing asserted that pressing this button did anything, and the check that covers it now only ever reached the floating button — the header one, which is the button signed-in users actually see, was never exercised because Kick only renders its anchor when you are logged in. The gate now supplies that anchor and clicks both.
+
 ## 1.18.0 — 2026-08-16
 
 ### Added
