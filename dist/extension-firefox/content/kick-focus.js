@@ -1,9 +1,9 @@
-/* Kick Focus 1.11.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.12.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.11.0';
+const VERSION = '1.12.0';
 const SETTINGS_SCHEMA = 3;
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     hideCasino: false,
     blurMature: true,
     hideDropsPromotions: true,
+    hideMonetization: false,
     reduceTelemetry: true,
     rememberVolume: true,
     rememberQuality: true,
@@ -289,6 +290,7 @@ function normalizeSettings(input) {
       hideCasino: bool(content.hideCasino, defaults.content.hideCasino),
       blurMature: bool(content.blurMature, defaults.content.blurMature),
       hideDropsPromotions: bool(content.hideDropsPromotions, defaults.content.hideDropsPromotions),
+      hideMonetization: bool(content.hideMonetization, defaults.content.hideMonetization),
       reduceTelemetry: bool(content.reduceTelemetry, defaults.content.reduceTelemetry),
       rememberVolume: bool(content.rememberVolume, defaults.content.rememberVolume),
       rememberQuality: bool(content.rememberQuality, defaults.content.rememberQuality),
@@ -755,7 +757,28 @@ function detectContentLabels(text, context = {}) {
   };
 }
 
-const STICKER_PREFERENCES_SCHEMA = 5;
+/**
+ * Identify a Kick control whose only purpose is spending or spend-based social
+ * proof. Inputs are deliberately plain strings so the DOM adapter can stay
+ * small and the false-positive boundary can be unit-tested.
+ */
+function monetizationKind({ text = '', ariaLabel = '', title = '', testId = '' } = {}) {
+  const id = String(testId).trim().toLowerCase();
+  if (id === 'sub-button') return 'subscribe';
+  if (id === 'gift-sub-button' || id === 'gift-shop-button') return 'gift';
+  if (id === 'kicks-top-nav' || id === 'get-kicks') return 'currency';
+
+  const label = [text, ariaLabel, title]
+    .map((value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase())
+    .find(Boolean) || '';
+  if (/^(?:subscribe|subscription)$/.test(label)) return 'subscribe';
+  if (/^(?:gift (?:subs?|dubs?|a sub|a subscription)|send a gift)$/.test(label)) return 'gift';
+  if (/^(?:get|buy|purchase) kicks?$/.test(label)) return 'currency';
+  if (label === 'expand leaderboard' || label === 'gift leaderboard') return 'leaderboard';
+  return '';
+}
+
+const STICKER_PREFERENCES_SCHEMA = 6;
 
 /**
  * Timestamps travel through the settings export, so an imported file can carry
@@ -921,7 +944,7 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
       nativeGroups: [...new Set((Array.isArray(raw.nativeGroups) ? raw.nativeGroups : [])
         .map((group) => cleanStickerText(group, 80))
         .filter(Boolean))].slice(0, 20),
-      access: enumValue(raw.access, ['available', 'observed', 'locked'], 'available'),
+      access: enumValue(raw.access, ['available', 'channel', 'observed', 'locked'], 'available'),
       // Schema 4. Entries captured before it carry 0, which reads as unknown
       // rather than as a date the record cannot actually support.
       firstSeen: cleanCaptureTime(raw.firstSeen),
@@ -2263,6 +2286,31 @@ function setKind(name) {
 }
 
 /**
+ * Explicit entitlement only. The public /emotes/{slug} response normally
+ * carries subscribers_only but no ownership signal, so "unknown" must stay
+ * distinct from both granted and denied.
+ */
+function emoteEntitlement(source) {
+  const emote = source && typeof source === 'object' ? source : {};
+  const value = emote.subscribed ?? emote.is_subscribed ?? emote.subscription
+    ?? emote.entitled ?? emote.unlocked ?? emote.owned;
+  if (value === true || value === 1 || (value && typeof value === 'object')) return 'granted';
+  if (value === false || value === 0 || emote.locked === true || emote.is_locked === true) return 'denied';
+  return 'unknown';
+}
+
+/**
+ * What an API-only catalog entry may honestly claim before the native picker
+ * corroborates it. Public artwork is not proof that the account can send it.
+ */
+function catalogEmoteAccess(emote) {
+  const source = emote && typeof emote === 'object' ? emote : {};
+  if (source.kind === 'global' || source.kind === 'emoji') return 'available';
+  if (!source.subscribersOnly && !source.subscribers_only) return 'channel';
+  return (source.entitlement || emoteEntitlement(source)) === 'granted' ? 'available' : 'locked';
+}
+
+/**
  * Turn `/emotes/{slug}` into a flat, deduplicated catalog.
  *
  * Two facts drive the shape here:
@@ -2300,6 +2348,7 @@ function normalizeEmoteSets(payload) {
         // Kick's flag: subscriber emotes are usable platform-wide.
         subscribersOnly: Boolean(raw.subscribers_only),
         usableEverywhere: kind !== 'channel' || Boolean(raw.subscribers_only),
+        entitlement: emoteEntitlement(raw),
         collectible: isCollectibleEmote(name),
         url: emoteImageUrl(id),
       };
@@ -2314,6 +2363,19 @@ function normalizeEmoteSets(payload) {
   if (!sets.length) return { ok: false, reason: 'no-sets', sets: [], emotes: [] };
   if (!emotes.length) return { ok: false, reason: 'no-emotes', sets, emotes };
   return { ok: true, sets, emotes };
+}
+
+/**
+ * Return only the requested channel's own set from a normalized response.
+ * The response also carries Global/Emoji sets (and may eventually carry other
+ * account sets), none of which an arbitrary-channel import should duplicate.
+ */
+function channelCatalogEmotes(catalog, slug) {
+  if (!catalog?.ok || !Array.isArray(catalog.sets) || !isValidSlug(slug)) return [];
+  const wanted = String(slug).toLowerCase();
+  const set = catalog.sets.find((entry) => entry.kind === 'channel'
+    && String(entry.name || '').toLowerCase() === wanted);
+  return Array.isArray(set?.emotes) ? set.emotes : [];
 }
 
 /**
@@ -3001,6 +3063,10 @@ const state = {
     stickerGridScrollTop: null,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
+    emoteCatalogSlug: '',
+    emoteCatalogStatus: '',
+    emoteCatalogError: false,
+    emoteCatalogLoading: false,
     stickerPickerTarget: null,
     stickerChatTarget: null,
     stickerCatalogDirty: true,
@@ -3961,6 +4027,8 @@ const SITE_CSS = `
     [data-kf-dismissed="true"],
     [data-kf-ad-shell="true"] { display: none !important; }
 
+    html[data-kf-poor-mode="true"] [data-kf-monetization] { display: none !important; }
+
     [data-kf-card-actions] {
       position: absolute !important;
       top: 8px !important;
@@ -4432,6 +4500,7 @@ function applySettingsAttributes() {
   root.dataset.kfLiveColor = String(appearance.colorizeLive);
   root.dataset.kfContrast = String(appearance.strongContrast || accessibility.highContrast);
   root.dataset.kfMatureBlur = String(content.blurMature && !state.runtime.matureVisible);
+  root.dataset.kfPoorMode = String(content.hideMonetization);
   root.dataset.kfReduceMotion = String(accessibility.reduceMotion);
   // An explicit accessibility request framed as seizure risk. The system-level
   // preference turns it on regardless of the switch.
@@ -4465,6 +4534,28 @@ function applySettingsAttributes() {
   root.style.setProperty('--color-surface-highest', surfaces[1]);
   root.style.setProperty('--color-surface-lowest', surfaces[2]);
   if (state.root) state.root.style.setProperty('--kf-interface-scale', String(appearance.interfaceScale / 100));
+}
+
+/**
+ * Poor mode hides only controls positively identified as spending surfaces.
+ * It never searches arbitrary page prose, so a chat message mentioning a gift
+ * cannot disappear and free actions such as Follow remain untouched.
+ */
+function tagMonetizationSurfaces() {
+  for (const node of document.querySelectorAll('[data-kf-monetization]')) {
+    delete node.dataset.kfMonetization;
+  }
+  if (!state.settings.content.hideMonetization) return;
+  for (const control of document.querySelectorAll('button, a, [role="button"]')) {
+    if (state.root?.contains(control)) continue;
+    const kind = monetizationKind({
+      text: control.textContent,
+      ariaLabel: control.getAttribute('aria-label'),
+      title: control.getAttribute('title'),
+      testId: control.getAttribute('data-testid'),
+    });
+    if (kind) control.dataset.kfMonetization = kind;
+  }
 }
 
 function tagChatPanel() {
@@ -4646,10 +4737,9 @@ function recordApiDrift(endpoint, reason, detail = '') {
 /**
  * Pull channel identity and the emote catalog for the current channel.
  *
- * The catalog is the point: the organizer otherwise scrapes a lazy-rendered
- * picker, which this project's own research names as its highest-drift surface,
- * while `/emotes/{slug}` returns the same data plus entitlement as structured
- * JSON without the picker ever being opened.
+ * The catalog avoids depending entirely on a lazy-rendered picker, but its
+ * public artwork is not account entitlement. API-only channel entries remain
+ * channel-only or locked until the native picker corroborates access.
  */
 async function refreshLiveChannel() {
   const slug = currentChannelSlug();
@@ -4714,15 +4804,16 @@ async function refreshEmoteCatalog(slug) {
   state.live.catalogError = '';
   state.live.collisions = state.settings.content.warnShadowedEmotes ? findShadowedNames(catalog.emotes) : [];
 
-  // The catalog is the user's real entitlement, so it seeds the library without
-  // the picker ever being opened.
+  // The endpoint publishes every image but normally carries no ownership
+  // signal. Seed the library without claiming that subscriber artwork is
+  // sendable; the native picker can still upgrade a confirmed tile later.
   mergeStickerLibrary(catalog.emotes.map((emote) => ({
     key: `id:${emote.id}`,
     id: emote.id,
     name: emote.name,
     src: emote.url,
     nativeGroups: [emote.kind === 'channel' ? emote.setName : emote.setName],
-    available: true,
+    access: catalogEmoteAccess(emote),
   })));
 
   if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);
@@ -6181,12 +6272,13 @@ function mergeStickerLibrary(observed) {
       ? 'available'
       : sticker.access === 'observed'
         ? 'observed'
-        : 'locked';
-    const access = existing?.access === 'available' || incomingAccess === 'available'
-      ? 'available'
-      : existing?.access === 'locked' || incomingAccess === 'locked'
-        ? 'locked'
-        : 'observed';
+        : sticker.access === 'channel'
+          ? 'channel'
+          : 'locked';
+    const accessRank = { observed: 0, locked: 1, channel: 2, available: 3 };
+    const access = (accessRank[existing?.access] || 0) >= accessRank[incomingAccess]
+      ? existing.access
+      : incomingAccess;
     // Nothing here calls Kick. The record is built from what the page and the
     // catalog already showed, so no claim is automated and no endpoint replayed.
     const record = recordStickerObservation(existing, {
@@ -7057,6 +7149,7 @@ function scheduleApply(delay = 50) {
     }
     applySettingsAttributes();
     tagChatPanel();
+    tagMonetizationSurfaces();
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
@@ -7545,7 +7638,13 @@ const UI_CSS = `
   .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
   .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-access[data-access="available"] { border-color: rgba(var(--accent-rgb), .55); color: var(--accent); }
+  .kf-sticker-access[data-access="channel"] { border-color: rgba(255,190,46,.58); color: #ffcf61; }
   .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
+  .kf-emote-catalog-browser { display: grid; gap: 8px; margin-bottom: 12px; padding: 12px; border: 1px solid #343a36; border-radius: 7px; background: #121613; }
+  .kf-emote-catalog-browser h4 { margin: 0; color: var(--text); font-size: 12px; }
+  .kf-emote-catalog-browser p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+  .kf-emote-catalog-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+  .kf-emote-catalog-status[data-error="true"] { color: #ff8d86; }
   /* Kick edits emotes users already pulled; the local record is the only copy
      that can prove it, so a changed entry is called out rather than quietly
      overwritten. */
@@ -8172,7 +8271,7 @@ const TRANSLATIONS = {
     'Refresh interval': 'Intervalo de actualización',
     'Keep the last valid payload if a later request fails.': 'Conserva el último contenido válido si una petición posterior falla.',
     'Load the emote catalog from Kick': 'Cargar el catálogo de emotes desde Kick',
-    'Read the full channel, global, and emoji sets with their real entitlement, instead of scraping the picker. Falls back to the picker if the response changes shape.': 'Lee los conjuntos completos del canal, globales y de emojis con sus permisos reales, en vez de rastrear el selector. Vuelve al selector si la respuesta cambia de forma.',
+    'Read the full channel, global, and emoji sets without treating public artwork as account access. Falls back to the picker if the response changes shape.': 'Lee los conjuntos completos del canal, globales y de emojis sin tratar las imágenes públicas como acceso de la cuenta. Vuelve al selector si la respuesta cambia de forma.',
     'Follow live chat events': 'Seguir los eventos del chat en vivo',
     'Subscribe to the same realtime chat feed Kick’s own client uses. The provider is read from Kick rather than hardcoded.': 'Suscríbete al mismo flujo de chat en tiempo real que usa el cliente de Kick. El proveedor se lee desde Kick en lugar de estar fijado en el código.',
     'Explain removed messages': 'Explicar los mensajes eliminados',
@@ -8197,6 +8296,20 @@ const TRANSLATIONS = {
     'Blur marked mature cards until hover or keyboard focus.': 'Difumina las tarjetas marcadas para adultos hasta pasar el cursor o enfocarlas con el teclado.',
     'Hide Drops and gambling promotions': 'Ocultar promociones de Drops y apuestas',
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta los módulos claramente marcados como promociones de Drops y apuestas.',
+    'Poor mode': 'Modo sin gastos',
+    'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.': 'Oculta Suscribirse, Regalar subs/dubs, Obtener KICKs, la tienda de regalos y las clasificaciones de gasto. Seguir, el chat y las recompensas diarias gratuitas siguen disponibles.',
+    'Enable Poor mode': 'Activar modo sin gastos',
+    'Disable Poor mode': 'Desactivar modo sin gastos',
+    'Remove spending prompts without changing your Kick account': 'Oculta las invitaciones de gasto sin cambiar tu cuenta de Kick',
+    'Browse any channel’s emotes': 'Explorar los emotes de cualquier canal',
+    'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Pega un nombre de canal o una URL de Kick. Las imágenes son públicas, pero importarlas nunca evita el acceso del chat: los emotes gratuitos siguen siendo solo del canal y los de suscriptor permanecen bloqueados hasta que Kick confirme que tu cuenta puede usarlos.',
+    'channel or kick.com URL': 'canal o URL de kick.com',
+    'Channel emote catalog': 'Catálogo de emotes del canal',
+    'Loading…': 'Cargando…',
+    'Load emotes': 'Cargar emotes',
+    'Open artwork': 'Abrir imagen',
+    'Channel-only': 'Solo en el canal',
+    'Subscriber-only': 'Solo para suscriptores',
     'Reduce tracking telemetry': 'Reducir la telemetría de seguimiento',
     'Block observed third-party video and error telemetry hosts.': 'Bloquea los servidores de telemetría de vídeo y errores de terceros detectados.',
     'Remember volume locally': 'Recordar el volumen localmente',
@@ -8386,7 +8499,7 @@ const TRANSLATIONS = {
     'Refresh interval': 'Intervalo de atualização',
     'Keep the last valid payload if a later request fails.': 'Mantenha o último conteúdo válido se uma requisição posterior falhar.',
     'Load the emote catalog from Kick': 'Carregar o catálogo de emotes do Kick',
-    'Read the full channel, global, and emoji sets with their real entitlement, instead of scraping the picker. Falls back to the picker if the response changes shape.': 'Lê os conjuntos completos do canal, globais e de emojis com suas permissões reais, em vez de raspar o seletor. Volta ao seletor se a resposta mudar de formato.',
+    'Read the full channel, global, and emoji sets without treating public artwork as account access. Falls back to the picker if the response changes shape.': 'Lê os conjuntos completos do canal, globais e de emojis sem tratar imagens públicas como acesso da conta. Volta ao seletor se a resposta mudar de formato.',
     'Follow live chat events': 'Acompanhar os eventos do chat ao vivo',
     'Subscribe to the same realtime chat feed Kick’s own client uses. The provider is read from Kick rather than hardcoded.': 'Assine o mesmo fluxo de chat em tempo real que o cliente do Kick usa. O provedor é lido do Kick em vez de estar fixo no código.',
     'Explain removed messages': 'Explicar as mensagens removidas',
@@ -8412,6 +8525,20 @@ const TRANSLATIONS = {
     'Blur marked mature cards until hover or keyboard focus.': 'Desfoca os cartões marcados como adultos até passar o cursor ou focar pelo teclado.',
     'Hide Drops and gambling promotions': 'Ocultar promoções de Drops e apostas',
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta os módulos claramente marcados como promoções de Drops e apostas.',
+    'Poor mode': 'Modo sem gastos',
+    'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.': 'Oculta Inscrever-se, Presentear subs/dubs, Obter KICKs, a loja de presentes e os placares de gastos. Seguir, o chat e as recompensas diárias gratuitas continuam disponíveis.',
+    'Enable Poor mode': 'Ativar modo sem gastos',
+    'Disable Poor mode': 'Desativar modo sem gastos',
+    'Remove spending prompts without changing your Kick account': 'Oculta os convites de gasto sem alterar sua conta do Kick',
+    'Browse any channel’s emotes': 'Explorar os emotes de qualquer canal',
+    'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Cole um nome de canal ou uma URL do Kick. As imagens são públicas, mas importá-las nunca contorna o acesso do chat: os emotes gratuitos continuam restritos ao canal e os de assinante permanecem bloqueados até o Kick confirmar que sua conta pode usá-los.',
+    'channel or kick.com URL': 'canal ou URL do kick.com',
+    'Channel emote catalog': 'Catálogo de emotes do canal',
+    'Loading…': 'Carregando…',
+    'Load emotes': 'Carregar emotes',
+    'Open artwork': 'Abrir imagem',
+    'Channel-only': 'Somente no canal',
+    'Subscriber-only': 'Somente para assinantes',
     'Reduce tracking telemetry': 'Reduzir a telemetria de rastreamento',
     'Block observed third-party video and error telemetry hosts.': 'Bloqueia os servidores de telemetria de vídeo e de erros de terceiros detectados.',
     'Remember volume locally': 'Lembrar o volume localmente',
@@ -8615,6 +8742,7 @@ function buildInterface() {
   shadow.addEventListener('click', guard('settings click', onInterfaceClick));
   shadow.addEventListener('change', guard('settings change', onInterfaceChange));
   shadow.addEventListener('input', guard('settings input', onInterfaceInput));
+  shadow.addEventListener('keydown', guard('settings keydown', onInterfaceKeydown));
   state.commandInput.addEventListener('input', renderCommands);
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
@@ -8838,10 +8966,11 @@ function remoteBlocklistControls() {
 function stickerLibrarySummary() {
   const library = [...state.stickerPreferences.library.values()];
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
+  const channel = library.filter((sticker) => sticker.access === 'channel').length;
   const observed = library.filter((sticker) => sticker.access === 'observed').length;
   const changed = countChangedStickers(library);
   const atCapacity = library.length >= STICKER_LIBRARY_LIMIT;
-  return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}${atCapacity ? ` · full (${STICKER_LIBRARY_LIMIT}); oldest chat-only emotes drop first` : ''}`;
+  return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${channel ? ` · ${channel} channel-only` : ''}${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} subscriber-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}${atCapacity ? ` · full (${STICKER_LIBRARY_LIMIT}); oldest chat-only emotes drop first` : ''}`;
 }
 
 /** First/last capture in the user's terms; '' for entries recorded before schema 4. */
@@ -8858,6 +8987,7 @@ function stickerLibraryFilterMatches(sticker, filter) {
   if (filter === 'removed') return state.stickerPreferences.hidden.has(sticker.key);
   if (filter === 'changed') return stickerChangedSinceCapture(sticker);
   if (filter === 'observed') return sticker.access === 'observed';
+  if (filter === 'channel') return sticker.access === 'channel';
   if (filter === 'locked') return sticker.access === 'locked';
   if (filter === 'ungrouped') return !state.stickerPreferences.assignments.has(sticker.key);
   if (filter.startsWith('group:')) return state.stickerPreferences.assignments.get(sticker.key) === filter.slice(6);
@@ -8884,7 +9014,8 @@ function renderStickerLibraryManager() {
     ['removed', `Removed (${state.stickerPreferences.hidden.size})`],
     ['changed', `Changed by Kick (${countChangedStickers(state.stickerPreferences.library)})`],
     ['observed', 'Seen in chat'],
-    ['locked', 'Locked-only'],
+    ['channel', 'Channel-only'],
+    ['locked', 'Subscriber-only'],
     ['ungrouped', 'Ungrouped'],
     ...state.stickerPreferences.groups.map((group) => [`group:${group.id}`, group.name]),
   ];
@@ -8902,7 +9033,13 @@ function renderStickerLibraryManager() {
     const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
     const searchText = `${sticker.name} ${nativeGroups}`.toLowerCase();
-    const accessLabel = sticker.access === 'available' ? 'Seen available' : sticker.access === 'observed' ? 'Seen in chat' : 'Locked only';
+    const accessLabel = sticker.access === 'available'
+      ? 'Seen available'
+      : sticker.access === 'channel'
+        ? 'Channel-only'
+        : sticker.access === 'observed'
+          ? 'Seen in chat'
+          : 'Subscriber-only';
     const changeNote = describeStickerChange(sticker);
     const seenNote = stickerSeenSummary(sticker);
     // A greyed tile with no explanation teaches nothing. Nothing here enables
@@ -8914,6 +9051,7 @@ function renderStickerLibraryManager() {
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
       <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}${lock.locked ? `<small class="kf-sticker-lock">${escapeHtml(lock.reason)}${lock.unlockUrl ? ` <a href="${escapeHtml(lock.unlockUrl)}" target="_blank" rel="noopener">Unlock on Kick</a>` : ''}</small>` : ''}</div>
       <div class="kf-sticker-library-actions">
+        <a class="kf-button kf-button-small" href="${escapeHtml(sticker.src)}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(sticker.name)} artwork">Open artwork</a>
         <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
         <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>
         <select class="kf-select" data-kf-sticker-assignment="${escapeHtml(sticker.key)}" aria-label="Custom group for ${escapeHtml(sticker.name)}">${stickerGroupOptions(groupId)}</select>
@@ -8924,6 +9062,15 @@ function renderStickerLibraryManager() {
     <section class="kf-subsection" data-kf-sticker-library>
       <div class="kf-subsection-header"><div><h3>Recorded emote library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="export">Export all settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
       <div class="kf-sticker-library-shell">
+        <div class="kf-emote-catalog-browser">
+          <h4>Browse any channel’s emotes</h4>
+          <p>Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.</p>
+          <div class="kf-emote-catalog-form">
+            <input class="kf-text" value="${escapeHtml(state.runtime.emoteCatalogSlug)}" data-kf-emote-catalog-input placeholder="channel or kick.com URL" aria-label="Channel emote catalog">
+            <button type="button" class="kf-button kf-button-primary" data-action="import-channel-emotes"${state.runtime.emoteCatalogLoading ? ' disabled' : ''}>${state.runtime.emoteCatalogLoading ? 'Loading…' : 'Load emotes'}</button>
+          </div>
+          <p class="kf-emote-catalog-status" data-kf-emote-catalog-status data-error="${state.runtime.emoteCatalogError}"${state.runtime.emoteCatalogStatus ? '' : ' hidden'}>${escapeHtml(state.runtime.emoteCatalogStatus)}</p>
+        </div>
         <div class="kf-sticker-library-controls">
           <input class="kf-text" type="search" value="${escapeHtml(state.runtime.stickerLibraryQuery)}" data-kf-sticker-library-search placeholder="Search recorded emotes or Kick groups" aria-label="Search recorded emotes">
           <select class="kf-select" data-kf-sticker-library-filter aria-label="Filter recorded emotes">${filters.map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(filter, value) ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
@@ -8947,6 +9094,99 @@ function applyStickerLibrarySearch(value = state.runtime.stickerLibraryQuery) {
   }
   const count = state.shadow?.querySelector('[data-kf-sticker-library-visible]');
   if (count) count.textContent = `${visible} shown`;
+}
+
+async function importChannelEmotes() {
+  if (state.runtime.emoteCatalogLoading) return;
+  const input = state.shadow?.querySelector('[data-kf-emote-catalog-input]');
+  const slug = parseChannelInput(input?.value || state.runtime.emoteCatalogSlug);
+  if (!slug) {
+    state.runtime.emoteCatalogError = true;
+    state.runtime.emoteCatalogStatus = 'Enter a valid Kick channel name or URL.';
+    renderSettingsPage();
+    return;
+  }
+
+  state.runtime.emoteCatalogSlug = slug;
+  state.runtime.emoteCatalogLoading = true;
+  state.runtime.emoteCatalogError = false;
+  state.runtime.emoteCatalogStatus = `Loading ${slug}…`;
+  updateEmoteCatalogProgressInPlace();
+
+  const response = await kickFetchJson(endpoints.emoteSets(slug), { credentials: 'include' });
+  if (state.runtime.emoteCatalogSlug !== slug) return;
+  if (!response.ok) {
+    state.runtime.emoteCatalogLoading = false;
+    state.runtime.emoteCatalogError = true;
+    state.runtime.emoteCatalogStatus = `Kick could not load ${slug} (${response.status}).`;
+    renderSettingsPage();
+    return;
+  }
+
+  const catalog = normalizeEmoteSets(response.body);
+  const emotes = channelCatalogEmotes(catalog, slug);
+  if (!catalog.ok || !emotes.length) {
+    state.runtime.emoteCatalogLoading = false;
+    state.runtime.emoteCatalogError = true;
+    state.runtime.emoteCatalogStatus = catalog.ok
+      ? `Kick returned no channel emotes for ${slug}.`
+      : `Kick changed the emote response (${catalog.reason}); nothing was imported.`;
+    if (!catalog.ok) recordApiDrift('emotes', 'shape-changed', catalog.reason);
+    renderSettingsPage();
+    return;
+  }
+
+  const before = state.stickerPreferences.library.size;
+  const records = emotes.map((emote) => ({
+    key: `id:${emote.id}`,
+    id: emote.id,
+    name: emote.name,
+    src: emote.url,
+    nativeGroups: [slug],
+    access: catalogEmoteAccess(emote),
+  }));
+  mergeStickerLibrary(records);
+  const added = state.stickerPreferences.library.size - before;
+  const counts = records.reduce((result, record) => {
+    result[record.access] = (result[record.access] || 0) + 1;
+    return result;
+  }, {});
+  const parts = [
+    `${emotes.length} found`,
+    `${added} new`,
+    counts.channel ? `${counts.channel} channel-only` : '',
+    counts.locked ? `${counts.locked} subscriber-only` : '',
+    counts.available ? `${counts.available} confirmed available` : '',
+  ].filter(Boolean);
+  state.runtime.emoteCatalogLoading = false;
+  state.runtime.emoteCatalogError = false;
+  state.runtime.emoteCatalogStatus = `${slug}: ${parts.join(' · ')}. Artwork is saved locally; chat access is unchanged.`;
+  renderSettingsPage();
+  showToast(`Loaded ${emotes.length} emotes from ${slug}.`);
+}
+
+function updateEmoteCatalogProgressInPlace() {
+  const status = state.shadow?.querySelector('[data-kf-emote-catalog-status]');
+  const button = state.shadow?.querySelector('[data-action="import-channel-emotes"]');
+  if (status) {
+    status.textContent = state.runtime.emoteCatalogStatus;
+    status.dataset.error = String(state.runtime.emoteCatalogError);
+    status.hidden = !state.runtime.emoteCatalogStatus;
+  }
+  if (button) {
+    button.disabled = state.runtime.emoteCatalogLoading;
+    button.textContent = state.runtime.emoteCatalogLoading ? 'Loading…' : 'Load emotes';
+  }
+}
+
+function startChannelEmoteImport() {
+  void importChannelEmotes().catch((error) => {
+    state.runtime.emoteCatalogLoading = false;
+    state.runtime.emoteCatalogError = true;
+    state.runtime.emoteCatalogStatus = 'The channel emote catalog could not be loaded.';
+    logAppError('channel emote catalog', error);
+    renderSettingsPage();
+  });
 }
 
 /**
@@ -8985,7 +9225,7 @@ function renderLiveDataSection(value) {
       <div class="kf-subsection-header"><div><h3>Kick data</h3><p>Read Kick’s own endpoints instead of scraping the page. Same-origin, read-only, using the session you are already signed into. Nothing is sent anywhere.</p></div></div>
       <div class="kf-panel">
         <div class="kf-status-note" data-kf-live-status>${escapeHtml(liveStatusSummary())}</div>
-        ${row('Load the emote catalog from Kick', 'Read the full channel, global, and emoji sets with their real entitlement, instead of scraping the picker. Falls back to the picker if the response changes shape.', toggle('content.liveEmoteCatalog', value.liveEmoteCatalog, { label: 'Load the emote catalog from Kick' }))}
+        ${row('Load the emote catalog from Kick', 'Read the full channel, global, and emoji sets without treating public artwork as account access. Falls back to the picker if the response changes shape.', toggle('content.liveEmoteCatalog', value.liveEmoteCatalog, { label: 'Load the emote catalog from Kick' }))}
         ${row('Follow live chat events', 'Subscribe to the same realtime chat feed Kick’s own client uses. The provider is read from Kick rather than hardcoded.', toggle('content.liveChatEvents', value.liveChatEvents, { label: 'Follow live chat events' }))}
         ${row('Explain removed messages', 'Kick’s automatic moderation removes messages without saying why. The realtime event carries the reason; the page does not.', toggle('content.showModerationReasons', value.showModerationReasons, { label: 'Explain removed messages' }))}
         ${row('Show badges Kick leaves out', 'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.', toggle('content.showChatBadges', value.showChatBadges, { label: 'Show badges Kick leaves out' }))}
@@ -9023,6 +9263,7 @@ function renderContentPage() {
         ${row('Hide Slots & Casino content', 'Hide cards and sidebar entries clearly labeled as casino content.', toggle('content.hideCasino', value.hideCasino, { label: 'Hide Slots and Casino content' }))}
         ${row('Blur mature thumbnails', 'Blur marked mature cards until hover or keyboard focus.', toggle('content.blurMature', value.blurMature, { label: 'Blur mature thumbnails' }))}
         ${row('Hide Drops and gambling promotions', 'Hide clearly labeled Drops and gambling promotion modules.', toggle('content.hideDropsPromotions', value.hideDropsPromotions, { label: 'Hide Drops and gambling promotions' }))}
+        ${row('Poor mode', 'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.', toggle('content.hideMonetization', value.hideMonetization, { label: 'Poor mode' }))}
         ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
       </div>
     </section>
@@ -9139,7 +9380,8 @@ function renderAboutPage() {
 // equivalent element after the page's innerHTML is replaced.
 function focusRestoreKey(element) {
   for (const attr of ['data-set', 'data-action', 'data-shortcut', 'data-kf-sticker-key',
-    'data-kf-sticker-assignment', 'data-kf-sticker-library-filter', 'data-kf-sticker-library-search', 'data-page']) {
+    'data-kf-sticker-assignment', 'data-kf-sticker-library-filter', 'data-kf-sticker-library-search',
+    'data-kf-emote-catalog-input', 'data-page']) {
     const value = element.getAttribute(attr);
     if (value != null) return `[${attr}="${value.replace(/["\\]/g, '\\$&')}"]`;
   }
@@ -9165,6 +9407,10 @@ function renderSettingsPage() {
   }[state.currentPage] || renderLayoutPage;
   page.innerHTML = renderer();
   page.dataset.kfCurrentPage = state.currentPage;
+  page.querySelector('[data-action="import-channel-emotes"]')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    startChannelEmoteImport();
+  });
   state.shadow.querySelector('[data-kf-settings-shell]').dataset.kfCurrentPage = state.currentPage;
   if (previousPage && previousPage !== state.currentPage) {
     page.scrollTop = 0;
@@ -9579,6 +9825,12 @@ function onInterfaceInput(event) {
   if (search) applyStickerLibrarySearch(search.value);
 }
 
+function onInterfaceKeydown(event) {
+  if (event.key !== 'Enter' || !event.target.closest('input[data-kf-emote-catalog-input]')) return;
+  event.preventDefault();
+  state.shadow?.querySelector('[data-action="import-channel-emotes"]')?.click();
+}
+
 function openSettings(page = state.currentPage) {
   if (!state.modal) return;
   closeCommandMenu();
@@ -9884,7 +10136,7 @@ function clearEnhancedPage() {
   for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
     root.style.removeProperty(property);
   }
-  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty]')) {
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization]')) {
     if (node.matches?.('[data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
     else {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
@@ -10012,6 +10264,7 @@ function commandDefinitions() {
     { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
     { id: 'density', label: tr(`Use ${state.settings.layout.density === 'compact' ? 'comfortable' : 'compact'} density`), description: tr('Change discovery spacing and save it'), key: 'D' },
     { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
+    { id: 'poor', label: tr(state.settings.content.hideMonetization ? 'Disable Poor mode' : 'Enable Poor mode'), description: tr('Remove spending prompts without changing your Kick account'), key: '' },
     { id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid'), key: '' },
     { id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access'), key: state.settings.shortcuts.settings },
   ];
@@ -10072,6 +10325,8 @@ function executeCommand(id) {
     updateSetting('layout.density', state.settings.layout.density === 'compact' ? 'comfortable' : 'compact', 'Density saved');
   } else if (id === 'casino') {
     updateSetting('content.hideCasino', !state.settings.content.hideCasino, 'Content filter saved');
+  } else if (id === 'poor') {
+    updateSetting('content.hideMonetization', !state.settings.content.hideMonetization, 'Poor mode saved');
   } else if (id === 'settings') {
     openSettings();
     return;
