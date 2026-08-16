@@ -5386,7 +5386,7 @@ function liveStatusSummary() {
     : '';
   parts.push(`Chat events: ${health.state}${via}${health.detail ? ` — ${health.detail}` : ''}`);
   if (state.live.rarity) parts.push(`Rarity resolved for ${state.live.rarity.matched.length} of ${state.live.rarity.total} collectibles.`);
-  if (state.live.collisions.length) parts.push(`${state.live.collisions.length} emote name${state.live.collisions.length === 1 ? '' : 's'} shadowed.`);
+  if (state.live.collisions.length) parts.push(`${state.live.collisions.length} ${plural(state.live.collisions.length, 'emote name shadowed.', 'emote names shadowed.')}`);
   if (state.live.catalogError) parts.push(state.live.catalogError);
   return parts.join(' ');
 }
@@ -5666,9 +5666,11 @@ function renderMultistreamControls(backdrop) {
   const { streams, chat, showChat, layouts } = state.multistream;
   const count = backdrop.querySelector('[data-kf-multistream-count]');
   if (count) {
+    // Same rule as the command count: composed text on a node that outlives the
+    // render, so it translates here and the localizer is told to skip it.
     count.textContent = streams.length
-      ? `${streams.length} of ${MULTISTREAM_MAX} streams`
-      : 'No streams yet — add a channel to start.';
+      ? trf('{count} of {max} streams', { count: streams.length, max: MULTISTREAM_MAX })
+      : tr('No streams yet — add a channel to start.');
   }
   const error = backdrop.querySelector('[data-kf-multistream-error]');
   if (error) {
@@ -6026,7 +6028,7 @@ function applySearchEnhancements() {
     const container = first && !first.matches?.('input, select, textarea, button, img, video') ? first : main;
     container.prepend(meta);
   }
-  meta.innerHTML = `<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${count === 1 ? 'result' : 'results'} loaded</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`;
+  meta.innerHTML = `<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${plural(count, 'result loaded', 'results loaded')}</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`;
 }
 
 function handleSearchAction(event) {
@@ -7608,8 +7610,9 @@ function announce(message) {
   if (!state.settings.accessibility.announceChanges) return;
   const live = state.shadow?.querySelector('[data-kf-live]');
   if (!live) return;
+  const spoken = tr(message);
   live.textContent = '';
-  requestAnimationFrame(() => { live.textContent = message; });
+  requestAnimationFrame(() => { live.textContent = spoken; });
 }
 
 function updateSetting(path, value, message = 'Autosaved') {
@@ -8751,6 +8754,98 @@ const TRANSLATIONS = {
     'Watch several Kick channels in one grid': 'Mira varios canales de Kick en una sola cuadrícula',
     'Freeze animated emotes': 'Congelar los emotes animados',
     'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Solo lectura aquí. Kick impide enviar desde un chat incrustado; abre el canal para hablar.',
+    'Emote favorites, removals, and custom groups reset.': 'Se restablecieron los favoritos, las eliminaciones y los grupos personalizados de emotes.',
+    'The emote could not be saved.': 'No se pudo guardar el emote.',
+    'Open a channel page first.': 'Abre primero la página de un canal.',
+    'Local channel tools saved.': 'Herramientas locales del canal guardadas.',
+    'Local channel tools cleared.': 'Herramientas locales del canal borradas.',
+    'Enter a custom emote group name.': 'Escribe un nombre para el grupo personalizado de emotes.',
+    'That emote group already exists.': 'Ese grupo de emotes ya existe.',
+    'Enter a valid emote group name.': 'Escribe un nombre de grupo de emotes válido.',
+    'Layout saved.': 'Diseño guardado.',
+    'That layout has no usable channels.': 'Ese diseño no tiene canales utilizables.',
+    'Could not reach the clipboard.': 'No se pudo acceder al portapapeles.',
+    'Cached blocklist removed.': 'Se eliminó la lista de bloqueo almacenada en caché.',
+    'Enter a channel name or URL.': 'Escribe un nombre de canal o una URL.',
+    'That does not look like a Kick channel.': 'Eso no parece un canal de Kick.',
+    'That channel is already hidden.': 'Ese canal ya está oculto.',
+    'Hidden channel list is full (200).': 'La lista de canales ocultos está llena (200).',
+    'Favorites cleared.': 'Favoritos borrados.',
+    'Not-interested channels restored.': 'Se restauraron los canales marcados como no interesantes.',
+    'Could not export settings.': 'No se pudo exportar la configuración.',
+    'Could not read that settings file.': 'No se pudo leer ese archivo de configuración.',
+    'No import to undo.': 'No hay ninguna importación que deshacer.',
+    'The backup could not be restored.': 'No se pudo restaurar la copia de seguridad.',
+    'Import undone — your previous settings are back.': 'Importación deshecha: tu configuración anterior está de vuelta.',
+    'Kick Focus restored.': 'Kick Focus restaurado.',
+    'Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.': 'Kick Focus en pausa. Usa el botón Reanudar o Ctrl+Mayús+F para restaurarlo.',
+    'Emote changes reset': 'Cambios de emotes restablecidos',
+    'Settings reset': 'Configuración restablecida',
+    'Kick Focus restored': 'Kick Focus restaurado',
+    'Give this stream the audio and chat': 'Dar a esta transmisión el audio y el chat',
+    'Remove': 'Quitar',
+    'Copy link': 'Copiar enlace',
+    'Delete': 'Eliminar',
+    'Clear search': 'Borrar la búsqueda',
+    'Reward activity': 'Actividad de recompensas',
+    'How drops work': 'Cómo funcionan los drops',
+    'Move earlier': 'Mover antes',
+    'Move later': 'Mover después',
+    'Remove from quick favorites': 'Quitar de los favoritos rápidos',
+    'Three-row one-click favorite emotes': 'Emotes favoritos de un clic en tres filas',
+    'Emote views and filters': 'Vistas y filtros de emotes',
+    'Kick Focus command menu': 'Menú de comandos de Kick Focus',
+    'Kick Focus multi-stream': 'Multitransmisión de Kick Focus',
+    'Add a channel or paste a kick.com link…': 'Añade un canal o pega un enlace de kick.com…',
+    'Which chat to show': 'Qué chat mostrar',
+    'Name this layout…': 'Ponle nombre a este diseño…',
+    'Live style preview': 'Vista previa del estilo en vivo',
+    'release, giveaway, raid': 'estreno, sorteo, raid',
+    'Chat keywords for this channel': 'Palabras clave del chat para este canal',
+    'Why I follow this channel…': 'Por qué sigo este canal…',
+    'Private channel note': 'Nota privada del canal',
+    'Optional blocklist URL': 'URL de lista de bloqueo opcional',
+    'Search recorded emotes or Kick groups': 'Buscar emotes registrados o grupos de Kick',
+    'Search recorded emotes': 'Buscar emotes registrados',
+    'Filter recorded emotes': 'Filtrar emotes registrados',
+    'New custom group name': 'Nombre del nuevo grupo personalizado',
+    'New emote group name': 'Nombre del nuevo grupo de emotes',
+    'Channel name or kick.com URL': 'Nombre del canal o URL de kick.com',
+    'Channel to hide': 'Canal que ocultar',
+    'Open Kick Focus multi-stream': 'Abrir la multitransmisión de Kick Focus',
+    'Multi-stream': 'Multitransmisión',
+    'Add this channel to Kick Focus multi-stream': 'Añadir este canal a la multitransmisión de Kick Focus',
+    'Add to multi-stream': 'Añadir a la multitransmisión',
+    'Undo': 'Deshacer',
+    'View': 'Ver',
+    'Enable optional blocklist subscription': 'Activar la suscripción opcional a la lista de bloqueo',
+    'Core ad protection is on': 'La protección principal contra anuncios está activada',
+    'Suppress promoted cards': 'Ocultar las tarjetas promocionadas',
+    'Hide Slots and Casino content': 'Ocultar el contenido de Slots y Casino',
+    'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord} — {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Tu inventario tiene {copies} {copiesWord} repartidos en {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, es decir, el {rate}% de lo que has conseguido.',
+    'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.': 'Tu inventario tiene {distinct} {distinctWord} distintos. La respuesta de Kick no incluye la cantidad por artículo, así que no se puede medir una tasa de duplicados a partir de ella: ese número no está disponible, no es cero.',
+    'emote name shadowed.': 'nombre de emote duplicado.',
+    'emote names shadowed.': 'nombres de emote duplicados.',
+    'result loaded': 'resultado cargado',
+    'results loaded': 'resultados cargados',
+    'emote': 'emote',
+    'emotes': 'emotes',
+    'emote is kept out of the library.': 'emote se mantiene fuera de la biblioteca.',
+    'emotes are kept out of the library.': 'emotes se mantienen fuera de la biblioteca.',
+    'collectible': 'coleccionable',
+    'collectibles': 'coleccionables',
+    'item': 'artículo',
+    'items': 'artículos',
+    'duplicate': 'duplicado',
+    'duplicates': 'duplicados',
+    'recorded emote has been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emote registrado ha sido modificado por Kick desde su primera captura: consulta el filtro Modificados por Kick en la biblioteca de abajo.',
+    'recorded emotes have been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emotes registrados han sido modificados por Kick desde su primera captura: consulta el filtro Modificados por Kick en la biblioteca de abajo.',
+    'channel hidden. These count toward the fail-open ceiling.': 'canal oculto. Cuenta para el límite de seguridad.',
+    'channels hidden. These count toward the fail-open ceiling.': 'canales ocultos. Cuentan para el límite de seguridad.',
+    'channel': 'canal',
+    'channels': 'canales',
+    'No streams yet — add a channel to start.': 'Aún no hay transmisiones: añade un canal para empezar.',
+    '{count} of {max} streams': '{count} de {max} transmisiones',
   },
   pt: {
     'Settings': 'Configurações',
@@ -8993,6 +9088,98 @@ const TRANSLATIONS = {
     'Multi-stream opened': 'Multitransmissão aberta',
     'Watch several Kick channels in one grid': 'Assista a vários canais do Kick em uma única grade',
     'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Somente leitura aqui. O Kick impede o envio a partir de um chat incorporado; abra o canal para falar.',
+    'Emote favorites, removals, and custom groups reset.': 'Favoritos, remoções e grupos personalizados de emotes redefinidos.',
+    'The emote could not be saved.': 'Não foi possível salvar o emote.',
+    'Open a channel page first.': 'Abra primeiro a página de um canal.',
+    'Local channel tools saved.': 'Ferramentas locais do canal salvas.',
+    'Local channel tools cleared.': 'Ferramentas locais do canal limpas.',
+    'Enter a custom emote group name.': 'Digite um nome para o grupo personalizado de emotes.',
+    'That emote group already exists.': 'Esse grupo de emotes já existe.',
+    'Enter a valid emote group name.': 'Digite um nome de grupo de emotes válido.',
+    'Layout saved.': 'Layout salvo.',
+    'That layout has no usable channels.': 'Esse layout não tem canais utilizáveis.',
+    'Could not reach the clipboard.': 'Não foi possível acessar a área de transferência.',
+    'Cached blocklist removed.': 'Lista de bloqueio em cache removida.',
+    'Enter a channel name or URL.': 'Digite um nome de canal ou uma URL.',
+    'That does not look like a Kick channel.': 'Isso não parece um canal do Kick.',
+    'That channel is already hidden.': 'Esse canal já está oculto.',
+    'Hidden channel list is full (200).': 'A lista de canais ocultos está cheia (200).',
+    'Favorites cleared.': 'Favoritos limpos.',
+    'Not-interested channels restored.': 'Canais marcados como sem interesse restaurados.',
+    'Could not export settings.': 'Não foi possível exportar as configurações.',
+    'Could not read that settings file.': 'Não foi possível ler esse arquivo de configurações.',
+    'No import to undo.': 'Não há importação para desfazer.',
+    'The backup could not be restored.': 'Não foi possível restaurar o backup.',
+    'Import undone — your previous settings are back.': 'Importação desfeita: suas configurações anteriores voltaram.',
+    'Kick Focus restored.': 'Kick Focus restaurado.',
+    'Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.': 'Kick Focus pausado. Use o botão Retomar ou Ctrl+Shift+F para restaurar.',
+    'Emote changes reset': 'Alterações de emotes redefinidas',
+    'Settings reset': 'Configurações redefinidas',
+    'Kick Focus restored': 'Kick Focus restaurado',
+    'Give this stream the audio and chat': 'Dar a esta transmissão o áudio e o chat',
+    'Remove': 'Remover',
+    'Copy link': 'Copiar link',
+    'Delete': 'Excluir',
+    'Clear search': 'Limpar a busca',
+    'Reward activity': 'Atividade de recompensas',
+    'How drops work': 'Como os drops funcionam',
+    'Move earlier': 'Mover para antes',
+    'Move later': 'Mover para depois',
+    'Remove from quick favorites': 'Remover dos favoritos rápidos',
+    'Three-row one-click favorite emotes': 'Emotes favoritos de um clique em três linhas',
+    'Emote views and filters': 'Visualizações e filtros de emotes',
+    'Kick Focus command menu': 'Menu de comandos do Kick Focus',
+    'Kick Focus multi-stream': 'Multitransmissão do Kick Focus',
+    'Add a channel or paste a kick.com link…': 'Adicione um canal ou cole um link do kick.com…',
+    'Which chat to show': 'Qual chat mostrar',
+    'Name this layout…': 'Dê um nome a este layout…',
+    'Live style preview': 'Prévia do estilo ao vivo',
+    'release, giveaway, raid': 'lançamento, sorteio, raid',
+    'Chat keywords for this channel': 'Palavras-chave do chat para este canal',
+    'Why I follow this channel…': 'Por que eu sigo este canal…',
+    'Private channel note': 'Nota privada do canal',
+    'Optional blocklist URL': 'URL de lista de bloqueio opcional',
+    'Search recorded emotes or Kick groups': 'Buscar emotes registrados ou grupos do Kick',
+    'Search recorded emotes': 'Buscar emotes registrados',
+    'Filter recorded emotes': 'Filtrar emotes registrados',
+    'New custom group name': 'Nome do novo grupo personalizado',
+    'New emote group name': 'Nome do novo grupo de emotes',
+    'Channel name or kick.com URL': 'Nome do canal ou URL do kick.com',
+    'Channel to hide': 'Canal a ocultar',
+    'Open Kick Focus multi-stream': 'Abrir a multitransmissão do Kick Focus',
+    'Multi-stream': 'Multitransmissão',
+    'Add this channel to Kick Focus multi-stream': 'Adicionar este canal à multitransmissão do Kick Focus',
+    'Add to multi-stream': 'Adicionar à multitransmissão',
+    'Undo': 'Desfazer',
+    'View': 'Ver',
+    'Enable optional blocklist subscription': 'Ativar a assinatura opcional da lista de bloqueio',
+    'Core ad protection is on': 'A proteção principal contra anúncios está ativada',
+    'Suppress promoted cards': 'Ocultar os cards promovidos',
+    'Hide Slots and Casino content': 'Ocultar o conteúdo de Slots e Cassino',
+    'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord} — {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Seu inventário tem {copies} {copiesWord} distribuídos em {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, ou seja, {rate}% do que você já obteve.',
+    'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.': 'Seu inventário tem {distinct} {distinctWord} distintos. A resposta do Kick não traz a quantidade por item, então não é possível medir uma taxa de duplicatas a partir dela: esse número está indisponível, não é zero.',
+    'emote name shadowed.': 'nome de emote duplicado.',
+    'emote names shadowed.': 'nomes de emote duplicados.',
+    'result loaded': 'resultado carregado',
+    'results loaded': 'resultados carregados',
+    'emote': 'emote',
+    'emotes': 'emotes',
+    'emote is kept out of the library.': 'emote é mantido fora da biblioteca.',
+    'emotes are kept out of the library.': 'emotes são mantidos fora da biblioteca.',
+    'collectible': 'colecionável',
+    'collectibles': 'colecionáveis',
+    'item': 'item',
+    'items': 'itens',
+    'duplicate': 'duplicata',
+    'duplicates': 'duplicatas',
+    'recorded emote has been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emote registrado foi alterado pelo Kick desde a primeira captura: veja o filtro Alterados pelo Kick na biblioteca abaixo.',
+    'recorded emotes have been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emotes registrados foram alterados pelo Kick desde a primeira captura: veja o filtro Alterados pelo Kick na biblioteca abaixo.',
+    'channel hidden. These count toward the fail-open ceiling.': 'canal oculto. Ele conta para o limite de segurança.',
+    'channels hidden. These count toward the fail-open ceiling.': 'canais ocultos. Eles contam para o limite de segurança.',
+    'channel': 'canal',
+    'channels': 'canais',
+    'No streams yet — add a channel to start.': 'Ainda não há transmissões: adicione um canal para começar.',
+    '{count} of {max} streams': '{count} de {max} transmissões',
   },
 };
 
@@ -9024,9 +9211,30 @@ function tr(value) {
   return TRANSLATIONS[activeLocale()]?.[source] || source;
 }
 
-/** Locale-aware count word: es and pt have a "many" category English lacks. */
+/**
+ * Locale-aware count word: es and pt have a "many" category English lacks.
+ *
+ * The chosen form is translated too. A count phrase is assembled by
+ * interpolation, so the finished string ("12 emotes") can never match a
+ * dictionary key — the only translatable unit is the form itself, which is why
+ * both forms are dictionary entries and the i18n-coverage gate scans for them.
+ */
 function plural(count, one, other) {
-  return pluralForm(count, { one, other }, activeLocale());
+  return tr(pluralForm(count, { one, other }, activeLocale()));
+}
+
+/**
+ * A sentence that carries values and is still translatable.
+ *
+ * Interpolating first yields a string no dictionary can ever match, which is
+ * why every count sentence stayed English. Translating the *template* and
+ * substituting afterwards keeps one lookup key per sentence and lets a locale
+ * put the placeholders wherever its grammar needs them. An unknown placeholder
+ * is left visible rather than blanked, so a typo shows up instead of hiding.
+ */
+function trf(template, values) {
+  return tr(template).replace(/\{(\w+)\}/g, (whole, key) => (
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : whole));
 }
 
 function localizeInterface(root = state.shadow) {
@@ -9112,7 +9320,7 @@ function buildInterface() {
     </div>
     <div class="kf-backdrop" data-kf-command-backdrop hidden>
       <section class="kf-command-shell" role="dialog" aria-modal="true" aria-label="Kick Focus command menu">
-        <div class="kf-command-head"><label for="kf-command-input">Find a command</label><input id="kf-command-input" data-kf-command-input type="search" autocomplete="off" placeholder="Type an action or setting…" aria-describedby="kf-command-count"><span id="kf-command-count" data-kf-command-count aria-live="polite"></span></div>
+        <div class="kf-command-head"><label for="kf-command-input">Find a command</label><input id="kf-command-input" data-kf-command-input type="search" autocomplete="off" placeholder="Type an action or setting…" aria-describedby="kf-command-count"><span id="kf-command-count" data-kf-command-count aria-live="polite" data-kf-no-translate></span></div>
         <div class="kf-command-list" data-kf-command-list role="listbox" aria-label="Available commands"></div>
       </section>
     </div>
@@ -9120,7 +9328,7 @@ function buildInterface() {
       <section class="kf-ms-shell" role="dialog" aria-modal="true" aria-label="Kick Focus multi-stream">
         <header class="kf-ms-head">
           <strong>Multi-stream</strong>
-          <span class="kf-ms-count" data-kf-multistream-count></span>
+          <span class="kf-ms-count" data-kf-multistream-count data-kf-no-translate></span>
           <span class="kf-ms-spacer"></span>
           <label class="kf-sr-only" for="kf-ms-input">Add a Kick channel</label>
           <input id="kf-ms-input" data-kf-multistream-input type="search" autocomplete="off" placeholder="Add a channel or paste a kick.com link…">
@@ -9509,7 +9717,7 @@ function renderStickerLibraryManager() {
         <div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="New custom group name" aria-label="New emote group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>
         ${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : ''}
         <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New emotes from chat and the picker are merged automatically and included in export.</span></div>
-        ${filter === 'removed' ? `<div class="kf-notice">Removed emotes are no longer stored, which frees their library slots. ${state.stickerPreferences.hidden.size} ${state.stickerPreferences.hidden.size === 1 ? 'emote is' : 'emotes are'} kept out of the library.${state.stickerPreferences.hidden.size ? ` <button type="button" class="kf-button kf-button-small" data-action="restore-removed-stickers">Restore all removed</button>` : ''}</div>` : cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded emotes match this filter.' : 'Watch chat or open Kick’s emote picker to begin the library. New emotes are saved whenever Kick exposes them.'}</div>`}
+        ${filter === 'removed' ? `<div class="kf-notice">Removed emotes are no longer stored, which frees their library slots. ${state.stickerPreferences.hidden.size} ${plural(state.stickerPreferences.hidden.size, 'emote is kept out of the library.', 'emotes are kept out of the library.')}${state.stickerPreferences.hidden.size ? ` <button type="button" class="kf-button kf-button-small" data-action="restore-removed-stickers">Restore all removed</button>` : ''}</div>` : cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded emotes match this filter.' : 'Watch chat or open Kick’s emote picker to begin the library. New emotes are saved whenever Kick exposes them.'}</div>`}
       </div>
     </section>`;
 }
@@ -9642,12 +9850,23 @@ function renderCollectiblePanel() {
   const changed = countChangedStickers(state.stickerPreferences.library);
   const observed = inventory
     ? (inventory.quantityKnown
-      ? `Your inventory holds ${inventory.copies} collectible${inventory.copies === 1 ? '' : 's'} across ${inventory.distinct} distinct item${inventory.distinct === 1 ? '' : 's'} — ${inventory.duplicates} duplicate${inventory.duplicates === 1 ? '' : 's'}, or ${Math.round(inventory.duplicateRate * 100)}% of what you have pulled.`
-      : `Your inventory holds ${inventory.distinct} distinct collectible${inventory.distinct === 1 ? '' : 's'}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.`)
+      ? trf('Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord} — {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.', {
+        copies: inventory.copies,
+        copiesWord: plural(inventory.copies, 'collectible', 'collectibles'),
+        distinct: inventory.distinct,
+        distinctWord: plural(inventory.distinct, 'item', 'items'),
+        duplicates: inventory.duplicates,
+        duplicatesWord: plural(inventory.duplicates, 'duplicate', 'duplicates'),
+        rate: Math.round(inventory.duplicateRate * 100),
+      })
+      : trf('Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.', {
+        distinct: inventory.distinct,
+        distinctWord: plural(inventory.distinct, 'collectible', 'collectibles'),
+      }))
     : 'Open a channel with collectibles while signed in to read your own inventory. Nothing is fetched otherwise.';
   return `
     <div class="kf-panel">
-      <div class="kf-action-row"><div><h3>What Kick does not explain</h3><p>${escapeHtml(observed)}${changed ? ` ${changed} recorded emote${changed === 1 ? ' has' : 's have'} been changed by Kick since first capture — see the Changed by Kick filter in the library below.` : ''}</p></div></div>
+      <div class="kf-action-row"><div><h3>What Kick does not explain</h3><p>${escapeHtml(observed)}${changed ? ` ${changed} ${plural(changed, 'recorded emote has been changed by Kick since first capture — see the Changed by Kick filter in the library below.', 'recorded emotes have been changed by Kick since first capture — see the Changed by Kick filter in the library below.')}` : ''}</p></div></div>
       <dl class="kf-fact-list">${COLLECTIBLE_FACTS.map((fact) => `<div class="kf-fact"><dt>${escapeHtml(fact.claim)}</dt><dd>${escapeHtml(fact.detail)}</dd></div>`).join('')}</dl>
     </div>`;
 }
@@ -9711,7 +9930,7 @@ function renderContentPage() {
         </div>
       </div></div>
       ${value.hiddenChannels.length ? `<div class="kf-channel-list" data-kf-hidden-channel-list>${value.hiddenChannels.map((channel) => `<div class="kf-channel-entry"><span>${escapeHtml(channel.replace(/^\//, ''))}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-hidden-channel" data-channel="${escapeHtml(channel)}" aria-label="Show ${escapeHtml(channel.replace(/^\//, ''))} again">✕</button></div>`).join('')}</div>` : '<p class="kf-status-note">No channels hidden. Use the input above or the ✕ action on a card.</p>'}
-      <p class="kf-meta">${value.hiddenChannels.length} channel${value.hiddenChannels.length === 1 ? '' : 's'} hidden. These count toward the fail-open ceiling.</p>
+      <p class="kf-meta">${value.hiddenChannels.length} ${plural(value.hiddenChannels.length, 'channel hidden. These count toward the fail-open ceiling.', 'channels hidden. These count toward the fail-open ceiling.')}</p>
     </div></section>
     <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">
         ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
@@ -10681,14 +10900,16 @@ function showToast(message, isError = false, actions = []) {
   toast.textContent = '';
   const text = document.createElement('span');
   text.className = 'kf-toast-text';
-  text.textContent = message;
+  // Toasts write straight to textContent, so localizeInterface never gets a
+  // chance at them on the render pass — they translate here or not at all.
+  text.textContent = tr(message);
   toast.append(text);
   for (const action of actions) {
     if (!action || typeof action.onClick !== 'function') continue;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'kf-toast-action';
-    button.textContent = action.label;
+    button.textContent = tr(action.label);
     button.addEventListener('click', () => {
       toast.hidden = true;
       action.onClick();
@@ -10726,7 +10947,11 @@ function renderCommands() {
   const query = (state.commandInput?.value || '').trim().toLowerCase();
   const commands = commandDefinitions().filter((command) => `${command.label} ${command.description}`.toLowerCase().includes(query));
   const count = state.shadow?.querySelector('[data-kf-command-count]');
-  if (count) count.textContent = `${commands.length} ${tr(commands.length === 1 ? 'command available' : 'commands available')}`;
+  // Marked data-kf-no-translate: this text is a number plus an already-chosen
+  // plural form, so the localizer must leave it alone. Otherwise it records the
+  // English on first render and every later pass rewrites the translated form
+  // back from that recorded source.
+  if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
   state.commandList.innerHTML = commands.length
     ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
     : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>';

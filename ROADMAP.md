@@ -56,13 +56,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P1 — operator demand first, then trust / reliability / accessibility
 
-- [ ] R-36 — Localize dynamic copy: toasts, announces, and attribute literals (i18n coverage sweep)
-  Why: the Intl.PluralRules plural helper landed (R-11 part 1), but ~83 rendered strings and ~30 toast/announce messages still bypass the translation path — showToast/announce write raw textContent, so they stay English in es/pt (the forward-only translator falls back gracefully, so this is a coverage gap, not a bug). This is a large, quality-sensitive content task (≈226 es+pt entries) that benefits from review, so it is split out from the plural-correctness fix rather than machine-translated in bulk.
-  Evidence: phase0-memo #15; test/i18n-coverage.test.js:39-49 (scanner covers only row()/pageHeader()/tr()); the new `plural()` helper is ready to localize count words once the surrounding strings are.
-  Touches: route showToast/announce messages through tr(); add es/pt dictionary entries; extend the i18n-coverage scanner to also match showToast('…'), announce('…'), and aria-label/title/placeholder literals; wire remaining inline `n===1?'':'s'` sites through `plural()`.
-  Acceptance: the i18n-coverage gate scans toast/announce/attribute literals and fails on any without a dictionary entry in every locale; every newly-scanned string is translated (reviewed, not bulk-machine-translated); remaining count words use `plural()`.
-  Complexity: L
-
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
 
 - [ ] R-35 — Split the multi-stream and live-data surfaces out of `src/runtime.js` (unblocked 2026-08-16)

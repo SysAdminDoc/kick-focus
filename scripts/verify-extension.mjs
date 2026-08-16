@@ -324,6 +324,60 @@ try {
       && density.after?.height === '40px',
     density.ok ? `.kf-switch min-height ${density.before?.height} -> ${density.after?.height} -> ${density.restored?.height}` : density.why);
 
+  // Dynamic copy — toasts, announcements, count phrases — bypasses the render
+  // pass that localizes settings markup, so it stayed English in es/pt while
+  // the parity gate reported agreement. Driving a real language change proves
+  // the tr()/plural() path, not just the presence of dictionary entries.
+  const localeProbe = await evaluate(pageClient, `(async () => {
+    const host = document.getElementById('kick-focus-root');
+    const shadow = host && host.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 400));
+    // The language control only exists once the Appearance page is rendered,
+    // and every settings change replaces it — a reference captured once goes
+    // detached, where dispatching an event reaches no listener at all.
+    const setLanguage = async (value) => {
+      shadow.querySelector('[data-page="appearance"]').click();
+      await settle();
+      const select = shadow.querySelector('[data-set="appearance.language"]');
+      if (!select) return false;
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+      return true;
+    };
+    if (!(await setLanguage('en'))) return { ok: false, why: 'no language control' };
+    const readCount = () => String(shadow.querySelector('[data-kf-command-count]').textContent || '');
+    // An empty hidden-channel add is the cheapest deterministic toast that
+    // changes nothing: it validates, refuses, and reports.
+    const raiseToast = async () => {
+      shadow.querySelector('[data-page="content"]').click();
+      await settle();
+      shadow.querySelector('[data-action="add-hidden-channel"]').click();
+      await settle();
+      return String(shadow.querySelector('.kf-toast-text')?.textContent || '');
+    };
+    const sample = async (value) => {
+      await setLanguage(value);
+      const toast = await raiseToast();
+      shadow.querySelector('[data-page="appearance"]').click();
+      await settle();
+      return { count: readCount(), toast };
+    };
+    const english = await sample('en');
+    const spanish = await sample('es');
+    await setLanguage('auto');
+    return { ok: true, english, spanish };
+  })()`);
+  const locale = localeProbe.value || {};
+  record('toasts and count phrases follow the language setting, not just settings markup',
+    locale.ok === true
+      && /commands? available/.test(locale.english?.count || '')
+      && /comandos? disponibles?/.test(locale.spanish?.count || '')
+      && locale.english?.toast === 'Enter a channel name or URL.'
+      && locale.spanish?.toast === 'Escribe un nombre de canal o una URL.',
+    locale.ok ? `count "${locale.english?.count}" -> "${locale.spanish?.count}"; toast "${locale.english?.toast}" -> "${locale.spanish?.toast}"` : locale.why);
+
   const escapeProbe = await evaluate(pageClient, `(() => {
     const host = document.getElementById('kick-focus-root');
     const shadow = host && host.shadowRoot;
