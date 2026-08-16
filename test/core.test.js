@@ -76,7 +76,99 @@ import {
   visibleWindow,
   EMOTE_WINDOW_SIZE,
   cardSlugFromPath,
+  emoteTriggerAt,
+  rankEmoteCompletions,
 } from '../src/core.mjs';
+
+test('a colon only triggers completion where it starts a token', { tag: 'unit' }, () => {
+  assert.deepEqual(emoteTriggerAt(':pep'), { query: 'pep', length: 4 });
+  assert.deepEqual(emoteTriggerAt('hello :pep'), { query: 'pep', length: 4 });
+  assert.deepEqual(emoteTriggerAt('hello :PepeH'), { query: 'PepeH', length: 6 });
+
+  // One letter matches most of a library, so it is not worth a list.
+  assert.equal(emoteTriggerAt(':p'), null);
+  assert.equal(emoteTriggerAt(':'), null);
+
+  // A colon inside a word is not a trigger — a URL is the case that matters,
+  // because a completion list over someone pasting a link is pure noise.
+  assert.equal(emoteTriggerAt('https:'), null);
+  assert.equal(emoteTriggerAt('https://kick.com/xqc'), null);
+  assert.equal(emoteTriggerAt('time is 10:30'), null);
+  // And the trigger has to be at the caret, not somewhere behind it.
+  assert.equal(emoteTriggerAt(':pep hello'), null);
+  assert.equal(emoteTriggerAt(''), null);
+  assert.equal(emoteTriggerAt(null), null);
+});
+
+test('a name that starts with the query outranks one that merely contains it', { tag: 'unit' }, () => {
+  // Chatterino #1962: typing the start of an emote name surfaced everything
+  // containing those letters ahead of the emote actually named that way.
+  const candidates = [
+    { key: 'k:1', id: '1', name: 'MonkaPepe' },
+    { key: 'k:2', id: '2', name: 'PepeHands' },
+    { key: 'k:3', id: '3', name: 'Pepega' },
+    { key: 'k:4', id: '4', name: 'FeelsPepeMan' },
+  ];
+  // Prefix matches first (shorter name breaking the tie), then the substring
+  // matches, again shortest first.
+  assert.deepEqual(rankEmoteCompletions('pep', candidates).map((entry) => entry.name),
+    ['Pepega', 'PepeHands', 'MonkaPepe', 'FeelsPepeMan']);
+  // Prefix beats substring even when the substring match is far more used.
+  const usage = { global: { 1: { count: 900 } }, channels: {} };
+  assert.equal(rankEmoteCompletions('pep', candidates, { usage })[0].name, 'Pepega');
+});
+
+test('completions are ordered by what this user actually sends, here first', { tag: 'unit' }, () => {
+  const candidates = [
+    { key: 'k:1', id: '1', name: 'PepeLaugh' },
+    { key: 'k:2', id: '2', name: 'PepeHands' },
+    { key: 'k:3', id: '3', name: 'PepeD' },
+  ];
+  const usage = {
+    global: { 1: { count: 5 }, 2: { count: 90 } },
+    channels: { xqc: { 1: { count: 40 } } },
+  };
+  // In this channel, PepeLaugh; anywhere else, the one used far more overall.
+  assert.deepEqual(rankEmoteCompletions('pepe', candidates, { usage, channel: 'xqc' }).map((entry) => entry.name),
+    ['PepeLaugh', 'PepeHands', 'PepeD']);
+  assert.deepEqual(rankEmoteCompletions('pepe', candidates, { usage }).map((entry) => entry.name),
+    ['PepeHands', 'PepeLaugh', 'PepeD']);
+  // A favorite outranks both, because it is the one the user marked by hand.
+  assert.equal(rankEmoteCompletions('pepe', candidates, { usage, channel: 'xqc', favorites: new Set(['k:3']) })[0].name, 'PepeD');
+});
+
+test('two emotes with the same name resolve deterministically, never by luck', { tag: 'unit' }, () => {
+  // Chatterino #3440: the same name published by two providers. Both are
+  // offered — they are different images — and the order cannot flap.
+  const candidates = [
+    { key: 'kick:id:20', id: '20', name: 'Clap' },
+    { key: 'kick:id:10', id: '10', name: 'Clap' },
+    { key: 'kick:id:30', id: '30', name: 'ClapPepe' },
+  ];
+  const first = rankEmoteCompletions('clap', candidates).map((entry) => entry.key);
+  assert.deepEqual(first, ['kick:id:20', 'kick:id:10', 'kick:id:30'],
+    'equal names keep input order; the longer name sorts last');
+  assert.deepEqual(rankEmoteCompletions('clap', candidates).map((entry) => entry.key), first);
+
+  // One entry per storage key: the same emote seen twice is offered once.
+  const duplicated = [...candidates, { key: 'kick:id:20', id: '20', name: 'Clap' }];
+  assert.equal(rankEmoteCompletions('clap', duplicated).length, 3);
+});
+
+test('only a name chat would treat as one token is ever offered', { tag: 'unit' }, () => {
+  const candidates = [
+    { key: 'k:1', id: '1', name: 'GoodName' },
+    { key: 'k:2', id: '2', name: '[emote:123:GoodName]' },
+    { key: 'k:3', id: '3', name: 'good name' },
+    { key: 'k:4', id: '4', name: '' },
+    { key: 'k:5', id: '5' },
+    'not-an-object',
+  ];
+  assert.deepEqual(rankEmoteCompletions('good', candidates).map((entry) => entry.name), ['GoodName']);
+  assert.deepEqual(rankEmoteCompletions('', candidates), []);
+  assert.deepEqual(rankEmoteCompletions('good', null), []);
+  assert.deepEqual(rankEmoteCompletions('good', candidates, { limit: 0 }), []);
+});
 
 const usageStore = (global = {}, channels = {}) => ({ global, channels });
 const use = (name, count, lastAt) => ({ name, count, firstAt: 1, lastAt });

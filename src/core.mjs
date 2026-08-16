@@ -51,6 +51,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // the clipboard needs no permission and always ships; putting characters in
     // someone's message box is an opt-in.
     insertEmoteName: false,
+    // Same reasoning, and the same default: this one puts characters in
+    // someone's message box. Mouse-only by design — the list is clicked, never
+    // captured from the keyboard, so it cannot swallow a keystroke meant for
+    // Kick's own composer.
+    emoteAutocomplete: false,
     // Where a newly favorited emote lands. Global by default: changing this
     // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
@@ -278,6 +283,75 @@ export function insertionPlanFor(descriptor, collisions = [], access = '') {
   return { ok: true, text: name, warning, sendable, reason: '' };
 }
 
+/** Shortest query worth opening a list for. One letter matches most of a library. */
+export const EMOTE_TRIGGER_MIN = 2;
+
+/**
+ * The colon trigger immediately before the caret, or null.
+ *
+ * Anchored to the end of the text and required to follow whitespace or the
+ * start of the message, so a colon inside a word — a URL's `https:`, an emoji
+ * shortcode someone is mid-way through — is not a trigger.
+ */
+export function emoteTriggerAt(textBeforeCaret) {
+  const source = String(textBeforeCaret ?? '');
+  const match = /(?:^|\s):([A-Za-z0-9_]+)$/.exec(source);
+  if (!match) return null;
+  const query = match[1];
+  if (query.length < EMOTE_TRIGGER_MIN) return null;
+  // `+ 1` for the colon: what a completion replaces is `:query`, not `query`.
+  return { query, length: query.length + 1 };
+}
+
+/**
+ * Rank emote candidates for a colon query.
+ *
+ * A name that *starts* with what was typed always outranks one that merely
+ * contains it — the single behaviour every client that gets this right shares,
+ * and the one Chatterino #1962 is about, where `:pep` surfaced everything with
+ * "pep" anywhere before the emote actually named Pepe. After that the order is
+ * what the user has shown: favorites, then how often they send it in this
+ * channel, then overall, then the shorter name. The final comparison is on the
+ * name itself so two otherwise-equal candidates never swap between renders.
+ */
+export function rankEmoteCompletions(query, candidates, options = {}) {
+  const { favorites = new Set(), usage = null, channel = '', limit = 8 } = options;
+  const needle = String(query ?? '').trim().toLowerCase();
+  if (!needle) return [];
+  const channelCounts = (channel && usage?.channels?.[channel]) || {};
+  const globalCounts = usage?.global || {};
+  const isFavorite = (key) => (favorites instanceof Set ? favorites.has(key) : Boolean(favorites?.has?.(key)));
+  const seen = new Set();
+  const scored = [];
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const name = isRecord(candidate) && typeof candidate.name === 'string' ? candidate.name : '';
+    // Only a name chat would treat as one token can be completed — the same
+    // boundary the insertion path enforces, applied before anything is offered.
+    if (!name || !PLAIN_EMOTE_NAME.test(name)) continue;
+    const at = name.toLowerCase().indexOf(needle);
+    if (at === -1) continue;
+    const key = typeof candidate.key === 'string' && candidate.key ? candidate.key : name;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const id = String(candidate.id ?? '');
+    scored.push({
+      candidate,
+      name,
+      prefix: at === 0 ? 0 : 1,
+      favorite: isFavorite(key) ? 0 : 1,
+      channelUse: Number(channelCounts[id]?.count) || 0,
+      globalUse: Number(globalCounts[id]?.count) || 0,
+    });
+  }
+  scored.sort((a, b) => a.prefix - b.prefix
+    || a.favorite - b.favorite
+    || b.channelUse - a.channelUse
+    || b.globalUse - a.globalUse
+    || a.name.length - b.name.length
+    || a.name.localeCompare(b.name));
+  return scored.slice(0, Math.max(0, Math.floor(Number(limit)) || 0)).map((entry) => entry.candidate);
+}
+
 /**
  * Where each keyword occurs in one run of text, as non-overlapping spans.
  *
@@ -498,6 +572,7 @@ export function normalizeSettings(input) {
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
+    emoteAutocomplete: bool(content.emoteAutocomplete, defaults.content.emoteAutocomplete),
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),

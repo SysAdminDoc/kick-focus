@@ -60,13 +60,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P3 — differentiators, larger bets, future-proofing
 
-- [ ] R-25 — Colon-trigger autocomplete popup (operator-requested)
-  Why: the field-standard #1 emote feature (7TV, KickTalk, NipahTV), missing from KF.
-  Evidence: phase1b E6 — Chatterino #1962/#3440 as ready tests; SevenTV ChatInput.vue; uses R-17's insertion backend.
-  Touches: pure ranking in core.mjs; popup + native-suggester conflict ladder in runtime.js.
-  Acceptance: pure ranking in core.mjs under node:test (prefix>substring; tiebreak favorite/per-channel-usage/global-usage/name-length; Chatterino #1962/#3440 collisions as fixtures); insertion reuses R-17's boundary — plain NAME only, never the wire token, NO auto-send ever; mouse-only click-to-accept is the shipped default — Tab/arrow/Enter capture ships ONLY on explicit operator sign-off (no-new-shortcuts rule).
-  Complexity: L
-
 - [ ] R-29 — IndexedDB provider abstraction behind one proxy
   Why: raises the library cap orders of magnitude and adds a blob store + cross-tab sync, with localStorage as the -1000 fallback.
   Evidence: twitch-mods + perf-storage streams — FFZ providers.ts (priority-scored providers, quota-exceeded event, BroadcastChannel); NipahTV Dexie schema (borrow shape only, Dexie is a DEP).

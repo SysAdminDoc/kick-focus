@@ -56,6 +56,11 @@ const DEFAULT_SETTINGS = Object.freeze({
     // the clipboard needs no permission and always ships; putting characters in
     // someone's message box is an opt-in.
     insertEmoteName: false,
+    // Same reasoning, and the same default: this one puts characters in
+    // someone's message box. Mouse-only by design — the list is clicked, never
+    // captured from the keyboard, so it cannot swallow a keystroke meant for
+    // Kick's own composer.
+    emoteAutocomplete: false,
     // Where a newly favorited emote lands. Global by default: changing this
     // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
@@ -283,6 +288,75 @@ function insertionPlanFor(descriptor, collisions = [], access = '') {
   return { ok: true, text: name, warning, sendable, reason: '' };
 }
 
+/** Shortest query worth opening a list for. One letter matches most of a library. */
+const EMOTE_TRIGGER_MIN = 2;
+
+/**
+ * The colon trigger immediately before the caret, or null.
+ *
+ * Anchored to the end of the text and required to follow whitespace or the
+ * start of the message, so a colon inside a word — a URL's `https:`, an emoji
+ * shortcode someone is mid-way through — is not a trigger.
+ */
+function emoteTriggerAt(textBeforeCaret) {
+  const source = String(textBeforeCaret ?? '');
+  const match = /(?:^|\s):([A-Za-z0-9_]+)$/.exec(source);
+  if (!match) return null;
+  const query = match[1];
+  if (query.length < EMOTE_TRIGGER_MIN) return null;
+  // `+ 1` for the colon: what a completion replaces is `:query`, not `query`.
+  return { query, length: query.length + 1 };
+}
+
+/**
+ * Rank emote candidates for a colon query.
+ *
+ * A name that *starts* with what was typed always outranks one that merely
+ * contains it — the single behaviour every client that gets this right shares,
+ * and the one Chatterino #1962 is about, where `:pep` surfaced everything with
+ * "pep" anywhere before the emote actually named Pepe. After that the order is
+ * what the user has shown: favorites, then how often they send it in this
+ * channel, then overall, then the shorter name. The final comparison is on the
+ * name itself so two otherwise-equal candidates never swap between renders.
+ */
+function rankEmoteCompletions(query, candidates, options = {}) {
+  const { favorites = new Set(), usage = null, channel = '', limit = 8 } = options;
+  const needle = String(query ?? '').trim().toLowerCase();
+  if (!needle) return [];
+  const channelCounts = (channel && usage?.channels?.[channel]) || {};
+  const globalCounts = usage?.global || {};
+  const isFavorite = (key) => (favorites instanceof Set ? favorites.has(key) : Boolean(favorites?.has?.(key)));
+  const seen = new Set();
+  const scored = [];
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const name = isRecord(candidate) && typeof candidate.name === 'string' ? candidate.name : '';
+    // Only a name chat would treat as one token can be completed — the same
+    // boundary the insertion path enforces, applied before anything is offered.
+    if (!name || !PLAIN_EMOTE_NAME.test(name)) continue;
+    const at = name.toLowerCase().indexOf(needle);
+    if (at === -1) continue;
+    const key = typeof candidate.key === 'string' && candidate.key ? candidate.key : name;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const id = String(candidate.id ?? '');
+    scored.push({
+      candidate,
+      name,
+      prefix: at === 0 ? 0 : 1,
+      favorite: isFavorite(key) ? 0 : 1,
+      channelUse: Number(channelCounts[id]?.count) || 0,
+      globalUse: Number(globalCounts[id]?.count) || 0,
+    });
+  }
+  scored.sort((a, b) => a.prefix - b.prefix
+    || a.favorite - b.favorite
+    || b.channelUse - a.channelUse
+    || b.globalUse - a.globalUse
+    || a.name.length - b.name.length
+    || a.name.localeCompare(b.name));
+  return scored.slice(0, Math.max(0, Math.floor(Number(limit)) || 0)).map((entry) => entry.candidate);
+}
+
 /**
  * Where each keyword occurs in one run of text, as non-overlapping spans.
  *
@@ -503,6 +577,7 @@ function normalizeSettings(input) {
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
+    emoteAutocomplete: bool(content.emoteAutocomplete, defaults.content.emoteAutocomplete),
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
@@ -4814,6 +4889,9 @@ const state = {
     presenceRequested: false,
     stickerGridScrollTop: null,
     stickerSearchTimer: 0,
+    // The trigger the open completion list is offering against, so accepting
+    // replaces exactly the `:query` that produced it.
+    emoteCompletion: null,
     // Index of the first tile the grid should render around. The organizer
     // renders a window rather than the whole library, so this is what moves.
     stickerGridAnchor: 0,
@@ -10296,6 +10374,8 @@ const TRANSLATIONS = {
     'Apply cycle cost': 'Coste del ciclo de aplicación',
     'No apply cycle has run yet.': 'Aún no se ha ejecutado ningún ciclo de aplicación.',
     'Type an emote name into chat': 'Escribir el nombre de un emote en el chat',
+    'Suggest emotes as you type': 'Sugerir emotes mientras escribes',
+    'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured — and it never sends the message.': 'Al escribir dos puntos y dos o más letras en el chat se ofrecen emotes de tu biblioteca, ordenados según lo que realmente envías aquí. Haz clic en uno para poner su nombre simple en el cursor. Las sugerencias se eligen con el ratón, nunca con una tecla, así que nada de lo que escribes queda capturado, y nunca envía el mensaje.',
     'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Añade una acción Escribir en el chat junto a Copiar nombre en la biblioteca de emotes. Escribe solo el nombre en la posición del cursor y se detiene ahí: nunca el código interno, nunca un id, y nunca envía el mensaje.',
     'That emote has no plain name to copy.': 'Ese emote no tiene un nombre simple que copiar.',
     'That emote has no plain name to type.': 'Ese emote no tiene un nombre simple que escribir.',
@@ -10647,6 +10727,8 @@ const TRANSLATIONS = {
     'Apply cycle cost': 'Custo do ciclo de aplicação',
     'No apply cycle has run yet.': 'Nenhum ciclo de aplicação foi executado ainda.',
     'Type an emote name into chat': 'Digitar o nome de um emote no chat',
+    'Suggest emotes as you type': 'Sugerir emotes enquanto você digita',
+    'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured — and it never sends the message.': 'Digitar dois-pontos e duas ou mais letras no chat oferece emotes da sua biblioteca, ordenados pelo que você realmente envia aqui. Clique em um para colocar o nome simples no seu cursor. As sugestões são escolhidas com o mouse, nunca aceitas com uma tecla, então nada do que você digita é capturado — e nunca envia a mensagem.',
     'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Adiciona uma ação Digitar no chat ao lado de Copiar nome na biblioteca de emotes. Digita apenas o nome na posição do cursor e para por aí: nunca o código interno, nunca um id, e nunca envia a mensagem.',
     'That emote has no plain name to copy.': 'Esse emote não tem um nome simples para copiar.',
     'That emote has no plain name to type.': 'Esse emote não tem um nome simples para digitar.',
@@ -10898,6 +10980,20 @@ function buildInterface() {
 
   document.addEventListener('keydown', onGlobalKeydown, true);
   document.addEventListener('click', rememberWatchedCard, true);
+  // Colon completion. Delegated at the document because Kick replaces its
+  // composer on every route change, and deliberately only on events the user
+  // already caused — no keydown listener, so no keystroke can be captured.
+  document.addEventListener('input', (event) => {
+    if (!event.target?.closest?.('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]')) return;
+    updateEmoteCompletion();
+  }, true);
+  document.addEventListener('selectionchange', () => {
+    if (state.runtime.emoteCompletion) updateEmoteCompletion();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    const row = event.target?.closest?.('#kick-focus-emote-complete');
+    if (!row) hideEmoteCompletion();
+  }, true);
   // Opened at boot, not on demand: a tab has to be listening to answer a
   // roll-call it never asked for.
   multistreamPresenceChannel();
@@ -11436,6 +11532,7 @@ function renderContentPage() {
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
         ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
         ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
+        ${row('Suggest emotes as you type', 'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured — and it never sends the message.', toggle('content.emoteAutocomplete', value.emoteAutocomplete, { label: 'Suggest emotes as you type' }))}
         ${row('New favorites apply to', 'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.', segmented('content.favoriteScope', value.favoriteScope, [['global', 'Everywhere'], ['channel', 'This channel']]))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
@@ -12264,6 +12361,203 @@ async function copyStickerName(target) {
  * only target, and it must be the real one — a contenteditable that is not
  * Kick's would be an arbitrary write into the page.
  */
+// ---------------------------------------------------------------------------
+// Colon-trigger emote completion
+//
+// Mouse-only by design. Every other client accepts with Tab or Enter, which
+// means capturing keys the composer is entitled to — and a completion list that
+// eats a keystroke is worse than no completion list. This one is clicked, so it
+// can never take a key that was meant for Kick, and it never sends: accepting
+// puts the plain name at the caret, exactly as the Type-in-chat action does.
+// ---------------------------------------------------------------------------
+
+const EMOTE_COMPLETION_LIMIT = 8;
+
+const EMOTE_COMPLETION_CSS = `
+  :host {
+    position: fixed;
+    z-index: 2147483000;
+    display: none;
+    width: 240px;
+  }
+  :host([data-kf-open="true"]) { display: block; }
+  [data-kf-complete-list] {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid #2a3a30;
+    border-radius: 9px;
+    background: #0b100d;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+    font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #f7f9fa;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  button {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    gap: 8px;
+    /* 24px is the WCAG 2.2 target-size floor the rest of the interface holds;
+       these rows are pointer targets and the only way to accept. */
+    min-height: 28px;
+    padding: 3px 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  button:hover, button:focus-visible { background: #17251d; }
+  button:focus-visible { outline: 2px solid #53fc18; outline-offset: -2px; }
+  img { width: 24px; height: 24px; object-fit: contain; }
+  span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+`;
+
+function emoteCompletionHost() {
+  let host = document.getElementById('kick-focus-emote-complete');
+  if (host) return host;
+  host = document.createElement('div');
+  host.id = 'kick-focus-emote-complete';
+  host.dataset.kfOpen = 'false';
+  const shadow = host.attachShadow({ mode: 'open' });
+  adoptStyles(shadow, EMOTE_COMPLETION_CSS);
+  const list = document.createElement('div');
+  list.dataset.kfCompleteList = 'true';
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-label', 'Emote suggestions');
+  // Click, never key: bound inside the shadow root so accepting cannot depend
+  // on anything the page might stop from bubbling.
+  list.addEventListener('click', (event) => {
+    const button = event.target?.closest?.('[data-kf-complete-key]');
+    if (!button) return;
+    event.preventDefault();
+    acceptEmoteCompletion(button.dataset.kfCompleteKey);
+  });
+  shadow.append(list);
+  document.body.append(host);
+  return host;
+}
+
+function hideEmoteCompletion() {
+  const host = document.getElementById('kick-focus-emote-complete');
+  if (!host || host.dataset.kfOpen !== 'true') return;
+  host.dataset.kfOpen = 'false';
+  host.style.visibility = 'hidden';
+}
+
+/** The text between the start of the caret's own text node and the caret. */
+function textBeforeCaret(input) {
+  if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+    return String(input.value ?? '').slice(0, input.selectionStart ?? 0);
+  }
+  const selection = document.getSelection();
+  if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return '';
+  const range = selection.getRangeAt(0);
+  if (!input.contains(range.startContainer)) return '';
+  const probe = document.createRange();
+  probe.selectNodeContents(input);
+  probe.setEnd(range.startContainer, range.startOffset);
+  return probe.toString();
+}
+
+/** Everything this build knows the user could type, as completion candidates. */
+function emoteCompletionCandidates() {
+  const candidates = [];
+  for (const sticker of state.stickerPreferences.library.values()) {
+    if (state.stickerPreferences.hidden.has(sticker.key)) continue;
+    candidates.push(sticker);
+  }
+  return candidates;
+}
+
+function updateEmoteCompletion() {
+  if (!state.settings.content.emoteAutocomplete) return hideEmoteCompletion();
+  const input = chatMessageInput();
+  if (!input) return hideEmoteCompletion();
+  const trigger = emoteTriggerAt(textBeforeCaret(input));
+  if (!trigger) return hideEmoteCompletion();
+  const matches = rankEmoteCompletions(trigger.query, emoteCompletionCandidates(), {
+    favorites: new Set(favoriteKeysInOrder()),
+    usage: state.emoteUsage,
+    channel: state.live.slug,
+    limit: EMOTE_COMPLETION_LIMIT,
+  });
+  if (!matches.length) return hideEmoteCompletion();
+
+  const host = emoteCompletionHost();
+  const list = host.shadowRoot.querySelector('[data-kf-complete-list]');
+  list.innerHTML = trustedHTML(matches.map((sticker) => `
+    <button type="button" role="option" aria-selected="false" data-kf-complete-key="${escapeHtml(sticker.key)}" title="Insert ${escapeHtml(sticker.name)}">
+      <img src="${escapeHtml(sticker.src)}" alt="" loading="lazy">
+      <span>${escapeHtml(sticker.name)}</span>
+    </button>`).join(''));
+  state.runtime.emoteCompletion = { length: trigger.length, keys: matches.map((sticker) => sticker.key) };
+
+  const anchor = caretRect(input) || input.getBoundingClientRect();
+  host.dataset.kfOpen = 'true';
+  host.style.visibility = 'hidden';
+  // Measured after the rows exist, so the list is placed by its real height
+  // rather than an assumed one.
+  const height = host.shadowRoot.querySelector('[data-kf-complete-list]').getBoundingClientRect().height || 0;
+  const top = anchor.top - height - 6;
+  host.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - 260))}px`;
+  host.style.top = `${top < 8 ? anchor.bottom + 6 : top}px`;
+  host.style.visibility = 'visible';
+  return undefined;
+}
+
+function caretRect(input) {
+  const selection = document.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  // A collapsed range in an empty text node reports zeros; the input's own box
+  // is the honest fallback.
+  return rect && (rect.width || rect.height || rect.top) ? rect : null;
+}
+
+/**
+ * Accept a suggestion: replace the `:query` that triggered it with the plain
+ * name and a space. Never the wire token, never an id, and it never sends —
+ * the same boundary the Type-in-chat action enforces.
+ */
+function acceptEmoteCompletion(key) {
+  const sticker = state.stickerPreferences.library.get(key);
+  const plan = emoteInsertionPlan(sticker);
+  const trigger = state.runtime.emoteCompletion;
+  hideEmoteCompletion();
+  if (!plan.ok || !trigger) return;
+  const input = chatMessageInput();
+  if (!input) return;
+  input.focus();
+  if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+    const end = input.selectionStart ?? 0;
+    input.setSelectionRange(Math.max(0, end - trigger.length), end);
+  } else {
+    const selection = document.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0).cloneRange();
+    // Walk back over the trigger. Kick's composer can split a word across text
+    // nodes, so this consumes characters rather than assuming one node.
+    for (let index = 0; index < trigger.length; index += 1) {
+      try { range.setStart(range.startContainer, range.startOffset - 1); } catch { break; }
+      if (range.startOffset === 0 && range.toString().length < index + 1) break;
+    }
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  if (!document.execCommand('insertText', false, `${plan.text} `)) {
+    showToast('Kick’s chat box did not accept the text. The name is on your clipboard instead.', true);
+    copyText(plan.text);
+    return;
+  }
+  if (plan.warning) showToast(plan.warning, true);
+}
+
 function chatMessageInput() {
   if (multistreamOpen()) return null;
   const input = document.querySelector('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]');

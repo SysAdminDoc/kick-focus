@@ -798,6 +798,83 @@ try {
       && tip.afterUnrelated === null,
     tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
 
+  // Colon completion, driven the way a person drives it: turn the setting on,
+  // seed a library entry, type into Kick's own composer, click a suggestion.
+  // What is under test is that the list appears from a real `input` event, that
+  // clicking it puts the plain name at the caret, and — the part that matters
+  // most — that nothing about it is keyboard-driven or send-shaped.
+  const completeProbe = await evaluate(pageClient, `(async () => {
+    const settle = (ms = 400) => new Promise((done) => setTimeout(done, ms));
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    // The logged-out home page has no composer of Kick's own, so the probe
+    // supplies one carrying the same contract the runtime looks for.
+    const input = document.createElement('div');
+    input.setAttribute('contenteditable', 'true');
+    input.setAttribute('role', 'textbox');
+    input.setAttribute('data-testid', 'chat-input');
+    input.style.cssText = 'position:fixed;left:4px;bottom:80px;width:240px;height:32px';
+    document.body.append(input);
+    const submits = [];
+    const watch = (event) => { if (event.type === 'submit' || event.key === 'Enter') submits.push(event.type); };
+    for (const type of ['submit', 'keydown', 'keypress']) document.addEventListener(type, watch, true);
+    const toggle = shadow.querySelector('[data-set="content.emoteAutocomplete"]');
+    const wasOn = toggle && toggle.getAttribute('aria-checked') === 'true';
+    try {
+      if (!toggle) return { ok: false, why: 'autocomplete setting not rendered' };
+      if (!wasOn) { toggle.click(); await settle(); }
+      // Take a real library name rather than seeding one: the library lives
+      // inside the bundle IIFE, and the settings page already renders its keys.
+      const seeded = shadow.querySelector('[data-action="copy-sticker-name"], [data-action="insert-sticker-name"]');
+      const label = seeded?.getAttribute('aria-label') || '';
+      const name = (label.match(/name ([A-Za-z0-9_]+)/) || [])[1];
+      if (!name || name.length < 3) return { ok: false, why: 'library is empty on this profile' };
+
+      input.focus();
+      document.execCommand('insertText', false, 'hello :' + name.slice(0, 3));
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, data: name[2], inputType: 'insertText' }));
+      await settle();
+      const host = document.getElementById('kick-focus-emote-complete');
+      const rows = [...(host?.shadowRoot?.querySelectorAll('[data-kf-complete-key]') || [])];
+      const opened = host?.dataset.kfOpen === 'true' && rows.length > 0;
+      // Every row must clear the pointer-target floor the rest of the UI holds.
+      const smallest = rows.length ? Math.min(...rows.map((row) => row.getBoundingClientRect().height)) : 0;
+      const chosen = rows[0]?.textContent.trim();
+      rows[0]?.click();
+      await settle();
+      return {
+        ok: true,
+        name,
+        opened,
+        chosen,
+        labels: rows.map((row) => row.textContent.trim()),
+        smallest,
+        text: input.textContent || '',
+        closed: host?.dataset.kfOpen !== 'true',
+        submits,
+      };
+    } finally {
+      for (const type of ['submit', 'keydown', 'keypress']) document.removeEventListener(type, watch, true);
+      input.remove();
+      if (toggle && !wasOn) toggle.click();
+      await settle();
+    }
+  })()`);
+  const complete = completeProbe.value || {};
+  record('a colon and two letters offer emotes from the library, accepted by click',
+    complete.ok === true
+      && complete.opened === true
+      && complete.labels?.length > 0
+      && complete.text.includes(complete.chosen)
+      && !complete.text.includes(`:${String(complete.name).slice(0, 3)}`)
+      && !complete.text.includes('[emote:')
+      && complete.closed === true,
+    complete.ok ? `":${String(complete.name).slice(0, 3)}" offered ${JSON.stringify(complete.labels)}; composer now ${JSON.stringify(complete.text)}` : complete.why);
+  record('accepting a suggestion raises no key or submit event on the composer',
+    complete.ok === true && Array.isArray(complete.submits) && complete.submits.length === 0
+      && complete.smallest >= 24,
+    complete.ok ? `events on the composer ${JSON.stringify(complete.submits)}; smallest row ${Math.round(complete.smallest)}px` : complete.why);
+
   // The chip on a discovery card, and the convergence behind it. Kick's own
   // cards are on screen already, so this uses a real one; the "other tab" is a
   // BroadcastChannel opened from the page, which is exactly what a second tab
