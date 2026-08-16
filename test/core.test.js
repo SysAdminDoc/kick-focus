@@ -16,6 +16,8 @@ import {
   describeStickerChange,
   recordStickerObservation,
   stickerChangedSinceCapture,
+  multistreamLayoutLink,
+  parseMultistreamLink,
   normalizeChannelPath,
   classifyRequest,
   describeInjection,
@@ -541,6 +543,30 @@ test('emote history survives the export round-trip and rejects impossible dates'
     stickers: { schema: 4, library: [{ key: 'id:11', id: '11', name: 'Same', src: 'https://files.kick.com/emotes/11/fullsize', wasName: 'Same' }] },
   }));
   assert.equal(noop.stickers.library[0].wasName, undefined);
+});
+
+test('a layout link carries channel names and nothing else, and is revalidated on the way in', () => {
+  const link = multistreamLayoutLink(['xQc', 'Adin_Ross']);
+  assert.equal(link, 'https://kick.com/?kf-multi=xQc%2CAdin_Ross');
+  assert.deepEqual(parseMultistreamLink(link), ['xQc', 'Adin_Ross']);
+
+  // A link is untrusted input regardless of who sent it: every slug goes back
+  // through the same validation the grid uses.
+  assert.deepEqual(
+    parseMultistreamLink('https://kick.com/?kf-multi=good,../evil,<script>,ok_2'),
+    ['good', 'ok_2'],
+  );
+  // Duplicates collapse and the nine-tile ceiling still applies.
+  assert.deepEqual(parseMultistreamLink('https://kick.com/?kf-multi=a,A,a'), ['a']);
+  assert.equal(parseMultistreamLink(`https://kick.com/?kf-multi=${Array.from({ length: 30 }, (_, i) => `c${i}`).join(',')}`).length, 9);
+
+  // Nothing usable opens nothing, rather than opening something unexpected.
+  assert.deepEqual(parseMultistreamLink('https://kick.com/'), []);
+  assert.deepEqual(parseMultistreamLink('https://kick.com/?kf-multi='), []);
+  assert.deepEqual(parseMultistreamLink('not a url at all'), []);
+  assert.deepEqual(parseMultistreamLink(`https://kick.com/?kf-multi=${'x'.repeat(2000)}`), []);
+  assert.equal(multistreamLayoutLink([]), '');
+  assert.equal(multistreamLayoutLink(['../nope']), '');
 });
 
 test('chat badges fill the gap Kick leaves without duplicating what it drew', () => {

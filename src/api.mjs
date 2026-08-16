@@ -282,6 +282,9 @@ export function normalizeChannel(payload) {
     userId: Number(payload.user_id) || 0,
     slug: typeof payload.slug === 'string' ? payload.slug : '',
     chatroomId: Number(payload.chatroom?.id) || 0,
+    // The bulk live-status endpoint keys on the livestream, not the channel, so
+    // an offline channel has no id here — which is itself the answer.
+    livestreamId: Number(livestream?.id) || 0,
     followers: Number(payload.followers_count) || 0,
     isLive: Boolean(livestream?.is_live),
     viewers: Number(livestream?.viewer_count) || 0,
@@ -641,6 +644,35 @@ export function joinCollectibleRarity(cards, emotes, { minConfidence = RARITY_MI
     // exactly as it does today.
     usable: total > 0 && matched.length > 0,
   };
+}
+
+/**
+ * Bulk live status, as Kick's own sidebar reads it.
+ *
+ * One request answers for every channel in the grid and every saved layout, so
+ * a shelf of layouts costs what a single channel would. A channel absent from
+ * the response is offline by Kick's own convention — it only returns entries
+ * for channels that are live — so absence is treated as offline rather than
+ * unknown, and a reshaped payload reports rather than inventing a status.
+ */
+export function normalizeCurrentViewers(payload) {
+  const list = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
+  if (!list) return { ok: false, reason: 'not-a-list' };
+  const entries = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const id = raw.livestream_id ?? raw.id ?? raw.channel_id;
+    if (id == null) continue;
+    const viewers = Number(raw.viewers ?? raw.viewer_count ?? raw.count);
+    entries.push({
+      id: String(id).slice(0, LIMITS.id),
+      viewers: Number.isFinite(viewers) && viewers >= 0 ? Math.floor(viewers) : 0,
+      // Presence in this response is Kick's own signal that a channel is live.
+      live: true,
+    });
+    if (entries.length >= 200) break;
+  }
+  return { ok: true, entries };
 }
 
 /**

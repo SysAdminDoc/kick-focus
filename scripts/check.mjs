@@ -134,6 +134,20 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // A shared link is untrusted input, so it must go back through the same slug
+  // validation the grid uses rather than being spread into state directly.
+  ['layouts are shareable as links and revalidated on the way in',
+    source.includes('multistreamLayoutLink')
+    && source.includes('parseMultistreamLink')
+    && source.includes('multistream-copy-layout')
+    && source.includes('openSharedLayoutFromUrl')],
+  // One bulk call, not one per channel: a shelf of saved layouts must not turn
+  // into dozens of requests for the same answer.
+  ['saved layouts read live status from one bulk request',
+    source.includes('endpoints.currentViewers')
+    && source.includes('normalizeCurrentViewers')
+    && source.includes('kf-ms-live')],
+
   // Kick publishes no drop odds and documents no duplicate protection. The
   // duplicate figure must therefore be measured or declared unavailable — the
   // one thing it must never be is inferred.

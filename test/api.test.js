@@ -18,6 +18,7 @@ import {
   realtimeHealth,
   realtimeSubscribeFrame,
   realtimeTransport,
+  normalizeCurrentViewers,
   summarizeCollectibleInventory,
   COLLECTIBLE_FACTS,
   REALTIME_TRANSPORTS,
@@ -139,6 +140,39 @@ test('frame parsing is shared by every transport and classifies by kind', () => 
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'App\\Events\\SomethingNew', data: {} })).kind, 'other');
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: 'not json' })).kind, 'other');
   assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: null })).kind, 'other');
+});
+
+test('live status for every saved layout comes from one bulk request', () => {
+  // Kick's own sidebar reads this endpoint; one call answers for every channel.
+  assert.equal(endpoints.currentViewers([7, 8]), 'https://kick.com/current-viewers?ids[]=7&ids[]=8');
+  assert.equal(endpoints.currentViewers([7, 7, '']), 'https://kick.com/current-viewers?ids[]=7');
+
+  const status = normalizeCurrentViewers([
+    { livestream_id: 7, viewers: 1200 },
+    { id: 8, viewer_count: 3 },
+  ]);
+  assert.equal(status.ok, true);
+  assert.equal(status.entries.length, 2);
+  assert.equal(status.entries[0].viewers, 1200);
+  // Presence in the response is Kick's own signal that a channel is live.
+  assert.equal(status.entries[0].live, true);
+  assert.equal(status.entries[1].viewers, 3);
+
+  // A `data`-wrapped body is the same answer.
+  assert.equal(normalizeCurrentViewers({ data: [{ id: 1 }] }).entries.length, 1);
+
+  // A reshaped payload reports rather than inventing a status, so the caller
+  // can record drift instead of showing every channel as offline.
+  assert.equal(normalizeCurrentViewers(null).ok, false);
+  assert.equal(normalizeCurrentViewers({}).reason, 'not-a-list');
+  assert.deepEqual(normalizeCurrentViewers([null, 'x', {}]).entries, []);
+
+  // A live channel exposes the id the bulk endpoint keys on; an offline one
+  // has no livestream, which is already the answer.
+  const live = normalizeChannel({ id: 5, chatroom: { id: 9 }, livestream: { id: 77, is_live: true } });
+  assert.equal(live.livestreamId, 77);
+  assert.equal(live.isLive, true);
+  assert.equal(normalizeChannel({ id: 5 }).livestreamId, 0);
 });
 
 test('the duplicate rate is measured, or reported as unavailable — never guessed', () => {

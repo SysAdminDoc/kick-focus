@@ -149,6 +149,10 @@ const state = {
   emoteUsage: readEmoteUsage(),
   multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
   multistreamError: '',
+  // slug -> Kick channel id, and slug -> live, both filled from Kick's own
+  // responses. Kept apart from `multistream` so neither is ever persisted.
+  multistreamIds: new Map(),
+  multistreamLive: new Map(),
   multistreamSuspended: new Set(),
   multistreamSuspensionInstalled: false,
   chatStickerScanTimer: 0,
@@ -2099,6 +2103,38 @@ function openMultistream() {
   renderMultistream();
   backdrop.querySelector('[data-kf-multistream-input]')?.focus();
   announce(tr('Multi-stream opened'));
+  // Fire-and-forget: live status is an enhancement, and every path already
+  // renders correctly without it.
+  resolveMultistreamLive().catch(() => {});
+}
+
+/**
+ * Resolve channel ids for the grid and every saved layout, then read all of
+ * their live states in one request.
+ *
+ * Identity is looked up once per channel and cached for the session; the live
+ * state, which is the part that actually changes, is a single bulk call no
+ * matter how many layouts are saved.
+ */
+async function resolveMultistreamLive() {
+  if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
+  const slugs = [...new Set([
+    ...state.multistream.streams,
+    ...state.multistream.layouts.flatMap((layout) => layout.streams),
+  ].map((slug) => slug.toLowerCase()))];
+  const unresolved = slugs.filter((slug) => !state.multistreamIds.has(slug)).slice(0, MULTISTREAM_MAX * 3);
+  for (const slug of unresolved) {
+    const response = await kickFetchJson(endpoints.channel(slug));
+    if (!response.ok) continue;
+    const channel = normalizeChannel(response.body);
+    if (!channel) { recordApiDrift('channel', 'shape-changed'); continue; }
+    // An offline channel has no livestream id, which is already the answer and
+    // costs nothing to record.
+    state.multistreamIds.set(slug, channel.livestreamId);
+    state.multistreamLive.set(slug, channel.isLive);
+  }
+  if (unresolved.length) renderMultistream();
+  await refreshMultistreamLive();
 }
 
 function closeMultistream() {
@@ -2337,9 +2373,48 @@ function renderMultistreamControls(backdrop) {
   const savedList = backdrop.querySelector('[data-kf-multistream-layouts]');
   if (savedList) {
     savedList.innerHTML = layouts.length
-      ? layouts.map((layout) => `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} <small>${layout.streams.length}</small></button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`).join('')
+      ? layouts.map((layout) => {
+        // Live counts come from one bulk request for every saved channel, so a
+        // shelf of layouts costs the same as a single one.
+        const live = layout.streams.filter((slug) => state.multistreamLive.get(slug.toLowerCase())).length;
+        const status = state.multistreamLive.size
+          ? `<small class="kf-ms-live" data-live="${live > 0}">${live}/${layout.streams.length} live</small>`
+          : `<small>${layout.streams.length}</small>`;
+        return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to layout ${escapeHtml(layout.name)}" title="Copy link">🔗</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`;
+      }).join('')
       : '<span class="kf-ms-empty">No saved layouts yet.</span>';
   }
+}
+
+/**
+ * Refresh live status for every channel across the grid and saved layouts in
+ * one request. Kick's own sidebar uses this endpoint; per-channel polling for a
+ * shelf of layouts would be dozens of requests for the same answer.
+ */
+async function refreshMultistreamLive() {
+  const slugs = [...new Set([
+    ...state.multistream.streams,
+    ...state.multistream.layouts.flatMap((layout) => layout.streams),
+  ].map((slug) => slug.toLowerCase()))];
+  if (!slugs.length) return;
+  // The endpoint keys on livestream id, so only channels known to have one are
+  // asked about; a channel with none is already known to be offline.
+  const ids = slugs.map((slug) => state.multistreamIds.get(slug)).filter(Boolean);
+  if (!ids.length) return;
+  const response = await kickFetchJson(endpoints.currentViewers(ids));
+  if (!response.ok) return;
+  const status = normalizeCurrentViewers(response.body);
+  if (!status.ok) {
+    recordApiDrift('current-viewers', status.reason);
+    return;
+  }
+  // Kick returns entries only for channels that are still live, so absence
+  // from the response means the stream ended.
+  const stillLive = new Set(status.entries.map((entry) => String(entry.id)));
+  for (const [slug, id] of state.multistreamIds) {
+    if (id) state.multistreamLive.set(slug, stillLive.has(String(id)));
+  }
+  renderMultistream();
 }
 
 function addMultistream(raw) {
@@ -4628,6 +4703,10 @@ const UI_CSS = `
   .kf-ms-layout button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
   .kf-ms-layout button:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-layout small { opacity: .6; }
+  /* One bulk request answers for every saved layout, so live status is cheap
+     enough to show on all of them at once. */
+  .kf-ms-layout small.kf-ms-live { opacity: 1; color: var(--muted); }
+  .kf-ms-layout small.kf-ms-live[data-live="true"] { color: var(--accent); font-weight: 700; }
   .kf-ms-empty { font-size: 11px; opacity: .6; }
 
   .kf-shadow-warning { display: grid; gap: 6px; }
@@ -6061,6 +6140,17 @@ function onInterfaceClick(event) {
       announce(`Loaded layout ${layout.name}`);
     }
   }
+  else if (action === 'multistream-copy-layout') {
+    const layout = state.multistream.layouts.find((entry) => entry.name === actionTarget.dataset.layout);
+    if (!layout) return;
+    const link = multistreamLayoutLink(layout.streams);
+    if (!link) { showToast('That layout has no usable channels.', true); return; }
+    // The link carries channel names and nothing else — no settings, no
+    // identifiers, nothing from this machine.
+    navigator.clipboard?.writeText(link)
+      .then(() => showToast(`Copied a link to ${layout.name}.`))
+      .catch(() => showToast('Could not reach the clipboard.', true));
+  }
   else if (action === 'multistream-delete-layout') {
     const name = actionTarget.dataset.layout;
     state.multistream = normalizeMultistream({
@@ -6825,6 +6915,37 @@ function installCompanionBridge() {
   document.addEventListener('kick-focus:set-telemetry', (event) => {
     updateSetting('content.reduceTelemetry', Boolean(event.detail?.enabled));
   });
+  openSharedLayoutFromUrl();
+}
+
+/**
+ * Open a layout someone shared as a link.
+ *
+ * Every slug is revalidated by `parseMultistreamLink` before use — a link is
+ * untrusted input regardless of who sent it — and the grid is only replaced
+ * when the link actually names channels. The parameter is then stripped from
+ * the address bar so a reload does not silently reopen it.
+ */
+function openSharedLayoutFromUrl() {
+  const shared = parseMultistreamLink(location.href);
+  if (!shared.length) return;
+  state.multistream = normalizeMultistream({
+    ...state.multistream,
+    streams: shared,
+    focus: shared[0],
+    chat: shared[0],
+  });
+  state.multistreamError = '';
+  persistMultistream();
+  try {
+    const url = new URL(location.href);
+    url.searchParams.delete(MULTISTREAM_LINK_PARAM);
+    history.replaceState(history.state, '', url.href);
+  } catch {
+    // A URL this build cannot rewrite is not a reason to refuse the layout.
+  }
+  openMultistream();
+  announce(`Opened a shared layout with ${shared.length} channel${shared.length === 1 ? '' : 's'}.`);
 }
 
 function startWhenBodyExists() {

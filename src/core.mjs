@@ -1138,6 +1138,40 @@ function cleanSlugList(input) {
   return slugs;
 }
 
+/**
+ * Layout links.
+ *
+ * Path-style grid URLs are the field's de facto sharing format, but this
+ * project runs on kick.com and cannot claim a path there — so the layout rides
+ * on a query parameter Kick ignores and Kick Focus reads on boot.
+ *
+ * The link carries slugs and nothing else: no settings, no identifiers, and no
+ * state from the sender's machine. Every slug is revalidated on the way in,
+ * because a link is untrusted input no matter who sent it.
+ */
+export const MULTISTREAM_LINK_PARAM = 'kf-multi';
+
+export function multistreamLayoutLink(streams, origin = 'https://kick.com') {
+  const slugs = cleanSlugList(streams);
+  if (!slugs.length) return '';
+  return `${origin}/?${MULTISTREAM_LINK_PARAM}=${encodeURIComponent(slugs.join(','))}`;
+}
+
+/**
+ * Read a layout out of a URL. Returns [] for anything unusable, so a malformed
+ * or hostile link opens nothing rather than opening something unexpected.
+ */
+export function parseMultistreamLink(href) {
+  let value = '';
+  try {
+    value = new URL(String(href), 'https://kick.com').searchParams.get(MULTISTREAM_LINK_PARAM) || '';
+  } catch {
+    return [];
+  }
+  if (!value || value.length > 1024) return [];
+  return cleanSlugList(value.split(','));
+}
+
 export function normalizeMultistream(input) {
   const source = isRecord(input) ? input : {};
   const streams = cleanSlugList(source.streams);
