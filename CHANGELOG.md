@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Added
+
+- **Poor mode.** One opt-in setting hides Kick's Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop, and spend-leaderboard controls while preserving Follow, chat, and free daily rewards. It keys off the signed-in site's exact control ids/labels rather than broad page text, so a chat message mentioning a gift cannot disappear. The command menu can turn it on or off without adding another keyboard shortcut.
+
 ### Fixed
 
 - Public channel emote catalogs no longer masquerade as account entitlement. Kick returns subscriber-only artwork from `/emotes/{slug}` even when it supplies no subscription/ownership field; those entries are now recorded as subscriber-only until the native picker or an explicit API signal proves access. Free channel emotes are recorded as channel-only, while Global and Emoji sets remain available.

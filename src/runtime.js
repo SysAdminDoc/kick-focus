@@ -1039,6 +1039,8 @@ const SITE_CSS = `
     [data-kf-dismissed="true"],
     [data-kf-ad-shell="true"] { display: none !important; }
 
+    html[data-kf-poor-mode="true"] [data-kf-monetization] { display: none !important; }
+
     [data-kf-card-actions] {
       position: absolute !important;
       top: 8px !important;
@@ -1510,6 +1512,7 @@ function applySettingsAttributes() {
   root.dataset.kfLiveColor = String(appearance.colorizeLive);
   root.dataset.kfContrast = String(appearance.strongContrast || accessibility.highContrast);
   root.dataset.kfMatureBlur = String(content.blurMature && !state.runtime.matureVisible);
+  root.dataset.kfPoorMode = String(content.hideMonetization);
   root.dataset.kfReduceMotion = String(accessibility.reduceMotion);
   // An explicit accessibility request framed as seizure risk. The system-level
   // preference turns it on regardless of the switch.
@@ -1543,6 +1546,28 @@ function applySettingsAttributes() {
   root.style.setProperty('--color-surface-highest', surfaces[1]);
   root.style.setProperty('--color-surface-lowest', surfaces[2]);
   if (state.root) state.root.style.setProperty('--kf-interface-scale', String(appearance.interfaceScale / 100));
+}
+
+/**
+ * Poor mode hides only controls positively identified as spending surfaces.
+ * It never searches arbitrary page prose, so a chat message mentioning a gift
+ * cannot disappear and free actions such as Follow remain untouched.
+ */
+function tagMonetizationSurfaces() {
+  for (const node of document.querySelectorAll('[data-kf-monetization]')) {
+    delete node.dataset.kfMonetization;
+  }
+  if (!state.settings.content.hideMonetization) return;
+  for (const control of document.querySelectorAll('button, a, [role="button"]')) {
+    if (state.root?.contains(control)) continue;
+    const kind = monetizationKind({
+      text: control.textContent,
+      ariaLabel: control.getAttribute('aria-label'),
+      title: control.getAttribute('title'),
+      testId: control.getAttribute('data-testid'),
+    });
+    if (kind) control.dataset.kfMonetization = kind;
+  }
 }
 
 function tagChatPanel() {
@@ -4137,6 +4162,7 @@ function scheduleApply(delay = 50) {
     }
     applySettingsAttributes();
     tagChatPanel();
+    tagMonetizationSurfaces();
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
@@ -5277,6 +5303,11 @@ const TRANSLATIONS = {
     'Blur marked mature cards until hover or keyboard focus.': 'Difumina las tarjetas marcadas para adultos hasta pasar el cursor o enfocarlas con el teclado.',
     'Hide Drops and gambling promotions': 'Ocultar promociones de Drops y apuestas',
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta los módulos claramente marcados como promociones de Drops y apuestas.',
+    'Poor mode': 'Modo sin gastos',
+    'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.': 'Oculta Suscribirse, Regalar subs/dubs, Obtener KICKs, la tienda de regalos y las clasificaciones de gasto. Seguir, el chat y las recompensas diarias gratuitas siguen disponibles.',
+    'Enable Poor mode': 'Activar modo sin gastos',
+    'Disable Poor mode': 'Desactivar modo sin gastos',
+    'Remove spending prompts without changing your Kick account': 'Oculta las invitaciones de gasto sin cambiar tu cuenta de Kick',
     'Reduce tracking telemetry': 'Reducir la telemetría de seguimiento',
     'Block observed third-party video and error telemetry hosts.': 'Bloquea los servidores de telemetría de vídeo y errores de terceros detectados.',
     'Remember volume locally': 'Recordar el volumen localmente',
@@ -5492,6 +5523,11 @@ const TRANSLATIONS = {
     'Blur marked mature cards until hover or keyboard focus.': 'Desfoca os cartões marcados como adultos até passar o cursor ou focar pelo teclado.',
     'Hide Drops and gambling promotions': 'Ocultar promoções de Drops e apostas',
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta os módulos claramente marcados como promoções de Drops e apostas.',
+    'Poor mode': 'Modo sem gastos',
+    'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.': 'Oculta Inscrever-se, Presentear subs/dubs, Obter KICKs, a loja de presentes e os placares de gastos. Seguir, o chat e as recompensas diárias gratuitas continuam disponíveis.',
+    'Enable Poor mode': 'Ativar modo sem gastos',
+    'Disable Poor mode': 'Desativar modo sem gastos',
+    'Remove spending prompts without changing your Kick account': 'Oculta os convites de gasto sem alterar sua conta do Kick',
     'Reduce tracking telemetry': 'Reduzir a telemetria de rastreamento',
     'Block observed third-party video and error telemetry hosts.': 'Bloqueia os servidores de telemetria de vídeo e de erros de terceiros detectados.',
     'Remember volume locally': 'Lembrar o volume localmente',
@@ -6109,6 +6145,7 @@ function renderContentPage() {
         ${row('Hide Slots & Casino content', 'Hide cards and sidebar entries clearly labeled as casino content.', toggle('content.hideCasino', value.hideCasino, { label: 'Hide Slots and Casino content' }))}
         ${row('Blur mature thumbnails', 'Blur marked mature cards until hover or keyboard focus.', toggle('content.blurMature', value.blurMature, { label: 'Blur mature thumbnails' }))}
         ${row('Hide Drops and gambling promotions', 'Hide clearly labeled Drops and gambling promotion modules.', toggle('content.hideDropsPromotions', value.hideDropsPromotions, { label: 'Hide Drops and gambling promotions' }))}
+        ${row('Poor mode', 'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.', toggle('content.hideMonetization', value.hideMonetization, { label: 'Poor mode' }))}
         ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
       </div>
     </section>
@@ -6970,7 +7007,7 @@ function clearEnhancedPage() {
   for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
     root.style.removeProperty(property);
   }
-  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty]')) {
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization]')) {
     if (node.matches?.('[data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
     else {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
@@ -7098,6 +7135,7 @@ function commandDefinitions() {
     { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
     { id: 'density', label: tr(`Use ${state.settings.layout.density === 'compact' ? 'comfortable' : 'compact'} density`), description: tr('Change discovery spacing and save it'), key: 'D' },
     { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
+    { id: 'poor', label: tr(state.settings.content.hideMonetization ? 'Disable Poor mode' : 'Enable Poor mode'), description: tr('Remove spending prompts without changing your Kick account'), key: '' },
     { id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid'), key: '' },
     { id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access'), key: state.settings.shortcuts.settings },
   ];
@@ -7158,6 +7196,8 @@ function executeCommand(id) {
     updateSetting('layout.density', state.settings.layout.density === 'compact' ? 'comfortable' : 'compact', 'Density saved');
   } else if (id === 'casino') {
     updateSetting('content.hideCasino', !state.settings.content.hideCasino, 'Content filter saved');
+  } else if (id === 'poor') {
+    updateSetting('content.hideMonetization', !state.settings.content.hideMonetization, 'Poor mode saved');
   } else if (id === 'settings') {
     openSettings();
     return;

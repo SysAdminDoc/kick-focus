@@ -88,6 +88,9 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  ['ships Poor mode with exact spending-control tagging', source.includes('data-kf-poor-mode')
+    && source.includes('data-kf-monetization')
+    && source.includes("id === 'poor'")],
   ['keeps page state separate from navigation actions', source.includes('dataset.kfCurrentPage')
     && !source.includes('page.dataset.page =')],
   ['mounts the Focus control beside Get KICKs', source.includes('ensureHeaderQuickControl')
