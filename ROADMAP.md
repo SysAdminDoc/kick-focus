@@ -58,13 +58,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P2 — quick wins, operator second-wave, platform modernization, dev-experience
 
-- [ ] R-35 — Split the multi-stream and live-data surfaces out of `src/runtime.js` (unblocked 2026-08-16)
-  Why: was in Roadmap_Blocked.md solely because its acceptance needs the live harness AND no Chromium existed here; Chromium is now installed and `verify:extension` passes 22/22 live, so the blocker is lifted. `src/runtime.js` is ~6,651 lines; moving ~1,500 across the concat boundary is exactly the change the api.mjs-went-missing trap exists for.
-  Evidence: former Roadmap_Blocked P2 entry; the working notes concat-order + `source.includes` gotchas; build.mjs:11-29 concat order core→api→compatibility→runtime.
-  Touches: extract multi-stream + live-data into a new bundled module inserted in the correct concat position in build.mjs; keep every export reachable under `node --test` (not just in the hoisted bundle).
-  Acceptance: `npm run verify` green AND `npm run verify:extension` green after the move (a green offline build alone does not prove a refactor equivalent); no symbol asserted only by `source.includes`; bundle parses under `node --check`.
-  Complexity: L
-
 - [ ] R-18 — Picker "Most Used"/recent sections + organizer scale pass (operator-requested)
   Why: 7TV/BTTV ship recency/frequency sections KF lacks, and full innerHTML rebuilds break down before the 2400 cap does — urgent once R-06 inflates the library. (Two independent features: presentational Most-Used, and the organizer windowing pass.)
   Evidence: phase1b E7/E8 — src/runtime.js:3443,3472-3529,5688-5767; SevenTV discussion #379; FFZ emote_menu.jsx.

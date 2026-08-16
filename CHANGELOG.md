@@ -2,7 +2,13 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
-## 1.16.0 — 2026-08-16
+## Unreleased
+
+### Internal
+
+- The multi-stream grid is its own module. It used to be ~490 lines in the middle of the runtime file, reachable only by running the whole bundle in a browser; it now takes the page's storage, toasts and translation through an explicit boundary, which means the parts that actually matter — that a channel still in the grid keeps the exact `<iframe>` it had, that exactly one tile ever carries audio, that a suspended tile unloads while the focused one never does, and that a second tab's channels survive a write from this one — are proven by tests instead of by inspection. No behaviour changed.
+- The build now strips `import` as well as `export`, so a bundled module can declare its real dependencies and still load on its own under the test runner. Two artifact gates cover it: no module syntax may survive into any of the three artifacts, and the export/definition gate now reads the module list from the source tree rather than a hand-written list that a new file would have silently escaped.
+- Fixed a duplicate `currentChannelSlug` — two top-level definitions, where the second silently replaced the first for every caller.
 
 ### Changed
 

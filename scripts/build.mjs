@@ -8,11 +8,12 @@ import { createZip } from './zip.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative) => readFile(resolve(root, relative), 'utf8');
 
-const [metadata, core, api, compatibility, runtime, appearancePreview] = await Promise.all([
+const [metadata, core, api, compatibility, multistream, runtime, appearancePreview] = await Promise.all([
   read('src/metadata.txt'),
   read('src/core.mjs'),
   read('src/api.mjs'),
   read('src/compatibility.mjs'),
+  read('src/multistream.mjs'),
   read('src/runtime.js'),
   readFile(resolve(root, 'src/assets/appearance-preview.jpg')),
 ]);
@@ -20,13 +21,33 @@ const [metadata, core, api, compatibility, runtime, appearancePreview] = await P
 // One instance owns the page. Whichever target loads first wins, so having both
 // the userscript and the companion extension installed cannot mount two UIs.
 const GUARD = `if (window.__kickFocusBooted) return;\nwindow.__kickFocusBooted = true;\n`;
-const bundledCore = core.replace(/^export\s+/gm, '');
-const bundledApi = api.replace(/^export\s+/gm, '');
-const bundledCompatibility = compatibility.replace(/^export\s+/gm, '');
+
+/**
+ * Strip the module system, keep the code.
+ *
+ * The bundle is one function scope, so a name a module imports is already in
+ * scope by the time that module's text arrives — the concat order below is what
+ * guarantees it. Imports are therefore removed rather than resolved, which is
+ * what lets a bundled module declare its real dependencies as `import` and stay
+ * loadable on its own under `node --test`, instead of relying on the bundle's
+ * hoisting to supply symbols nothing names.
+ *
+ * check.mjs asserts no `import`/`export` statement survives into the artifact.
+ */
+const bundled = (source) => source
+  .replace(/^import\s[\s\S]*?from\s+'[^']*';[^\S\n]*\n/gm, '')
+  .replace(/^export\s+/gm, '');
+
+const bundledCore = bundled(core);
+const bundledApi = bundled(api);
+const bundledCompatibility = bundled(compatibility);
+const bundledMultistream = bundled(multistream);
 const bundledRuntime = runtime
   .replaceAll('__KICK_FOCUS_ICON__', `data:image/png;base64,${renderIcon(32).toString('base64')}`)
   .replaceAll('__KICK_FOCUS_PREVIEW__', `data:image/jpeg;base64,${appearancePreview.toString('base64')}`);
-const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledRuntime}\n})();\n`;
+// Concat order is the dependency order: everything a module imports must have
+// been declared by an earlier entry in this list.
+const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledMultistream}\n${bundledRuntime}\n})();\n`;
 
 await mkdir(resolve(root, 'dist'), { recursive: true });
 const userscript = `${metadata.replaceAll('__VERSION__', VERSION)}${body}`;
