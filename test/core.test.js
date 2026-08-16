@@ -50,7 +50,29 @@ import {
   recordEmoteUse,
   USAGE_GLOBAL_LIMIT,
   normalizeBlocklistUrl,
+  observationsFromChatEmotes,
 } from '../src/core.mjs';
+
+test('chat-frame emotes become CDN-scoped observations, deduped by id', () => {
+  const url = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
+  const observations = observationsFromChatEmotes([
+    { type: 'emote', id: '37226', name: 'PogChamp' },
+    { type: 'emote', id: '37226', name: 'PogChamp' }, // duplicate id -> collapses
+    { type: 'emote', id: '', name: 'NoId' },          // no id -> dropped
+    { type: 'emote', id: '999', name: '' },           // no name -> dropped
+    { type: 'text', value: 'hello' },                 // not an emote -> ignored
+  ], url);
+  assert.equal(observations.length, 1);
+  assert.deepEqual(observations[0], {
+    key: 'id:37226', id: '37226', name: 'PogChamp',
+    src: 'https://files.kick.com/emotes/37226/fullsize',
+    nativeGroups: ['Seen in chat'], access: 'observed',
+  });
+  // BTTV #5925: an emote whose src is not on Kick's CDN is refused, so another
+  // extension's injected images can never be ingested.
+  assert.equal(observationsFromChatEmotes([{ id: '1', name: 'X' }], () => 'https://evil.example/emotes/1.png').length, 0);
+  assert.equal(observationsFromChatEmotes('nope', url).length, 0);
+});
 
 test('a blocklist URL is accepted only when it is a well-formed https URL', () => {
   assert.equal(normalizeBlocklistUrl('https://example.com/list.json'), 'https://example.com/list.json');

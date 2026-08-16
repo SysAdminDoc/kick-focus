@@ -56,13 +56,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P1 — operator demand first, then trust / reliability / accessibility
 
-- [ ] R-06 — Realtime chat-emote harvest (operator-requested)
-  Why: the operator's "scan chats to collect emotes" — realtime frames carry `.emotes [{id,name}]` per message then discard them; mergeStickerLibrary is never called from the realtime path.
-  Evidence: phase1b E3 (design-check CONFIRMED-WITH-CONDITIONS) — src/runtime.js:1916-1937,3089-3131; src/api.mjs:21,517-534; depends on R-02.
-  Touches: pure `observationsFromChatEmotes(emotes,urlFn)` in core.mjs; ~6 lines in onRealtimeChatMessage (runtime.js:1920) + the gate at the early-return runtime.js:1922.
-  Acceptance: pure function in core.mjs under node:test + gate in check.mjs — gated behind existing `liveChatEvents && organizeChatStickers` (NO new toggle), feeds the existing 120ms chatStickerPending buffer, and frame-only (never DOM-corroborated) entries commit ONLY after a one-shot Image() load succeeds (~4 in flight, per-session negative cache) so crafted `[emote:999999:Fake]` tokens can't burn cap slots; also merges id-keyed and name-keyed entries. Must land on top of R-02 (cap fix) — a node:test proves a full library evicts an observed entry rather than dropping the new one.
-  Complexity: S
-
 - [ ] R-07 — One-click "Add to Multi" from channel pages + feedback (operator-requested)
   Why: the operator's "one-click Multi from video page" — the only add flow today is a typed panel input, and persistMultistream has a deterministic lost-update race in two-tab use.
   Evidence: phase1b M1/M2/M3 (design-check CONFIRMED-WITH-CONDITIONS) — src/runtime.js:6884-6989,2461-2476,2125-2127; src/core.mjs:1402-1416,1415.

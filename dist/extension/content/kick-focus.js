@@ -820,6 +820,35 @@ function evictStickerLibrary(library, limit = STICKER_LIBRARY_LIMIT, protectedKe
   return { library: list.filter((_, index) => !dropped.has(index)), evicted: dropCount };
 }
 
+/**
+ * Turn a realtime chat frame's emote list into library observations.
+ *
+ * These are frame-only: no DOM node corroborated them, and the id came off the
+ * wire, so a crafted `[emote:999999:Fake]` token would otherwise let anyone burn
+ * a library slot. The caller must validate each src loads as an image before
+ * committing it. `urlFn` builds the CDN src from the id (injected so this stays
+ * pure and testable). Ids are deduped and both id- and name-derived duplicates
+ * collapse to one id-keyed entry.
+ */
+function observationsFromChatEmotes(emotes, urlFn) {
+  if (!Array.isArray(emotes)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const emote of emotes) {
+    if (!isRecord(emote)) continue;
+    const id = cleanStickerText(emote.id, 64).replace(/[^a-zA-Z0-9_-]/g, '');
+    const name = cleanStickerText(emote.name, 80);
+    if (!id || !name) continue;
+    const key = `id:${id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const src = cleanStickerAssetUrl(typeof urlFn === 'function' ? urlFn(id) : '');
+    if (!src) continue;
+    out.push({ key, id, name, src, nativeGroups: ['Seen in chat'], access: 'observed' });
+  }
+  return out;
+}
+
 function cleanStickerLibrary(input, hiddenSet = new Set()) {
   if (!Array.isArray(input)) return [];
   const library = [];
@@ -4738,10 +4767,15 @@ function onRealtimeFrame(event) {
 
 function onRealtimeChatMessage(payload) {
   const settings = state.settings.content;
-  if (!settings.countEmoteUsage && !settings.showChatBadges) return;
+  const wantsHarvest = settings.liveChatEvents && settings.organizeChatStickers;
+  if (!settings.countEmoteUsage && !settings.showChatBadges && !wantsHarvest) return;
   const message = normalizeChatMessage(payload);
   if (!message) return;
   if (settings.showChatBadges && message.badges.length) queueChatBadges(message);
+  // Harvest every emote seen in chat — everyone's messages, not just the local
+  // user's — into the library, each validated by an image load before it can
+  // take a cap slot. This is the single biggest untapped collection channel.
+  if (wantsHarvest && message.emotes.length) queueChatEmoteHarvest(message.emotes);
   if (!settings.countEmoteUsage || !message.emotes.length) return;
   // Only the local user's own sends are counted. Counting everyone's would
   // measure the channel, not the person, and the shelf exists to rank what
@@ -4753,6 +4787,64 @@ function onRealtimeChatMessage(payload) {
     state.emoteUsage = recordEmoteUse(state.emoteUsage, { channel, id: emote.id, name: emote.name, at });
   }
   queueUsagePersist();
+}
+
+/**
+ * Harvest emotes seen in realtime chat frames into the library.
+ *
+ * A frame carries {id,name} for every emote in a message. These are frame-only
+ * (no DOM node corroborates them and the id came off the wire), so an unknown
+ * emote is committed only after a one-shot Image() load proves the CDN actually
+ * serves it — a crafted [emote:999999:Fake] token fails that load and never
+ * takes a cap slot. At most a few loads run at once, and a per-session negative
+ * cache stops re-attempting an id that already failed. Emotes already in the
+ * library skip validation and merge directly to refresh their last-seen date.
+ */
+const HARVEST_MAX_INFLIGHT = 4;
+const HARVEST_NEGATIVE_CAP = 5000;
+const chatEmoteHarvest = { buffer: new Map(), negative: new Set(), queue: [], inflight: 0, timer: 0 };
+
+function queueChatEmoteHarvest(emotes) {
+  for (const observation of observationsFromChatEmotes(emotes, emoteImageUrl)) {
+    if (chatEmoteHarvest.negative.has(observation.key)) continue;
+    chatEmoteHarvest.buffer.set(observation.key, observation);
+  }
+  if (chatEmoteHarvest.buffer.size && !chatEmoteHarvest.timer) {
+    chatEmoteHarvest.timer = window.setTimeout(flushChatEmoteHarvest, 120);
+  }
+}
+
+function flushChatEmoteHarvest() {
+  chatEmoteHarvest.timer = 0;
+  const known = [];
+  for (const [key, observation] of chatEmoteHarvest.buffer) {
+    if (state.stickerPreferences.library.has(key)) known.push(observation);
+    else if (!chatEmoteHarvest.negative.has(key)) chatEmoteHarvest.queue.push(observation);
+  }
+  chatEmoteHarvest.buffer.clear();
+  // Already-recorded emotes only need their last-seen refreshed — no image round-trip.
+  if (known.length) mergeStickerLibrary(known);
+  pumpChatEmoteHarvest();
+}
+
+function pumpChatEmoteHarvest() {
+  while (chatEmoteHarvest.inflight < HARVEST_MAX_INFLIGHT && chatEmoteHarvest.queue.length) {
+    const observation = chatEmoteHarvest.queue.shift();
+    if (chatEmoteHarvest.negative.has(observation.key) || state.stickerPreferences.library.has(observation.key)) continue;
+    chatEmoteHarvest.inflight += 1;
+    const image = new Image();
+    const settle = (ok) => {
+      image.onload = null;
+      image.onerror = null;
+      chatEmoteHarvest.inflight -= 1;
+      if (ok) mergeStickerLibrary([observation]);
+      else if (chatEmoteHarvest.negative.size < HARVEST_NEGATIVE_CAP) chatEmoteHarvest.negative.add(observation.key);
+      pumpChatEmoteHarvest();
+    };
+    image.onload = () => settle(image.naturalWidth > 0);
+    image.onerror = () => settle(false);
+    image.src = observation.src;
+  }
 }
 
 /**

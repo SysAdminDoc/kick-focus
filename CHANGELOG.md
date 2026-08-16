@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Added
+
+- **Kick Focus now collects emotes straight from chat as they appear.** Every realtime chat message carries the id and name of each emote in it, and until now all of that was discarded except for counting your own sends. With **live chat events** and **organize chat emotes** both on, every emote anyone posts is now recorded in your library automatically — the single biggest source of emotes on a busy channel. A newly seen emote is only saved after its image actually loads from Kick's CDN, so a faked emote token can never take a slot, and emotes already in your library just refresh their last-seen date.
+
 ### Security
 
 - **The companion bridge is no longer an open channel for a page to abuse.** A script on kick.com could previously make the companion fetch any HTTPS URL and read the body back, write arbitrary data into extension storage, and toggle the telemetry ruleset through an unvalidated payload — and the "network protection active" claim was read from a page-writable `<html>` attribute anything could set. Now the blocklist fetch is pinned to your configured URL (never a URL supplied in the event), announced settings are reduced to the one field the popup reads before anything is stored, the blocklist URL is validated as a well-formed `https:` URL when settings are saved, and companion presence is proven by a live nonce round-trip instead of a page-set attribute.

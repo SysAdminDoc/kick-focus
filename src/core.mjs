@@ -815,6 +815,35 @@ export function evictStickerLibrary(library, limit = STICKER_LIBRARY_LIMIT, prot
   return { library: list.filter((_, index) => !dropped.has(index)), evicted: dropCount };
 }
 
+/**
+ * Turn a realtime chat frame's emote list into library observations.
+ *
+ * These are frame-only: no DOM node corroborated them, and the id came off the
+ * wire, so a crafted `[emote:999999:Fake]` token would otherwise let anyone burn
+ * a library slot. The caller must validate each src loads as an image before
+ * committing it. `urlFn` builds the CDN src from the id (injected so this stays
+ * pure and testable). Ids are deduped and both id- and name-derived duplicates
+ * collapse to one id-keyed entry.
+ */
+export function observationsFromChatEmotes(emotes, urlFn) {
+  if (!Array.isArray(emotes)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const emote of emotes) {
+    if (!isRecord(emote)) continue;
+    const id = cleanStickerText(emote.id, 64).replace(/[^a-zA-Z0-9_-]/g, '');
+    const name = cleanStickerText(emote.name, 80);
+    if (!id || !name) continue;
+    const key = `id:${id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const src = cleanStickerAssetUrl(typeof urlFn === 'function' ? urlFn(id) : '');
+    if (!src) continue;
+    out.push({ key, id, name, src, nativeGroups: ['Seen in chat'], access: 'observed' });
+  }
+  return out;
+}
+
 function cleanStickerLibrary(input, hiddenSet = new Set()) {
   if (!Array.isArray(input)) return [];
   const library = [];

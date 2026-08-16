@@ -93,6 +93,11 @@ const checks = [
     && source.includes("nativeGroups: ['Seen in chat']")
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
+  ['harvests emotes from realtime chat frames, image-validated before they take a slot', source.includes('function observationsFromChatEmotes')
+    && source.includes('function queueChatEmoteHarvest')
+    && source.includes('settings.liveChatEvents && settings.organizeChatStickers')
+    && source.includes('new Image()')
+    && source.includes('chatEmoteHarvest.negative')],
   ['caps the emote library without dropping new or acted-on records', source.includes('function evictStickerLibrary')
     && source.includes('function queueStickerPersist')
     && source.includes('if (state.stickerPreferences.hidden.has(sticker.key)) continue')
