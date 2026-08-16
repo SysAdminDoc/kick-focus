@@ -4,9 +4,14 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+_Nothing yet._
+
+## 1.12.0 — 2026-08-16
+
 ### Added
 
 - **Poor mode.** One opt-in setting hides Kick's Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop, and spend-leaderboard controls while preserving Follow, chat, and free daily rewards. It keys off the signed-in site's exact control ids/labels rather than broad page text, so a chat message mentioning a gift cannot disappear. The command menu can turn it on or off without adding another keyboard shortcut.
+- **Browse any channel's emotes without pretending the art grants access.** Content & Ads → Recorded emote library now accepts a channel name or Kick URL, fetches only that channel's own set on demand, saves the public artwork locally, and reports new, channel-only, and subscriber-only counts. Every card can open its original Kick artwork. The browser never bulk-fetches channels, inserts a wire token, sends chat, follows a channel, or changes account entitlement.
 
 ### Fixed
 
@@ -14,7 +19,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Internal
 
-- Emote preferences migrate losslessly to schema 6, which adds the portable `channel` access state. The catalog-access decision and the exact spending-control boundary used by the upcoming Poor mode are pure, unit-tested functions.
+- Emote preferences migrate losslessly to schema 6, which adds the portable `channel` access state. The catalog-access decision and Poor mode's exact spending-control boundary are pure, unit-tested functions.
 
 ## 1.11.0 — 2026-08-16
 

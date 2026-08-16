@@ -415,6 +415,19 @@ export function normalizeEmoteSets(payload) {
 }
 
 /**
+ * Return only the requested channel's own set from a normalized response.
+ * The response also carries Global/Emoji sets (and may eventually carry other
+ * account sets), none of which an arbitrary-channel import should duplicate.
+ */
+export function channelCatalogEmotes(catalog, slug) {
+  if (!catalog?.ok || !Array.isArray(catalog.sets) || !isValidSlug(slug)) return [];
+  const wanted = String(slug).toLowerCase();
+  const set = catalog.sets.find((entry) => entry.kind === 'channel'
+    && String(entry.name || '').toLowerCase() === wanted);
+  return Array.isArray(set?.emotes) ? set.emotes : [];
+}
+
+/**
  * Why an emote is unavailable, and where Kick itself lets you unlock it.
  *
  * Entitlement is read across several shapes on purpose. Kick has expressed

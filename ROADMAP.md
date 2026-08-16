@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-15**
+Updated: **2026-08-16**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 
@@ -144,13 +144,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: pure ranking in core.mjs under node:test (prefix>substring; tiebreak favorite/per-channel-usage/global-usage/name-length; Chatterino #1962/#3440 collisions as fixtures); insertion reuses R-17's boundary — plain NAME only, never the wire token, NO auto-send ever; mouse-only click-to-accept is the shipped default — Tab/arrow/Enter capture ships ONLY on explicit operator sign-off (no-new-shortcuts rule).
   Complexity: L
 
-- [ ] R-26 — Cross-channel emote browser tab (operator-requested)
-  Why: genuinely uncontested space on Kick; public GET kick.com/emotes/{slug} already exists.
-  Evidence: phase1b E9 — src/api.mjs endpoint class; NipahTV roadmap-only; external cpwemotes.co.uk / kickstats.com/emotes.
-  Touches: on-demand fetch + local cache in runtime.js; entitlement-aware locked labels; per-channel-scoped Multi pickers.
-  Acceptance: browsing one channel's emotes on demand, cached locally, with locked/observed labels; insertion stays entitlement-gated (reuses R-17 boundary — plain name only, no auto-send); no bulk pre-fetch.
-  Complexity: M
-
 - [ ] R-27 — "Add open tabs (n)" roll-call (operator-requested)
   Why: tabs-to-grid UX with zero permissions in both builds.
   Evidence: phase1b M6 — BroadcastChannel request/response; after R-19.
@@ -192,4 +185,3 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Touches: density/target-size CSS; focus-scroll for sticky chrome; relative font units in UI_CSS.
   Acceptance: all icon buttons stay ≥24×24 CSS px at every density; focused controls are never obscured by sticky chrome; the UI reflows without horizontal scroll at 200% zoom.
   Complexity: M
-

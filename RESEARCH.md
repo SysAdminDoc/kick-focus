@@ -22,12 +22,12 @@ The highest-value direction is operator-demand-driven, then the data-safety/secu
 
 ## Product Map
 
-**Core workflows (v1.9.0 reality):**
+**Core workflows (v1.12.0 reality):**
 - **Restyle + focus** — one graphite-and-lime shell over Kick's semantic desktop DOM; Standard/Theater/Focus layouts; Auto/Compact/Dropdown/Hidden discovery rail; a panic switch that restores native Kick without reload.
-- **Emote library** — schema-5 records from three live feeds (open-picker scrape, chat-DOM scan, per-channel API catalog with real entitlement), capped at 2,400; favorites shelf, custom groups, Kick-edit change detection via `firstSeen`/`wasName`/`wasSrc` provenance; JSON export/import.
+- **Emote library** — schema-6 records from the open picker, chat observations, the current-channel catalog, and explicit on-demand browsing of any named channel, capped at 2,400; favorites shelf, custom groups, Kick-edit change detection via `firstSeen`/`wasName`/`wasSrc` provenance; JSON export/import. A 2026-08-16 authenticated probe proved `/emotes/{slug}` returns free and subscriber-only artwork without entitlement fields, so free entries are labeled channel-only and subscriber entries locked until the native picker or an explicit signal confirms access.
 - **Multi-stream** — up to nine channels in one on-origin grid built on Kick's own embedded player + popout chat; audio/chat follow the focused tile; named layouts; shareable `?kf-multi=` links; reachable from header control, command menu, or settings.
 - **Content/ad defense** — page-realm `fetch`/XHR/beacon/dynamic-element hooks + `/playback` ad-flag rewrite; optional companion adds `declarativeNetRequest` network-layer blocking (8 ad + 3 telemetry hosts, `initiatorDomains:['kick.com']`).
-- **API reads** — read-only, same-origin, session-inherited: emote catalog with entitlement, realtime chat over the broker-named provider (Pusher or `websockets.kick.com`), removed-message reasons, per-channel/global usage counts, collectible rarity, shadowed-name reporting; each degrades to DOM behavior and has its own switch.
+- **API reads** — read-only, same-origin, session-inherited: public emote catalogs with conservative access labels, realtime chat over the broker-named provider (Pusher or `websockets.kick.com`), removed-message reasons, per-channel/global usage counts, collectible rarity, shadowed-name reporting; each degrades to DOM behavior and has its own switch.
 
 **Personas:** the privacy-and-calm desktop Kick viewer (restyle, filters, focus modes); the emote collector/power-chatter (library, favorites, the operator's harvest/autocomplete demands); the multi-channel viewer (grid, the operator's one-click-add demand). No mobile, no auth flows, no multi-step forms.
 

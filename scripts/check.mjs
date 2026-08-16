@@ -91,6 +91,10 @@ const checks = [
   ['ships Poor mode with exact spending-control tagging', source.includes('data-kf-poor-mode')
     && source.includes('data-kf-monetization')
     && source.includes("id === 'poor'")],
+  ['ships the read-only cross-channel emote browser', source.includes('data-kf-emote-catalog-input')
+    && source.includes('import-channel-emotes')
+    && source.includes('channelCatalogEmotes')
+    && source.includes('Open artwork')],
   ['keeps page state separate from navigation actions', source.includes('dataset.kfCurrentPage')
     && !source.includes('page.dataset.page =')],
   ['mounts the Focus control beside Get KICKs', source.includes('ensureHeaderQuickControl')

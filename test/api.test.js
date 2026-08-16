@@ -20,6 +20,7 @@ import {
   realtimeTransport,
   emoteLockState,
   catalogEmoteAccess,
+  channelCatalogEmotes,
   normalizeCurrentViewers,
   summarizeCollectibleInventory,
   COLLECTIBLE_FACTS,
@@ -344,6 +345,18 @@ test('emote sets keep access honest when the public catalog carries no entitleme
   assert.equal(malformed.ok, false);
   assert.equal(malformed.reason, 'no-emotes');
   assert.equal(malformed.emotes.length, 0);
+});
+
+test('cross-channel catalog import selects only the requested channel set', () => {
+  const catalog = normalizeEmoteSets([
+    { id: 12, name: 'target', emotes: [{ id: 1, name: 'TargetFree', subscribers_only: false }] },
+    { id: 13, name: 'another', emotes: [{ id: 2, name: 'OtherSub', subscribers_only: true }] },
+    { id: null, name: 'Global', emotes: [{ id: 3, name: 'Global' }] },
+  ]);
+  assert.deepEqual(channelCatalogEmotes(catalog, 'TARGET').map((emote) => emote.name), ['TargetFree']);
+  assert.deepEqual(channelCatalogEmotes(catalog, 'missing'), []);
+  assert.deepEqual(channelCatalogEmotes({ ok: false }, 'target'), []);
+  assert.deepEqual(channelCatalogEmotes(catalog, '../target'), []);
 });
 
 test('shadowed emote names name the winner Kick will actually send', () => {
