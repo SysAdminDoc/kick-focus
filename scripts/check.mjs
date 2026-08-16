@@ -133,6 +133,15 @@ const checks = [
   // written into a shadow root's innerHTML is re-tokenised and re-parsed on
   // every rebuild. The template must not carry the sheet, and every root must
   // adopt through the one feature-detected path.
+  // The library, favorites, removals and group assignments are all keyed by the
+  // same string. Migrating them anywhere but the one shared cleaner would move
+  // some and not others, and a favorite would stop matching its library entry.
+  ['emote keys are platform-prefixed through the one shared cleaner',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('function platformStickerKey')
+      && bundleSource.includes('const value = platformStickerKey(raw.trim())')
+      // Generated prefixed at the source too, or a fresh observation would miss
+      // every stored entry and record a duplicate beside it.
+      && !/key: `id:\$\{emote\.id\}`/.test(bundleSource))],
   // The apply cycle yields between its visible half and its bookkeeping half,
   // and must refuse to interleave with itself across that yield.
   ['the apply cycle yields to input and cannot re-enter across the yield',

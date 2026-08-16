@@ -14,6 +14,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - The About page reports what each page-change pass costs, and the figure travels with the diagnostics copy.
 
+### Internal
+
+- Recorded emotes now carry the platform they came from in their key (emote preferences schema 8). Everything is Kick's today, so this changes nothing you can see — it goes in now because the library, favorites, removals, and group assignments all share one key, and adding the origin later would mean migrating four stores at once against data that had grown for months. Existing libraries migrate on load or on import, keeping every entry and every favorite, and a backup from an older build still restores.
+
 ## 1.15.0 — 2026-08-16
 
 ### Changed

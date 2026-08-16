@@ -504,6 +504,69 @@ try {
     route.hasNavigationApi === true && route.pushNative === true && route.after === 'browse' && route.back !== 'browse',
     `navigation api=${route.hasNavigationApi} history free of this build=${route.pushNative}; route ${route.before} -> ${route.after} -> ${route.back}`);
 
+  // The emote key space gained a platform prefix. The migration has to be
+  // lossless against a store written by the previous build, so write one in the
+  // legacy shape, reload, and count what survived — a unit test cannot prove
+  // the real storage path re-reads and re-writes it correctly.
+  // Driven through the real import path rather than by seeding localStorage and
+  // reloading: the outgoing page flushes its own in-memory library on pagehide,
+  // which overwrites a seeded store before the new page can read it. An old
+  // backup is also how a user actually arrives at this migration.
+  const migrationProbe = await evaluate(pageClient, `(async () => {
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 700));
+    const backup = {
+      ...JSON.parse(localStorage.getItem('kick-focus:settings') || '{}'),
+      stickers: {
+        schema: 7,
+        library: [
+          { key: 'id:9001', id: '9001', name: 'LegacyOne', src: 'https://files.kick.com/emotes/9001/fullsize', nativeGroups: ['Seen in chat'], access: 'observed', firstSeen: 1, lastSeen: 2 },
+          { key: 'id:9002', id: '9002', name: 'LegacyTwo', src: 'https://files.kick.com/emotes/9002/fullsize', nativeGroups: ['Global'], access: 'available', firstSeen: 1, lastSeen: 3 },
+        ],
+        favorites: [{ key: 'id:9001', channel: '', order: 0 }],
+        hidden: ['id:9003'],
+        groups: [{ id: 'g1', name: 'Legacy group' }],
+        assignments: [{ key: 'id:9002', groupId: 'g1' }],
+      },
+    };
+    const input = shadow.querySelector('[data-kf-import]');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([JSON.stringify(backup)], 'legacy.json', { type: 'application/json' }));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    const stored = JSON.parse(localStorage.getItem('kick-focus:sticker-preferences') || '{}');
+    const result = {
+      ok: true,
+      schema: stored.schema,
+      keys: (stored.library || []).map((entry) => entry.key).sort(),
+      names: (stored.library || []).map((entry) => entry.name).sort(),
+      favorites: (stored.favorites || []).map((entry) => entry.key),
+      hidden: stored.hidden || [],
+      assignments: (stored.assignments || []).map((entry) => entry.key),
+      groups: (stored.groups || []).map((group) => group.id),
+    };
+    // Undo the import so the profile is left as it was found.
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    shadow.querySelector('[data-page="about"]').click();
+    await settle();
+    shadow.querySelector('[data-action="undo-import"]')?.click();
+    await settle();
+    return result;
+  })()`);
+  const m = migrationProbe.value || { why: migrationProbe.error || 'probe returned nothing' };
+  const prefixed = (list) => Array.isArray(list) && list.length > 0 && list.every((key) => key.startsWith('kick:'));
+  record('a backup from the previous build migrates to the platform-prefixed key space without loss',
+    m.ok === true && m.schema === 8
+      && m.names?.length === 2 && m.names[0] === 'LegacyOne' && m.names[1] === 'LegacyTwo'
+      && prefixed(m.keys) && prefixed(m.favorites) && prefixed(m.hidden) && prefixed(m.assignments)
+      // The favorite and the assignment must still resolve against the library.
+      && m.keys.includes(m.favorites[0]) && m.keys.includes(m.assignments[0])
+      && m.groups?.[0] === 'g1',
+    m.ok ? `schema=${m.schema} names=${JSON.stringify(m.names)} keys=${JSON.stringify(m.keys)} favorite=${JSON.stringify(m.favorites)} hidden=${JSON.stringify(m.hidden)} assignment=${JSON.stringify(m.assignments)}` : m.why);
+
   // Keyword highlighting paints matched words from the Custom Highlight
   // registry, writing no node into chat. There is no chat on Home, so drive a
   // real channel route, save a keyword through the real settings control, and

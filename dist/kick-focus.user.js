@@ -1011,7 +1011,37 @@ function monetizationKind({ text = '', ariaLabel = '', title = '', testId = '' }
   return '';
 }
 
-const STICKER_PREFERENCES_SCHEMA = 7;
+const STICKER_PREFERENCES_SCHEMA = 8;
+
+/**
+ * The platform an emote key belongs to.
+ *
+ * Keys were `id:<id>` or `name:<name>|src:<url>`, which says nothing about
+ * where the emote came from. Everything this build records is Kick's, so today
+ * that is a constant — but the library, the favorites, the removals and the
+ * group assignments are all keyed by the same string, and adding the origin
+ * later would mean migrating four stores at once against data that had grown
+ * for months. The prefix goes in now, while the migration is small.
+ */
+const PLATFORM_ID = 'kick';
+
+/** A key written before the prefix existed: the two legacy forms, nothing else. */
+const UNPREFIXED_STICKER_KEY = /^(?:id|name):/;
+
+/**
+ * Prefix a key with its platform, idempotently.
+ *
+ * Applied unconditionally rather than gated on the stored schema number, so a
+ * store that is half-migrated — an export from an older build imported into a
+ * newer one, say — heals instead of splitting into two key spaces. Only the two
+ * legacy shapes are rewritten; anything already carrying a platform is left as
+ * it is, and an emote whose *name* happens to start with `kick:` is unaffected
+ * because a raw key always begins `id:` or `name:`.
+ */
+function platformStickerKey(key, platformId = PLATFORM_ID) {
+  if (typeof key !== 'string' || !key) return '';
+  return UNPREFIXED_STICKER_KEY.test(key) ? `${platformId}:${key}` : key;
+}
 
 /**
  * Timestamps travel through the settings export, so an imported file can carry
@@ -1029,13 +1059,18 @@ function cleanCaptureTime(value) {
   return Math.floor(time);
 }
 
+// 360, not 320: a key is built and sliced to 320 before the platform prefix is
+// added, so the longest legitimate migrated key is 320 plus the prefix. At 320
+// this cap silently dropped the longest name-and-src keys during migration.
+const STICKER_KEY_MAX_LENGTH = 360;
+
 function cleanStickerKeys(input, limit = 2400) {
   if (!Array.isArray(input)) return [];
   const values = [];
   const seen = new Set();
   for (const raw of input) {
-    if (typeof raw !== 'string' || raw.length > 320) continue;
-    const value = raw.trim();
+    if (typeof raw !== 'string' || raw.length > STICKER_KEY_MAX_LENGTH) continue;
+    const value = platformStickerKey(raw.trim());
     if (!value || seen.has(value)) continue;
     seen.add(value);
     values.push(value);
@@ -1590,9 +1625,13 @@ function validateImportedSettings(jsonText) {
     // because an import that silently loses entries undermines the trust the
     // export/import round-trip exists to provide.
     if (Array.isArray(parsed.stickers.library)) {
+      // Both sides in one key space: the normalized library carries platform-
+      // prefixed keys, the parsed file may still hold the legacy form, and
+      // comparing across the two reported every entry as dropped.
       const keptKeys = new Set(stickers.library.map((entry) => entry.key));
       const dropped = parsed.stickers.library
-        .filter((entry) => isRecord(entry) && entry.name && entry.key && !keptKeys.has(entry.key))
+        .filter((entry) => isRecord(entry) && entry.name && entry.key
+          && !keptKeys.has(platformStickerKey(String(entry.key).trim())))
         .map((entry) => String(entry.name).slice(0, 80));
       if (dropped.length) {
         const sample = dropped.slice(0, 5).join(', ');
@@ -5345,7 +5384,7 @@ async function refreshEmoteCatalog(slug) {
   // signal. Seed the library without claiming that subscriber artwork is
   // sendable; the native picker can still upgrade a confirmed tile later.
   mergeStickerLibrary(catalog.emotes.map((emote) => ({
-    key: `id:${emote.id}`,
+    key: platformStickerKey(`id:${emote.id}`),
     id: emote.id,
     name: emote.name,
     src: emote.url,
@@ -6712,7 +6751,10 @@ function stickerImageInfo(image, options = {}) {
   const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
   const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Emote';
   const src = rawSrc;
-  const key = (id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320);
+  // Prefixed at the point of creation, not only on persist: the library is
+  // keyed by this string, so a raw key here would miss every stored entry and
+  // record a duplicate beside it.
+  const key = platformStickerKey((id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320));
   return { key, id, name, src };
 }
 
@@ -10465,7 +10507,7 @@ async function importChannelEmotes() {
 
   const before = state.stickerPreferences.library.size;
   const records = emotes.map((emote) => ({
-    key: `id:${emote.id}`,
+    key: platformStickerKey(`id:${emote.id}`),
     id: emote.id,
     name: emote.name,
     src: emote.url,

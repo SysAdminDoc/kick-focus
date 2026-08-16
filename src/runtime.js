@@ -2035,7 +2035,7 @@ async function refreshEmoteCatalog(slug) {
   // signal. Seed the library without claiming that subscriber artwork is
   // sendable; the native picker can still upgrade a confirmed tile later.
   mergeStickerLibrary(catalog.emotes.map((emote) => ({
-    key: `id:${emote.id}`,
+    key: platformStickerKey(`id:${emote.id}`),
     id: emote.id,
     name: emote.name,
     src: emote.url,
@@ -3402,7 +3402,10 @@ function stickerImageInfo(image, options = {}) {
   const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
   const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Emote';
   const src = rawSrc;
-  const key = (id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320);
+  // Prefixed at the point of creation, not only on persist: the library is
+  // keyed by this string, so a raw key here would miss every stored entry and
+  // record a duplicate beside it.
+  const key = platformStickerKey((id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320));
   return { key, id, name, src };
 }
 
@@ -7155,7 +7158,7 @@ async function importChannelEmotes() {
 
   const before = state.stickerPreferences.library.size;
   const records = emotes.map((emote) => ({
-    key: `id:${emote.id}`,
+    key: platformStickerKey(`id:${emote.id}`),
     id: emote.id,
     name: emote.name,
     src: emote.url,

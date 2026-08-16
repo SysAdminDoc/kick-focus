@@ -28,6 +28,7 @@ import {
   neutralizePlaybackPayload,
   nextApplyDelay,
   normalizeStickerPreferences,
+  platformStickerKey,
   evictStickerLibrary,
   STICKER_LIBRARY_LIMIT,
   normalizeSettings,
@@ -109,6 +110,54 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
+
+test('emote keys carry a platform prefix, and every store migrates together losslessly', { tag: 'unit' }, () => {
+  assert.equal(platformStickerKey('id:37226'), 'kick:id:37226');
+  assert.equal(platformStickerKey('name:kekw|src:https://files.kick.com/emotes/1/fullsize'),
+    'kick:name:kekw|src:https://files.kick.com/emotes/1/fullsize');
+  // Idempotent, so a half-migrated store heals instead of splitting in two.
+  assert.equal(platformStickerKey('kick:id:37226'), 'kick:id:37226');
+  assert.equal(platformStickerKey(platformStickerKey('id:1')), 'kick:id:1');
+  // An emote *named* like a platform is untouched, because a raw key always
+  // begins id: or name:.
+  assert.equal(platformStickerKey('twitch:id:9'), 'twitch:id:9');
+  assert.equal(platformStickerKey(''), '');
+  assert.equal(platformStickerKey(null), '');
+
+  // The migration: a schema-7 store where all four key spaces must move as one,
+  // or a favorite silently stops matching its library entry.
+  const legacy = {
+    schema: 7,
+    library: [
+      { key: 'id:1', id: '1', name: 'One', src: 'https://files.kick.com/emotes/1/fullsize', access: 'available' },
+      { key: 'id:2', id: '2', name: 'Two', src: 'https://files.kick.com/emotes/2/fullsize', access: 'observed' },
+    ],
+    favorites: [{ key: 'id:1', channel: '', order: 0 }],
+    hidden: ['id:3'],
+    groups: [{ id: 'grp', name: 'Group' }],
+    assignments: [{ key: 'id:2', groupId: 'grp' }],
+  };
+  const migrated = normalizeStickerPreferences(legacy);
+  assert.equal(migrated.schema, 8);
+  assert.deepEqual(migrated.library.map((entry) => entry.key), ['kick:id:1', 'kick:id:2']);
+  assert.deepEqual(migrated.favorites.map((entry) => entry.key), ['kick:id:1']);
+  assert.deepEqual(migrated.hidden, ['kick:id:3']);
+  assert.deepEqual(migrated.assignments, [{ key: 'kick:id:2', groupId: 'grp' }]);
+  // Nothing was dropped, and the favorite still resolves against the library.
+  assert.equal(migrated.library.length, legacy.library.length);
+  assert.ok(migrated.library.some((entry) => entry.key === migrated.favorites[0].key),
+    'the migrated favorite must still match a migrated library entry');
+
+  // Re-normalising migrated data changes nothing.
+  assert.deepEqual(normalizeStickerPreferences(migrated), migrated);
+
+  // The longest legitimate key survives: it is built and capped at 320 before
+  // the prefix, so the key-length ceiling has to allow for the prefix too.
+  const longest = `name:${'x'.repeat(40)}|src:https://files.kick.com/emotes/${'9'.repeat(240)}/fullsize`.slice(0, 320);
+  assert.equal(longest.length, 320);
+  const long = normalizeStickerPreferences({ schema: 7, hidden: [longest] });
+  assert.deepEqual(long.hidden, [`kick:${longest}`], 'a 320-character key must not be dropped by the migration');
 });
 
 test('keyword spans are case-insensitive, sorted, merged, and capped', { tag: 'unit' }, () => {
@@ -558,14 +607,14 @@ test('emote preferences keep favorites, removals, and view modes bounded and loc
     view: 'pinned',
     showHidden: true,
   });
-  assert.deepEqual(value.favorites, [{ key: 'id:1', channel: '', order: 0 }]);
-  assert.deepEqual(value.hidden, ['id:2', 'id:3']);
+  assert.deepEqual(value.favorites, [{ key: 'kick:id:1', channel: '', order: 0 }]);
+  assert.deepEqual(value.hidden, ['kick:id:2', 'kick:id:3']);
   assert.equal(value.view, 'pinned');
   assert.equal(value.showHidden, true);
 
   // A longer legacy list keeps its order across the migration.
   const ordered = normalizeStickerPreferences({ pinned: ['id:9', 'id:7', 'id:8'] });
-  assert.deepEqual(ordered.favorites.map((entry) => entry.key), ['id:9', 'id:7', 'id:8']);
+  assert.deepEqual(ordered.favorites.map((entry) => entry.key), ['kick:id:9', 'kick:id:7', 'kick:id:8']);
   assert.deepEqual(ordered.favorites.map((entry) => entry.order), [0, 1, 2]);
 
   assert.equal(normalizeStickerPreferences({ view: 'unexpected' }).view, 'all');
@@ -586,20 +635,20 @@ test('favorites are scoped per channel with a global fallback', { tag: 'unit' },
   }).favorites;
 
   // On the channel: its own first, then the globals it has not overridden.
-  assert.deepEqual(favoritesForChannel(favorites, 'xqc'), ['id:x1', 'id:g1', 'id:g2']);
+  assert.deepEqual(favoritesForChannel(favorites, 'xqc'), ['kick:id:x1', 'kick:id:g1', 'kick:id:g2']);
   // Anywhere else, only the globals — a channel favorite stays on its channel.
-  assert.deepEqual(favoritesForChannel(favorites, 'someone-else'), ['id:g1', 'id:g2']);
-  assert.deepEqual(favoritesForChannel(favorites, ''), ['id:g1', 'id:g2']);
+  assert.deepEqual(favoritesForChannel(favorites, 'someone-else'), ['kick:id:g1', 'kick:id:g2']);
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['kick:id:g1', 'kick:id:g2']);
 
-  assert.equal(isStickerFavorite(favorites, 'id:x1', 'xqc'), true);
-  assert.equal(isStickerFavorite(favorites, 'id:x1', 'other'), false);
-  assert.equal(isStickerFavorite(favorites, 'id:g1', 'other'), true);
+  assert.equal(isStickerFavorite(favorites, 'kick:id:x1', 'xqc'), true);
+  assert.equal(isStickerFavorite(favorites, 'kick:id:x1', 'other'), false);
+  assert.equal(isStickerFavorite(favorites, 'kick:id:g1', 'other'), true);
 
   // The same emote favorited in both scopes appears once, not twice.
   const both = normalizeStickerPreferences({
     favorites: [{ key: 'id:a', channel: '', order: 0 }, { key: 'id:a', channel: 'xqc', order: 0 }],
   }).favorites;
-  assert.deepEqual(favoritesForChannel(both, 'xqc'), ['id:a']);
+  assert.deepEqual(favoritesForChannel(both, 'xqc'), ['kick:id:a']);
 
   // Scope names are validated like any other slug.
   assert.equal(favoriteScope('XQC'), 'xqc');
@@ -676,8 +725,8 @@ test('a hidden emote can never be favorited, in any scope', { tag: 'unit' }, () 
       { key: 'id:kept', channel: '', order: 1 },
     ],
   });
-  assert.deepEqual(value.favorites.map((entry) => entry.key), ['id:kept']);
-  assert.deepEqual(favoritesForChannel(value.favorites, 'xqc'), ['id:kept']);
+  assert.deepEqual(value.favorites.map((entry) => entry.key), ['kick:id:kept']);
+  assert.deepEqual(favoritesForChannel(value.favorites, 'xqc'), ['kick:id:kept']);
 });
 
 test('sticker library keeps portable metadata, catalog access, custom groups, and one assignment per sticker', { tag: 'unit' }, () => {
@@ -706,7 +755,7 @@ test('sticker library keeps portable metadata, catalog access, custom groups, an
   assert.equal(value.schema, STICKER_PREFERENCES_SCHEMA);
   assert.equal(value.view, 'group');
   assert.equal(value.groups.length, 2);
-  assert.deepEqual(value.assignments, [{ key: 'id:100', groupId: 'reactions' }]);
+  assert.deepEqual(value.assignments, [{ key: 'kick:id:100', groupId: 'reactions' }]);
   assert.equal(value.library.length, 3);
   assert.equal(value.library[0].access, 'locked');
   assert.deepEqual(value.library[0].nativeGroups, ['Global']);
@@ -736,7 +785,7 @@ test('eviction protects available, favorited, and assigned emotes and drops olde
     'id:assigned', 'id:available-old', 'id:favorited', 'id:locked-old', 'id:observed-new',
   ]);
   // The oldest chat-only entry is the one that went; nothing protected did.
-  assert.ok(!kept.some((item) => item.key === 'id:observed-old'));
+  assert.ok(!kept.some((item) => item.key === 'kick:id:observed-old'));
 });
 
 test('a full library evicts an old observed entry rather than dropping the new one', { tag: 'unit' }, () => {
@@ -749,8 +798,8 @@ test('a full library evicts an old observed entry rather than dropping the new o
   const withNew = [...full, base(STICKER_LIBRARY_LIMIT + 1000)]; // freshest lastSeen
   const value = normalizeStickerPreferences({ schema: STICKER_PREFERENCES_SCHEMA, library: withNew });
   assert.equal(value.library.length, STICKER_LIBRARY_LIMIT);
-  assert.ok(value.library.some((item) => item.key === `id:${STICKER_LIBRARY_LIMIT + 1000}`), 'the new emote survives');
-  assert.ok(!value.library.some((item) => item.key === 'id:1'), 'the oldest observed emote is evicted');
+  assert.ok(value.library.some((item) => item.key === `kick:id:${STICKER_LIBRARY_LIMIT + 1000}`), 'the new emote survives');
+  assert.ok(!value.library.some((item) => item.key === 'kick:id:1'), 'the oldest observed emote is evicted');
 });
 
 test('removed keys are never re-materialised into the library on normalize', { tag: 'unit' }, () => {
@@ -762,7 +811,7 @@ test('removed keys are never re-materialised into the library on normalize', { t
       { key: 'id:kept', id: 'kept', name: 'Kept', src: 'https://files.kick.com/emotes/kept/fullsize', nativeGroups: [], access: 'observed' },
     ],
   });
-  assert.deepEqual(value.library.map((item) => item.key), ['id:kept']);
+  assert.deepEqual(value.library.map((item) => item.key), ['kick:id:kept']);
 });
 
 test('the emote preferences migrate losslessly from every historical schema to the current schema', { tag: 'unit' }, () => {
@@ -773,8 +822,8 @@ test('the emote preferences migrate losslessly from every historical schema to t
   const s1 = normalizeStickerPreferences({ schema: 1, pinned: ['id:1', 'id:2'] });
   assert.equal(s1.schema, STICKER_PREFERENCES_SCHEMA);
   assert.deepEqual(s1.favorites, [
-    { key: 'id:1', channel: '', order: 0 },
-    { key: 'id:2', channel: '', order: 1 },
+    { key: 'kick:id:1', channel: '', order: 0 },
+    { key: 'kick:id:2', channel: '', order: 1 },
   ]);
 
   // Schema 3: pinned + groups + assignments + a library without provenance.
@@ -785,10 +834,10 @@ test('the emote preferences migrate losslessly from every historical schema to t
     assignments: [{ key: 'id:5', groupId: 'g1' }],
     library: [{ key: 'id:5', id: '5', name: 'Old', src: cdn(5), nativeGroups: ['Set'], access: 'available' }],
   });
-  assert.equal(s3.favorites[0].key, 'id:5');
+  assert.equal(s3.favorites[0].key, 'kick:id:5');
   assert.equal(s3.favorites[0].channel, ''); // pinned migrates to global
   assert.deepEqual(s3.groups, [{ id: 'g1', name: 'Faves' }]);
-  assert.deepEqual(s3.assignments, [{ key: 'id:5', groupId: 'g1' }]);
+  assert.deepEqual(s3.assignments, [{ key: 'kick:id:5', groupId: 'g1' }]);
   assert.equal(s3.library[0].firstSeen, 0); // pre-schema-4 entry: unknown, not faked
 
   // Schema 4: pinned + a library carrying first-seen and Kick-edit provenance.
@@ -800,7 +849,7 @@ test('the emote preferences migrate losslessly from every historical schema to t
       firstSeen: day, lastSeen: day, wasName: 'Older', wasSrc: cdn('7v1'),
     }],
   });
-  assert.equal(s4.favorites[0].key, 'id:7');
+  assert.equal(s4.favorites[0].key, 'kick:id:7');
   assert.equal(s4.library[0].firstSeen, day);       // provenance preserved
   assert.equal(s4.library[0].wasName, 'Older');     // Kick-rename record preserved
   assert.equal(s4.library[0].wasSrc, cdn('7v1'));   // Kick-reart record preserved
@@ -811,8 +860,8 @@ test('the emote preferences migrate losslessly from every historical schema to t
     favorites: [{ key: 'id:9', channel: 'xqc', order: 0 }, { key: 'id:8', channel: '', order: 0 }],
   });
   assert.deepEqual(s5.favorites, [
-    { key: 'id:9', channel: 'xqc', order: 0 },
-    { key: 'id:8', channel: '', order: 0 },
+    { key: 'kick:id:9', channel: 'xqc', order: 0 },
+    { key: 'kick:id:8', channel: '', order: 0 },
   ]);
 
   // Schema 6 adds an honest channel-only catalog state. It stays portable and
@@ -934,7 +983,7 @@ test('settings import round-trips the sticker library without treating it as an 
   }));
   assert.equal(imported.ok, true);
   assert.equal(imported.stickers.library.length, 1);
-  assert.deepEqual(imported.stickers.assignments, [{ key: 'id:100', groupId: 'memes' }]);
+  assert.deepEqual(imported.stickers.assignments, [{ key: 'kick:id:100', groupId: 'memes' }]);
   assert.equal(imported.notes.some((note) => /unknown section "stickers"/.test(note)), false);
   assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Emote schema 99/);
 });
@@ -1276,13 +1325,13 @@ test('emote history survives the export round-trip and rejects impossible dates'
   }));
   assert.equal(imported.ok, true);
 
-  const kept = imported.stickers.library.find((entry) => entry.key === 'id:9');
+  const kept = imported.stickers.library.find((entry) => entry.key === 'kick:id:9');
   assert.equal(kept.firstSeen, seen);
   assert.equal(kept.lastSeen, seen + 1000);
   assert.equal(kept.wasName, 'Before');
   assert.equal(stickerChangedSinceCapture(kept), true);
 
-  const junk = imported.stickers.library.find((entry) => entry.key === 'id:10');
+  const junk = imported.stickers.library.find((entry) => entry.key === 'kick:id:10');
   assert.equal(junk.firstSeen, 0);
   assert.equal(junk.lastSeen, 0);
 

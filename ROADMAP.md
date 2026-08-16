@@ -109,10 +109,4 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: a zero-dep IDB provider fronts library storage with localStorage fallback; migration from the current store is lossless under node:test; Dexie is NOT added.
   Complexity: XL
 
-- [ ] R-30 — platformId key-prefix forward-compat on the emote schema
-  Why: NipahTV independently converged on KF's schema-5 with a platformId prefix KF lacks.
-  Evidence: twitch-mods stream — NipahTV Database.ts keyed `[platformId+channelId+emoteHid]`.
-  Touches: emote schema keys + migration in core.mjs; bind to the next STICKER_PREFERENCES_SCHEMA bump (and R-34's migration test harness).
-  Acceptance: the emote key schema carries a platformId prefix with a tested migration from the current keys; bound to the next schema bump.
-  Complexity: M
 
