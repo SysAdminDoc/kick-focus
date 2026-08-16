@@ -134,6 +134,10 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  ['API drift is recorded and reported on the About page', source.includes('recordApiDrift')
+    && source.includes('assessApiDrift')
+    && source.includes('data-kf-api-drift')],
+
   ['blocklist fetch prefers a CORS-free transport', source.includes('fetchBlocklistText')
     && source.includes('GM_xmlhttpRequest')
     && source.includes('kick-focus:fetch-blocklist')

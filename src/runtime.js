@@ -140,6 +140,7 @@ const state = {
     reconnectAt: 0,
     reconnectAttempts: 0,
     provider: '',
+    apiDrift: [],
   },
   emoteUsage: readEmoteUsage(),
   multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
@@ -1608,6 +1609,15 @@ function currentChannelSlug() {
 }
 
 /**
+ * Record an API shape mismatch so the About page can report accumulated drift
+ * rather than silently falling back. Capped at 50 events per session.
+ */
+function recordApiDrift(endpoint, reason, detail = '') {
+  if (state.live.apiDrift.length >= 50) return;
+  state.live.apiDrift.push({ endpoint, reason, detail, at: Date.now() });
+}
+
+/**
  * Pull channel identity and the emote catalog for the current channel.
  *
  * The catalog is the point: the organizer otherwise scrapes a lazy-rendered
@@ -1645,6 +1655,7 @@ async function refreshLiveChannel() {
   state.live.channel = normalizeChannel(channelResponse.body);
   if (!state.live.channel) {
     state.live.catalogError = "Kick's channel payload no longer has the expected shape.";
+    recordApiDrift('channel', 'shape-changed');
     refreshLiveDiagnostics();
     return;
   }
@@ -1667,6 +1678,7 @@ async function refreshEmoteCatalog(slug) {
     // A changed shape must not produce an empty organizer that looks like an
     // account with no emotes. Keep scraping and say why.
     state.live.catalogError = `Kick's emote payload changed shape (${catalog.reason}); using the picker instead.`;
+    recordApiDrift('emotes', 'shape-changed', catalog.reason);
     refreshLiveDiagnostics();
     return;
   }
@@ -1745,6 +1757,7 @@ async function connectRealtime() {
     state.live.catalogError = connection.reason === 'unsupported-provider'
       ? `Kick switched realtime provider to ${connection.offered.join(', ')}; chat features fall back to the page.`
       : 'Kick did not return usable realtime credentials; chat features fall back to the page.';
+    recordApiDrift('realtime', connection.reason, connection.offered?.join(', '));
     refreshLiveDiagnostics();
     return;
   }
@@ -1896,9 +1909,15 @@ function queueUsagePersist() {
 }
 
 function refreshLiveDiagnostics() {
-  if (!state.shadow || state.currentPage !== 'content') return;
-  const target = state.shadow.querySelector('[data-kf-live-status]');
-  if (target) target.textContent = liveStatusSummary();
+  if (!state.shadow) return;
+  if (state.currentPage === 'content') {
+    const target = state.shadow.querySelector('[data-kf-live-status]');
+    if (target) target.textContent = liveStatusSummary();
+  }
+  if (state.currentPage === 'about') {
+    const drift = state.shadow.querySelector('[data-kf-api-drift]');
+    if (drift) drift.textContent = assessApiDrift(state.live.apiDrift).summary;
+  }
 }
 
 function liveStatusSummary() {
@@ -5497,6 +5516,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks ${AD_HOSTS.length + TELEMETRY_HOSTS.length} third-party ad and telemetry hosts and <strong>no kick.com host at all</strong>, so pausing Kick Focus will not change that behaviour. Check your ad blocker&rsquo;s filters for kick.com before blaming an extension.</p></div></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
+      <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>

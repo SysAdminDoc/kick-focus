@@ -427,6 +427,34 @@ export function assessAdStack(observed = {}) {
 }
 
 /**
+ * Accumulated API drift report.
+ *
+ * Kick removed an endpoint, dropped a header, and changed moderation behaviour
+ * inside four weeks, and each was found by a competing client breaking in
+ * public. This detects shape changes at the boundary rather than discovering
+ * them through breakage; the model is assessAdStack above.
+ */
+export function assessApiDrift(events = []) {
+  if (!events.length) {
+    return { drifted: false, summary: 'No API shape mismatches this session.' };
+  }
+  const unique = new Map();
+  for (const event of events) {
+    const key = `${event.endpoint}:${event.reason}`;
+    unique.set(key, event);
+  }
+  const entries = [...unique.values()];
+  const summary = entries.map((e) =>
+    `${e.endpoint} — ${e.reason}${e.detail ? ` (${e.detail})` : ''}`
+  ).join('; ');
+  return {
+    drifted: true,
+    count: entries.length,
+    summary: `${entries.length} API shape change${entries.length === 1 ? '' : 's'}: ${summary}.`,
+  };
+}
+
+/**
  * Describe how early the script actually started.
  *
  * `@run-at document-start` is a request, not a guarantee: Chromium userscript

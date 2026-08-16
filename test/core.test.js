@@ -10,6 +10,7 @@ import {
   recordStorageResult,
   FILTER_MIN_SAMPLE,
   assessAdStack,
+  assessApiDrift,
   classifyRequest,
   describeInjection,
   detectContentLabels,
@@ -419,6 +420,29 @@ test('ad stack drift is reported instead of passing silently', () => {
   const absent = assessAdStack({ sawPlayback: true, playbackSdkKeys: [] });
   assert.equal(absent.status, 'absent');
   assert.equal(absent.drifted, true);
+});
+
+test('API drift is accumulated and reported instead of silently falling back', () => {
+  // No drift is the normal case.
+  const clean = assessApiDrift([]);
+  assert.equal(clean.drifted, false);
+
+  // A shape change names the endpoint and reason.
+  const drifted = assessApiDrift([
+    { endpoint: 'channel', reason: 'shape-changed', at: Date.now() },
+    { endpoint: 'emotes', reason: 'shape-changed', detail: 'not-an-array', at: Date.now() },
+  ]);
+  assert.equal(drifted.drifted, true);
+  assert.equal(drifted.count, 2);
+  assert.match(drifted.summary, /channel/);
+  assert.match(drifted.summary, /emotes/);
+
+  // Duplicate endpoint+reason pairs are collapsed.
+  const deduped = assessApiDrift([
+    { endpoint: 'channel', reason: 'shape-changed', at: 1 },
+    { endpoint: 'channel', reason: 'shape-changed', at: 2 },
+  ]);
+  assert.equal(deduped.count, 1);
 });
 
 test('failed writes are named and recovered writes clear themselves', () => {
