@@ -67,8 +67,13 @@ for (const directory of ['content', 'rules', 'icons']) {
 }
 
 const manifest = (await read('src/extension/manifest.json')).replaceAll('__VERSION__', VERSION);
+// Dev manifest adds declarativeNetRequestFeedback for onRuleMatchedDebug counter.
+// The release manifest omits it so Chrome does not show "Read your browsing history".
+const devManifestObj = JSON.parse(manifest);
+devManifestObj.permissions.push('declarativeNetRequestFeedback');
 const files = [
   ['manifest.json', manifest],
+  ['manifest.dev.json', `${JSON.stringify(devManifestObj, null, 2)}\n`],
   ['background.js', await read('src/extension/background.js')],
   ['popup.html', await read('src/extension/popup.html')],
   ['popup.js', await read('src/extension/popup.js')],
@@ -122,7 +127,17 @@ for (const directory of ['content', 'icons']) {
   await mkdir(resolve(firefoxRoot, directory), { recursive: true });
 }
 
-const firefoxManifest = (await read('src/extension/manifest.firefox.json')).replaceAll('__VERSION__', VERSION);
+// Firefox host permissions are generated from the same host lists that drive
+// the page-realm classifier, replacing the former <all_urls> with enumerated
+// hosts so the install prompt names only the sites the extension touches.
+const generatedHostPerms = [...AD_HOSTS, ...TELEMETRY_HOSTS]
+  .map((host) => `*://*.${host}/*`);
+const firefoxManifestRaw = (await read('src/extension/manifest.firefox.json')).replaceAll('__VERSION__', VERSION);
+const firefoxManifestObj = JSON.parse(firefoxManifestRaw.replace(
+  /\s*"__GENERATED_HOST_PERMISSIONS__"/,
+  generatedHostPerms.map((p) => `\n    ${JSON.stringify(p)}`).join(','),
+));
+const firefoxManifest = `${JSON.stringify(firefoxManifestObj, null, 2)}\n`;
 const firefoxBackground = (await read('src/extension/background.firefox.js'))
   .replace('__AD_HOSTS__', JSON.stringify(AD_HOSTS))
   .replace('__TELEMETRY_HOSTS__', JSON.stringify(TELEMETRY_HOSTS));

@@ -131,7 +131,7 @@ Kick changes frequently. The most brittle hooks are the sidebar and chat selecto
 
 ## Build and verify
 
-No runtime or development dependencies are required beyond Node.js 20+.
+No runtime or development dependencies are required beyond Node.js 22+.
 
 ```powershell
 npm run build              # userscript + dist/extension/ + shareable zip

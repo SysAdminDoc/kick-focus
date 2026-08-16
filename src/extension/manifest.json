@@ -22,8 +22,7 @@
   },
   "permissions": [
     "storage",
-    "declarativeNetRequest",
-    "declarativeNetRequestFeedback"
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://kick.com/*",

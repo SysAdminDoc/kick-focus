@@ -12,6 +12,7 @@ const content = await read('dist/extension/content/kick-focus.js');
 const bridge = await read('dist/extension/content/bridge.js');
 const adRules = await readJson('dist/extension/rules/ads.json');
 const telemetryRules = await readJson('dist/extension/rules/telemetry.json');
+const devManifest = await readJson('dist/extension/manifest.dev.json');
 const firefoxManifest = await readJson('dist/extension-firefox/manifest.json');
 const firefoxContent = await read('dist/extension-firefox/content/kick-focus.js');
 const firefoxBridge = await read('dist/extension-firefox/content/bridge.js');
@@ -228,6 +229,12 @@ const checks = [
   ['page-realm hooks do not announce themselves', source.includes('function disguise(')
     && source.includes('[native code]')],
 
+  // The release manifest drops declarativeNetRequestFeedback to avoid the
+  // "Read your browsing history" Chrome warning.  The counter in background.js
+  // already degrades — it shows "—" in the popup when the debug API is absent.
+  ['release manifest omits the feedback permission', !manifest.permissions.includes('declarativeNetRequestFeedback')],
+  ['dev manifest provides the feedback permission', devManifest.permissions.includes('declarativeNetRequestFeedback')],
+
   // Firefox companion shape
   ['Firefox manifest version matches', firefoxManifest.version === VERSION],
   ['Firefox manifest is v2', firefoxManifest.manifest_version === 2],
@@ -249,6 +256,12 @@ const checks = [
     && firefoxBackground.includes('details?.documentUrl')],
   ['Firefox host lists are generated', !firefoxBackground.includes('__AD_HOSTS__')
     && !firefoxBackground.includes('__TELEMETRY_HOSTS__')],
+  ['Firefox requests no broad host access', !firefoxManifest.permissions.includes('<all_urls>')],
+  ['Firefox does not request the tabs permission', !firefoxManifest.permissions.includes('tabs')],
+  ['Firefox enumerates every ad and telemetry host', [...AD_HOSTS, ...TELEMETRY_HOSTS]
+    .every((host) => firefoxManifest.permissions.some((perm) => perm.includes(host)))],
+  ['Firefox declares no data collection', firefoxManifest.browser_specific_settings?.gecko
+    ?.data_collection_permissions?.required?.[0] === 'none'],
 ];
 
 for (const [label, passed] of checks) {
