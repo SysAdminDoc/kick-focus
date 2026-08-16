@@ -1,4 +1,4 @@
-export const VERSION = '1.17.0';
+export const VERSION = '1.18.0';
 export const SETTINGS_SCHEMA = 4;
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -56,6 +56,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // captured from the keyboard, so it cannot swallow a keystroke meant for
     // Kick's own composer.
     emoteAutocomplete: false,
+    // Acts on the user's behalf, so it is opt-in like the two above. It clicks
+    // Kick's own claim button in Kick's own dialog and nothing else — it cannot
+    // claim a reward the account has not earned, because a disabled button is
+    // Kick refusing and this obeys it.
+    autoClaimRewards: false,
     // Where a newly favorited emote lands. Global by default: changing this
     // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
@@ -281,6 +286,86 @@ export function insertionPlanFor(descriptor, collisions = [], access = '') {
         : `Another set shadows ${name}, so typing it may send a different emote.`)
       : '';
   return { ok: true, text: name, warning, sendable, reason: '' };
+}
+
+// ---------------------------------------------------------------------------
+// Daily reward claim
+//
+// Kick's daily reward is a header button that opens a dialog with one action
+// button, disabled until enough watch time has accrued. The claim itself is a
+// POST from inside Kick's own bundle, so this drives the dialog rather than the
+// endpoint: the same rule the rest of this build follows, and the reason the
+// feature needs no new permission and can never claim something the account has
+// not earned — a disabled button is Kick saying no, and it is obeyed.
+//
+// The decision is here, where it is testable without a browser. The runtime
+// only carries it out.
+// ---------------------------------------------------------------------------
+
+/**
+ * The reward is a roulette reveal, so its action button is labelled with
+ * whichever verb that reward uses.
+ */
+export const CLAIM_ACTION = /^\s*(claim|open|spin|reveal|collect)\b/i;
+const CLAIM_COUNTDOWN = /watch\s+(\d+)\s+more\s+minute/i;
+
+/**
+ * How long to wait before looking again after finding the reward not ready.
+ *
+ * The apply cycle runs on every route change and every few seconds of DOM
+ * churn; opening Kick's dialog at that rate would fight the user for focus and
+ * hammer a surface that changes once an hour at most.
+ */
+export const CLAIM_RECHECK_MS = 10 * 60 * 1000;
+/** And after a successful claim, since the reward is daily. */
+export const CLAIM_BACKOFF_MS = 6 * 60 * 60 * 1000;
+
+/** "Watch 54 more minutes to claim" → 54. */
+export function parseClaimCountdown(text) {
+  const match = CLAIM_COUNTDOWN.exec(String(text ?? ''));
+  if (!match) return null;
+  const minutes = Number(match[1]);
+  return Number.isFinite(minutes) ? minutes : null;
+}
+
+/**
+ * Decide what the auto-claim should do from observable facts alone.
+ *
+ * Returns one of:
+ * - `absent`   — no reward trigger on the page (logged out, or nothing to claim)
+ * - `cooling`  — looked recently; do not reopen the dialog
+ * - `wait`     — the dialog is open and the action is disabled: Kick says not yet
+ * - `claim`    — the action is present and enabled; clicking it is the whole feature
+ *
+ * `enabled` is the user's setting. Everything here is deliberately conservative:
+ * anything unrecognised resolves to `wait`, never to `claim`.
+ */
+export function decideRewardClaim(facts = {}) {
+  const {
+    enabled = false,
+    hasTrigger = false,
+    dialogOpen = false,
+    hasAction = false,
+    actionDisabled = true,
+    now = 0,
+    lastAttemptAt = 0,
+    lastClaimAt = 0,
+    recheckMs = CLAIM_RECHECK_MS,
+    backoffMs = CLAIM_BACKOFF_MS,
+  } = facts;
+
+  if (!enabled) return { action: 'absent', reason: 'off' };
+  if (!hasTrigger) return { action: 'absent', reason: 'no-trigger' };
+  // A claim already made today is the common case, and the trigger stays on the
+  // page afterwards — so without this the dialog would reopen every recheck.
+  if (lastClaimAt > 0 && now - lastClaimAt < backoffMs) return { action: 'cooling', reason: 'claimed-recently' };
+  if (!dialogOpen) {
+    if (lastAttemptAt > 0 && now - lastAttemptAt < recheckMs) return { action: 'cooling', reason: 'checked-recently' };
+    return { action: 'open', reason: 'due' };
+  }
+  if (!hasAction) return { action: 'wait', reason: 'no-action-button' };
+  if (actionDisabled) return { action: 'wait', reason: 'not-ready' };
+  return { action: 'claim', reason: 'ready' };
 }
 
 /** Shortest query worth opening a list for. One letter matches most of a library. */
@@ -573,6 +658,7 @@ export function normalizeSettings(input) {
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
     emoteAutocomplete: bool(content.emoteAutocomplete, defaults.content.emoteAutocomplete),
+    autoClaimRewards: bool(content.autoClaimRewards, defaults.content.autoClaimRewards),
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),

@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.18.0 — 2026-08-16
+
+### Added
+
+- **Claim Kick's daily reward automatically** (off by default). When a reward is waiting, Kick Focus opens Kick's own reward dialog and clicks its claim button for you, then closes it again and gives you focus back. It clicks nothing else. A reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying — so it can never claim something the account has not earned. It waits until you are not typing and no Kick Focus panel is open, checks at most once every ten minutes, and stops for the day once it claims. The check is shared across your tabs, so four open Kick tabs do not each open the dialog. Signed-in only: the reward button does not exist otherwise.
+
 ## 1.17.0 — 2026-08-16
 
 ### Added

@@ -1315,6 +1315,163 @@ try {
     c.close();
     return r.result.targetId;
   })();
+  // The daily-reward auto-claim, against a reproduction of Kick's own dialog.
+  //
+  // The real trigger only exists for a signed-in account and this gate runs
+  // logged out, so the markup below is rebuilt from a capture of the live
+  // dialog: the nested `<div class="contents">Claim</div>`, the button carrying
+  // BOTH `disabled` and `aria-disabled="true"` until ready, and the sibling
+  // "Watch N more minutes to claim". What that proves is the whole mechanism —
+  // that a disabled reward is left alone, that a ready one is clicked exactly
+  // once, and that a claim is not chased again afterwards. What it cannot prove
+  // is that Kick's markup still matches the capture; only a signed-in run can.
+  const rewardProbe = await evaluate(pageClient, `(async () => {
+    const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    // This runs last, after other checks have moved the panel around, so put it
+    // back on the page that owns the setting before reaching for it.
+    document.dispatchEvent(new CustomEvent('kick-focus:open-settings'));
+    await settle();
+    shadow.querySelector('[data-page="content"]')?.click();
+    await settle();
+    const toggle = shadow.querySelector('[data-set="content.autoClaimRewards"]');
+    if (!toggle) return { ok: false, why: 'auto-claim setting not rendered' };
+    const wasOn = toggle.getAttribute('aria-checked') === 'true';
+    localStorage.removeItem('kick-focus:reward-claims');
+    // The claim deliberately refuses to open Kick's dialog while a Kick Focus
+    // panel is up — it would take focus from someone reading it. Earlier checks
+    // leave the settings panel open, so without closing it here every scenario
+    // below would "pass" by never running at all.
+    const host = document.getElementById('kick-focus-root');
+    const panelWasOpen = Boolean(host) && !host.hidden;
+    const closePanel = () => shadow.querySelector('[data-action="close-settings"]')?.click();
+    const reopenPanel = () => document.dispatchEvent(new CustomEvent('kick-focus:open-settings'));
+
+    let clicks = 0;
+    const mount = (ready) => {
+      const trigger = document.createElement('button');
+      trigger.setAttribute('aria-label', 'Claim Your Daily Reward');
+      trigger.setAttribute('aria-haspopup', 'dialog');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.style.cssText = 'position:fixed;left:-3000px;top:0';
+      const dialog = document.createElement('div');
+      dialog.setAttribute('role', 'dialog');
+      dialog.style.cssText = 'position:fixed;left:-3000px;top:60px';
+      dialog.hidden = true;
+      const action = document.createElement('button');
+      // Exactly as captured: the label is nested, not a direct text child.
+      action.innerHTML = '<div class="contents">Claim</div>';
+      if (!ready) { action.disabled = true; action.setAttribute('aria-disabled', 'true'); }
+      action.addEventListener('click', () => { clicks += 1; });
+      const note = document.createElement('p');
+      note.textContent = ready ? '' : 'Watch 54 more minutes to claim';
+      const close = document.createElement('button');
+      close.setAttribute('aria-label', 'Close');
+      dialog.append(action, note, close);
+      trigger.addEventListener('click', () => {
+        const open = trigger.getAttribute('aria-expanded') === 'true';
+        trigger.setAttribute('aria-expanded', String(!open));
+        dialog.hidden = open;
+      });
+      document.body.append(trigger, dialog);
+      return { trigger, dialog };
+    };
+    const teardown = (parts) => { parts.trigger.remove(); parts.dialog.remove(); };
+    const cycle = async () => {
+      // Two cycles: one opens the dialog, the next acts on it.
+      // The apply cycle coalesces route changes, so "two dispatches" is not
+      // reliably two cycles — and the claim needs one pass to open Kick's
+      // dialog and the next to act on it. Four, with room between, is.
+      for (let pass = 0; pass < 4; pass += 1) {
+        window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+        await settle(450);
+      }
+    };
+
+    try {
+      if (!wasOn) { toggle.click(); await settle(); }
+      closePanel();
+      await settle();
+      // Closing the panel restores focus to whatever had it before, which on
+      // the home page can be a header input — and the claim rightly refuses to
+      // open a dialog under a focused field. Clear it the way a click on empty
+      // page background would.
+      document.activeElement?.blur?.();
+      await settle(200);
+      // Re-read the toggle: changing a setting re-renders the page, so the
+      // node captured earlier is detached and reports a stale aria-checked.
+      const liveToggle = () => shadow.querySelector('[data-set="content.autoClaimRewards"]');
+      const diag = {
+        panelShown: Boolean(shadow.querySelector('[data-kf-settings-shell]')?.closest('[hidden]') === null),
+        active: document.activeElement?.tagName || null,
+        enabled: liveToggle()?.getAttribute('aria-checked'),
+      };
+
+      // 1. Not ready: the dialog is opened and read, and nothing is clicked.
+      let parts = mount(false);
+      await cycle();
+      const notReady = { clicks, reached: parts.dialog.dataset.kfRewardDialog === 'true' || parts.trigger.dataset.kfSeen === 'true' };
+      // Proof the mechanism actually ran rather than being skipped: the record
+      // only exists if the claim opened Kick's dialog.
+      notReady.attempted = Number(JSON.parse(localStorage.getItem('kick-focus:reward-claims') || '{}').lastAttemptAt) > 0;
+      teardown(parts);
+      localStorage.removeItem('kick-focus:reward-claims');
+      await settle();
+
+      // 2. Ready: exactly one click, and the claim is recorded.
+      clicks = 0;
+      parts = mount(true);
+      await cycle();
+      const ready = { clicks, stored: JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null') };
+
+      // 3. Already claimed: the backoff must stop a second claim.
+      clicks = 0;
+      await cycle();
+      const again = { clicks };
+      teardown(parts);
+
+      // 4. Off: a ready reward is left completely alone. Re-query rather than
+      // reusing the captured node — changing a setting re-renders the page, so
+      // the original is detached and clicking it changes nothing.
+      liveToggle()?.click();
+      await settle();
+      closePanel();
+      await settle();
+      localStorage.removeItem('kick-focus:reward-claims');
+      clicks = 0;
+      parts = mount(true);
+      await cycle();
+      const off = { clicks, opened: parts.trigger.getAttribute('aria-expanded') };
+      teardown(parts);
+
+      return { ok: true, diag, notReady, ready, again, off };
+    } finally {
+      localStorage.removeItem('kick-focus:reward-claims');
+      for (const node of document.querySelectorAll('[aria-label="Claim Your Daily Reward"]')) node.remove();
+      if (panelWasOpen) { reopenPanel(); await settle(); }
+      const restore = shadow.querySelector('[data-set="content.autoClaimRewards"]');
+      if (restore?.getAttribute('aria-checked') === 'true' && !wasOn) restore.click();
+      await settle();
+    }
+  })()`);
+  const reward = rewardProbe.value || {};
+  record('a reward Kick has not unlocked is never clicked',
+    // `attempted` is what makes this non-vacuous: it proves the claim really
+    // opened the dialog and then declined, rather than never running.
+    reward.ok === true && reward.notReady?.clicks === 0 && reward.notReady?.attempted === true,
+    reward.ok ? `dialog opened=${reward.notReady?.attempted}, disabled claim button clicked ${reward.notReady?.clicks} times ${JSON.stringify(reward.diag)}` : reward.why);
+  record('a ready reward is claimed exactly once and recorded',
+    reward.ok === true && reward.ready?.clicks === 1 && Number(reward.ready?.stored?.lastClaimAt) > 0,
+    reward.ok ? `clicks=${reward.ready?.clicks}, stored claims=${reward.ready?.stored?.claims}` : reward.why);
+  record('a reward already claimed is not chased again',
+    reward.ok === true && reward.again?.clicks === 0,
+    reward.ok ? `second pass clicked ${reward.again?.clicks} times` : reward.why);
+  record('with the setting off the reward dialog is never even opened',
+    reward.ok === true && reward.off?.clicks === 0 && reward.off?.opened === 'false',
+    reward.ok ? `clicks=${reward.off?.clicks}, trigger expanded=${reward.off?.opened}` : reward.why);
+
+
   await sleep(2500);
   const popupTarget = (await json('/json/list')).find((t) => t.id === popupId);
   const popupClient = cdp(popupTarget.webSocketDebuggerUrl);

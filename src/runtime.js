@@ -12,6 +12,10 @@ const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
 const LAST_CRASH_KEY = 'kick-focus:last-crash';
+// When the daily reward was last claimed on this browser. Persisted because the
+// backoff has to survive a reload — otherwise every navigation would reopen
+// Kick's dialog looking for a reward that was already taken.
+const REWARD_STATE_KEY = 'kick-focus:reward-claims';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 
 // Declared ahead of `state` because writes can happen while `state` is still in
@@ -206,6 +210,19 @@ const state = {
   },
   emoteUsage: readEmoteUsage(),
   multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
+  reward: (() => {
+    const stored = gmGet(REWARD_STATE_KEY, null);
+    const record = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+    return {
+      lastClaimAt: Number(record.lastClaimAt) || 0,
+      claims: Number(record.claims) || 0,
+      lastAttemptAt: 0,
+      minutesRemaining: null,
+      lastMessage: '',
+      decision: '',
+      restoreFocusTo: null,
+    };
+  })(),
   multistreamError: '',
   // slug -> Kick channel id, and slug -> live, both filled from Kick's own
   // responses. Kept apart from `multistream` so neither is ever persisted.
@@ -4184,6 +4201,7 @@ async function runApplyCycle() {
 
     replayPendingDeletions();
     replayPendingBadges();
+    runRewardClaim();
     renderStickerOrganizer();
     applyChatHighlights();
     applyPlaybackDiagnostics();
@@ -5622,6 +5640,14 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canales ocultos. Cuentan para el límite de seguridad.',
     'channel': 'canal',
     'channels': 'canales',
+    'minute': 'minuto',
+    'minutes': 'minutos',
+    'time': 'vez',
+    'times': 'veces',
+    'Claim the daily reward automatically': 'Reclamar la recompensa diaria automáticamente',
+    'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only — the reward button does not exist otherwise.': 'Abre el propio diálogo de recompensa de Kick cuando hay una esperando y pulsa su botón de reclamar por ti. No pulsa nada más: una recompensa que Kick aún no ha desbloqueado muestra un botón desactivado, y esto lo deja en paz en lugar de intentarlo. Espera a que no estés escribiendo, comprueba como mucho cada diez minutos y se detiene por hoy en cuanto reclama. Solo con sesión iniciada: el botón de recompensa no existe de otro modo.',
+    'Daily reward claimed. It is in your collectibles.': 'Recompensa diaria reclamada. Está en tus coleccionables.',
+    'Daily reward claimed.': 'Recompensa diaria reclamada.',
     'Add open tabs ({count})': 'Añadir pestañas abiertas ({count})',
     'Added {count} from your other tabs — {total} of {max}': 'Se añadieron {count} de tus otras pestañas: {total} de {max}',
     'Added {count} channels from your other tabs.': 'Se añadieron {count} canales de tus otras pestañas.',
@@ -5975,6 +6001,14 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canais ocultos. Eles contam para o limite de segurança.',
     'channel': 'canal',
     'channels': 'canais',
+    'minute': 'minuto',
+    'minutes': 'minutos',
+    'time': 'vez',
+    'times': 'vezes',
+    'Claim the daily reward automatically': 'Reivindicar a recompensa diária automaticamente',
+    'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only — the reward button does not exist otherwise.': 'Abre o próprio diálogo de recompensa da Kick quando há uma à espera e clica no botão de reivindicar por você. Não clica em mais nada: uma recompensa que a Kick ainda não liberou mostra um botão desativado, e isto deixa-o em paz em vez de tentar. Espera até você não estar digitando, verifica no máximo a cada dez minutos e para por hoje assim que reivindica. Apenas com sessão iniciada — o botão de recompensa não existe de outra forma.',
+    'Daily reward claimed. It is in your collectibles.': 'Recompensa diária reivindicada. Está nos seus colecionáveis.',
+    'Daily reward claimed.': 'Recompensa diária reivindicada.',
     'Add open tabs ({count})': 'Adicionar abas abertas ({count})',
     'Added {count} from your other tabs — {total} of {max}': 'Foram adicionados {count} das suas outras abas: {total} de {max}',
     'Added {count} channels from your other tabs.': 'Foram adicionados {count} canais das suas outras abas.',
@@ -6787,6 +6821,8 @@ function renderContentPage() {
         ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
         ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
         ${row('Suggest emotes as you type', 'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured — and it never sends the message.', toggle('content.emoteAutocomplete', value.emoteAutocomplete, { label: 'Suggest emotes as you type' }))}
+        ${row('Claim the daily reward automatically', 'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only — the reward button does not exist otherwise.', toggle('content.autoClaimRewards', value.autoClaimRewards, { label: 'Claim the daily reward automatically' }))}
+        <p class="kf-hint" data-kf-reward-status>${escapeHtml(rewardStatusSummary())}</p>
         ${row('New favorites apply to', 'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.', segmented('content.favoriteScope', value.favoriteScope, [['global', 'Everywhere'], ['channel', 'This channel']]))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
@@ -7411,6 +7447,8 @@ function clearPrivateData() {
   gmDelete(CHANNEL_NOTES_KEY);
   state.mediaPreferences = {};
   gmDelete(MEDIA_PREFERENCES_KEY);
+  state.reward = { ...state.reward, lastClaimAt: 0, claims: 0, minutesRemaining: null, lastMessage: '' };
+  gmDelete(REWARD_STATE_KEY);
 }
 
 function confirmReset() {
@@ -7816,6 +7854,180 @@ function acceptEmoteCompletion(key) {
     return;
   }
   if (plan.warning) showToast(plan.warning, true);
+}
+
+// ---------------------------------------------------------------------------
+// Daily reward auto-claim
+//
+// Kick's reward is a header button that opens a dialog holding one action
+// button, disabled until the account has watched enough. The claim POST lives
+// inside Kick's own bundle, so this drives that dialog instead of the endpoint —
+// no new permission, no replayed private request, and no way to claim something
+// the account has not earned: a disabled button is Kick refusing, and this
+// never clicks one.
+//
+// Selectors and the action verbs come from a capture of the real dialog. The
+// nested `<div class="contents">Claim</div>` is why the label is read from
+// `textContent` rather than a child node, and the button carries both `disabled`
+// and `aria-disabled="true"` when it is not ready — both are honoured.
+// ---------------------------------------------------------------------------
+
+const REWARD_TRIGGER = 'button[aria-label="Claim Your Daily Reward"]';
+const REWARD_DIALOG = '[role="dialog"]';
+
+function rewardDialog() {
+  // Only a dialog this build actually opened counts. Kick reuses `role="dialog"`
+  // for other surfaces, and clicking a button in the wrong one would be a real
+  // misfire rather than a missed claim.
+  for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
+    if (dialog.dataset.kfRewardDialog === 'true') return dialog;
+  }
+  return null;
+}
+
+function rewardActionButton(dialog) {
+  for (const button of dialog.querySelectorAll('button')) {
+    if (CLAIM_ACTION.test(button.textContent || '')) return button;
+  }
+  return null;
+}
+
+function rewardActionDisabled(button) {
+  return Boolean(button.disabled) || button.getAttribute('aria-disabled') === 'true';
+}
+
+/** Close what we opened, and put focus back where the user left it. */
+function closeRewardDialog(dialog, restoreTo) {
+  if (dialog) {
+    delete dialog.dataset.kfRewardDialog;
+    const close = dialog.querySelector('button[aria-label*="close" i]');
+    if (close) close.click();
+  }
+  const trigger = document.querySelector(REWARD_TRIGGER);
+  // Radix keeps the dialog open while its trigger reports expanded; toggling the
+  // trigger is the path that always works, Escape is not (this build adds no
+  // key handling, and synthesising one would be a keystroke the page did not get).
+  if (trigger?.getAttribute('aria-expanded') === 'true') trigger.click();
+  if (restoreTo?.isConnected) restoreTo.focus?.();
+}
+
+/**
+ * One pass of the reward check, driven from the apply cycle.
+ *
+ * Deliberately does nothing while the user is mid-interaction: opening Kick's
+ * dialog moves focus, and doing that under someone typing in chat or reading a
+ * Kick Focus panel would cost more than the reward is worth.
+ */
+/**
+ * The claim timestamps, read from storage rather than memory.
+ *
+ * Both are shared: someone with four Kick tabs open would otherwise have four
+ * independent cooldowns, and all four would open Kick's reward dialog. Reading
+ * the record each pass means one tab claiming backs every tab off, and the
+ * recheck interval survives a reload instead of restarting with it.
+ */
+function rewardRecord() {
+  const stored = gmGet(REWARD_STATE_KEY, null);
+  const record = isPlainRecord(stored) ? stored : {};
+  return {
+    lastClaimAt: Number(record.lastClaimAt) || 0,
+    lastAttemptAt: Number(record.lastAttemptAt) || 0,
+    claims: Number(record.claims) || 0,
+  };
+}
+
+function writeRewardRecord(patch) {
+  const next = { ...rewardRecord(), ...patch };
+  gmSet(REWARD_STATE_KEY, next);
+  Object.assign(state.reward, next);
+  return next;
+}
+
+function runRewardClaim() {
+  const settings = state.settings.content;
+  const now = Date.now();
+  const trigger = document.querySelector(REWARD_TRIGGER);
+  const open = rewardDialog();
+  const record = rewardRecord();
+  const action = open ? rewardActionButton(open) : null;
+  const decision = decideRewardClaim({
+    enabled: settings.autoClaimRewards,
+    hasTrigger: Boolean(trigger),
+    dialogOpen: Boolean(open),
+    hasAction: Boolean(action),
+    actionDisabled: !action || rewardActionDisabled(action),
+    now,
+    lastAttemptAt: record.lastAttemptAt,
+    lastClaimAt: record.lastClaimAt,
+  });
+  state.reward.decision = decision.reason;
+  if (decision.action === 'absent' || decision.action === 'cooling') return;
+
+  if (decision.action === 'open') {
+    // Never take focus out from under someone. The next cycle will try again.
+    // `state.modal` is the settings panel's own container — the shadow host is
+    // not it, because the host also carries the always-visible quick button and
+    // is therefore never hidden. Keying off the host meant the panel always read
+    // as open and the claim could never run at all.
+    const panelOpen = Boolean(state.modal && !state.modal.hidden);
+    if (multistreamOpen() || panelOpen || document.activeElement?.closest?.(
+      '[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"], input, textarea',
+    )) return;
+    writeRewardRecord({ lastAttemptAt: now });
+    state.reward.restoreFocusTo = document.activeElement;
+    trigger.click();
+    // Radix mounts the dialog synchronously off the click; claim on the next
+    // cycle so a half-rendered dialog is never acted on.
+    for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
+      if (dialog.contains(trigger)) continue;
+      dialog.dataset.kfRewardDialog = 'true';
+    }
+    return;
+  }
+
+  if (decision.action === 'wait') {
+    const minutes = parseClaimCountdown(open.textContent || '');
+    state.reward.minutesRemaining = minutes;
+    if (minutes != null) state.reward.lastMessage = `Daily reward in ${minutes} ${plural(minutes, 'minute', 'minutes')}.`;
+    closeRewardDialog(open, state.reward.restoreFocusTo);
+    updateRewardStatusInPlace();
+    return;
+  }
+
+  // The only click this feature ever makes. Recorded before it happens, so a
+  // reward that claims but throws on the way out is still not claimed twice.
+  writeRewardRecord({ lastClaimAt: now, claims: record.claims + 1 });
+  state.reward.minutesRemaining = 0;
+  action.click();
+  state.reward.lastMessage = `Daily reward claimed at ${new Date(now).toLocaleTimeString()}.`;
+  showToast('Daily reward claimed. It is in your collectibles.', false, [
+    { label: 'View', onClick: () => window.open('https://kick.com/collectibles', '_blank', 'noopener') },
+  ]);
+  announce('Daily reward claimed.');
+  // Let the reveal animation run before closing, the way a person would.
+  window.setTimeout(() => closeRewardDialog(rewardDialog(), state.reward.restoreFocusTo), 6000);
+  updateRewardStatusInPlace();
+}
+
+function updateRewardStatusInPlace() {
+  for (const node of state.shadow?.querySelectorAll('[data-kf-reward-status]') || []) {
+    node.textContent = rewardStatusSummary();
+  }
+}
+
+function rewardStatusSummary() {
+  if (!state.settings.content.autoClaimRewards) return 'Off. Kick Focus never opens the reward dialog.';
+  const parts = [];
+  if (state.reward.lastClaimAt) {
+    parts.push(`Last claimed ${new Date(state.reward.lastClaimAt).toLocaleString()} (${state.reward.claims} ${plural(state.reward.claims, 'time', 'times')} on this browser).`);
+  } else {
+    parts.push('Nothing claimed yet on this browser.');
+  }
+  if (state.reward.minutesRemaining != null && state.reward.minutesRemaining > 0) {
+    parts.push(`Kick last reported ${state.reward.minutesRemaining} ${plural(state.reward.minutesRemaining, 'minute', 'minutes')} of watch time still needed.`);
+  }
+  if (!state.reward.lastAttemptAt) parts.push('No reward button has appeared yet — it only exists while you are signed in.');
+  return parts.join(' ');
 }
 
 function chatMessageInput() {

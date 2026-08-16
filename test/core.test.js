@@ -78,7 +78,80 @@ import {
   cardSlugFromPath,
   emoteTriggerAt,
   rankEmoteCompletions,
+  CLAIM_ACTION,
+  CLAIM_BACKOFF_MS,
+  CLAIM_RECHECK_MS,
+  decideRewardClaim,
+  parseClaimCountdown,
 } from '../src/core.mjs';
+
+// The dialog is open and the reward is ready — the only state that clicks.
+const READY = { enabled: true, hasTrigger: true, dialogOpen: true, hasAction: true, actionDisabled: false, now: 1_000_000 };
+
+test('a reward is claimed only when Kick itself says it is ready', { tag: 'unit' }, () => {
+  assert.equal(decideRewardClaim(READY).action, 'claim');
+
+  // Every way Kick says no. A disabled button is a refusal, and the whole
+  // safety of this feature is that it is obeyed rather than worked around.
+  assert.equal(decideRewardClaim({ ...READY, actionDisabled: true }).action, 'wait');
+  assert.equal(decideRewardClaim({ ...READY, hasAction: false }).action, 'wait');
+  assert.equal(decideRewardClaim({ ...READY, hasTrigger: false }).action, 'absent');
+  assert.equal(decideRewardClaim({ ...READY, enabled: false }).action, 'absent');
+  // Unknown input must never resolve to a click.
+  assert.equal(decideRewardClaim().action, 'absent');
+  assert.equal(decideRewardClaim({ enabled: true, hasTrigger: true, dialogOpen: true }).action, 'wait');
+});
+
+test('the setting is what gates it, not the presence of a button', { tag: 'unit' }, () => {
+  // Off means the dialog is never even opened, on a page that is showing a
+  // ready reward — the strongest form of the guarantee.
+  assert.deepEqual(decideRewardClaim({ ...READY, enabled: false }), { action: 'absent', reason: 'off' });
+  assert.deepEqual(decideRewardClaim({ ...READY, enabled: false, dialogOpen: false }), { action: 'absent', reason: 'off' });
+});
+
+test('the dialog is opened on a schedule, not on every apply cycle', { tag: 'unit' }, () => {
+  const base = { enabled: true, hasTrigger: true, dialogOpen: false, now: 1_000_000 };
+  assert.equal(decideRewardClaim(base).action, 'open', 'never looked before, so look now');
+
+  // The apply cycle runs every few seconds; opening Kick's dialog at that rate
+  // would fight the user for focus.
+  assert.deepEqual(decideRewardClaim({ ...base, lastAttemptAt: base.now - 1000 }),
+    { action: 'cooling', reason: 'checked-recently' });
+  assert.equal(decideRewardClaim({ ...base, lastAttemptAt: base.now - CLAIM_RECHECK_MS - 1 }).action, 'open');
+  assert.equal(decideRewardClaim({ ...base, lastAttemptAt: base.now - CLAIM_RECHECK_MS + 1 }).action, 'cooling');
+});
+
+test('a reward claimed today is not chased again for hours', { tag: 'unit' }, () => {
+  const now = 5_000_000_000;
+  // The trigger stays in Kick's header after a claim, so without this the
+  // dialog would reopen on every recheck for the rest of the day.
+  assert.deepEqual(decideRewardClaim({ ...READY, now, lastClaimAt: now - 60_000 }),
+    { action: 'cooling', reason: 'claimed-recently' });
+  assert.equal(decideRewardClaim({ ...READY, now, lastClaimAt: now - CLAIM_BACKOFF_MS - 1 }).action, 'claim');
+  // And the backoff beats a ready button, which is the point: a second claim
+  // in the same window means something is wrong, not that a reward is owed.
+  assert.equal(decideRewardClaim({ ...READY, now, lastClaimAt: now - 1 }).action, 'cooling');
+});
+
+test('the countdown Kick renders is read back, and nothing else is', { tag: 'unit' }, () => {
+  assert.equal(parseClaimCountdown('Watch 54 more minutes to claim'), 54);
+  assert.equal(parseClaimCountdown('watch 1 more minute to claim'), 1);
+  assert.equal(parseClaimCountdown('  Watch   7   more   minutes to claim  '), 7);
+  for (const text of ['Claim', '', null, undefined, 'Watch more minutes to claim', 'Watch soon']) {
+    assert.equal(parseClaimCountdown(text), null, `${String(text)} carries no countdown`);
+  }
+});
+
+test('the action button is recognised by every verb the reward uses', { tag: 'unit' }, () => {
+  // It is a roulette reveal, so the label varies by reward.
+  for (const label of ['Claim', 'Open', 'Spin', 'Reveal', 'Collect', '  claim ', 'Claim reward']) {
+    assert.ok(CLAIM_ACTION.test(label), `${JSON.stringify(label)} is an action button`);
+  }
+  // And not by anything else in the same dialog.
+  for (const label of ['Cancel', 'Close', 'Reclaim', 'Claimed', 'Watch 54 more minutes to claim', '']) {
+    assert.ok(!CLAIM_ACTION.test(label), `${JSON.stringify(label)} is not an action button`);
+  }
+});
 
 test('a colon only triggers completion where it starts a token', { tag: 'unit' }, () => {
   assert.deepEqual(emoteTriggerAt(':pep'), { query: 'pep', length: 4 });

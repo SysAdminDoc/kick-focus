@@ -255,6 +255,36 @@ async function topLevelCollisions(files) {
 }
 const nameClashes = await topLevelCollisions([...moduleFiles, 'src/runtime.js']);
 
+/**
+ * The auto-claim clicks Kick's button and nothing else.
+ *
+ * Three properties make this safe, and all three are worth failing on. It must
+ * drive the DOM rather than the claim endpoint (which lives inside Kick's own
+ * bundle — replaying it would be exactly the private-endpoint replay this
+ * project refuses). It must treat both `disabled` and `aria-disabled` as a
+ * refusal, because Kick sets both and honouring one is honouring neither. And
+ * it must only act inside a dialog this build itself opened, since `role=dialog`
+ * is reused across the site and clicking an action button in the wrong one is a
+ * misfire rather than a missed reward.
+ */
+function rewardClaimRegion(bundle) {
+  const start = bundle.indexOf('const REWARD_TRIGGER =');
+  const end = bundle.indexOf('function chatMessageInput', start);
+  return start === -1 || end === -1 ? '' : bundle.slice(start, end);
+}
+const rewardClaimIsSafe = (bundle) => {
+  const region = rewardClaimRegion(bundle);
+  if (!region) return false;
+  return /\.disabled\)?\s*\|\|\s*.*aria-disabled/.test(region)
+    && region.includes('decideRewardClaim({')
+    && region.includes("dialog.dataset.kfRewardDialog === 'true'")
+    // No network of any kind in the claim path.
+    && !/\bfetch\(|XMLHttpRequest|pageFetch\(|kickFetchJson\(/.test(region);
+};
+/** It must be opt-in, like every other feature that acts on the user's behalf. */
+const rewardClaimIsOptIn = (bundle) => /autoClaimRewards: false/.test(bundle)
+  && /enabled: settings\.autoClaimRewards/.test(bundle);
+
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
 const unroutedHTML = bundleTargets
@@ -505,6 +535,8 @@ const checks = [
   // Favorites are ordered and scoped. The shelf must render them in the stored
   // order rather than the picker's, or the ordering controls do nothing
   // visible; and the order has to be part of the render signature.
+  ['the reward auto-claim drives Kick’s dialog, never a claim endpoint', rewardClaimIsSafe(source)],
+  ['the reward auto-claim is off until it is turned on', rewardClaimIsOptIn(source)],
   ['the library is stored behind a provider with a synchronous fallback',
     source.includes('createLibraryStore({') && source.includes('readFallback:') && source.includes('writeFallback:')
     && /function readStickerPreferences[\s\S]{0,200}?libraryStore\.readSync\(\)/.test(source)
@@ -788,6 +820,12 @@ const redProbes = [
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
   ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  ['reward gate would catch a claim that posted to an endpoint',
+    !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\nawait kickFetchJson('/api/v1/claim');\nfunction chatMessageInput() {}")],
+  ['reward gate would catch a claim that ignored aria-disabled',
+    !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\nif (!button.disabled) button.click();\ndecideRewardClaim({});\nfunction chatMessageInput() {}")],
+  ['reward gate would catch a claim on a dialog this build did not open',
+    !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\ndocument.querySelector('[role=dialog]').click();\ndecideRewardClaim({});\nfunction chatMessageInput() {}")],
   ['mouse-only gate would catch a completion list that captures Enter',
     !completionIsMouseOnly("function emoteCompletionHost() { list.addEventListener('keydown', accept); }\nfunction acceptEmoteCompletion() {}")],
   ['mouse-only gate would catch a completion that submits the message',
