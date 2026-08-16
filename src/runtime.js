@@ -77,6 +77,7 @@ const state = {
     matureVisible: false,
     chatPaused: false,
     suspended: false,
+    routeSource: '',
     stickerGridScrollTop: null,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
@@ -4667,22 +4668,41 @@ function updateApplyCostInPlace() {
   if (node) node.textContent = tr(applyCostSummary(state.diagnostics.apply));
 }
 
+/**
+ * Learn about route changes from the browser, not from a wrapper around history.
+ *
+ * The Navigation API reports every same-document URL change — pushState,
+ * replaceState, back/forward, hash — as one `currententrychange` event, fired
+ * synchronously by the browser at the same moment the old wrapper fired.
+ * Where it exists the wrapper is not installed at all: two fewer page globals
+ * replaced, and this build's function name no longer appears in
+ * `history.pushState.toString()`. Feature-detected; the wrapper stays as the
+ * fallback for engines without it.
+ */
 function installSpaHooks() {
   if (pageWindow.__kickFocusSpaHooksV1) return;
   pageWindow.__kickFocusSpaHooksV1 = true;
-  for (const method of ['pushState', 'replaceState']) {
-    try {
-      const original = pageWindow.history[method];
-      pageWindow.history[method] = function kickFocusHistory(...args) {
-        const result = original.apply(this, args);
-        pageWindow.dispatchEvent(new pageWindow.Event(ROUTE_EVENT));
-        return result;
-      };
-    } catch {
-      // Popstate and the document observer still cover navigation.
+  const routeChanged = () => pageWindow.dispatchEvent(new pageWindow.Event(ROUTE_EVENT));
+  const navigation = pageWindow.navigation;
+  if (navigation && typeof navigation.addEventListener === 'function') {
+    navigation.addEventListener('currententrychange', routeChanged);
+    state.runtime.routeSource = 'navigation-api';
+  } else {
+    for (const method of ['pushState', 'replaceState']) {
+      try {
+        const original = pageWindow.history[method];
+        pageWindow.history[method] = function kickFocusHistory(...args) {
+          const result = original.apply(this, args);
+          routeChanged();
+          return result;
+        };
+      } catch {
+        // Popstate and the document observer still cover navigation.
+      }
     }
+    pageWindow.addEventListener('popstate', routeChanged);
+    state.runtime.routeSource = 'history-patch';
   }
-  pageWindow.addEventListener('popstate', () => pageWindow.dispatchEvent(new pageWindow.Event(ROUTE_EVENT)));
   pageWindow.addEventListener(ROUTE_EVENT, () => scheduleApply(20));
 }
 
@@ -8099,6 +8119,7 @@ async function copyDiagnostics() {
       lastMatch: state.diagnostics.lastMatch,
     },
     applyCycle: applyCostSummary(state.diagnostics.apply),
+    routeSource: state.runtime.routeSource,
     settingsSchema: SETTINGS_SCHEMA,
   };
   const copied = await copyText(JSON.stringify(summary, null, 2));

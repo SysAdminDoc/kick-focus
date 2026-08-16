@@ -150,11 +150,13 @@ function makeBootEnvironment(extras = {}) {
     document,
   };
   Object.assign(context, extras);
+  const dispatched = [];
   const win = {
     ...context,
+    __dispatched: dispatched,
     addEventListener() {},
     removeEventListener() {},
-    dispatchEvent: () => true,
+    dispatchEvent: (event) => { dispatched.push(event?.type); return true; },
     document,
   };
   context.window = win;
@@ -168,6 +170,37 @@ test('the built bundle boots in a stubbed environment without a TDZ or bad const
   const context = makeBootEnvironment();
   vm.runInNewContext(bundle, context);
   assert.equal(context.window.__kickFocusBooted, true);
+});
+
+test('with the Navigation API, route changes come from the browser and history is left untouched', { tag: 'artifact' }, async () => {
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const listeners = {};
+  const navigation = { addEventListener(type, handler) { listeners[type] = handler; } };
+  const context = makeBootEnvironment({ navigation });
+  const originalPush = context.history.pushState;
+  const originalReplace = context.history.replaceState;
+  vm.runInNewContext(bundle, context);
+
+  assert.equal(context.window.__kickFocusBooted, true);
+  assert.equal(typeof listeners.currententrychange, 'function', 'listens for currententrychange');
+  // The whole point: no wrapper around history when the browser reports
+  // navigation itself, so nothing of this build shows in pushState.toString().
+  assert.equal(context.history.pushState, originalPush, 'pushState is not wrapped');
+  assert.equal(context.history.replaceState, originalReplace, 'replaceState is not wrapped');
+  // And the browser's event does reach the route pipeline.
+  listeners.currententrychange();
+  assert.ok(context.window.__dispatched.includes('kick-focus:routechange'), 'currententrychange raises the route event');
+});
+
+test('without the Navigation API the history wrapper is the fallback and still fires', { tag: 'artifact' }, async () => {
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const context = makeBootEnvironment();
+  assert.equal(context.navigation, undefined);
+  const originalPush = context.history.pushState;
+  vm.runInNewContext(bundle, context);
+  assert.notEqual(context.history.pushState, originalPush, 'pushState is wrapped as the fallback');
+  context.history.pushState(null, '', '/somewhere');
+  assert.ok(context.window.__dispatched.includes('kick-focus:routechange'), 'the wrapper raises the route event');
 });
 
 test('with constructable stylesheets the site CSS is adopted once and no <style> element is made', { tag: 'artifact' }, async () => {

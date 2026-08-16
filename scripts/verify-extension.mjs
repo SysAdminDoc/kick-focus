@@ -475,6 +475,29 @@ try {
   // below already went through createHTML. Asserted rather than assumed,
   // because if the branch were not taken the rest of the run would look
   // identical and prove nothing about it.
+  // Chromium has the Navigation API, so history must be untouched here — the
+  // wrapper's function name used to sit in pushState.toString() for any script
+  // to read. And the browser's own event must still drive routing: a real
+  // same-document navigation to /browse has to be re-classified.
+  const routeProbe = await evaluate(pageClient, `(async () => {
+    const settle = () => new Promise((done) => setTimeout(done, 700));
+    const before = document.documentElement.dataset.kfRoute || '';
+    // Not "is native": Kick's own Sentry instrumentation wraps history exactly
+    // as it wraps fetch, so on the live site nobody is outermost. The claim
+    // that can be tested is that this build's wrapper is not in the stack.
+    const pushNative = !String(history.pushState).includes('kickFocus') && !String(history.replaceState).includes('kickFocus');
+    history.pushState(null, '', '/browse');
+    await settle();
+    const after = document.documentElement.dataset.kfRoute || '';
+    history.pushState(null, '', '/');
+    await settle();
+    return { pushNative, hasNavigationApi: typeof navigation !== 'undefined', before, after, back: document.documentElement.dataset.kfRoute || '' };
+  })()`);
+  const route = routeProbe.value || {};
+  record('history carries no wrapper of ours and a same-document navigation still re-routes through the Navigation API',
+    route.hasNavigationApi === true && route.pushNative === true && route.after === 'browse' && route.back !== 'browse',
+    `navigation api=${route.hasNavigationApi} history free of this build=${route.pushNative}; route ${route.before} -> ${route.after} -> ${route.back}`);
+
   // The site sheet should be adopted, not an element: an element in <head> is
   // the fallback path, and seeing it here would mean the constructed-sheet
   // branch is not the one real Chromium takes.

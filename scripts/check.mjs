@@ -133,6 +133,11 @@ const checks = [
   // written into a shadow root's innerHTML is re-tokenised and re-parsed on
   // every rebuild. The template must not carry the sheet, and every root must
   // adopt through the one feature-detected path.
+  // Route changes come from the browser where it can report them; the history
+  // wrapper is only ever the fallback, so it must live inside that branch.
+  ['route changes are read from the Navigation API with the history wrapper as fallback only',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes("navigation.addEventListener('currententrychange'")
+      && /if \(navigation && typeof navigation\.addEventListener === 'function'\) \{[\s\S]{0,300}\} else \{[\s\S]{0,200}pushState/.test(bundleSource))],
   ['stylesheets are constructed once and adopted, not re-parsed from innerHTML',
     bundleTargets.every(([, bundleSource]) => bundleSource.includes('function adoptStyles')
       && bundleSource.includes('CSSStyleSheet.prototype.replaceSync')
