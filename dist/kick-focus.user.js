@@ -11,6 +11,7 @@
 // @noframes
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_setValues
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
@@ -1946,6 +1947,54 @@ const STORAGE_STORES = Object.freeze([
 
 const STORAGE_LABELS = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store.label]));
 
+/**
+ * How much of the origin's storage one multi-store write may claim.
+ *
+ * Chromium gives localStorage 10 MB per origin, counted in UTF-16 code units,
+ * and Kick itself is a tenant of the same budget. The real hazard is not the
+ * ceiling but what happens at it: `kCommitErrorThreshold` is 8, and after eight
+ * consecutive commit failures Chromium **deletes the whole origin's storage** —
+ * so a run of failing writes does not degrade, it wipes. Sizing a multi-key
+ * write before any of it is attempted is what keeps a too-large import from
+ * spending those attempts.
+ */
+const STORAGE_BUDGET_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Serialize every store of a multi-key write up front and total its size.
+ *
+ * The import path used to write nine stores in sequence, so a quota failure on
+ * the fourth left a configuration that was half the imported file and half the
+ * previous one, with no record of where the seam was. Nothing is written until
+ * the whole set is known to serialize and to fit.
+ *
+ * Returns `{ ok, staged, bytes }`, or `ok:false` with a `reason` of
+ * 'unserializable' (naming the `key`) or 'over-budget'. `staged` is empty on
+ * failure — there is no partial plan to accidentally commit.
+ */
+function planStorageCommit(entries, budgetBytes = STORAGE_BUDGET_BYTES) {
+  if (!Array.isArray(entries)) return { ok: false, reason: 'unserializable', key: '', staged: [], bytes: 0 };
+  const staged = [];
+  let bytes = 0;
+  for (const entry of entries) {
+    const [key, value] = Array.isArray(entry) ? entry : [];
+    if (typeof key !== 'string' || !key) return { ok: false, reason: 'unserializable', key: String(key), staged: [], bytes: 0 };
+    let serialized;
+    try {
+      serialized = JSON.stringify(value);
+    } catch {
+      // A cycle or a BigInt throws here rather than at write time, where half
+      // the stores would already be committed.
+      return { ok: false, reason: 'unserializable', key, staged: [], bytes: 0 };
+    }
+    if (serialized === undefined) return { ok: false, reason: 'unserializable', key, staged: [], bytes: 0 };
+    bytes += key.length + serialized.length;
+    staged.push([key, value]);
+  }
+  if (bytes > budgetBytes) return { ok: false, reason: 'over-budget', key: '', staged: [], bytes, budgetBytes };
+  return { ok: true, reason: '', key: '', staged, bytes, budgetBytes };
+}
+
 function storageLabel(key) {
   return STORAGE_LABELS[key] || String(key || '').replace(/^kick-focus:/, '') || 'data';
 }
@@ -3352,6 +3401,50 @@ function noteStorageResult(key, ok) {
   if (JSON.stringify(before) === JSON.stringify(after)) return;
   storageHealth.failures = after;
   renderStorageWarning();
+}
+
+/**
+ * Write several stores as one unit, and put everything back if any of them
+ * fails.
+ *
+ * Tampermonkey 5.3+ and Violentmonkey expose `GM_setValues`, which commits the
+ * whole object in one call instead of one synchronous write per key. Where it
+ * is missing (the extension builds, older managers) the loop below is the same
+ * contract at a slower cadence.
+ *
+ * Rollback restores the values read before the attempt — including deleting
+ * keys that did not exist — so a quota failure part-way through leaves the
+ * previous configuration whole rather than spliced together with a new one.
+ */
+function gmSetMany(entries) {
+  const plan = planStorageCommit(entries);
+  if (!plan.ok) return plan;
+  const previous = plan.staged.map(([key]) => [key, gmGet(key, undefined)]);
+  if (typeof GM_setValues === 'function') {
+    try {
+      GM_setValues(Object.fromEntries(plan.staged));
+      for (const [key] of plan.staged) noteStorageResult(key, true);
+      return { ok: true, reason: '', bytes: plan.bytes };
+    } catch (error) {
+      storageHealth.lastError = error?.name || 'StorageError';
+      for (const [key] of plan.staged) noteStorageResult(key, false);
+      return { ok: false, reason: 'write-failed', key: plan.staged[0]?.[0] || '', bytes: plan.bytes };
+    }
+  }
+  const written = [];
+  for (const [key, value] of plan.staged) {
+    if (gmSet(key, value)) {
+      written.push(key);
+      continue;
+    }
+    for (const [prevKey, prevValue] of previous) {
+      if (!written.includes(prevKey)) continue;
+      if (prevValue === undefined) gmDelete(prevKey);
+      else gmSet(prevKey, prevValue);
+    }
+    return { ok: false, reason: 'write-failed', key, bytes: plan.bytes };
+  }
+  return { ok: true, reason: '', bytes: plan.bytes };
 }
 
 function gmDelete(key) {
@@ -10644,46 +10737,50 @@ function exportSettings() {
 // Apply every store a validated import provided. Each store the file omitted is
 // left untouched (its result field is null), so a partial backup never wipes
 // what it did not carry.
+/**
+ * Apply an import as one transaction.
+ *
+ * Every store the file provided is staged and sized first, then committed
+ * together. In-memory state is only advanced once the write has succeeded, so a
+ * refusal leaves both storage and the running session on the previous
+ * configuration instead of a half-imported mixture of the two.
+ */
 function applyImportedStores(result) {
+  const trimmedSet = (values) => [...new Set(values)].filter((item) => typeof item === 'string').slice(-200);
+  const entries = [[STORAGE_KEY, result.value]];
+  if (result.stickers) entries.push([STICKER_PREFERENCES_KEY, result.stickers]);
+  if (result.usage) entries.push([EMOTE_USAGE_KEY, result.usage]);
+  if (result.multistream) entries.push([MULTISTREAM_KEY, result.multistream]);
+  if (result.channelLayouts) entries.push([CHANNEL_LAYOUT_KEY, result.channelLayouts]);
+  if (result.favoriteChannels) entries.push([FAVORITES_KEY, trimmedSet(result.favoriteChannels)]);
+  if (result.dismissedChannels) entries.push([DISMISSED_KEY, trimmedSet(result.dismissedChannels)]);
+  if (result.chatKeywords) entries.push([CHAT_KEYWORDS_KEY, result.chatKeywords]);
+  if (result.channelNotes) entries.push([CHANNEL_NOTES_KEY, result.channelNotes]);
+  if (result.mediaPreferences) entries.push([MEDIA_PREFERENCES_KEY, result.mediaPreferences]);
+
+  const commit = gmSetMany(entries);
+  if (!commit.ok) return commit;
+
   state.settings = result.value;
   if (result.stickers) {
     state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
-    gmSet(STICKER_PREFERENCES_KEY, result.stickers);
     state.runtime.stickerCatalogDirty = true;
     state.runtime.stickerLibraryFilter = 'all';
     state.runtime.stickerLibraryQuery = '';
   }
-  if (result.usage) {
-    state.emoteUsage = result.usage;
-    gmSet(EMOTE_USAGE_KEY, state.emoteUsage);
-  }
+  if (result.usage) state.emoteUsage = result.usage;
   if (result.multistream) {
     state.multistream = result.multistream;
-    persistMultistream();
     if (multistreamOpen()) renderMultistream();
   }
-  if (result.channelLayouts) gmSet(CHANNEL_LAYOUT_KEY, result.channelLayouts);
-  if (result.favoriteChannels) {
-    state.favorites = new Set(result.favoriteChannels);
-    persistSet(FAVORITES_KEY, state.favorites);
-  }
-  if (result.dismissedChannels) {
-    state.dismissed = new Set(result.dismissedChannels);
-    persistSet(DISMISSED_KEY, state.dismissed);
-  }
-  if (result.chatKeywords) {
-    state.chatKeywords = result.chatKeywords;
-    gmSet(CHAT_KEYWORDS_KEY, state.chatKeywords);
-  }
-  if (result.channelNotes) {
-    state.channelNotes = result.channelNotes;
-    gmSet(CHANNEL_NOTES_KEY, state.channelNotes);
-  }
-  if (result.mediaPreferences) {
-    state.mediaPreferences = result.mediaPreferences;
-    gmSet(MEDIA_PREFERENCES_KEY, state.mediaPreferences);
-  }
-  saveSettings('Imported');
+  if (result.favoriteChannels) state.favorites = new Set(trimmedSet(result.favoriteChannels));
+  if (result.dismissedChannels) state.dismissed = new Set(trimmedSet(result.dismissedChannels));
+  if (result.chatKeywords) state.chatKeywords = result.chatKeywords;
+  if (result.channelNotes) state.channelNotes = result.channelNotes;
+  if (result.mediaPreferences) state.mediaPreferences = result.mediaPreferences;
+  setSaveStatus('Imported', false);
+  publishSettingsState();
+  return commit;
 }
 
 async function onImportFile(event) {
@@ -10699,7 +10796,13 @@ async function onImportFile(event) {
     // Non-destructive: snapshot the current configuration before overwriting so
     // the import can be undone, then apply every store the file provided.
     gmSet(PRE_IMPORT_BACKUP_KEY, currentExportPayload());
-    applyImportedStores(result);
+    const commit = applyImportedStores(result);
+    if (!commit.ok) {
+      showToast(commit.reason === 'over-budget'
+        ? 'That backup is too large for this browser’s storage. Nothing was changed.'
+        : 'The import could not be saved. Your previous settings are unchanged.', true);
+      return;
+    }
     renderSettingsPage();
     scheduleApply(0);
     // Naming what was not kept, because an import that silently drops half a
@@ -10728,7 +10831,12 @@ function undoImport() {
     showToast('The backup could not be restored.', true);
     return;
   }
-  applyImportedStores(result);
+  const commit = applyImportedStores(result);
+  if (!commit.ok) {
+    // The backup is kept: a failed restore must stay retryable.
+    showToast('The backup could not be restored.', true);
+    return;
+  }
   gmDelete(PRE_IMPORT_BACKUP_KEY);
   renderSettingsPage();
   scheduleApply(0);

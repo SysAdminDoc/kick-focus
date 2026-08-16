@@ -378,6 +378,58 @@ try {
       && locale.spanish?.toast === 'Escribe un nombre de canal o una URL.',
     locale.ok ? `count "${locale.english?.count}" -> "${locale.spanish?.count}"; toast "${locale.english?.toast}" -> "${locale.spanish?.toast}"` : locale.why);
 
+  // Import now commits every store as one sized transaction instead of ten
+  // separate writes, which is a data-loss-shaped change: exercise the real file
+  // input rather than trusting that the unit tests covered the wiring.
+  const importProbe = await evaluate(pageClient, `(async () => {
+    const host = document.getElementById('kick-focus-root');
+    const shadow = host && host.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 600));
+    const readSettings = () => localStorage.getItem('kick-focus:settings');
+    const before = readSettings();
+    if (!before) return { ok: false, why: 'no stored settings to round-trip' };
+    const payload = JSON.parse(before);
+    // Change one value so a no-op cannot masquerade as a successful import —
+    // and take it from the real control, because normalizeSettings drops an
+    // accent that is not one of the offered ones and the import would then
+    // "succeed" while changing nothing.
+    shadow.querySelector('[data-page="appearance"]').click();
+    await settle();
+    const accents = [...shadow.querySelectorAll('[data-set="appearance.accent"]')].map((node) => node.dataset.value);
+    const marker = accents.find((value) => value !== payload.appearance.accent);
+    if (!marker) return { ok: false, why: 'no alternative accent offered' };
+    payload.appearance.accent = marker;
+    // buildSettingsExport spreads the settings at the root; it does not nest
+    // them under a "settings" key.
+    const file = new File([JSON.stringify(payload)], 'kf.json', { type: 'application/json' });
+    const input = shadow.querySelector('[data-kf-import]');
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    const applied = JSON.parse(readSettings() || '{}').appearance?.accent;
+    const toast = String(shadow.querySelector('.kf-toast-text')?.textContent || '');
+    // Undo must put the previous value back from the pre-import backup. The
+    // control only renders on About, and only while a backup exists.
+    shadow.querySelector('[data-page="about"]').click();
+    await settle();
+    const undo = shadow.querySelector('[data-action="undo-import"]');
+    if (!undo) return { ok: false, why: 'no undo control after import' };
+    undo.click();
+    await settle();
+    const restored = JSON.parse(readSettings() || '{}').appearance?.accent;
+    return { ok: true, marker, applied, restored, was: payload.appearance.accent, original: JSON.parse(before).appearance.accent, toast };
+  })()`);
+  const round = importProbe.value || {};
+  record('an import commits as one transaction and Undo puts the previous settings back',
+    round.ok === true
+      && round.applied === round.marker
+      && round.restored === round.original
+      && /imported/i.test(round.toast),
+    round.ok ? `accent ${round.original} -> ${round.applied} -> ${round.restored}` : round.why);
+
   const escapeProbe = await evaluate(pageClient, `(() => {
     const host = document.getElementById('kick-focus-root');
     const shadow = host && host.shadowRoot;
@@ -391,6 +443,10 @@ try {
     q('[data-kf-quick]').click();
     q('[data-action="command:settings"]').click();
     if (!open().settings) return { ok: false, why: 'settings did not open' };
+    // Land on a page that actually has settings to reset: About disables the
+    // control, so leaving the page to whatever ran before makes this pass or
+    // fail on probe order rather than on behaviour.
+    q('[data-page="layout"]').click();
     q('[data-action="reset-page"]').click();
     const prompted = open();
     const focusedPrompt = shadow.activeElement
@@ -407,7 +463,7 @@ try {
       && esc.focusedPrompt === true
       && esc.afterEscape?.confirm === false && esc.afterEscape?.settings === true
       && esc.closed?.settings === false,
-    esc.ok ? 'prompt closed, settings survived, second Escape closed settings' : esc.why);
+    esc.ok ? `prompted=${JSON.stringify(esc.prompted)} focusedPrompt=${esc.focusedPrompt} afterEscape=${JSON.stringify(esc.afterEscape)} closed=${JSON.stringify(esc.closed)}` : esc.why);
 
   // These describe how Kick Focus treats Kick's own markup, so they are only
   // meaningful when Kick's markup is present. Reported as skipped rather than

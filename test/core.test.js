@@ -56,6 +56,7 @@ import {
   MULTISTREAM_MAX,
   normalizeShortcut,
   findShortcutConflict,
+  planStorageCommit,
   topmostOverlayLayer,
   OVERLAY_LAYERS,
   pluralForm,
@@ -103,6 +104,74 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
+
+test('a multi-store write is sized and serialized before any of it is committed', () => {
+  const plan = planStorageCommit([['a', { x: 1 }], ['b', [1, 2, 3]]]);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.staged.length, 2);
+  assert.equal(plan.bytes, 'a'.length + JSON.stringify({ x: 1 }).length + 'b'.length + JSON.stringify([1, 2, 3]).length);
+
+  // Over budget: nothing is staged, so there is no partial plan to commit.
+  const tooBig = planStorageCommit([['a', 'x'.repeat(100)]], 10);
+  assert.equal(tooBig.ok, false);
+  assert.equal(tooBig.reason, 'over-budget');
+  assert.deepEqual(tooBig.staged, []);
+
+  // A value that cannot serialize is caught here rather than at write time,
+  // where earlier stores would already be committed.
+  const cyclic = { name: 'loop' };
+  cyclic.self = cyclic;
+  const bad = planStorageCommit([['ok', 1], ['bad', cyclic]]);
+  assert.equal(bad.ok, false);
+  assert.equal(bad.reason, 'unserializable');
+  assert.equal(bad.key, 'bad');
+  assert.deepEqual(bad.staged, []);
+
+  // undefined does not serialize, and must not be mistaken for an empty write.
+  assert.equal(planStorageCommit([['k', undefined]]).ok, false);
+  assert.equal(planStorageCommit('not an array').ok, false);
+  assert.equal(planStorageCommit([['', 1]]).ok, false);
+  assert.equal(planStorageCommit([]).ok, true);
+});
+
+test('a quota failure part-way through an import leaves the prior state intact', () => {
+  // The store the runtime writes into, plus a backend that starts failing after
+  // the second key — the shape of a quota ceiling reached mid-import.
+  const store = new Map([['settings', 'old-settings'], ['library', 'old-library']]);
+  let writes = 0;
+  const write = (key, value) => {
+    writes += 1;
+    if (writes > 2) return false;
+    store.set(key, value);
+    return true;
+  };
+
+  const commit = (entries) => {
+    const plan = planStorageCommit(entries);
+    if (!plan.ok) return plan;
+    const previous = plan.staged.map(([key]) => [key, store.has(key) ? store.get(key) : undefined]);
+    const written = [];
+    for (const [key, value] of plan.staged) {
+      if (write(key, value)) { written.push(key); continue; }
+      for (const [prevKey, prevValue] of previous) {
+        if (!written.includes(prevKey)) continue;
+        if (prevValue === undefined) store.delete(prevKey);
+        else store.set(prevKey, prevValue);
+      }
+      return { ok: false, reason: 'write-failed', key };
+    }
+    return { ok: true };
+  };
+
+  const result = commit([['settings', 'new-settings'], ['library', 'new-library'], ['notes', 'new-notes']]);
+  assert.equal(result.ok, false);
+  assert.equal(result.key, 'notes');
+  // Not half-applied: both stores that did get written are back to their old
+  // values, and the key that never existed was not created.
+  assert.equal(store.get('settings'), 'old-settings');
+  assert.equal(store.get('library'), 'old-library');
+  assert.equal(store.has('notes'), false);
 });
 
 test('the reset alertdialog owns focus and Escape while it is open, not the settings shell', () => {

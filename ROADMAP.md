@@ -100,25 +100,11 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: CSS is adopted once per shadow root (may drop `!important` armor where the adopted sheet wins ties); route changes read from the Navigation API with history monkey-patching removed; search highlights write zero nodes into Kick's tree; all features are feature-detected (never version-sniffed) so the Firefox artifact degrades cleanly; a before/after perf.measure shows the apply-cycle cost drop.
   Complexity: L
 
-- [ ] R-21 — Storage durability + batch writes
-  Why: not a quota problem (library is 10–30% of Chrome's 10MB budget) but two silent-total-loss threats (kCommitErrorThreshold=8 wipes the origin; 400-day stale-bucket deletion) and per-emote synchronous writes are the jank source.
-  Evidence: perf-storage stream — Chromium dom_storage_constants.h (kCommitErrorThreshold=8, kLocalStorageStaleBucketCutoffInDays=400); FFZ #1026; GM_setValues/GM_getValues batch APIs (Tampermonkey 5.3+/Violentmonkey).
-  Touches: transactional import (stage→validate total serialized size→commit) in core.mjs/runtime.js; batch GM_setValues/GM_getValues in the userscript storage path.
-  Acceptance: import is transactional under node:test (a mid-write quota failure leaves the prior state intact, never half-applied); the userscript build writes via GM_setValues batch rather than per-emote setValue.
-  Complexity: M
-
 - [ ] R-22 — Adopt stable zero-dep node:test upgrades
   Why: Node 22/24 shipped partialDeepStrictEqual, snapshots, test tags and coverage-include-all that raise the testing floor without a single package.
   Evidence: testing stream — assert.partialDeepStrictEqual (v24/v22.17), --experimental-test-tag-filter (v24.19/v26.2), --test-coverage-include-all (v26.7.0), expectFailure (v24.14.0).
   Touches: existing test suite assertions; a tag split for offline vs live-browser gates; coverage config.
   Acceptance: API-drift assertions use partialDeepStrictEqual (tolerant of added fields); offline and live-browser gates are tag-separated in one suite; coverage-include-all runs and exposes wholly-untested files; jsdom/happy-dom and Node's built-in localStorage are explicitly NOT adopted.
-  Complexity: M
-
-- [ ] R-24 — Establish a remote + stable HTTPS URL so the userscript can auto-update (operator-gated)
-  Why: the userscript is the only artifact reaching Windows/macOS users but cannot auto-update because there is no git remote → no @downloadURL/@updateURL.
-  Evidence: distribution stream — Greasy Fork @version+@downloadURL; Firefox update_hash sha256; conflicts with the ROADMAP "no publication without explicit approval" deferral.
-  Touches: git remote; src/metadata.txt (@version/@downloadURL/@updateURL); Firefox updates.json update_hash.
-  Acceptance: OPERATOR-GATED — on explicit approval only, a stable raw HTTPS URL is wired into @downloadURL/@updateURL and a manager detects a version bump; Firefox self-hosted updates.json carries a sha256 update_hash. Do not publish without approval.
   Complexity: M
 
 ### P3 — differentiators, larger bets, future-proofing

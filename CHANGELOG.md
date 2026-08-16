@@ -8,6 +8,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - **Spanish and Portuguese now cover the copy that actually moves.** Toasts, screen-reader announcements, button labels, placeholders, and every count phrase were written straight to the page and never passed through the translator, so ~90 strings — every error message and every accessible label among them — stayed English no matter the language setting. All of them are translated, and count sentences now read naturally in each language rather than gluing a translated word onto an English sentence.
 
+- **Importing a backup is now all-or-nothing.** An import used to write its ten stores one after another, so a browser storage limit reached part-way left a configuration that was half the imported file and half the old one, with nothing to say where the seam was. The whole set is now sized and checked before anything is written, a refusal explains itself and changes nothing, and Undo import stays available if a restore fails. Userscript builds commit the set in a single batched write on Tampermonkey 5.3+ and Violentmonkey.
+
 ### Fixed
 
 - **Escape cancels the reset prompt instead of tearing down all of Settings.** Answering "no" to a confirmation no longer closes the modal and discards the page you were working on, and the prompt now keeps Tab inside itself rather than letting focus wander the obscured settings behind it. Cancelling returns focus to the control you pressed.
