@@ -475,6 +475,22 @@ try {
   // below already went through createHTML. Asserted rather than assumed,
   // because if the branch were not taken the rest of the run would look
   // identical and prove nothing about it.
+  // The site sheet should be adopted, not an element: an element in <head> is
+  // the fallback path, and seeing it here would mean the constructed-sheet
+  // branch is not the one real Chromium takes.
+  const sheetProbe = await evaluate(pageClient, `({
+    adopted: (document.adoptedStyleSheets || []).length,
+    element: Boolean(document.getElementById('kick-focus-site-style')),
+    shadowAdopted: (document.getElementById('kick-focus-root')?.shadowRoot?.adoptedStyleSheets || []).length,
+    shadowStyleElements: document.getElementById('kick-focus-root')?.shadowRoot?.querySelectorAll('style').length,
+    // The sheet actually applies: the quick button is styled from it.
+    styled: getComputedStyle(document.getElementById('kick-focus-root')?.shadowRoot?.querySelector('[data-kf-quick]') || document.body).position,
+  })`);
+  const sheets = sheetProbe.value || {};
+  record('the site and interface stylesheets are constructed and adopted, not <style> elements',
+    sheets.adopted >= 1 && sheets.element === false && sheets.shadowAdopted >= 1 && sheets.shadowStyleElements === 0 && sheets.styled === 'fixed',
+    `document adopted=${sheets.adopted} fallback element=${sheets.element}; ui shadow adopted=${sheets.shadowAdopted} style elements=${sheets.shadowStyleElements}; quick button position=${sheets.styled}`);
+
   const ttProbe = await evaluate(pageClient, `({
     api: typeof window.trustedTypes?.createPolicy === 'function',
     enforced: Boolean(window.trustedTypes?.defaultPolicy),

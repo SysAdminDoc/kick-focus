@@ -129,6 +129,16 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  // Constructed sheets are parsed once and adopted by reference; a <style>
+  // written into a shadow root's innerHTML is re-tokenised and re-parsed on
+  // every rebuild. The template must not carry the sheet, and every root must
+  // adopt through the one feature-detected path.
+  ['stylesheets are constructed once and adopted, not re-parsed from innerHTML',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('function adoptStyles')
+      && bundleSource.includes('CSSStyleSheet.prototype.replaceSync')
+      && !bundleSource.includes('<style>${UI_CSS}</style>')
+      && (bundleSource.match(/adoptStyles\(shadow, /g) || []).length >= 3
+      && bundleSource.includes('function ensureSiteStyle'))],
   // If kick.com ever sends `require-trusted-types-for 'script'`, a bare
   // innerHTML write throws and this build's interface stops rendering. Every
   // write must go through the policy, and the policy must never be 'default',

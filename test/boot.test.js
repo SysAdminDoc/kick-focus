@@ -59,7 +59,9 @@ function fakeNode() {
 
 function makeBootEnvironment(extras = {}) {
   const documentElement = fakeNode();
+  const created = [];
   const document = {
+    __created: created,
     documentElement,
     head: fakeNode(),
     // Null body sends startWhenBodyExists down its observe-and-wait path, so the
@@ -70,7 +72,7 @@ function makeBootEnvironment(extras = {}) {
     addEventListener() {},
     removeEventListener() {},
     dispatchEvent: () => true,
-    createElement: () => fakeNode(),
+    createElement: (tag) => { created.push(String(tag).toLowerCase()); return fakeNode(); },
     createElementNS: () => fakeNode(),
     createTextNode: () => fakeNode(),
     getElementById: () => null,
@@ -166,6 +168,36 @@ test('the built bundle boots in a stubbed environment without a TDZ or bad const
   const context = makeBootEnvironment();
   vm.runInNewContext(bundle, context);
   assert.equal(context.window.__kickFocusBooted, true);
+});
+
+test('with constructable stylesheets the site CSS is adopted once and no <style> element is made', { tag: 'artifact' }, async () => {
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const constructed = [];
+  class FakeSheet {
+    replaceSync(text) { this.text = String(text); constructed.push(this); }
+  }
+  const context = makeBootEnvironment({ CSSStyleSheet: FakeSheet });
+  context.document.adoptedStyleSheets = [];
+  vm.runInNewContext(bundle, context);
+
+  assert.equal(context.window.__kickFocusBooted, true);
+  assert.equal(constructed.length, 1, 'the site sheet is parsed exactly once');
+  assert.ok(constructed[0].text.length > 10_000, 'the adopted sheet carries the full site CSS');
+  // Spread first: the bundle assigns a vm-realm array, whose prototype is not
+  // this realm's Array.prototype, and strict deepEqual compares prototypes.
+  assert.deepEqual([...context.document.adoptedStyleSheets], constructed, 'the constructed sheet is adopted by the document');
+  assert.equal(context.document.__created.filter((tag) => tag === 'style').length, 0,
+    'no <style> element is created when the sheet can be adopted');
+});
+
+test('without constructable stylesheets the site CSS falls back to a <style> element', { tag: 'artifact' }, async () => {
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const context = makeBootEnvironment();
+  assert.equal(context.CSSStyleSheet, undefined);
+  vm.runInNewContext(bundle, context);
+  assert.equal(context.window.__kickFocusBooted, true);
+  assert.equal(context.document.__created.filter((tag) => tag === 'style').length, 1,
+    'exactly one fallback <style> element for the site CSS');
 });
 
 test('under enforced Trusted Types the bundle takes its own policy, never the default', { tag: 'artifact' }, async () => {

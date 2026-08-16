@@ -3330,6 +3330,7 @@ const state = {
   root: null,
   shadow: null,
   siteStyle: null,
+  siteSheet: null,
   modal: null,
   command: null,
   commandInput: null,
@@ -3640,14 +3641,88 @@ function setSaveStatus(message, isError = false) {
   status.dataset.error = String(isError);
 }
 
-function addStyle(cssText) {
-  state.siteStyle?.remove?.();
+/**
+ * One parsed stylesheet per CSS text, shared by reference.
+ *
+ * A `<style>` inside a shadow root's innerHTML serialises the CSS into markup,
+ * has the HTML parser tokenise it, then the CSS parser parse it — and does all
+ * of that again for every root that needs the same rules and every time a root
+ * is rebuilt. The panic switch used to re-parse the entire site sheet on every
+ * restore. A constructed sheet is parsed once and adopted by reference; putting
+ * it back is a list assignment.
+ *
+ * Feature-detected, never version-sniffed: Chromium 73 and Firefox 101 both
+ * have it, and where it is absent — or where a content-script compartment
+ * refuses a sheet constructed in another one, which older Firefox did — a
+ * `<style>` element is the same contract at the old cost. Adopted sheets also
+ * sit after every document `<link>`/`<style>` in the cascade, so ties that
+ * Kick's later-loaded CSS used to win now go this way without more `!important`.
+ */
+const CONSTRUCTED_SHEETS = new Map();
+
+function constructedSheet(cssText) {
+  if (CONSTRUCTED_SHEETS.has(cssText)) return CONSTRUCTED_SHEETS.get(cssText);
+  let sheet = null;
+  try {
+    if (typeof CSSStyleSheet === 'function' && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
+      sheet = new CSSStyleSheet();
+      sheet.replaceSync(cssText);
+    }
+  } catch {
+    sheet = null;
+  }
+  CONSTRUCTED_SHEETS.set(cssText, sheet);
+  return sheet;
+}
+
+/** Adopt `cssText` into `root`; returns the fallback <style> element, or null when adopted. */
+function adoptStyles(root, cssText, id = '') {
+  const sheet = constructedSheet(cssText);
+  if (sheet && Array.isArray(root?.adoptedStyleSheets)) {
+    try {
+      if (!root.adoptedStyleSheets.includes(sheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+      return null;
+    } catch {
+      // Fall through to the element path.
+    }
+  }
   const style = document.createElement('style');
-  style.id = 'kick-focus-site-style';
+  if (id) style.id = id;
   style.dataset.kickFocus = 'true';
   style.textContent = cssText;
-  (document.head || document.documentElement).append(style);
-  state.siteStyle = style;
+  (root === document ? (document.head || document.documentElement) : root).append(style);
+  return style;
+}
+
+function addStyle(cssText) {
+  removeSiteStyle();
+  const element = adoptStyles(document, cssText, 'kick-focus-site-style');
+  state.siteStyle = element;
+  state.siteSheet = element ? null : constructedSheet(cssText);
+}
+
+function removeSiteStyle() {
+  state.siteStyle?.remove?.();
+  state.siteStyle = null;
+  if (state.siteSheet && Array.isArray(document.adoptedStyleSheets)) {
+    try {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== state.siteSheet);
+    } catch { /* nothing to remove */ }
+  }
+  state.siteSheet = null;
+}
+
+/**
+ * Nothing observes `document.adoptedStyleSheets`: if Kick's own code ever
+ * assigns that list, this sheet is silently gone with no mutation to notice.
+ * Re-asserting it once per apply cycle is a single includes() check.
+ */
+function ensureSiteStyle() {
+  if (!state.siteSheet || !Array.isArray(document.adoptedStyleSheets)) return;
+  if (document.adoptedStyleSheets.includes(state.siteSheet)) return;
+  try {
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, state.siteSheet];
+  } catch { /* the next cycle tries again */ }
 }
 
 function recordProtection(layer, classification) {
@@ -6840,39 +6915,40 @@ function flushChatStickerScan() {
  * discarded hundreds of times a minute. Kept in its own shadow root for the
  * same reason the rest of the interface is — Kick's chat CSS cannot reach in.
  */
+const TOOLTIP_CSS = `
+  :host {
+    position: fixed;
+    z-index: 2147483000;
+    /* Never a pointer target: the card follows the cursor, and a hover
+       surface under it would fight the emote for the same hover. */
+    pointer-events: none;
+    display: none;
+    max-width: 280px;
+  }
+  :host([data-kf-open="true"]) { display: block; }
+  .card {
+    padding: 8px 10px;
+    border: 1px solid #59645c;
+    border-radius: 8px;
+    background: #151917;
+    color: #f4f7f5;
+    box-shadow: 0 10px 28px rgba(0,0,0,.45);
+    font: 12px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .card div { white-space: normal; overflow-wrap: anywhere; }
+  .card div:first-child { font-weight: 700; }
+  .card div + div { color: #a5aea8; }
+  .card div[data-warn="true"] { color: #f6b943; }
+`;
+
 function chatEmoteTooltipHost() {
   if (state.chatEmoteTooltip?.host?.isConnected) return state.chatEmoteTooltip;
   const host = document.createElement('div');
   host.id = 'kick-focus-emote-tooltip';
   host.setAttribute('aria-hidden', 'true');
   const shadow = host.attachShadow({ mode: 'open' });
-  shadow.innerHTML = trustedHTML(`
-    <style>
-      :host {
-        position: fixed;
-        z-index: 2147483000;
-        /* Never a pointer target: the card follows the cursor, and a hover
-           surface under it would fight the emote for the same hover. */
-        pointer-events: none;
-        display: none;
-        max-width: 280px;
-      }
-      :host([data-kf-open="true"]) { display: block; }
-      .card {
-        padding: 8px 10px;
-        border: 1px solid #59645c;
-        border-radius: 8px;
-        background: #151917;
-        color: #f4f7f5;
-        box-shadow: 0 10px 28px rgba(0,0,0,.45);
-        font: 12px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-      }
-      .card div { white-space: normal; overflow-wrap: anywhere; }
-      .card div:first-child { font-weight: 700; }
-      .card div + div { color: #a5aea8; }
-      .card div[data-warn="true"] { color: #f6b943; }
-    </style>
-    <div class="card" data-kf-tooltip-card></div>`);
+  shadow.innerHTML = trustedHTML('<div class="card" data-kf-tooltip-card></div>');
+  adoptStyles(shadow, TOOLTIP_CSS);
   document.body.append(host);
   state.chatEmoteTooltip = { host, card: shadow.querySelector('[data-kf-tooltip-card]') };
   return state.chatEmoteTooltip;
@@ -7824,6 +7900,7 @@ function scheduleApply(delay = 50) {
       state.runtime.matureVisible = false;
       announce(`Kick Focus applied to ${state.route}`);
     }
+    ensureSiteStyle();
     applySettingsAttributes();
     tagChatPanel();
     tagMonetizationSurfaces();
@@ -9719,8 +9796,9 @@ function buildInterface() {
   const root = document.createElement('div');
   root.id = 'kick-focus-root';
   const shadow = root.attachShadow({ mode: 'open' });
+  // Adopted after the markup lands: innerHTML replaces every child, which would
+  // take the fallback <style> element with it if it were appended first.
   shadow.innerHTML = trustedHTML(`
-    <style>${UI_CSS}</style>
     <button type="button" class="kf-quick" data-kf-quick data-action="open-command" aria-label="Open Kick Focus command menu">Focus</button>
     <div class="kf-backdrop" data-kf-settings-backdrop hidden>
       <section class="kf-settings" data-kf-settings-shell role="dialog" aria-modal="true" aria-labelledby="kf-settings-title">
@@ -9801,6 +9879,7 @@ function buildInterface() {
     <div class="kf-toast" data-kf-toast role="status" aria-live="polite" aria-atomic="true" hidden></div>
     <div class="kf-sr-only" aria-live="polite" data-kf-live></div>
   `);
+  adoptStyles(shadow, UI_CSS);
   document.body.append(root);
   state.root = root;
   state.shadow = shadow;
@@ -11348,8 +11427,7 @@ function clearEnhancedPage() {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
     }
   }
-  state.siteStyle?.remove?.();
-  state.siteStyle = null;
+  removeSiteStyle();
   clearTimeout(state.applyTimer);
   state.applyTimer = 0;
   clearInterval(state.playbackDiagnosticsTimer);
@@ -11689,6 +11767,40 @@ function onGlobalKeydown(event) {
   else executeCommand(action);
 }
 
+const HEADER_CONTROL_CSS = `
+  :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  button {
+    display: inline-flex;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 11px;
+    border: 1px solid rgba(124,255,43,.38);
+    border-radius: 5px;
+    background: linear-gradient(180deg, rgba(124,255,43,.12), rgba(124,255,43,.055));
+    color: #f4f7f5;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+    cursor: pointer;
+    font: 750 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: .015em;
+    white-space: nowrap;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 80ms ease;
+  }
+  button:hover { border-color: #7cff2b; background: rgba(124,255,43,.15); color: #7cff2b; }
+  button:active { transform: scale(.97); }
+  button:focus-visible { outline: 2px solid #f4f7f5; outline-offset: 2px; }
+  img { display: block; width: 18px; height: 18px; object-fit: contain; }
+  .kf-header-multi svg { width: 15px; height: 15px; fill: currentColor; opacity: .9; }
+  .kf-header-add [data-kf-header-add-icon] { font-weight: 800; font-size: 14px; }
+  .kf-header-add[data-in-multi="true"] { border-color: #7cff2b; background: rgba(124,255,43,.2); color: #7cff2b; }
+  @media (max-width: 960px) {
+    button { width: 36px; padding: 0; }
+    span { display: none; }
+  }
+`;
+
 function headerQuickTarget() {
   const primary = document.querySelector('nav [data-testid="kicks-top-nav"], [data-testid="kicks-top-nav"]');
   if (primary) return primary;
@@ -11710,39 +11822,6 @@ function ensureHeaderQuickControl() {
     host.dataset.kfHeaderControl = 'true';
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = trustedHTML(`
-      <style>
-        :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
-        * { box-sizing: border-box; }
-        button {
-          display: inline-flex;
-          height: 36px;
-          align-items: center;
-          justify-content: center;
-          gap: 7px;
-          padding: 0 11px;
-          border: 1px solid rgba(124,255,43,.38);
-          border-radius: 5px;
-          background: linear-gradient(180deg, rgba(124,255,43,.12), rgba(124,255,43,.055));
-          color: #f4f7f5;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
-          cursor: pointer;
-          font: 750 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          letter-spacing: .015em;
-          white-space: nowrap;
-          transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 80ms ease;
-        }
-        button:hover { border-color: #7cff2b; background: rgba(124,255,43,.15); color: #7cff2b; }
-        button:active { transform: scale(.97); }
-        button:focus-visible { outline: 2px solid #f4f7f5; outline-offset: 2px; }
-        img { display: block; width: 18px; height: 18px; object-fit: contain; }
-        .kf-header-multi svg { width: 15px; height: 15px; fill: currentColor; opacity: .9; }
-        .kf-header-add [data-kf-header-add-icon] { font-weight: 800; font-size: 14px; }
-        .kf-header-add[data-in-multi="true"] { border-color: #7cff2b; background: rgba(124,255,43,.2); color: #7cff2b; }
-        @media (max-width: 960px) {
-          button { width: 36px; padding: 0; }
-          span { display: none; }
-        }
-      </style>
       <button type="button" data-kf-header-focus aria-label="Open Kick Focus command menu" title="Kick Focus">
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt="">
         <span data-kf-header-control-label>Focus</span>
@@ -11755,6 +11834,7 @@ function ensureHeaderQuickControl() {
         <span data-kf-header-add-icon aria-hidden="true">+</span>
         <span data-kf-header-add-label>Multi</span>
       </button>`);
+    adoptStyles(shadow, HEADER_CONTROL_CSS);
     const button = shadow.querySelector('[data-kf-header-focus]');
     button.addEventListener('click', (event) => {
       event.preventDefault();
