@@ -27,6 +27,19 @@ const mainWorld = manifest.content_scripts.find((entry) => entry.world === 'MAIN
 const isolated = manifest.content_scripts.find((entry) => entry.world === 'ISOLATED');
 const ruleFiles = manifest.declarative_net_request.rule_resources;
 
+// The trailing slash matters: without it the lookahead accepts a lookalike host
+// like kick.com.evil.net, and the gate would pass on exfiltration.
+const EXFIL_REGEX = /https:\/\/(?!(?:web\.|files\.|ext\.cdn\.)?kick\.com\/)[a-z0-9.-]+\/api\//i;
+
+// A content-script match pattern must be an https (or *) URL whose host is
+// kick.com or a subdomain of it — never <all_urls>, a bare *, or a lookalike
+// like kick.com.evil.net. The final `/` after the host is what rejects the
+// lookalike (kick.com.evil.net has no slash immediately after "com").
+const KICK_MATCH_PATTERN = /^(https|\*):\/\/((\*|[a-z0-9-]+)\.)?kick\.com\//i;
+const contentScriptsScoped = (entries) => entries.length > 0 && entries.every((entry) =>
+  Array.isArray(entry.matches) && entry.matches.length > 0
+  && entry.matches.every((pattern) => KICK_MATCH_PATTERN.test(pattern)));
+
 /**
  * Every symbol a source module exports must be *defined* in every built bundle.
  *
@@ -169,16 +182,19 @@ const checks = [
   ['extension declares no remote code', !('externally_connectable' in manifest)
     && !JSON.stringify(manifest.background).includes('//')],
 
-  // Network rules stay in lockstep with the page-realm blocklist
-  ['ad ruleset covers every blocked host', adRules.length === AD_HOSTS.length],
-  ['telemetry ruleset covers every cancellable telemetry host', telemetryRules.length === cancellableTelemetryHosts().length],
+  // Network rules stay in lockstep with the page-realm blocklist. Each gate
+  // also asserts the list is non-empty, so an emptied host list fails loudly
+  // instead of passing an every()/length gate vacuously.
+  ['ad ruleset covers every blocked host', AD_HOSTS.length > 0 && adRules.length === AD_HOSTS.length],
+  ['telemetry ruleset covers every cancellable telemetry host', cancellableTelemetryHosts().length > 0 && telemetryRules.length === cancellableTelemetryHosts().length],
   ['litix.io is never hard-cancelled at the network layer (retry-storm host)', TELEMETRY_NO_CANCEL_HOSTS.every((host) =>
     !telemetryRules.some((rule) => rule.condition.urlFilter?.includes(host))
     && !adRules.some((rule) => rule.condition.urlFilter?.includes(host))
     && !firefoxBackground.includes(host))],
-  ['ad rules block', adRules.every((rule) => rule.action.type === 'block')],
-  ['every rule is scoped to kick.com', [...adRules, ...telemetryRules]
+  ['ad rules block', adRules.length > 0 && adRules.every((rule) => rule.action.type === 'block')],
+  ['every rule is scoped to kick.com', [...adRules, ...telemetryRules].length > 0 && [...adRules, ...telemetryRules]
     .every((rule) => rule.condition.initiatorDomains?.includes('kick.com'))],
+  ['content scripts match only kick.com, never a broad pattern', contentScriptsScoped(manifest.content_scripts)],
   ['rule ids are unique', new Set([...adRules, ...telemetryRules].map((rule) => rule.id)).size
     === adRules.length + telemetryRules.length],
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
@@ -376,9 +392,7 @@ const checks = [
     && source.includes('state.live.rarity = join.usable ? join : null')],
   ['renders wide collectibles at their measured aspect', source.includes('measureEmoteAspect')
     && source.includes('data-kf-emote-aspect="wide"')],
-  // The trailing slash matters: without it the lookahead accepts a lookalike
-  // host like kick.com.evil.net, and this gate would pass on exfiltration.
-  ['every API endpoint stays on kick.com', !/https:\/\/(?!(?:web\.|files\.|ext\.cdn\.)?kick\.com\/)[a-z0-9.-]+\/api\//i.test(source)],
+  ['every API endpoint stays on kick.com', !EXFIL_REGEX.test(source)],
   ['gives High Contrast a real focus outline', source.includes('forced-colors: active')
     && source.includes('outline: 3px solid Highlight')],
   ['page-realm hooks do not announce themselves', source.includes('function disguise(')
@@ -421,8 +435,25 @@ const checks = [
     ?.data_collection_permissions?.required?.[0] === 'none'],
 ];
 
+// Red probes: crafted-bad inputs each de-vacuumed gate must reject. If a gate
+// ever becomes vacuous (passes on empty/hostile input), its probe returns true
+// and this fails — the gate's proof that it can actually fire.
+const redProbes = [
+  ['ad-ruleset gate would reject an empty ad list', !(0 > 0 && [].length === 0)],
+  ['content-scripts gate would reject <all_urls>', !contentScriptsScoped([{ matches: ['<all_urls>'] }])],
+  ['content-scripts gate would reject an off-kick host', !contentScriptsScoped([{ matches: ['*://*.evil.net/*'] }])],
+  ['content-scripts gate would reject an empty matches list', !contentScriptsScoped([{ matches: [] }])],
+  ['exfil gate would catch an off-origin api call', EXFIL_REGEX.test('fetch(`https://evil.example/api/v1/log`)')],
+  ['exfil gate would catch a lookalike host', EXFIL_REGEX.test('https://kick.com.evil.net/api/v1/log')],
+  // The live gate itself must be the real thing on this machine, not a skip.
+  ['content-scripts gate accepts the real manifest', contentScriptsScoped(manifest.content_scripts)],
+];
+for (const [label, fires] of redProbes) {
+  if (!fires) throw new Error(`Red probe failed (gate is vacuous): ${label}`);
+}
+
 for (const [label, passed] of checks) {
   if (!passed) throw new Error(`Check failed: ${label}`);
   console.log(`OK ${label}`);
 }
-console.log(`${checks.length} checks passed.`);
+console.log(`${checks.length} checks passed; ${redProbes.length} red probes fired.`);

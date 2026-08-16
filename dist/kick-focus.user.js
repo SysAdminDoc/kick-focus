@@ -182,6 +182,22 @@ function normalizeShortcut(value, fallback) {
 }
 
 /**
+ * The key of the shortcut that already uses `candidate`, or '' if none does.
+ * README advertises that reassigning a shortcut rejects a duplicate; this is the
+ * decision behind that, extracted so it can be tested rather than only reached
+ * through the capture handler.
+ */
+function findShortcutConflict(shortcuts, capturingKey, candidate) {
+  if (!isRecord(shortcuts) || typeof candidate !== 'string' || !candidate) return '';
+  const wanted = candidate.toLowerCase();
+  for (const [key, value] of Object.entries(shortcuts)) {
+    if (key === capturingKey) continue;
+    if (typeof value === 'string' && value.toLowerCase() === wanted) return key;
+  }
+  return '';
+}
+
+/**
  * A remote blocklist URL is only accepted when it is a well-formed https URL.
  * Validated here, at normalize time, so the value that reaches the privileged
  * companion fetch and the userscript transport can never be a `javascript:`,
@@ -10011,9 +10027,9 @@ function onGlobalKeydown(event) {
     if (!shortcut) return;
     event.preventDefault();
     event.stopPropagation();
-    const conflict = Object.entries(state.settings.shortcuts).find(([key, value]) => key !== state.shortcutCapture && value.toLowerCase() === shortcut.toLowerCase());
-    if (conflict) {
-      state.shortcutError = `${shortcut} is already used by ${conflict[0]}.`;
+    const conflictKey = findShortcutConflict(state.settings.shortcuts, state.shortcutCapture, shortcut);
+    if (conflictKey) {
+      state.shortcutError = `${shortcut} is already used by ${conflictKey}.`;
       renderSettingsPage();
       return;
     }

@@ -7122,9 +7122,9 @@ function onGlobalKeydown(event) {
     if (!shortcut) return;
     event.preventDefault();
     event.stopPropagation();
-    const conflict = Object.entries(state.settings.shortcuts).find(([key, value]) => key !== state.shortcutCapture && value.toLowerCase() === shortcut.toLowerCase());
-    if (conflict) {
-      state.shortcutError = `${shortcut} is already used by ${conflict[0]}.`;
+    const conflictKey = findShortcutConflict(state.settings.shortcuts, state.shortcutCapture, shortcut);
+    if (conflictKey) {
+      state.shortcutError = `${shortcut} is already used by ${conflictKey}.`;
       renderSettingsPage();
       return;
     }

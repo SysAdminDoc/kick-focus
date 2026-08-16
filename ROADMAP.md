@@ -77,13 +77,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: toggling a setting deep in a page keeps focus and scroll position; forced-colors shows which switch/theme/accent/page is selected; toasts announce via a live region (errors as role="alert"); the reset dialog traps focus to itself and Escape cancels only the dialog; sliders expose aria-valuetext and non-dotted names; largeTargets/reduceMotion visibly affect `.kf-switch`/`.kf-ms-bar`; a fixture or node:test asserts the aria wiring.
   Complexity: L
 
-- [ ] R-13 — De-vacuum the verification story (empty-list gates, unfireable exfil gates, ungated matches, untested shortcuts)
-  Why: ~11 DNR gates pass on an empty host list, both "stays on kick.com" exfil gates match 0 against the template-interpolated bundle, content_scripts[].matches is gated on neither manifest, and normalizeShortcut has zero tests while README:85 advertises conflict rejection.
-  Evidence: phase0-memo #17,#20,#21 — scripts/check.mjs:119,127-135,264-267,273-275,329-331,366-367; the missingExports pattern at check.mjs:36-47; src/core.mjs:131-141,232-235; README.md:85.
-  Touches: check.mjs gate inputs derived from source; adopt node:test expectFailure for red-verification; test/core.test.js shortcut coverage.
-  Acceptance: DNR gates fail on an empty AD_HOSTS/telemetry list; a synthetic off-origin `fetch(\`${EVIL}/api/v1/log\`)` fails the exfil gate; a `matches:["<all_urls>"]` manifest fails a gate; normalizeShortcut conflict rejection is tested; each rewritten gate has an expectFailure red-test proving it can fire.
-  Complexity: M
-
 - [ ] R-14 — Make the Firefox popup work and keep the dev manifest out of the release zip (pairs with "Next" item 4)
   Why: the build copies the Chromium promise-API popup.js verbatim into the Firefox zip so `chrome.tabs.query` returns undefined and the popup shows static defaults forever; manifest.dev.json is also zipped into the release archive; the live gate calls a feedback-gated API the release manifest can't grant.
   Evidence: phase0-memo #9,#10 — src/extension/popup.js:25,42,88; scripts/build.mjs:72-76,117,148; verify-extension.mjs:71,346,377-378.

@@ -53,7 +53,27 @@ import {
   observationsFromChatEmotes,
   mergeMultistream,
   MULTISTREAM_MAX,
+  normalizeShortcut,
+  findShortcutConflict,
 } from '../src/core.mjs';
+
+test('normalizeShortcut canonicalizes case and spacing, rejecting empty and overlong', () => {
+  assert.equal(normalizeShortcut('ctrl + k', 'X'), 'Ctrl+K');
+  assert.equal(normalizeShortcut('  shift+ALT+p ', 'X'), 'Shift+Alt+P');
+  assert.equal(normalizeShortcut('f', 'X'), 'F');
+  assert.equal(normalizeShortcut('', 'FB'), 'FB');
+  assert.equal(normalizeShortcut(123, 'FB'), 'FB');
+  assert.equal(normalizeShortcut('a'.repeat(40), 'FB'), 'FB');
+});
+
+test('shortcut reassignment rejects a value already bound to another action (README claim)', () => {
+  const shortcuts = { focus: 'F', chat: 'C', settings: 'Alt+K' };
+  assert.equal(findShortcutConflict(shortcuts, 'chat', 'F'), 'focus');
+  assert.equal(findShortcutConflict(shortcuts, 'chat', 'f'), 'focus'); // case-insensitive
+  assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
+  assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
+  assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+});
 
 test('multi-stream merge survives two tabs adding different channels', () => {
   // Tab A boots with [x], adds a. Tab B boots with [x] (stale), adds b after A wrote.
