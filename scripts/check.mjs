@@ -228,6 +228,33 @@ const completionIsMouseOnly = (bundle) => {
     && /emoteInsertionPlan\(sticker\)/.test(region);
 };
 
+/**
+ * No two bundled modules may declare the same top-level name.
+ *
+ * Every module's text lands in one function scope, so two files each declaring
+ * `const isRecord` produce a SyntaxError in the artifact — from a change that
+ * looks entirely local and passes its own module's tests. `node --check` finds
+ * it for the userscript, but only after the build; naming both files is faster
+ * and says which two collided.
+ */
+async function topLevelCollisions(files) {
+  const owners = new Map();
+  const clashes = [];
+  for (const file of files) {
+    const text = await read(file);
+    const names = new Set();
+    for (const match of text.matchAll(/^(?:export\s+)?(?:async\s+)?(?:function|const|let|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+      names.add(match[1]);
+    }
+    for (const name of names) {
+      if (owners.has(name)) clashes.push(`${name} in ${owners.get(name)} and ${file}`);
+      else owners.set(name, file);
+    }
+  }
+  return clashes;
+}
+const nameClashes = await topLevelCollisions([...moduleFiles, 'src/runtime.js']);
+
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
 const unroutedHTML = bundleTargets
@@ -240,6 +267,8 @@ const checks = [
   // precisely when there were gaps.
   [`every module export is defined in every bundle${bundleGaps.length ? ` — ${bundleGaps.join(' | ')}` : ''}`, bundleGaps.length === 0],
   [`every src/*.mjs module is checked against the bundles (${moduleFiles.length})`, moduleFiles.length >= 4],
+  [`no two bundled modules declare the same top-level name${nameClashes.length ? ` — ${nameClashes.slice(0, 4).join(' | ')}` : ''}`,
+    nameClashes.length === 0],
   [`no import/export statement survives into a bundle${leakedModuleSyntax.length ? ` — ${leakedModuleSyntax.join(', ')}` : ''}`, leakedModuleSyntax.length === 0],
   // Userscript artifact
   ['metadata starts at byte zero', source.startsWith('// ==UserScript==')],
@@ -476,6 +505,25 @@ const checks = [
   // Favorites are ordered and scoped. The shelf must render them in the stored
   // order rather than the picker's, or the ordering controls do nothing
   // visible; and the order has to be part of the render signature.
+  ['the library is stored behind a provider with a synchronous fallback',
+    source.includes('createLibraryStore({') && source.includes('readFallback:') && source.includes('writeFallback:')
+    && /function readStickerPreferences[\s\S]{0,200}?libraryStore\.readSync\(\)/.test(source)
+    && /function persistStickerPreferences[\s\S]{0,300}?libraryStore\.write\(/.test(source)],
+  ['blobs are a separate object store from the library record',
+    source.includes("LIBRARY_STORE = 'library'") && source.includes("BLOB_STORE = 'blobs'")
+    && !/objectStore\(LIBRARY_STORE\)\.put\(blob/.test(source)],
+  ['hydration is off the boot path and localStorage remains the floor',
+    /hydrateLibrary\(\)\.catch\(/.test(source) && source.includes('localstorage: -1000')],
+  // The word appears in a source comment explaining why it is not used, so this
+  // looks for an actual dependency: a manifest entry, or a bare-specifier import
+  // (every import in this tree is relative, and the build strips those).
+  ['no storage dependency was added',
+    !packageJson.dependencies && !packageJson.devDependencies
+    && !/(?:^|\n)\s*import\s[^\n]*from\s+['"][^.'"][^'"]*['"]/.test(await read('src/storage.mjs'))],
+  ['every library write goes through the provider, including an import',
+    /entries\.push\(\[STICKER_PREFERENCES_KEY, planLibraryPersist\(/.test(source)
+    && /libraryStore\.write\(result\.stickers\)/.test(source)
+    && /libraryStore\.clear\(\)/.test(source)],
   ['emote completion is accepted by click only and never sends', completionIsMouseOnly(source)],
   ['emote completion is off until it is turned on', source.includes('emoteAutocomplete: false')],
   ['discovery cards carry a multi chip, only where the card is a channel',

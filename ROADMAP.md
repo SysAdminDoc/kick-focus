@@ -60,11 +60,4 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P3 — differentiators, larger bets, future-proofing
 
-- [ ] R-29 — IndexedDB provider abstraction behind one proxy
-  Why: raises the library cap orders of magnitude and adds a blob store + cross-tab sync, with localStorage as the -1000 fallback.
-  Evidence: twitch-mods + perf-storage streams — FFZ providers.ts (priority-scored providers, quota-exceeded event, BroadcastChannel); NipahTV Dexie schema (borrow shape only, Dexie is a DEP).
-  Touches: ~150-line zero-dep IDB wrapper behind a proxy; separate blob store; BroadcastChannel sync.
-  Acceptance: a zero-dep IDB provider fronts library storage with localStorage fallback; migration from the current store is lossless under node:test; Dexie is NOT added.
-  Complexity: XL
-
 

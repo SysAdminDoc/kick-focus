@@ -17,6 +17,25 @@ const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 // Declared ahead of `state` because writes can happen while `state` is still in
 // its own initializer, and reading a const in its temporal dead zone throws.
 const storageHealth = { failures: {}, lastError: '' };
+
+/**
+ * The emote library behind a provider rather than a single backend.
+ *
+ * `localStorage` is the only store that answers synchronously, and boot reads
+ * the library before the first render — but it is also the one with a ~5MB
+ * ceiling a growing library eventually reaches. So a bounded seed is written
+ * where boot can read it, the complete record goes to IndexedDB, and
+ * `hydrateLibrary` folds the fuller copy back in once the page is up.
+ *
+ * Declared here for the same reason as `storageHealth` above: `state`'s own
+ * initializer reads the library, so this cannot be a const further down the
+ * file — which is precisely what the boot gate caught when it was.
+ */
+const libraryStore = createLibraryStore({
+  readFallback: () => normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {})),
+  writeFallback: (seed) => gmSet(STICKER_PREFERENCES_KEY, seed),
+  onError: (stage, error) => logAppError(`library storage (${stage})`, error),
+});
 const ROUTE_EVENT = 'kick-focus:routechange';
 const AD_SHELL_SELECTORS = [
   'iframe[src*="doubleclick.net"]',
@@ -1877,14 +1896,35 @@ function stickerPreferencesValue(preferences = state.stickerPreferences) {
 }
 
 function readStickerPreferences() {
-  return stickerPreferencesFromValue(normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {})));
+  return stickerPreferencesFromValue(libraryStore.readSync());
 }
 
 function persistStickerPreferences() {
   const value = stickerPreferencesValue();
   state.stickerPreferences = stickerPreferencesFromValue(value);
-  gmSet(STICKER_PREFERENCES_KEY, value);
+  libraryStore.write(value);
   return value;
+}
+
+/**
+ * Promote the seed to the full record once the database answers.
+ *
+ * Runs after boot, never during it: nothing here is allowed to be on the path
+ * that puts the interface on screen. If IndexedDB is unavailable — private
+ * browsing, a blocked upgrade — this returns nothing and the seed remains the
+ * store, which is exactly the behaviour every build had before.
+ */
+async function hydrateLibrary() {
+  const merged = await libraryStore.hydrate();
+  if (!merged) return;
+  const value = normalizeStickerPreferences(merged);
+  if (value.library.length <= state.stickerPreferences.library.size) return;
+  state.stickerPreferences = stickerPreferencesFromValue(value);
+  state.runtime.stickerCatalogDirty = true;
+  renderStickerOrganizer();
+  for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
+    summary.textContent = stickerLibrarySummary();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3484,7 +3524,12 @@ function resetStickerPreferences(options = {}) {
   };
   state.runtime.stickerCatalogDirty = true;
   if (keepLibrary) persistStickerPreferences();
-  else gmDelete(STICKER_PREFERENCES_KEY);
+  else {
+    gmDelete(STICKER_PREFERENCES_KEY);
+    // The database holds the fuller copy, so deleting only the seed would let
+    // the discarded library walk straight back in on the next hydrate.
+    libraryStore.clear().catch((error) => logAppError('library reset', error));
+  }
 }
 
 function clearStickerPreferences() {
@@ -7443,7 +7488,12 @@ function exportSettings() {
 function applyImportedStores(result) {
   const trimmedSet = (values) => [...new Set(values)].filter((item) => typeof item === 'string').slice(-200);
   const entries = [[STORAGE_KEY, result.value]];
-  if (result.stickers) entries.push([STICKER_PREFERENCES_KEY, result.stickers]);
+  // The transaction has to stay one sized write, so what it commits is the
+  // bounded seed; the complete library follows into the database once the
+  // commit succeeds. Pushing the whole library through here instead would both
+  // blow the size budget the transaction is checking and leave the database
+  // holding a backup the user had just replaced.
+  if (result.stickers) entries.push([STICKER_PREFERENCES_KEY, planLibraryPersist(result.stickers).seed]);
   if (result.usage) entries.push([EMOTE_USAGE_KEY, result.usage]);
   if (result.multistream) entries.push([MULTISTREAM_KEY, result.multistream]);
   if (result.channelLayouts) entries.push([CHANNEL_LAYOUT_KEY, result.channelLayouts]);
@@ -7458,6 +7508,7 @@ function applyImportedStores(result) {
 
   state.settings = result.value;
   if (result.stickers) {
+    libraryStore.write(result.stickers);
     state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
     state.runtime.stickerCatalogDirty = true;
     state.runtime.stickerLibraryFilter = 'all';
@@ -8436,6 +8487,9 @@ function installCompanionBridge() {
   });
   handshakeCompanion();
   openSharedLayoutFromUrl();
+  // Off the boot path deliberately: the interface is already on screen, and the
+  // fuller library arrives when the database answers.
+  hydrateLibrary().catch((error) => logAppError('library hydrate', error));
 }
 
 /**

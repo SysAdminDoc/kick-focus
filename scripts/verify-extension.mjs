@@ -798,6 +798,53 @@ try {
       && tip.afterUnrelated === null,
     tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
 
+  // The library provider against Chromium's real IndexedDB. The pure split and
+  // merge are covered by node:test with a stub; what only a browser can answer
+  // is whether the database this build opens actually holds the whole record
+  // while localStorage holds a bounded seed, and whether the two agree.
+  const storeProbe = await evaluate(pageClient, `(async () => {
+    const settle = (ms = 600) => new Promise((done) => setTimeout(done, ms));
+    await settle();
+    const open = () => new Promise((resolve) => {
+      const request = indexedDB.open('kick-focus', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    });
+    const db = await open();
+    if (!db) return { ok: false, why: 'IndexedDB did not open' };
+    const stores = [...db.objectStoreNames];
+    if (!stores.includes('library')) return { ok: false, why: 'library store missing: ' + JSON.stringify(stores) };
+    const record = await new Promise((resolve) => {
+      const request = db.transaction('library', 'readonly').objectStore('library').get('preferences');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    });
+    const seed = JSON.parse(localStorage.getItem('kick-focus:sticker-preferences') || '{}');
+    db.close();
+    return {
+      ok: true,
+      stores,
+      stored: Array.isArray(record?.library) ? record.library.length : -1,
+      seeded: Array.isArray(seed.library) ? seed.library.length : -1,
+      seedTotal: Number(seed.librarySeedTotal),
+      favorites: (seed.favorites || []).length,
+      storedFavorites: (record?.favorites || []).length,
+    };
+  })()`);
+  const store = storeProbe.value || {};
+  record('the emote library is written to IndexedDB with a bounded localStorage seed',
+    store.ok === true
+      && store.stores?.includes('library') && store.stores?.includes('blobs')
+      && store.stored >= 0
+      && store.seeded >= 0
+      && store.seeded <= 400
+      && store.seedTotal === store.stored
+      && store.favorites === store.storedFavorites,
+    store.ok
+      ? `stores ${JSON.stringify(store.stores)}; database holds ${store.stored} entries, seed holds ${store.seeded} of ${store.seedTotal}`
+      : store.why);
+
   // Colon completion, driven the way a person drives it: turn the setting on,
   // seed a library entry, type into Kick's own composer, click a suggestion.
   // What is under test is that the list appears from a real `input` event, that
