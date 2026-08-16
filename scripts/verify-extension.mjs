@@ -450,12 +450,14 @@ try {
         left: parseFloat(style.left),
       };
     };
+    // Read synchronously: showChatEmoteTooltip renders in the same tick, and
+    // waiting lets the periodic apply cycle clear the affordance out from under
+    // the probe, which then looks like the tooltip never opened.
     image.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-    await settle();
     const shown = readCard();
     unrelated.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-    await settle();
     const afterUnrelated = readCard();
+    await settle();
     image.remove();
     unrelated.remove();
     return { ok: true, shown, afterUnrelated };
