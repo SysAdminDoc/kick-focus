@@ -55,6 +55,8 @@ The companion is unsigned and installs unpacked. It is not published to any stor
 
 The build also emits `dist/extension-firefox/` and `dist/kick-focus-firefox-v<version>.zip`. Firefox users can open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/extension-firefox/manifest.json`. This unsigned Manifest V2 package injects the same page bundle through a local web-accessible bridge and blocks the same Kick-initiated hosts.
 
+**Firefox channel limitations:** Temporary add-ons loaded through `about:debugging` are removed on restart. Firefox Release and Beta cannot install unsigned XPIs persistently at all. For a persistent unsigned install, use Firefox Developer Edition, Nightly, or ESR with `xpinstall.signatures.required` set to `false` in `about:config`. This is a Mozilla policy, not a limitation of this project.
+
 ![Kick Focus companion popup](design/screenshots/extension-popup.png)
 
 The companion is self-contained: it carries the same page-world script as the userscript, so **install one or the other, not both**. If both are present the first to run claims the page and the second stands down, but only the extension gives you the network layer.
@@ -88,6 +90,7 @@ Kick Focus is deliberately honest about the userscript boundary:
 
 - `@run-at document-start` starts as early as a userscript manager supports, but another page script can still run first.
 - On Chromium Manifest V3, current Tampermonkey versions no longer expose the experimental pre-script `@webRequest` path, and `chrome.userScripts` injection can land after the page's own first scripts. The page-realm hooks are written to be idempotent so they still install when they lose that race.
+- **Violentmonkey 2.47.0+** (the first MV3 release, 2026-08-06) does not provide real `document-start` injection under MV3 Chromium unless **Alternative page mode** is enabled in its extension settings. That mode is off by default and limited to approximately 1 MB of injected script. The About page measures actual injection timing and reports it.
 - The userscript alone therefore blocks requests it can separate in the page realm and continuously removes ad DOM. It does not claim browser-network control over parser requests that occur first, worker-only requests, or server-side stitched media.
 - **The companion extension closes the network gap.** Its `declarativeNetRequest` ruleset refuses the known ad hosts in the browser network stack, which was verified by observing `ERR_BLOCKED_BY_CLIENT` on a Kick-initiated request to `securepubads.g.doubleclick.net` (`npm run verify:extension`).
 - **Ads are disabled at their source in the playback response.** Kick gates client-side ad behaviour on flags it sends with each stream; those are rewritten in flight, so the ad SDKs never initialise.
