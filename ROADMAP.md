@@ -9,12 +9,12 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 1. **Authenticated companion journey at both desktop viewports.** Load the unpacked extension in a throwaway profile that the user signs into directly, then repeat Home → Browse → Following → Drops → Search → Channel/chat at 1440×900 and 1920×1080. The isolated in-app browser supplied authenticated recon, while the extension proof used a separate logged-out profile; session data must never be exported between them.
 2. **Worker-level stitched-ad observability.** Prototype a bounded `Worker`-constructor wrapper around the IVS worker and record only manifest/ad-signifier counts. Ship a mitigation only if it can separate ad media without replaying private endpoints, breaking playback, or proxying traffic. The current page-realm fetch/XHR hooks cannot see the worker-owned HLS manifest. (2026-08-15: check the cheaper question first — Chrome documents a request's initiator as the creating document's origin, so the companion's existing `initiatorDomains: ["kick.com"]` rules may already observe worker-initiated segment requests that the page realm cannot. Measure that before building the wrapper. Note also that the AdGuard "stitched-ad redirect rule" reported for 2026-08-14 **does not exist** — see Rejected Ideas in RESEARCH.md — so there is no external rule to copy.) **2026-08-16: R-09 (the page-world player-events path that would have superseded this) was live-probed and CLOSED as infeasible — Kick exposes no page-world IVS player global, instance, or hookable factory (see RESEARCH.md Open Questions #6). This worker wrapper is therefore the only remaining path, and it stays blocked and playback-critical; do not attempt it without a live harness proving it separates ad media without breaking playback.**
 3. **Automated Kick DOM drift snapshots.** Add a maintainer-only reducer that turns fresh MHTML/live captures into small, sanitized fixtures and fails when stable probes disappear on Home, Browse, Following, Drops, Search, Category, Channel, or the open sticker picker. Keep raw captures ignored.
-4. **Live Firefox companion proof.** Exercise the generated Manifest V2 package in a disposable Firefox profile, proving `webRequestBlocking`, page/bridge handshake, popup state, and current Kick DOM behavior. Firefox requires target and initiator host access for this API, so document the `<all_urls>` warning alongside the Kick-initiator runtime guard. (2026-08-15: this proof will fail as written — the initiator guard reads a Chromium-only field. Land the P0 fix below first, or this item just rediscovers it.) **2026-08-16 corrections: the Firefox `initiator` fix already landed in v1.5.0 (commit 9626411) — that inline note is stale. Also, this proof will find the popup dead on arrival (R-14: the Chromium promise-API `popup.js` is copied verbatim into the Firefox zip). Unblocked by R-01 (install Chromium/Firefox); coordinate with R-14.**
+4. **Live Firefox companion proof.** Exercise the generated Manifest V2 package in a disposable Firefox profile, proving `webRequestBlocking`, page/bridge handshake, popup state, and current Kick DOM behavior. Firefox requires target and initiator host access for this API, so document the generated destination-host permissions alongside the Kick-initiator runtime guard. The initiator and promise-API popup defects are already fixed; this item is the remaining live behavioral proof.
 5. **Userscript-manager cold-start matrix.** Verify current Tampermonkey and Violentmonkey injection timing, storage/export behavior, SPA navigation, and ad-defense diagnostics in isolated profiles. Manager-specific grants cannot be considered live-verified by the direct fixture bundle. (2026-08-15: Violentmonkey 2.47.0 only reached MV3 on 2026-08-06, and its release notes state `@run-at document-start` is **not** real document-start under MV3 Chromium unless "Alternative page mode" is enabled, which is off by default and advisory-limited to ~1 MB of injected script. Test that mode explicitly, both on and off.)
 
 ## Explicitly deferred
 
-- Mobile layout or mobile claims
+- Full mobile-site support; the settings surface still reflows at narrow window sizes
 - Publishing to a userscript catalog or extension store without explicit approval
 
 ## Research-Driven Additions
@@ -31,7 +31,7 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 
 ### API and emote-catalog work (added 2026-08-15 from the Kick API + emote tooling research)
 
-Gate for this whole group: the deferred list rules out "replay of private endpoints". These items read endpoints the page already calls, same-origin, read-only, inheriting the user's own session, and every one keeps the existing DOM path as fallback. Settle that boundary before starting.
+Gate for this whole group: do not replay private endpoints or infer entitlement. Data features read endpoints the page already calls, same-origin, inheriting the user's own session, and keep the existing DOM path as fallback. The separately documented click-to-save flow may perform Kick's normal Follow request only after a deliberate click and explicit follow-gate evidence.
 
 ## Research-Driven Additions — differential pass
 
@@ -79,11 +79,11 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: `npm run verify` green AND `npm run verify:extension` green after the move (a green offline build alone does not prove a refactor equivalent); no symbol asserted only by `source.includes`; bundle parses under `node --check`.
   Complexity: L
 
-- [ ] R-16 — In-chat emote tooltips + favorite-from-chat (operator-requested)
-  Why: KF enhances nothing about emotes in the stream today though name/set/access/first-seen/collision data is already held.
+- [ ] R-16 — Enrich the shipped click-to-save emote control with tooltips
+  Why: v1.13.0 makes every Kick chat emote keyboard-clickable, saves it locally, and follows only on an explicit follow gate. The remaining opportunity is to surface the name/set/access/first-seen/collision data already held without making chat visually noisy.
   Evidence: phase1b E4 — src/runtime.js:1762,3216; FrankerFaceZ #110; BTTV #5925.
-  Touches: pure `emoteTooltipText(entry,collisions)` in core.mjs; delegated mouseover + singleton tooltip + star toggle in runtime.js.
-  Acceptance: pure function in core.mjs under node:test + delegated tooltip shows name·set·access·shadow-warning with a star-to-favorite toggle; filters by CDN host files.kick.com so 7TV-injected imgs are ignored; tooltip is pointer-events:none and position-clamped.
+  Touches: pure `emoteTooltipText(entry,collisions)` in core.mjs; delegated mouseover + singleton tooltip in runtime.js, reusing the existing save action.
+  Acceptance: pure function in core.mjs under node:test + delegated tooltip shows name·set·access·shadow-warning and the current saved state; filters by Kick emote identity so unrelated injected images are ignored; tooltip is pointer-events:none and position-clamped.
   Complexity: M
 
 - [ ] R-17 — Make chat-'observed' emotes usable: copy-name first, gated name-insert second (operator-requested)

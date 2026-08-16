@@ -6,6 +6,27 @@ All notable changes are documented here. Dates use ISO 8601.
 
 _Nothing yet._
 
+## 1.13.0 — 2026-08-16
+
+### Added
+
+- **Click any chat emote to save it.** Emotes in live chat are now visible keyboard controls: click them or press Enter/Space to add them to the local favorites collection immediately. Dynamically arriving messages get the same treatment, repeated clicks are idempotent, and every new save offers Undo.
+- **Follow-gated emotes can complete the whole action in place.** When—and only when—Kick's own emote data explicitly says a source channel follow is required, the save click also performs Kick's normal same-origin Follow request without navigating away. Public artwork never triggers a follow, a missing source is never guessed, subscriber-only access remains locked, failures keep the local save and explain what happened, and Undo can reverse a follow created by that click.
+
+### Changed
+
+- **Premium settings polish across every page and state.** The modal now uses one semantic surface/type/border/radius system, clearer hierarchy, non-color-only On/Off switches and autosave state, stronger focus/hover/pressed/disabled/error treatments, readable command-menu counts and empty states, steadier multi-stream controls, and responsive forms/navigation down to a 375×812 narrow-window check. Studio, OLED, and Slate retain their identity through the same component system.
+- **The companion popup now communicates state instead of assuming it.** It starts in an honest checking state, distinguishes Active, Off, and Offline in text, handles an unavailable background service, disables controls with an explanation, and reports busy/failure states for both settings actions.
+
+### Fixed
+
+- A first emote observed in chat no longer throws while the library chooses its access level. The access merge now handles a missing prior record explicitly and has a regression test.
+- Settings navigation no longer clips the longest desktop label, long status values no longer force horizontal overflow, and the active mobile section scrolls into view.
+
+### Internal
+
+- Settings migrate to schema 4 for the click-to-save preference; emote preferences migrate to schema 7 for source-channel and explicit follow-gate evidence. The follow decision, follow endpoint, normalization, lock state, access merge, and portable metadata are unit-tested. The full suite is 118/118.
+
 ## 1.12.0 — 2026-08-16
 
 ### Added

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.12.0
+// @version      1.13.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -22,8 +22,8 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.12.0';
-const SETTINGS_SCHEMA = 3;
+const VERSION = '1.13.0';
+const SETTINGS_SCHEMA = 4;
 
 const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
@@ -70,6 +70,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     stickyChatPause: false,
     chatHighlights: false,
     organizeChatStickers: true,
+    clickChatEmotes: true,
     // Where a newly favorited emote lands. Global by default: changing this
     // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
@@ -317,6 +318,7 @@ function normalizeSettings(input) {
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
+      clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
@@ -545,6 +547,14 @@ function assessAdStack(observed = {}) {
     unknownKeys: [],
     summary: `Matches the ad stack confirmed on ${AD_STACK_BASELINE.date}.`,
   };
+}
+
+/** Keep the strongest known emote access without dereferencing a missing record. */
+function preferredStickerAccess(existingAccess, incomingAccess) {
+  const accessRank = { observed: 0, locked: 1, channel: 2, available: 3 };
+  const incoming = Object.hasOwn(accessRank, incomingAccess) ? incomingAccess : 'locked';
+  if (!Object.hasOwn(accessRank, existingAccess)) return incoming;
+  return accessRank[existingAccess] >= accessRank[incoming] ? existingAccess : incoming;
 }
 
 /**
@@ -797,7 +807,7 @@ function monetizationKind({ text = '', ariaLabel = '', title = '', testId = '' }
   return '';
 }
 
-const STICKER_PREFERENCES_SCHEMA = 6;
+const STICKER_PREFERENCES_SCHEMA = 7;
 
 /**
  * Timestamps travel through the settings export, so an imported file can carry
@@ -964,6 +974,10 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
         .map((group) => cleanStickerText(group, 80))
         .filter(Boolean))].slice(0, 20),
       access: enumValue(raw.access, ['available', 'channel', 'observed', 'locked'], 'available'),
+      sourceSlug: favoriteScope(raw.sourceSlug),
+      requiresFollow: raw.requiresFollow === true,
+      followed: raw.followed === true,
+      subscribersOnly: raw.subscribersOnly === true,
       // Schema 4. Entries captured before it carry 0, which reads as unknown
       // rather than as a date the record cannot actually support.
       firstSeen: cleanCaptureTime(raw.firstSeen),
@@ -1976,7 +1990,8 @@ function formatBytes(bytes) {
  * unit-tested against payload shapes captured from the live site on 2026-08-15.
  *
  * Boundaries this module holds to, deliberately:
- *   - Read-only. No endpoint here mutates anything on Kick.
+ *   - Request-free. This module only builds URLs and normalizes data. Runtime
+ *     owns the single deliberate Follow mutation used by click-to-save.
  *   - Same-origin, inheriting whatever session the page already has. Nothing
  *     handles, stores or forwards a credential.
  *   - Only endpoints Kick's own client already calls from the page.
@@ -1994,6 +2009,7 @@ function emoteImageUrl(id, size = 'fullsize') {
 
 const endpoints = {
   channel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}`,
+  followChannel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}/follow`,
   emoteSets: (slug) => `${KICK_ORIGIN}/emotes/${encodeURIComponent(slug)}`,
   chatSettings: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/chat/settings`,
   chatHistory: (chatroomId) => `${KICK_WEB_ORIGIN}/api/v1/chat/${encodeURIComponent(chatroomId)}/history`,
@@ -2319,12 +2335,34 @@ function emoteEntitlement(source) {
 }
 
 /**
+ * A follow must never be inferred from an ordinary channel emote. Kick's own
+ * help says channel emotes are local to that chat; a follow gate is actionable
+ * only when the response explicitly carries one of the known gate fields.
+ */
+function emoteFollowRequirement(emote, slug = '') {
+  const source = emote && typeof emote === 'object' ? emote : {};
+  const required = source.requiresFollow === true
+    || source.requires_follow === true
+    || source.followRequired === true
+    || source.follow_required === true
+    || source.followersOnly === true
+    || source.followers_only === true
+    || source.follow_only === true;
+  const value = source.followed ?? source.is_following ?? source.following;
+  const followed = value === true || value === 1 || Boolean(value && typeof value === 'object');
+  const candidate = String(slug || source.sourceSlug || source.slug || source.setName || '').trim();
+  return { required, followed, slug: isValidSlug(candidate) ? candidate : '' };
+}
+
+/**
  * What an API-only catalog entry may honestly claim before the native picker
  * corroborates it. Public artwork is not proof that the account can send it.
  */
 function catalogEmoteAccess(emote) {
   const source = emote && typeof emote === 'object' ? emote : {};
   if (source.kind === 'global' || source.kind === 'emoji') return 'available';
+  const follow = emoteFollowRequirement(source);
+  if (follow.required && !follow.followed) return 'locked';
   if (!source.subscribersOnly && !source.subscribers_only) return 'channel';
   return (source.entitlement || emoteEntitlement(source)) === 'granted' ? 'available' : 'locked';
 }
@@ -2351,21 +2389,27 @@ function normalizeEmoteSets(payload) {
     if (!rawSet || typeof rawSet !== 'object') continue;
     const kind = setKind(rawSet.name);
     const setName = typeof rawSet.name === 'string' && rawSet.name ? rawSet.name : (rawSet.slug || 'Channel');
+    const sourceSlugCandidate = typeof rawSet.slug === 'string' && rawSet.slug ? rawSet.slug : setName;
+    const sourceSlug = kind === 'channel' && isValidSlug(sourceSlugCandidate) ? sourceSlugCandidate : '';
     const list = Array.isArray(rawSet.emotes) ? rawSet.emotes : [];
     const normalized = [];
     for (const raw of list) {
       const id = raw?.id;
       const name = raw?.name;
       if ((typeof id !== 'number' && typeof id !== 'string') || typeof name !== 'string' || !name) continue;
+      const follow = emoteFollowRequirement({ ...rawSet, ...raw }, sourceSlug);
       const entry = {
         id: String(id),
         name,
         setId: rawSet.id == null ? null : String(rawSet.id),
         setName,
+        sourceSlug,
         kind,
         channelId: raw.channel_id == null ? null : String(raw.channel_id),
         // Kick's flag: subscriber emotes are usable platform-wide.
         subscribersOnly: Boolean(raw.subscribers_only),
+        requiresFollow: follow.required,
+        followed: follow.followed,
         usableEverywhere: kind !== 'channel' || Boolean(raw.subscribers_only),
         entitlement: emoteEntitlement(raw),
         collectible: isCollectibleEmote(name),
@@ -2413,6 +2457,17 @@ function channelCatalogEmotes(catalog, slug) {
 function emoteLockState(emote, slug = '') {
   const source = emote && typeof emote === 'object' ? emote : {};
   const channel = String(slug || source.setName || '').trim();
+  const follow = emoteFollowRequirement(source, channel);
+
+  if (follow.required && !follow.followed) {
+    return {
+      locked: true,
+      reason: follow.slug
+        ? `Follow ${follow.slug} on Kick to use this channel emote.`
+        : 'Follow the source channel on Kick to use this channel emote.',
+      unlockUrl: follow.slug ? `${KICK_ORIGIN}/${encodeURIComponent(follow.slug)}` : '',
+    };
+  }
 
   // Any of these, in any of the shapes seen, means Kick says it is available.
   const entitled = source.subscribed ?? source.is_subscribed ?? source.subscription
@@ -3735,6 +3790,12 @@ const SITE_CSS = `
     --kf-border-strong: #3a453d;
     --kf-text: #f4f7f5;
     --kf-text-muted: #9ba59f;
+    --kf-text-secondary: #c7cec9;
+    --kf-surface-inset: #090d0a;
+    --kf-surface-hover: #202621;
+    --kf-on-accent: #071004;
+    --kf-danger: #ff6258;
+    --kf-warning: #f6b943;
     --kf-radius: 10px;
     --kf-chat-width: 410px;
     --kf-thumb-saturation: 1.03;
@@ -3745,10 +3806,10 @@ const SITE_CSS = `
   html[data-kf-accent="cyan"] { --kf-accent: #38d7d0; --kf-accent-rgb: 56, 215, 208; }
   html[data-kf-accent="violet"] { --kf-accent: #9667ff; --kf-accent-rgb: 150, 103, 255; }
   html[data-kf-accent="gold"] { --kf-accent: #ffbe2e; --kf-accent-rgb: 255, 190, 46; }
-  html[data-kf-radius="subtle"] { --kf-radius: 7px; }
-  html[data-kf-radius="rounded"] { --kf-radius: 18px; }
-  html[data-kf-theme="oled"] { --kf-panel: #050606; --kf-panel-raised: #0a0c0d; --kf-border: #24282b; }
-  html[data-kf-theme="slate"] { --kf-panel: #141817; --kf-panel-raised: #1b211f; --kf-border: #3a454f; }
+  html[data-kf-radius="subtle"] { --kf-radius: 6px; }
+  html[data-kf-radius="rounded"] { --kf-radius: 12px; }
+  html[data-kf-theme="oled"] { --kf-canvas: #000; --kf-panel: #050606; --kf-panel-raised: #0a0c0d; --kf-panel-high: #101313; --kf-border: #24282b; --kf-border-strong: #3a4143; }
+  html[data-kf-theme="slate"] { --kf-canvas: #0e1110; --kf-panel: #141817; --kf-panel-raised: #1b211f; --kf-panel-high: #222926; --kf-border: #3a454f; --kf-border-strong: #53616c; }
 
   body {
     background: var(--kf-canvas) !important;
@@ -3916,7 +3977,7 @@ const SITE_CSS = `
 
     html[data-kf-route="channel"] #injected-channel-player {
       border: 1px solid var(--kf-border) !important;
-      border-radius: 11px !important;
+      border-radius: 10px !important;
       box-shadow: 0 18px 44px rgba(0,0,0,.34) !important;
       overflow: hidden !important;
     }
@@ -3947,7 +4008,7 @@ const SITE_CSS = `
     #channel-chatroom :is(textarea, input, [contenteditable="true"]) {
       border-radius: 8px !important;
       border-color: var(--kf-border-strong) !important;
-      background: #090d0a !important;
+      background: var(--kf-surface-inset) !important;
     }
 
     [data-kf-chat-panel], #channel-chatroom { border-left-color: var(--kf-border) !important; background: var(--kf-panel) !important; }
@@ -4000,7 +4061,7 @@ const SITE_CSS = `
     html[data-kf-sticky="true"] nav {
       min-height: 56px !important;
       backdrop-filter: none !important;
-      background: #0b0e0c !important;
+      background: var(--kf-surface-inset) !important;
       border-bottom: 1px solid var(--kf-border) !important;
     }
 
@@ -4072,8 +4133,8 @@ const SITE_CSS = `
       padding: 0 7px !important;
       border: 1px solid rgba(255,255,255,.24) !important;
       border-radius: 4px !important;
-      background: #0d100e !important;
-      color: #f7f9fa !important;
+      background: var(--kf-panel) !important;
+      color: var(--kf-text) !important;
       cursor: pointer !important;
       font-size: 11px !important;
       font-weight: 760 !important;
@@ -4098,8 +4159,8 @@ const SITE_CSS = `
       padding: 0 9px !important;
       border: 1px solid rgba(255,255,255,.25) !important;
       border-radius: 4px !important;
-      background: #0d100e !important;
-      color: #f7f9fa !important;
+      background: var(--kf-panel) !important;
+      color: var(--kf-text) !important;
       cursor: pointer !important;
       font-size: 11px !important;
       font-weight: 760 !important;
@@ -4494,6 +4555,40 @@ const SITE_CSS = `
   @media (prefers-reduced-motion: reduce) {
     html[data-kf-reduce-motion="true"] img[src*="/emotes/" i] { animation-play-state: paused !important; }
   }
+
+  /* Shared interaction states for controls the extension adds to Kick. */
+  :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]) {
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease !important;
+  }
+  :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):hover {
+    background: var(--kf-surface-hover) !important;
+  }
+  :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):active {
+    transform: translateY(1px) !important;
+  }
+  :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):disabled {
+    opacity: .48 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+  }
+  :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):focus-visible {
+    outline: 3px solid var(--kf-accent) !important;
+    outline-offset: 2px !important;
+  }
+  [data-kf-chat-emote-save] {
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    outline: 1px solid transparent;
+    outline-offset: 2px;
+    transition: filter 120ms ease, outline-color 120ms ease, transform 120ms ease !important;
+  }
+  [data-kf-chat-emote-save]:is(:hover, :focus-visible) {
+    filter: brightness(1.14) saturate(1.08) !important;
+    outline-color: var(--kf-accent) !important;
+    transform: translateY(-1px) scale(1.05);
+  }
+  [data-kf-chat-emote-save]:active { transform: translateY(0) scale(1); }
+  [data-kf-chat-emote-save][aria-busy="true"] { cursor: progress !important; opacity: .62; }
 `;
 
 function applySettingsAttributes() {
@@ -4728,6 +4823,36 @@ async function kickFetchJson(url, { credentials = 'include' } = {}) {
 }
 
 /**
+ * Same-origin account mutation with Kick's own session and CSRF cookie. The
+ * only caller is the explicit click-to-save gesture for an emote Kick itself
+ * marks follow-gated; ordinary channel emotes never reach this path.
+ */
+async function mutateKickChannelFollow(slug, method = 'POST') {
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug || '')) return { ok: false, status: 'invalid-channel' };
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
+  try {
+    const headers = { accept: 'application/json', 'x-requested-with': 'XMLHttpRequest' };
+    const token = document.cookie.split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('XSRF-TOKEN='))
+      ?.slice('XSRF-TOKEN='.length);
+    if (token) headers['x-xsrf-token'] = decodeURIComponent(token);
+    const response = await pageFetch(endpoints.followChannel(slug), {
+      method,
+      credentials: 'include',
+      headers,
+      signal: controller.signal,
+    });
+    return { ok: response.ok || response.status === 409, status: response.status };
+  } catch (error) {
+    return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * The unhooked `fetch`, captured before `installNetworkDefense` wraps it.
  *
  * Routing our own reads through our own interceptor would have them classified,
@@ -4833,6 +4958,10 @@ async function refreshEmoteCatalog(slug) {
     src: emote.url,
     nativeGroups: [emote.kind === 'channel' ? emote.setName : emote.setName],
     access: catalogEmoteAccess(emote),
+    sourceSlug: emote.sourceSlug,
+    requiresFollow: emote.requiresFollow,
+    followed: emote.followed,
+    subscribersOnly: emote.subscribersOnly,
   })));
 
   if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);
@@ -6294,10 +6423,7 @@ function mergeStickerLibrary(observed) {
         : sticker.access === 'channel'
           ? 'channel'
           : 'locked';
-    const accessRank = { observed: 0, locked: 1, channel: 2, available: 3 };
-    const access = (accessRank[existing?.access] || 0) >= accessRank[incomingAccess]
-      ? existing.access
-      : incomingAccess;
+    const access = preferredStickerAccess(existing?.access, incomingAccess);
     // Nothing here calls Kick. The record is built from what the page and the
     // catalog already showed, so no claim is automated and no endpoint replayed.
     const record = recordStickerObservation(existing, {
@@ -6307,6 +6433,10 @@ function mergeStickerLibrary(observed) {
       src: sticker.src,
       nativeGroups,
       access,
+      sourceSlug: sticker.sourceSlug || existing?.sourceSlug || '',
+      requiresFollow: sticker.requiresFollow === true || existing?.requiresFollow === true,
+      followed: sticker.followed === true || existing?.followed === true,
+      subscribersOnly: sticker.subscribersOnly === true || existing?.subscribersOnly === true,
     }, now);
     // `lastSeen` moves on every pass, so comparing it would rewrite the whole
     // library on every apply cycle. Only a real change is worth a write.
@@ -6352,10 +6482,49 @@ function observeStickerPicker(picker) {
 }
 
 const CHAT_STICKER_IMAGE_SELECTOR = 'img[src*="/emotes/" i], img[data-src*="/emotes/" i]';
+const pendingChatStickerSaves = new Set();
+
+function catalogEmoteForSticker(sticker) {
+  if (!sticker?.id || !Array.isArray(state.live.catalog?.emotes)) return null;
+  return state.live.catalog.emotes.find((emote) => String(emote.id) === String(sticker.id)) || null;
+}
+
+function enrichChatSticker(sticker) {
+  const emote = catalogEmoteForSticker(sticker);
+  if (!emote) return sticker;
+  return {
+    ...sticker,
+    nativeGroups: [...new Set([...(sticker.nativeGroups || []), emote.setName].filter(Boolean))],
+    access: catalogEmoteAccess(emote),
+    sourceSlug: emote.sourceSlug,
+    requiresFollow: emote.requiresFollow,
+    followed: emote.followed,
+    subscribersOnly: emote.subscribersOnly,
+  };
+}
 
 function chatStickerInfo(image) {
   const info = stickerImageInfo(image);
-  return info ? { ...info, nativeGroups: ['Seen in chat'], access: 'observed' } : null;
+  return info ? enrichChatSticker({ ...info, nativeGroups: ['Seen in chat'], access: 'observed' }) : null;
+}
+
+function annotateChatSticker(image, sticker) {
+  if (!state.settings.content.clickChatEmotes || !sticker) return;
+  image.dataset.kfChatEmoteSave = sticker.key;
+  image.setAttribute('role', 'button');
+  image.setAttribute('tabindex', '0');
+  image.setAttribute('aria-label', `Save ${sticker.name} to Kick Focus favorites`);
+  image.setAttribute('title', `Save ${sticker.name} to your Kick Focus collection`);
+}
+
+function clearChatStickerSaveAffordances() {
+  for (const image of document.querySelectorAll('[data-kf-chat-emote-save]')) {
+    delete image.dataset.kfChatEmoteSave;
+    if (image.getAttribute('role') === 'button') image.removeAttribute('role');
+    if (image.getAttribute('tabindex') === '0') image.removeAttribute('tabindex');
+    if (image.getAttribute('aria-label')?.startsWith('Save ')) image.removeAttribute('aria-label');
+    if (image.getAttribute('title')?.startsWith('Save ')) image.removeAttribute('title');
+  }
 }
 
 function stickerImagesWithin(node) {
@@ -6374,7 +6543,10 @@ function flushChatStickerScan() {
   for (const node of nodes) {
     for (const image of stickerImagesWithin(node)) {
       const sticker = chatStickerInfo(image);
-      if (sticker) observed.set(sticker.key, sticker);
+      if (sticker) {
+        annotateChatSticker(image, sticker);
+        observed.set(sticker.key, sticker);
+      }
     }
   }
   if (observed.size) mergeStickerLibrary(observed.values());
@@ -6398,14 +6570,19 @@ function disconnectChatStickerObserver() {
 function observeChatStickerDiscovery() {
   if (!state.settings.content.organizeChatStickers) {
     disconnectChatStickerObserver();
+    clearChatStickerSaveAffordances();
     return;
   }
+  if (!state.settings.content.clickChatEmotes) clearChatStickerSaveAffordances();
   const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
   if (!messages) {
     disconnectChatStickerObserver();
     return;
   }
-  if (state.runtime.stickerChatTarget === messages && state.observers.chatStickers) return;
+  if (state.runtime.stickerChatTarget === messages && state.observers.chatStickers) {
+    if (state.settings.content.clickChatEmotes) queueChatStickerScan([messages]);
+    return;
+  }
   disconnectChatStickerObserver();
   state.runtime.stickerChatTarget = messages;
   queueChatStickerScan([messages]);
@@ -6824,6 +7001,117 @@ function handleStickerAction(event) {
   scheduleApply(0);
 }
 
+function updateFollowedEmoteState(slug, followed) {
+  const source = String(slug || '').toLowerCase();
+  for (const emote of state.live.catalog?.emotes || []) {
+    if (String(emote.sourceSlug || '').toLowerCase() === source) emote.followed = followed;
+  }
+  for (const [key, entry] of state.stickerPreferences.library) {
+    if (String(entry.sourceSlug || '').toLowerCase() !== source || !entry.requiresFollow) continue;
+    state.stickerPreferences.library.set(key, {
+      ...entry,
+      followed,
+      access: followed ? (entry.subscribersOnly ? 'locked' : 'channel') : 'locked',
+    });
+  }
+  persistStickerPreferences();
+}
+
+async function undoChatStickerSave({ key, scope, removeFavorite, unfollowSlug }) {
+  if (removeFavorite) {
+    state.stickerPreferences.favorites = state.stickerPreferences.favorites
+      .filter((entry) => !(entry.key === key && entry.channel === scope));
+    persistStickerPreferences();
+    scheduleApply(0);
+  }
+  if (unfollowSlug) {
+    const result = await mutateKickChannelFollow(unfollowSlug, 'DELETE');
+    if (result.ok) updateFollowedEmoteState(unfollowSlug, false);
+    else {
+      showToast(`The emote was removed, but Kick could not unfollow ${unfollowSlug}.`, true);
+      return;
+    }
+  }
+  showToast(unfollowSlug ? `Removed the emote and unfollowed ${unfollowSlug}.` : 'Emote removed from favorites.');
+}
+
+async function saveChatSticker(image) {
+  if (!state.settings.content.clickChatEmotes || pendingChatStickerSaves.has(image)) return;
+  const sticker = chatStickerInfo(image);
+  if (!sticker) return;
+  pendingChatStickerSaves.add(image);
+  image.setAttribute('aria-busy', 'true');
+  try {
+    const scope = newFavoriteChannel();
+    const alreadyFavorite = isFavorited(sticker.key);
+    state.stickerPreferences.hidden.delete(sticker.key);
+    mergeStickerLibrary([sticker]);
+    if (!alreadyFavorite) {
+      state.stickerPreferences.favorites = toggleStickerFavorite(
+        state.stickerPreferences.favorites,
+        sticker.key,
+        scope,
+      );
+    }
+    persistStickerPreferences();
+    announce(alreadyFavorite ? 'Emote already saved' : 'Emote saved');
+
+    const follow = emoteFollowRequirement(sticker, sticker.sourceSlug);
+    let followedNow = false;
+    if (follow.required && !follow.followed) {
+      if (!follow.slug) {
+        showToast(`Saved ${sticker.name}, but Kick did not identify the follow-gated source channel.`, true);
+        return;
+      }
+      showToast(`Saved ${sticker.name}. Following ${follow.slug}…`);
+      const result = await mutateKickChannelFollow(follow.slug, 'POST');
+      if (!result.ok) {
+        showToast(`Saved ${sticker.name} locally, but Kick could not follow ${follow.slug} (${result.status}). Sign in or reload the channel and try again.`, true);
+        return;
+      }
+      followedNow = true;
+      updateFollowedEmoteState(follow.slug, true);
+    }
+
+    const stored = state.stickerPreferences.library.get(sticker.key) || sticker;
+    const locked = emoteLockState(stored, stored.sourceSlug);
+    const message = followedNow
+      ? `Saved ${sticker.name} and followed ${follow.slug}.`
+      : alreadyFavorite
+        ? `${sticker.name} is already in your favorites.`
+        : locked.locked && stored.subscribersOnly
+          ? `Saved ${sticker.name}. A subscription is still required to use it.`
+          : `Saved ${sticker.name} to your ${scope ? 'channel' : 'global'} favorites.`;
+    const canUndo = !alreadyFavorite || followedNow;
+    showToast(message, false, canUndo ? [{
+      label: followedNow && alreadyFavorite ? 'Undo follow' : 'Undo',
+      onClick: () => undoChatStickerSave({
+        key: sticker.key,
+        scope,
+        removeFavorite: !alreadyFavorite,
+        unfollowSlug: followedNow ? follow.slug : '',
+      }),
+    }] : []);
+    scheduleApply(0);
+  } finally {
+    pendingChatStickerSaves.delete(image);
+    image.removeAttribute('aria-busy');
+  }
+}
+
+function handleChatStickerSave(event) {
+  if (!state.settings.content.clickChatEmotes) return;
+  const image = event.target.closest?.('[data-kf-chat-emote-save]');
+  if (!image || !image.closest?.('[data-testid="chatroom-messages"], #chatroom-messages')) return;
+  if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  event.stopPropagation();
+  saveChatSticker(image).catch((error) => {
+    logAppError('save chat emote', error);
+    showToast('The emote could not be saved.', true);
+  });
+}
+
 function chatKeywordsForChannel() {
   const value = state.chatKeywords[channelPath()];
   return Array.isArray(value) ? value.filter((item) => typeof item === 'string').slice(0, 20) : [];
@@ -7227,6 +7515,8 @@ function installRuntimeInteractions() {
   document.addEventListener('click', handleCardAction, true);
   document.addEventListener('click', handleSearchAction, true);
   document.addEventListener('click', handleStickerAction, true);
+  document.addEventListener('click', handleChatStickerSave, true);
+  document.addEventListener('keydown', handleChatStickerSave, true);
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('[data-kf-chat-pause]');
     if (!button) return;
@@ -7338,17 +7628,33 @@ const UI_CSS = `
     color-scheme: dark;
     --accent: var(--kf-accent, #7cff2b);
     --accent-rgb: var(--kf-accent-rgb, 124, 255, 43);
-    --surface-0: #070908;
-    --surface-1: #101311;
-    --surface-2: #151917;
-    --surface-3: #1c211e;
-    --border: #353b37;
-    --border-subtle: #272c29;
-    --text: #f4f7f5;
-    --muted: #929b96;
+    --surface-0: var(--kf-canvas, #070908);
+    --surface-1: var(--kf-panel, #101311);
+    --surface-2: var(--kf-panel-raised, #151917);
+    --surface-3: var(--kf-panel-high, #1c211e);
+    --surface-inset: #0b0e0c;
+    --surface-hover: #202621;
+    --surface-selected: #182019;
+    --surface-danger: #2a1416;
+    --border: var(--kf-border, #353b37);
+    --border-subtle: #29302b;
+    --border-control: #48524b;
+    --border-strong: var(--kf-border-strong, #59645c);
+    --text: var(--kf-text, #f4f7f5);
+    --text-secondary: #c7cec9;
+    --muted: var(--kf-text-muted, #a5aea8);
+    --subtle: #7f8882;
+    --on-accent: #071004;
     --danger: #ff6258;
+    --danger-text: #ffaaa4;
     --warning: #f6b943;
-    --radius: var(--kf-radius, 9px);
+    --success: var(--accent);
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --radius: var(--kf-radius, 10px);
+    --shadow-dialog: 0 42px 120px rgba(0,0,0,.78);
+    --shadow-control: 0 10px 28px rgba(0,0,0,.28);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px;
     line-height: 1.45;
@@ -7356,8 +7662,9 @@ const UI_CSS = `
 
   *, *::before, *::after { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  button, input { font: inherit; }
+  button, input, select, textarea { font: inherit; }
   button { color: inherit; }
+  ::selection { background: rgba(var(--accent-rgb), .28); color: var(--text); }
 
   .kf-quick {
     position: fixed;
@@ -7367,9 +7674,9 @@ const UI_CSS = `
     min-width: 76px;
     height: 38px;
     padding: 0 16px;
-    border: 1px solid #3a413d;
-    border-radius: 7px;
-    background: #111412;
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
     color: var(--text);
     box-shadow: 0 14px 38px rgba(0,0,0,.5);
     cursor: pointer;
@@ -7378,7 +7685,8 @@ const UI_CSS = `
     letter-spacing: .06em;
     text-transform: uppercase;
   }
-  .kf-quick:hover { border-color: var(--accent); color: var(--accent); }
+  .kf-quick:hover { border-color: var(--accent); background: var(--surface-hover); color: var(--accent); transform: translateY(-1px); }
+  .kf-quick:active { transform: translateY(0); }
 
   .kf-backdrop {
     position: fixed;
@@ -7402,26 +7710,26 @@ const UI_CSS = `
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface-1);
-    box-shadow: 0 42px 120px rgba(0,0,0,.78);
+    box-shadow: var(--shadow-dialog);
     color: var(--text);
     font-size: calc(14px * var(--kf-interface-scale, 1));
   }
 
   .kf-header {
     display: grid;
-    grid-template-columns: 240px 1fr auto auto;
+    grid-template-columns: 252px 1fr auto auto;
     align-items: center;
     gap: 24px;
     padding: 0 24px;
     border-bottom: 1px solid var(--border-subtle);
-    background: #121512;
+    background: var(--surface-2);
   }
   .kf-brand { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 16px; font-weight: 820; letter-spacing: -.02em; }
   .kf-brand-mark { width: 28px; height: 28px; display: block; object-fit: contain; }
   .kf-badge { padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .68); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
   .kf-title { font-size: 15px; font-weight: 760; }
-  .kf-save { display: flex; align-items: center; color: #b7bfba; font-size: 12px; }
-  .kf-save::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border: 1px solid var(--accent); border-radius: 50%; box-shadow: inset 0 0 0 2px #121512; background: var(--accent); }
+  .kf-save { display: flex; align-items: center; color: var(--text-secondary); font-size: 12px; font-weight: 650; }
+  .kf-save::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border: 1px solid var(--accent); border-radius: 2px; background: var(--accent); }
   .kf-save[data-error="true"] { color: var(--danger); }
   .kf-save[data-error="true"]::before { border-color: var(--danger); background: var(--danger); }
 
@@ -7437,11 +7745,12 @@ const UI_CSS = `
     cursor: pointer;
     line-height: 1;
   }
-  .kf-icon-button:hover { border-color: var(--border); background: #1a1f1c; }
+  .kf-icon-button:hover { border-color: var(--border-control); background: var(--surface-hover); }
+  .kf-icon-button:active { background: var(--surface-selected); transform: translateY(1px); }
   .kf-icon { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  .kf-body { min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
-  .kf-nav { padding: 18px 0; border-right: 1px solid var(--border); background: #0d100e; }
+  .kf-body { min-height: 0; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
+  .kf-nav { padding: 18px 10px; border-right: 1px solid var(--border); background: var(--surface-0); }
   .kf-nav button {
     position: relative;
     width: 100%;
@@ -7450,35 +7759,38 @@ const UI_CSS = `
     align-items: center;
     gap: 13px;
     min-height: 62px;
-    padding: 0 24px;
-    border: 0;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
     background: transparent;
     text-align: left;
     cursor: pointer;
   }
-  .kf-nav button::before { content: ''; position: absolute; inset: 13px auto 13px 0; width: 3px; background: transparent; }
-  .kf-nav button:hover { background: rgba(255,255,255,.025); }
+  .kf-nav button::before { content: ''; position: absolute; inset: 12px auto 12px 0; width: 3px; border-radius: 2px; background: transparent; }
+  .kf-nav button:hover { border-color: var(--border-subtle); background: var(--surface-hover); }
+  .kf-nav button:active { transform: translateY(1px); }
   .kf-nav button[aria-current="page"]::before { background: var(--accent); box-shadow: 0 0 14px rgba(var(--accent-rgb), .35); }
-  .kf-nav button[aria-current="page"] { color: #fff; }
-  .kf-nav .kf-icon { width: 20px; height: 20px; color: #bbc2be; }
+  .kf-nav button[aria-current="page"] { border-color: rgba(var(--accent-rgb), .22); background: var(--surface-selected); color: var(--text); }
+  .kf-nav .kf-icon { width: 20px; height: 20px; color: var(--text-secondary); }
   .kf-nav button[aria-current="page"] .kf-icon { color: var(--accent); }
   .kf-nav-copy { display: grid; gap: 2px; min-width: 0; }
-  .kf-nav strong { font-size: 13px; font-weight: 720; }
-  .kf-nav span { overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+  .kf-nav strong { font-size: 13px; font-weight: 760; }
+  .kf-nav span { overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 
-  .kf-page { min-width: 0; overflow: auto; padding: 22px 30px 38px 34px; scrollbar-color: #3a423d transparent; scrollbar-width: thin; }
+  .kf-page { min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 26px 34px 40px 38px; scrollbar-color: var(--border-control) transparent; scrollbar-width: thin; }
   .kf-page:focus { outline: 0; }
-  .kf-page-header { min-height: 82px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
-  .kf-page-header h2 { margin: 0 0 4px; font-size: 27px; line-height: 1.05; letter-spacing: -.035em; text-transform: uppercase; }
-  .kf-page-header p { margin: 0; color: var(--muted); font-size: 12px; }
+  .kf-page-header { min-height: 90px; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
+  .kf-page-header h2 { margin: 2px 0 5px; font-size: 28px; line-height: 1.08; letter-spacing: -.035em; }
+  .kf-page-header p { max-width: 560px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .kf-eyebrow { display: block; color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
   .kf-page-meta { display: grid; gap: 3px; min-width: 140px; text-align: right; }
-  .kf-page-meta span { color: #747d78; font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-  .kf-page-meta strong { color: #dce2de; font-size: 11px; font-weight: 700; }
+  .kf-page-meta span { color: var(--subtle); font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+  .kf-page-meta strong { color: var(--text-secondary); font-size: 12px; font-weight: 740; }
   .kf-page-meta-control { min-width: 118px; justify-items: end; }
 
   .kf-panel { border: 0; border-radius: 0; background: transparent; overflow: visible; }
   .kf-row {
-    min-height: 78px;
+    min-height: 82px;
     display: grid;
     grid-template-columns: minmax(230px, 1fr) minmax(300px, auto);
     align-items: center;
@@ -7486,50 +7798,46 @@ const UI_CSS = `
     padding: 14px 0;
     border-bottom: 1px solid var(--border-subtle);
   }
-  .kf-row h3 { margin: 0 0 3px; font-size: 12px; font-weight: 790; letter-spacing: .025em; }
-  .kf-row p { max-width: 390px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.38; }
+  .kf-row h3 { margin: 0 0 4px; color: var(--text); font-size: 13px; font-weight: 780; letter-spacing: .01em; }
+  .kf-row p { max-width: 420px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
   .kf-row-wide { grid-template-columns: minmax(210px, .82fr) minmax(340px, 1.18fr); }
   .kf-control { min-width: 300px; display: flex; justify-content: flex-end; }
 
-  .kf-segmented { display: inline-flex; border: 1px solid #444b46; border-radius: 3px; overflow: hidden; background: #0c0f0d; }
+  .kf-segmented { display: inline-flex; border: 1px solid var(--border-control); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-inset); box-shadow: inset 0 1px rgba(255,255,255,.02); }
   .kf-segmented button {
     min-width: 78px;
     height: 40px;
     padding: 0 13px;
     border: 0;
-    border-left: 1px solid #444b46;
+    border-left: 1px solid var(--border-control);
     background: transparent;
-    color: #d4dad6;
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 12px;
     font-weight: 680;
   }
   .kf-segmented button:first-child { border-left: 0; }
-  .kf-segmented button[aria-pressed="true"] { background: rgba(var(--accent-rgb), .055); color: #fff; box-shadow: inset 0 0 0 1px var(--accent); }
+  .kf-segmented button:hover { background: var(--surface-hover); color: var(--text); }
+  .kf-segmented button:active { background: var(--surface-selected); }
+  .kf-segmented button[aria-pressed="true"] { background: rgba(var(--accent-rgb), .1); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
 
   .kf-switch {
-    width: 42px;
-    height: 22px;
+    width: 58px;
+    height: 32px;
     position: relative;
-    border: 0;
-    border-radius: 999px;
-    background: #424944;
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
     cursor: pointer;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: .06em;
+    text-transform: uppercase;
   }
-  .kf-switch::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: white;
-    transition: left 120ms ease;
-  }
-  .kf-switch[aria-checked="true"] { background: var(--accent); }
-  .kf-switch[aria-checked="true"]::after { left: 23px; background: #071004; }
-  .kf-switch:disabled { opacity: .76; cursor: not-allowed; }
+  .kf-switch:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+  .kf-switch[aria-checked="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .12); }
+  .kf-switch:disabled { opacity: .72; cursor: not-allowed; }
 
   .kf-lock { display: inline-block; margin-left: 7px; padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .5); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 850; text-transform: uppercase; }
 
@@ -7544,31 +7852,35 @@ const UI_CSS = `
     width: 100%;
     min-height: 40px;
     padding: 9px 11px;
-    border: 1px solid #444b46;
-    border-radius: 4px;
-    background: #0b0e0c;
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
     color: var(--text);
   }
   .kf-textarea { min-height: 86px; resize: vertical; }
   .kf-text:focus, .kf-textarea:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
-  .kf-select { min-width: 118px; height: 32px; padding: 0 28px 0 9px; border: 1px solid #444b46; border-radius: 3px; background: #0b0e0c; color: var(--text); font-size: 11px; }
-  .kf-select:focus { border-color: var(--accent); outline: 0; }
+  .kf-select { min-width: 118px; height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text); font-size: 12px; }
+  .kf-select:hover { border-color: var(--border-strong); }
+  .kf-select:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
 
   .kf-theme-grid, .kf-swatch-grid { display: grid; grid-template-columns: repeat(4, minmax(76px, 1fr)); gap: 8px; }
   .kf-theme-grid { grid-template-columns: repeat(3, minmax(104px, 1fr)); }
   .kf-choice-card {
     min-height: 86px;
     padding: 11px;
-    border: 1px solid #3b423d;
-    border-radius: 4px;
-    background: #0d100e;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
     cursor: pointer;
     text-align: left;
   }
-  .kf-choice-card:hover { border-color: #555f58; }
-  .kf-choice-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .15); }
+  .kf-choice-card:hover { border-color: var(--border-strong); background: var(--surface-hover); transform: translateY(-1px); box-shadow: var(--shadow-control); }
+  .kf-choice-card:active { transform: translateY(0); box-shadow: none; }
+  .kf-choice-card[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-selected); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .18); }
   .kf-choice-card strong { display: block; margin-top: 8px; font-size: 11px; }
   .kf-theme-sample { height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px; border: 1px solid #303632; border-radius: 2px; background: #171b18; color: #9ca59f; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+  .kf-choice-card[data-value="oled"] .kf-theme-sample { border-color: #292e30; background: #000; }
+  .kf-choice-card[data-value="slate"] .kf-theme-sample { border-color: #4a5660; background: #1b211f; }
   .kf-theme-sample b { color: var(--accent); font-size: 8px; }
   .kf-swatch { width: 28px; height: 28px; border-radius: 3px; border: 1px solid rgba(255,255,255,.24); }
   .kf-swatch[data-color="kick"] { background: #7cff2b; }
@@ -7578,21 +7890,21 @@ const UI_CSS = `
 
   .kf-appearance-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 22px; }
   .kf-appearance-controls { min-width: 0; }
-  .kf-appearance-controls .kf-row, .kf-appearance-controls .kf-row-wide { min-height: 0; grid-template-columns: 1fr; gap: 7px; padding: 9px 0; }
-  .kf-appearance-controls .kf-row:has(.kf-control) { min-height: 56px; grid-template-columns: minmax(150px, 1fr) minmax(190px, auto); align-items: center; gap: 10px; }
-  .kf-appearance-controls .kf-row:has(.kf-control) p { max-width: 175px; }
+  .kf-appearance-controls .kf-row, .kf-appearance-controls .kf-row-wide { min-height: 0; grid-template-columns: 1fr; gap: 8px; padding: 11px 0; }
+  .kf-appearance-controls .kf-row:has(.kf-control) { min-height: 64px; grid-template-columns: minmax(160px, 1fr) minmax(190px, auto); align-items: center; gap: 12px; }
+  .kf-appearance-controls .kf-row:has(.kf-control) p { max-width: 200px; }
   .kf-appearance-controls .kf-control { width: 190px; min-width: 0; justify-content: flex-end; }
   .kf-appearance-controls .kf-segmented { width: 100%; }
   .kf-appearance-controls .kf-segmented button { min-width: 0; flex: 1; padding-inline: 8px; }
   .kf-appearance-controls .kf-range { grid-template-columns: 38px minmax(90px, 1fr) 34px; gap: 6px; }
   .kf-appearance-controls .kf-choice-card { min-height: 64px; padding: 8px; }
   .kf-appearance-controls .kf-theme-sample { height: 25px; padding-inline: 6px; }
-  .kf-appearance-controls .kf-choice-card strong { margin-top: 5px; font-size: 10px; }
+  .kf-appearance-controls .kf-choice-card strong { margin-top: 6px; font-size: 11px; }
 
   .kf-preview { position: sticky; top: 0; align-self: start; min-width: 0; padding-left: 20px; border-left: 1px solid var(--border); }
   .kf-preview-kicker { color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-  .kf-preview-intro { margin: 3px 0 14px; color: var(--muted); font-size: 10px; }
-  .kf-preview-surface { overflow: hidden; border: 1px solid var(--border); border-radius: 4px; background: #0b0e0c; }
+  .kf-preview-intro { margin: 3px 0 14px; color: var(--muted); font-size: 11px; }
+  .kf-preview-surface { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); box-shadow: var(--shadow-control); }
   .kf-preview-surface header { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); font-size: 9px; }
   .kf-preview-surface header strong { margin-right: auto; color: var(--accent); font-size: 12px; }
   .kf-preview-surface header span { color: var(--muted); }
@@ -7601,7 +7913,7 @@ const UI_CSS = `
   .kf-preview-feature h3 { margin: 7px 0 3px; font-size: 15px; line-height: 1.2; }
   .kf-preview-feature p { margin: 0; color: var(--muted); font-size: 10px; }
   .kf-preview-live { display: inline-flex; align-items: center; gap: 7px; color: #dce3de; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-  .kf-preview-live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .kf-preview-live::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: var(--accent); }
   .kf-preview-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; color: var(--muted); font-size: 9px; }
   .kf-preview-action b { padding: 7px 10px; border: 1px solid var(--accent); border-radius: 3px; color: var(--accent); font-size: 9px; }
   .kf-preview-list { display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); font-size: 9px; }
@@ -7611,35 +7923,36 @@ const UI_CSS = `
 
   .kf-status-card { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 18px; padding: 18px 0; border-bottom: 1px solid var(--border-subtle); }
   .kf-status-card h3 { margin: 0 0 3px; font-size: 15px; }
-  .kf-status-card p { max-width: 520px; margin: 0; color: var(--muted); font-size: 11px; }
+  .kf-status-card p { max-width: 560px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
   .kf-active { color: var(--accent); font-weight: 800; }
-  .kf-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--border-subtle); }
-  .kf-stat { padding: 15px 12px; border-left: 1px solid var(--border-subtle); text-align: left; }
+  .kf-stats { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--border-subtle); }
+  .kf-stat { min-width: 0; padding: 15px 12px; border-left: 1px solid var(--border-subtle); text-align: left; }
   .kf-stat:first-child { border-left: 0; }
   .kf-stat span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
-  .kf-stat strong { display: block; margin-top: 4px; color: var(--accent); font-size: 15px; }
+  .kf-stat strong { display: block; overflow: hidden; margin-top: 4px; color: var(--accent); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 
-  .kf-defense-overview { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); border-bottom: 1px solid var(--border); }
+  .kf-defense-overview { min-width: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); border-bottom: 1px solid var(--border); }
   .kf-defense-overview .kf-status-card, .kf-defense-overview .kf-stats { border-bottom: 0; }
   .kf-defense-overview .kf-status-card { padding-right: 18px; }
   .kf-defense-overview .kf-status-card > .kf-active { display: none; }
   .kf-defense-overview .kf-stats { border-left: 1px solid var(--border-subtle); }
   .kf-content-section { margin-top: 18px; }
   .kf-content-section .kf-subsection-header { margin-bottom: 0; padding-bottom: 9px; }
-  [data-kf-current-page="content"] .kf-row { min-height: 54px; padding: 8px 0; }
-  [data-kf-current-page="content"] .kf-row h3 { margin-bottom: 1px; font-size: 11px; }
-  [data-kf-current-page="content"] .kf-row p { font-size: 10px; }
+  [data-kf-current-page="content"] .kf-row { min-height: 64px; padding: 10px 0; }
+  [data-kf-current-page="content"] .kf-row h3 { margin-bottom: 2px; font-size: 12px; }
+  [data-kf-current-page="content"] .kf-row p { font-size: 11px; }
   [data-kf-current-page="content"] .kf-subsection { margin-top: 20px; }
   [data-kf-current-page="content"] .kf-status-note { font-size: 10px; }
   .kf-tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
-  .kf-tool-card { min-height: 92px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
+  .kf-tool-card { min-height: 96px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
+  .kf-tool-card:hover { border-color: var(--border-control); background: var(--surface-hover); }
   .kf-tool-card h3 { margin: 0 0 3px; font-size: 11px; }
-  .kf-tool-card p { margin: 0; color: var(--muted); font-size: 10px; }
+  .kf-tool-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
   .kf-channel-input-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 9px; align-items: center; }
   .kf-channel-list { display: grid; gap: 6px; margin-top: 10px; max-height: 280px; overflow: auto; scrollbar-gutter: stable; }
   .kf-channel-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; font-size: 13px; }
   .kf-channel-entry span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .kf-sticker-library-shell { padding: 14px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
+  .kf-sticker-library-shell { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
   .kf-sticker-library-controls { display: grid; grid-template-columns: minmax(220px, 1fr) 180px; gap: 9px; }
   .kf-sticker-library-controls .kf-select { width: 100%; height: 40px; }
   .kf-sticker-group-builder { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 9px; margin-top: 9px; }
@@ -7659,7 +7972,7 @@ const UI_CSS = `
   .kf-sticker-access[data-access="available"] { border-color: rgba(var(--accent-rgb), .55); color: var(--accent); }
   .kf-sticker-access[data-access="channel"] { border-color: rgba(255,190,46,.58); color: #ffcf61; }
   .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
-  .kf-emote-catalog-browser { display: grid; gap: 8px; margin-bottom: 12px; padding: 12px; border: 1px solid #343a36; border-radius: 7px; background: #121613; }
+  .kf-emote-catalog-browser { display: grid; gap: 8px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
   .kf-emote-catalog-browser h4 { margin: 0; color: var(--text); font-size: 12px; }
   .kf-emote-catalog-browser p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
   .kf-emote-catalog-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
@@ -7683,7 +7996,7 @@ const UI_CSS = `
 
   .kf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .kf-table th, .kf-table td { padding: 11px 9px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; }
-  .kf-table th { color: #aeb7b1; background: transparent; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
+  .kf-table th { color: var(--text-secondary); background: transparent; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
   .kf-table tr:last-child td { border-bottom: 0; }
   .kf-table .kf-table-actions { text-align: right; }
   .kf-shortcut { display: inline-flex; min-width: 62px; justify-content: center; padding: 4px 8px; border: 1px solid #434a45; border-radius: 3px; background: #171b18; font-weight: 700; }
@@ -7699,22 +8012,22 @@ const UI_CSS = `
   .kf-subsection p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
 
   .kf-about-status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 18px 0; border-bottom: 1px solid var(--border-subtle); }
-  .kf-mini-card { padding: 14px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
+  .kf-mini-card { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
   .kf-mini-card span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
   .kf-mini-card strong { display: block; margin-top: 4px; color: var(--accent); }
   .kf-action-row { min-height: 78px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
-  .kf-action-row h3 { margin: 0 0 3px; font-size: 12px; }
-  .kf-action-row p { max-width: 520px; margin: 0; color: var(--muted); font-size: 11px; }
-  .kf-danger { border-color: rgba(255,98,88,.65) !important; color: #ff8a82 !important; }
+  .kf-action-row h3 { margin: 0 0 4px; font-size: 13px; }
+  .kf-action-row p { max-width: 560px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .kf-danger { border-color: rgba(255,98,88,.65) !important; color: var(--danger-text) !important; }
 
   [data-kf-current-page="accessibility"] { padding-top: 14px; }
   [data-kf-current-page="accessibility"] .kf-page-header { min-height: 70px; padding-bottom: 12px; }
-  [data-kf-current-page="accessibility"] .kf-row { min-height: 48px; padding: 6px 0; }
+  [data-kf-current-page="accessibility"] .kf-row { min-height: 60px; padding: 9px 0; }
   [data-kf-current-page="accessibility"] .kf-subsection { margin-top: 14px; }
   [data-kf-current-page="accessibility"] .kf-subsection-header { margin-bottom: 0; padding-bottom: 8px; }
-  [data-kf-current-page="accessibility"] .kf-table th, [data-kf-current-page="accessibility"] .kf-table td { padding-block: 4px; }
-  [data-kf-current-page="accessibility"] .kf-button-small { min-height: 28px; }
-  [data-kf-current-page="about"] .kf-action-row { min-height: 70px; padding-block: 11px; }
+  [data-kf-current-page="accessibility"] .kf-table th, [data-kf-current-page="accessibility"] .kf-table td { padding-block: 7px; }
+  [data-kf-current-page="accessibility"] .kf-button-small { min-height: 32px; }
+  [data-kf-current-page="about"] .kf-action-row { min-height: 78px; padding-block: 13px; }
   [data-kf-current-page="about"] .kf-subsection { margin-top: 18px; }
   [data-kf-current-page="about"] .kf-subsection > .kf-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 4px; }
 
@@ -7725,23 +8038,24 @@ const UI_CSS = `
     justify-content: center;
     gap: 8px;
     padding: 0 14px;
-    border: 1px solid #414843;
-    border-radius: 4px;
-    background: #171b18;
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    background: var(--surface-3);
     color: var(--text);
     cursor: pointer;
     font-size: 12px;
     font-weight: 700;
   }
-  .kf-button:hover { border-color: #5a645d; background: #1d221e; }
-  .kf-button-primary { border-color: var(--accent); background: var(--accent); color: #071004; }
-  .kf-button-primary:hover { background: #91ff55; border-color: #91ff55; }
-  .kf-button:disabled { opacity: .38; cursor: not-allowed; }
+  .kf-button:hover { border-color: var(--border-strong); background: var(--surface-hover); transform: translateY(-1px); box-shadow: var(--shadow-control); }
+  .kf-button:active { transform: translateY(0); box-shadow: none; }
+  .kf-button-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+  .kf-button-primary:hover { border-color: var(--accent); background: var(--accent); filter: brightness(1.08); }
+  .kf-button:disabled { opacity: .48; cursor: not-allowed; transform: none; box-shadow: none; }
   .kf-button-small { min-height: 32px; padding-inline: 10px; font-size: 11px; }
   .kf-button .kf-icon { width: 16px; height: 16px; }
   .kf-button-group { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
-  .kf-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; border-top: 1px solid var(--border); background: #121512; }
+  .kf-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; border-top: 1px solid var(--border); background: var(--surface-2); }
   .kf-footer-left, .kf-footer-right { display: flex; align-items: center; gap: 10px; }
 
   .kf-confirm {
@@ -7752,7 +8066,7 @@ const UI_CSS = `
     place-items: center;
     background: rgba(2,3,4,.76);
   }
-  .kf-confirm-card { width: 430px; padding: 24px; border: 1px solid var(--border); border-radius: 6px; background: #151917; box-shadow: 0 24px 70px rgba(0,0,0,.62); }
+  .kf-confirm-card { width: min(430px, calc(100vw - 32px)); padding: 24px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-2); box-shadow: var(--shadow-dialog); }
   .kf-confirm-card h2 { margin: 0 0 8px; font-size: 19px; }
   .kf-confirm-card p { margin: 0 0 18px; color: var(--muted); }
 
@@ -7765,11 +8079,11 @@ const UI_CSS = `
     padding: 11px 14px;
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: #171c19;
+    background: var(--surface-3);
     box-shadow: 0 18px 48px rgba(0,0,0,.5);
     color: var(--text);
   }
-  .kf-toast[data-error="true"] { border-color: var(--danger); }
+  .kf-toast[data-error="true"] { border-color: var(--danger); background: var(--surface-danger); }
   .kf-toast:has(.kf-toast-action) { display: flex; align-items: center; gap: 10px; }
   .kf-toast-text { flex: 1 1 auto; }
   .kf-toast-action {
@@ -7783,7 +8097,7 @@ const UI_CSS = `
     font-weight: 650;
     cursor: pointer;
   }
-  .kf-toast-action:hover { background: var(--accent); color: #0b0f0d; }
+  .kf-toast-action:hover { background: var(--accent); color: var(--on-accent); }
   .kf-toast-action:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
   /* Data loss is not a toast. This stays until the user acknowledges it. */
@@ -7799,8 +8113,8 @@ const UI_CSS = `
     gap: 12px;
     padding: 12px 14px;
     border: 1px solid var(--danger);
-    border-radius: 10px;
-    background: #2a1416;
+    border-radius: var(--radius-lg);
+    background: var(--surface-danger);
     color: var(--text);
     box-shadow: 0 18px 44px rgba(0,0,0,.55);
     font-size: 12px;
@@ -7815,19 +8129,22 @@ const UI_CSS = `
     max-height: min(620px, calc(100vh - 80px));
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 7px;
-    background: #101411;
-    box-shadow: 0 32px 90px rgba(0,0,0,.72);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-dialog);
     color: var(--text);
   }
-  .kf-command-head { padding: 14px; border-bottom: 1px solid var(--border); }
+  .kf-command-head { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 7px 12px; padding: 16px; border-bottom: 1px solid var(--border); }
+  .kf-command-head label { color: var(--text-secondary); font-size: 11px; font-weight: 780; letter-spacing: .05em; text-transform: uppercase; }
+  .kf-command-head span { color: var(--muted); font-size: 10px; }
   .kf-command-head input {
+    grid-column: 1 / -1;
     width: 100%;
     height: 44px;
     padding: 0 13px;
-    border: 1px solid #465057;
-    border-radius: 4px;
-    background: #0b0e0c;
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
     color: var(--text);
     outline: 0;
   }
@@ -7850,13 +8167,12 @@ const UI_CSS = `
       outline: 3px solid Highlight;
       outline-offset: 2px;
     }
-    .kf-panel, .kf-settings-shell, .kf-command-shell { border: 1px solid CanvasText; }
+    .kf-panel, .kf-settings, .kf-command-shell { border: 1px solid CanvasText; }
     .kf-storage-alert { border: 2px solid CanvasText; }
     /* Forced colors erase custom backgrounds, so every selected/checked/current
        state needs a system-color marker or "on" looks identical to "off". */
     .kf-switch { border: 1px solid CanvasText; }
     .kf-switch[aria-checked="true"] { background: Highlight; }
-    .kf-switch[aria-checked="true"]::after { background: Canvas; }
     [aria-checked="true"], [aria-selected="true"], [aria-pressed="true"], [aria-current="page"] {
       outline: 2px solid Highlight;
       outline-offset: 1px;
@@ -7876,7 +8192,7 @@ const UI_CSS = `
     align-items: center;
     gap: 4px;
     padding: 1px 6px;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     border: 1px solid currentColor;
     font-size: 10px;
     font-weight: 700;
@@ -7896,7 +8212,7 @@ const UI_CSS = `
     grid-template-rows: auto auto 1fr auto;
     width: 100vw;
     height: 100vh;
-    background: var(--surface);
+    background: var(--surface-0);
     color: var(--text);
   }
   .kf-ms-head, .kf-ms-foot {
@@ -7905,25 +8221,25 @@ const UI_CSS = `
     gap: 8px;
     padding: 10px 14px;
     border-bottom: 1px solid var(--border);
-    background: #121512;
+    background: var(--surface-2);
     flex-wrap: wrap;
   }
   .kf-ms-foot { border-bottom: 0; border-top: 1px solid var(--border); }
   .kf-ms-spacer { flex: 1; }
-  .kf-ms-count { font-size: 11px; opacity: .75; }
+  .kf-ms-count { color: var(--muted); font-size: 11px; }
   .kf-ms-head input, .kf-ms-foot input {
     min-width: 220px;
     min-height: 32px;
     padding: 0 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: #0d0f0d;
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
     color: var(--text);
     font-size: 12px;
   }
   .kf-ms-head input:focus, .kf-ms-foot input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
   .kf-ms-select { min-height: 32px; font-size: 12px; }
-  .kf-ms-error { padding: 8px 14px; border-bottom: 1px solid var(--danger); background: #2a1416; font-size: 12px; }
+  .kf-ms-error { padding: 9px 14px; border-bottom: 1px solid var(--danger); background: var(--surface-danger); color: var(--danger-text); font-size: 12px; }
   .kf-ms-error[hidden] { display: none; }
 
   .kf-ms-body { display: grid; grid-template-columns: 1fr 0; min-height: 0; }
@@ -7940,7 +8256,7 @@ const UI_CSS = `
     position: relative;
     min-height: 0;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     background: #000;
   }
@@ -7954,8 +8270,8 @@ const UI_CSS = `
     inset: 0;
     display: grid;
     place-items: center;
-    background: #0b0d0b;
-    color: var(--text-muted);
+    background: var(--surface-inset);
+    color: var(--muted);
     font-size: 12px;
     font-weight: 700;
   }
@@ -7970,7 +8286,7 @@ const UI_CSS = `
     gap: 6px;
     padding: 4px 6px;
     background: linear-gradient(180deg, rgba(0,0,0,.78), transparent);
-    opacity: 0;
+    opacity: .88;
     transition: opacity .12s ease;
     font-size: 11px;
   }
@@ -7979,7 +8295,7 @@ const UI_CSS = `
     border: 1px solid rgba(255,255,255,.25);
     border-radius: 4px;
     background: rgba(0,0,0,.55);
-    color: #fff;
+    color: var(--text);
     padding: 2px 7px;
     font-size: 11px;
     font-weight: 700;
@@ -7994,15 +8310,15 @@ const UI_CSS = `
     margin: 0;
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
-    background: #121512;
-    color: var(--text-muted);
+    background: var(--surface-2);
+    color: var(--muted);
     font-size: 11px;
   }
   .kf-ms-layouts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .kf-ms-layout { display: inline-flex; }
   .kf-ms-layout button {
     border: 1px solid var(--border);
-    background: #0d0f0d;
+    background: var(--surface-inset);
     color: var(--text);
     padding: 3px 8px;
     font-size: 11px;
@@ -8021,15 +8337,17 @@ const UI_CSS = `
   .kf-shadow-warning { display: grid; gap: 6px; }
   .kf-shadow-warning code { font-size: 11px; color: var(--accent); }
   .kf-command-list { max-height: 490px; overflow: auto; padding: 8px; }
-  .kf-command-item { width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 12px; border: 0; border-left: 2px solid transparent; border-radius: 2px; background: transparent; text-align: left; cursor: pointer; }
-  .kf-command-item:hover, .kf-command-item[data-active="true"] { border-left-color: var(--accent); background: rgba(255,255,255,.035); }
+  .kf-command-item { width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 12px; border: 1px solid transparent; border-left: 3px solid transparent; border-radius: var(--radius-sm); background: transparent; text-align: left; cursor: pointer; }
+  .kf-command-item:hover, .kf-command-item[data-active="true"] { border-color: var(--border-subtle); border-left-color: var(--accent); background: var(--surface-hover); }
   .kf-command-item strong { display: block; margin-bottom: 2px; }
   .kf-command-item span { color: var(--muted); font-size: 12px; }
-  .kf-command-empty { padding: 28px; color: var(--muted); text-align: center; }
+  .kf-command-empty { display: grid; gap: 4px; padding: 38px 28px; color: var(--muted); text-align: center; }
+  .kf-command-empty strong { color: var(--text); font-size: 13px; }
+  .kf-command-empty span { font-size: 11px; }
 
   .kf-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 
-  :is(button, input):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  :is(button, input, select, textarea):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   @media (max-width: 920px) {
     .kf-settings { width: calc(100vw - 28px); height: calc(100vh - 28px); min-width: 0; min-height: 620px; }
@@ -8065,6 +8383,11 @@ const UI_CSS = `
     .kf-page-header { min-height: 72px; }
     .kf-page-header h2 { font-size: 23px; }
     .kf-page-meta { display: none; }
+    .kf-control { width: 100%; }
+    .kf-segmented { width: 100%; }
+    .kf-segmented button { min-width: 0; flex: 1 1 0; padding-inline: 7px; }
+    .kf-range { grid-template-columns: 42px minmax(120px, 1fr) 42px; }
+    .kf-channel-input-row, .kf-emote-catalog-form { grid-template-columns: 1fr; }
     .kf-theme-grid, .kf-swatch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .kf-appearance-layout { grid-template-columns: 1fr; }
     .kf-preview { position: static; padding: 18px 0 0; border-top: 1px solid var(--border); border-left: 0; }
@@ -8074,6 +8397,19 @@ const UI_CSS = `
     .kf-button-group { justify-content: flex-start; }
     .kf-footer { padding-inline: 14px; }
     .kf-footer [data-action="export"] { display: none; }
+    .kf-storage-alert { align-items: stretch; flex-wrap: wrap; }
+    .kf-storage-alert-body { flex-basis: 100%; }
+  }
+
+  @media (max-width: 430px) {
+    .kf-brand { font-size: 14px; }
+    .kf-badge { display: none; }
+    .kf-save { font-size: 11px; }
+    .kf-page-header p { font-size: 12px; }
+    .kf-row { gap: 12px; padding-block: 13px; }
+    .kf-row p { font-size: 11px; }
+    .kf-footer-left .kf-button { padding-inline: 10px; }
+    .kf-command-shell { width: calc(100vw - 24px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -8144,7 +8480,19 @@ const TRANSLATIONS = {
     'Only the settings on this page will return to their defaults.': 'Solo la configuración de esta página volverá a sus valores predeterminados.',
     'Cancel': 'Cancelar',
     'Reset': 'Restablecer',
+    'On': 'Activado',
+    'Off': 'Desactivado',
+    'Core protection always stays on': 'La protección principal permanece siempre activada',
+    'About has no page settings to reset': 'Acerca de no tiene ajustes de página para restablecer',
+    'Restore page defaults': 'Restaurar los valores predeterminados de la página',
     'Filter commands…': 'Filtrar comandos…',
+    'Find a command': 'Buscar un comando',
+    'Type an action or setting…': 'Escribe una acción o ajuste…',
+    'Available commands': 'Comandos disponibles',
+    'No matching commands': 'No hay comandos coincidentes',
+    'Try “chat”, “layout”, “casino”, or “settings”.': 'Prueba “chat”, “diseño”, “casino” o “configuración”.',
+    'command available': 'comando disponible',
+    'commands available': 'comandos disponibles',
     'Open Kick Focus command menu': 'Abrir menú de comandos de Kick Focus',
     'Focus': 'Enfoque',
     'Resume': 'Reanudar',
@@ -8341,6 +8689,8 @@ const TRANSLATIONS = {
     'Freeze the visible chat scroll with an accessible resume control.': 'Congela el desplazamiento visible del chat con un control accesible para reanudarlo.',
     'Organize chat emotes': 'Organizar los emotes del chat',
     'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente los emotes del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.',
+    'Click chat emotes to save': 'Haz clic en los emotes del chat para guardarlos',
+    'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.': 'Haz clic en cualquier emote del chat para añadirlo a tus favoritos. Si Kick lo marca explícitamente como restringido a seguidores, el mismo clic sigue su canal de origen; el acceso de suscriptor nunca se omite.',
     'Highlight chat keywords': 'Resaltar palabras clave del chat',
     'Use the per-channel keyword list below without sending it anywhere.': 'Usa la lista de palabras clave por canal de abajo sin enviarla a ningún sitio.',
     'Show playback diagnostics': 'Mostrar diagnósticos de reproducción',
@@ -8373,7 +8723,19 @@ const TRANSLATIONS = {
     'Only the settings on this page will return to their defaults.': 'Somente as configurações desta página voltarão aos padrões.',
     'Cancel': 'Cancelar',
     'Reset': 'Redefinir',
+    'On': 'Ativado',
+    'Off': 'Desativado',
+    'Core protection always stays on': 'A proteção principal permanece sempre ativada',
+    'About has no page settings to reset': 'Sobre não tem configurações de página para redefinir',
+    'Restore page defaults': 'Restaurar os padrões da página',
     'Filter commands…': 'Filtrar comandos…',
+    'Find a command': 'Buscar um comando',
+    'Type an action or setting…': 'Digite uma ação ou configuração…',
+    'Available commands': 'Comandos disponíveis',
+    'No matching commands': 'Nenhum comando correspondente',
+    'Try “chat”, “layout”, “casino”, or “settings”.': 'Tente “chat”, “layout”, “cassino” ou “configurações”.',
+    'command available': 'comando disponível',
+    'commands available': 'comandos disponíveis',
     'Open Kick Focus command menu': 'Abrir menu de comandos do Kick Focus',
     'Focus': 'Foco',
     'Resume': 'Retomar',
@@ -8570,6 +8932,8 @@ const TRANSLATIONS = {
     'Freeze the visible chat scroll with an accessible resume control.': 'Congela a rolagem visível do chat com um controle acessível para retomá-la.',
     'Organize chat emotes': 'Organizar os emotes do chat',
     'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente os emotes do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.',
+    'Click chat emotes to save': 'Clique nos emotes do chat para salvar',
+    'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.': 'Clique em qualquer emote do chat para adicioná-lo aos favoritos. Se o Kick o marcar explicitamente como restrito a seguidores, o mesmo clique segue o canal de origem; o acesso de assinante nunca é contornado.',
     'Highlight chat keywords': 'Destacar palavras-chave do chat',
     'Use the per-channel keyword list below without sending it anywhere.': 'Usa a lista de palavras-chave por canal abaixo sem enviá-la a lugar nenhum.',
     'Show playback diagnostics': 'Mostrar diagnósticos de reprodução',
@@ -8705,8 +9069,8 @@ function buildInterface() {
     </div>
     <div class="kf-backdrop" data-kf-command-backdrop hidden>
       <section class="kf-command-shell" role="dialog" aria-modal="true" aria-label="Kick Focus command menu">
-        <div class="kf-command-head"><label class="kf-sr-only" for="kf-command-input">Filter commands</label><input id="kf-command-input" data-kf-command-input type="search" autocomplete="off" placeholder="Filter commands…"></div>
-        <div class="kf-command-list" data-kf-command-list role="listbox"></div>
+        <div class="kf-command-head"><label for="kf-command-input">Find a command</label><input id="kf-command-input" data-kf-command-input type="search" autocomplete="off" placeholder="Type an action or setting…" aria-describedby="kf-command-count"><span id="kf-command-count" data-kf-command-count aria-live="polite"></span></div>
+        <div class="kf-command-list" data-kf-command-list role="listbox" aria-label="Available commands"></div>
       </section>
     </div>
     <div class="kf-backdrop kf-ms-backdrop" data-kf-multistream-backdrop hidden>
@@ -8805,12 +9169,14 @@ function selected(value, expected) {
 }
 
 function segmented(path, current, choices) {
-  return `<div class="kf-segmented" role="group" aria-label="${escapeHtml(path)}">${choices.map(([value, label]) => `<button type="button" data-set="${path}" data-value="${escapeHtml(value)}" aria-pressed="${selected(current, value)}">${escapeHtml(label)}</button>`).join('')}</div>`;
+  const label = path.split('.').pop().replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
+  return `<div class="kf-segmented" role="group" aria-label="${escapeHtml(label)}">${choices.map(([value, choiceLabel]) => `<button type="button" data-set="${path}" data-value="${escapeHtml(value)}" aria-pressed="${selected(current, value)}">${escapeHtml(choiceLabel)}</button>`).join('')}</div>`;
 }
 
 function toggle(path, current, options = {}) {
   const disabled = options.locked ? ' disabled' : '';
-  return `<button type="button" class="kf-switch" role="switch" data-set="${path}" data-value="${!current}" aria-checked="${current}" aria-label="${escapeHtml(options.label || path)}"${disabled}></button>`;
+  const title = options.locked ? ' title="Core protection always stays on"' : '';
+  return `<button type="button" class="kf-switch" role="switch" data-set="${path}" data-value="${!current}" aria-checked="${current}" aria-label="${escapeHtml(options.label || path)}"${title}${disabled}>${tr(current ? 'On' : 'Off')}</button>`;
 }
 
 function row(title, description, control, options = {}) {
@@ -8830,7 +9196,7 @@ function selectControl(path, current, choices, label) {
 }
 
 function pageHeader(title, description, metaLabel, metaValue) {
-  return `<div class="kf-page-header"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><div class="kf-page-meta"><span>${escapeHtml(metaLabel)}</span><strong>${escapeHtml(metaValue)}</strong></div></div>`;
+  return `<div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><div class="kf-page-meta"><span>${escapeHtml(metaLabel)}</span><strong>${escapeHtml(metaValue)}</strong></div></div>`;
 }
 
 function renderLayoutPage() {
@@ -8860,7 +9226,7 @@ function renderAppearancePage() {
   const themes = [['studio','Studio'],['oled','OLED'],['slate','Slate']];
   const accents = [['kick','Kick Green'],['cyan','Cyan'],['violet','Violet'],['gold','Gold']];
   return `
-    <div class="kf-page-header"><div><h2>Appearance</h2><p>Set a premium visual style without replacing Kick’s identity.</p></div><div class="kf-page-meta kf-page-meta-control"><span>Language</span>${selectControl('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']], 'Interface language')}</div></div>
+    <div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>Appearance</h2><p>Set a premium visual style without replacing Kick’s identity.</p></div><div class="kf-page-meta kf-page-meta-control"><span>Language</span>${selectControl('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']], 'Interface language')}</div></div>
     <div class="kf-appearance-layout">
       <section class="kf-panel kf-appearance-controls">
         <div class="kf-row kf-row-wide"><div><h3>Theme</h3><p>Choose the overall surface treatment.</p></div><div class="kf-theme-grid">${themes.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.theme" data-value="${id}" aria-pressed="${selected(value.theme,id)}"><span class="kf-theme-sample" aria-hidden="true"><span>Surface</span><b>Active</b></span><strong>${label}</strong></button>`).join('')}</div></div>
@@ -9163,6 +9529,10 @@ async function importChannelEmotes() {
     src: emote.url,
     nativeGroups: [slug],
     access: catalogEmoteAccess(emote),
+    sourceSlug: emote.sourceSlug,
+    requiresFollow: emote.requiresFollow,
+    followed: emote.followed,
+    subscribersOnly: emote.subscribersOnly,
   }));
   mergeStickerLibrary(records);
   const added = state.stickerPreferences.library.size - before;
@@ -9303,6 +9673,7 @@ function renderContentPage() {
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
+        ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
         ${row('New favorites apply to', 'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.', segmented('content.favoriteScope', value.favoriteScope, [['global', 'Everywhere'], ['channel', 'This channel']]))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
@@ -9443,8 +9814,10 @@ function renderSettingsPage() {
   for (const button of state.shadow.querySelectorAll('[data-page]')) {
     button.setAttribute('aria-current', button.dataset.page === state.currentPage ? 'page' : 'false');
   }
+  state.shadow.querySelector(`[data-page="${state.currentPage}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const reset = state.shadow.querySelector('[data-action="reset-page"]');
   reset.disabled = state.currentPage === 'about';
+  reset.title = tr(reset.disabled ? 'About has no page settings to reset' : 'Restore page defaults');
   localizeInterface();
   if (state.currentPage === 'content') applyStickerLibrarySearch();
 }
@@ -10293,9 +10666,11 @@ function renderCommands() {
   if (!state.commandList) return;
   const query = (state.commandInput?.value || '').trim().toLowerCase();
   const commands = commandDefinitions().filter((command) => `${command.label} ${command.description}`.toLowerCase().includes(query));
+  const count = state.shadow?.querySelector('[data-kf-command-count]');
+  if (count) count.textContent = `${commands.length} ${tr(commands.length === 1 ? 'command available' : 'commands available')}`;
   state.commandList.innerHTML = commands.length
     ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
-    : '<div class="kf-command-empty">No matching commands.</div>';
+    : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>';
   localizeInterface();
 }
 

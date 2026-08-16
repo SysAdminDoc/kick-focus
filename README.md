@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.12.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.13.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -23,7 +23,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - Adds an opt-in **Poor mode** that removes Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards while preserving Follow, chat, and free daily rewards. It identifies exact controls instead of hiding arbitrary text.
 - Remembers volume, mute state, quality, and finite VOD position locally with separate privacy toggles; adds favorite and not-interested card actions, configurable Following/Recommended rails, an accessible search summary and clear action, useful Drops-empty guidance, and mini-player collision recovery.
 - Adds sticky chat pause with an accessible resume state, per-channel keyword highlights and private notes, optional playback diagnostics, and a panic switch that restores Kick's native page without a reload.
-- Continuously records emotes seen in live chat and every emote Kick exposes in the open picker, including locked metadata, with a larger three-row one-click favorites shelf, scroll-stable removals, portable favorites/removals, custom groups, and full JSON export/import from settings. The library can also browse any named channel's public emote artwork on demand, labels free emotes channel-only and subscriber emotes locked until Kick confirms access, and never changes chat authorization.
+- Continuously records emotes seen in live chat and every emote Kick exposes in the open picker, including locked metadata, with a larger three-row one-click favorites shelf, scroll-stable removals, portable favorites/removals, custom groups, and full JSON export/import from settings. Click any emote in chat to save it immediately. When Kick explicitly marks that emote as follow-gated, the same click follows its source channel without navigating away and offers an Undo action; subscriber-only access is never bypassed. The library can also browse any named channel's public emote artwork on demand and labels free emotes channel-only and subscriber emotes locked until Kick confirms access.
 - Clears the ad flags out of Kick's `/playback` response before the player reads them, so the ad SDKs are never started, and blocks known ad and optional telemetry requests through early page-realm `fetch`, XHR, beacon, and dynamic-element hooks. A persistent observer removes ad scripts, frames, and containers after reinsertion, and the Content & Ads page warns if Kick's ad stack stops matching what this build knows.
 - **Reads Kick's own API instead of scraping the page for it**, read-only and same-origin using the session you are already signed into. Public emote catalogs are treated as artwork catalogs—not proof of account entitlement; chat events come from whichever realtime provider Kick's own broker names; removed messages say why they were removed, which the page itself discards; emote usage is counted per channel and globally, which Kick does not do at all; collectible rarity is resolved and shown only where the match is confident; wide collectibles render un-squashed; and emote names shadowed across your sets are reported. Every one of these degrades to the previous DOM behaviour if the response changes shape, and each has its own switch.
 - **Multi-stream**: up to nine channels in one grid, built on Kick's own embedded player and popout chat, with audio and chat following the focused tile and named layouts you can save. Reachable from the header control, the command menu, or settings.
@@ -103,16 +103,16 @@ This boundary is reflected directly in the Content & Ads settings page and prote
 
 ## Known limitations
 
-- **Multi-stream chat is read-only.** Kick's popout chat refuses to send from inside an iframe — it answers with a CSRF error by design ([KickDevDocs #262](https://github.com/KickEngineering/KickDevDocs/issues/262)). The grid says so in the panel rather than letting you find out by typing. Kick Focus deliberately does not work around this: it would mean writing to Kick, and this project commits to read-only access below.
+- **Multi-stream chat is read-only.** Kick's popout chat refuses to send from inside an iframe — it answers with a CSRF error by design ([KickDevDocs #262](https://github.com/KickEngineering/KickDevDocs/issues/262)). The grid says so in the panel rather than letting you find out by typing. Kick Focus deliberately does not work around this or attempt to send from an embedded chat.
 - **If Kick sign-in, sign-up, or Follow stops working, check your ad blocker, not this extension.** Since Kick began serving ads on 2026-08-06, ad-blocker filter lists have been reported to break those actions until the blocker is disabled and the browser restarted. Kick Focus blocks eleven third-party ad and telemetry hosts and **no kick.com host at all**, so pausing it will not change that behaviour.
 
 ## What this project reads from Kick
 
 Since 1.5.0 Kick Focus calls Kick's own endpoints rather than only scraping the rendered page. The rules it holds to:
 
-- **Read-only.** No endpoint it calls changes anything on Kick.
+- **Read-only by default.** The only account-changing request is the normal Follow action after you deliberately click a chat emote that Kick explicitly marks as follow-gated. It never follows from background discovery, public artwork, or a guessed source, and Undo reverses a follow created by that click.
 - **Same-origin, with your own session.** Requests inherit the cookies the page already has. Nothing handles, stores, or transmits a credential, and nothing is sent anywhere but Kick.
-- **Only what Kick's own client already calls.** No private or undocumented write paths, no automation, and nothing that bypasses an entitlement.
+- **Only actions Kick's own site already performs.** No wire-token injection, chat auto-send, subscription automation, or entitlement bypass.
 - **Local only.** Emote usage counts, the library, and multi-stream layouts stay on your machine and travel only through the existing JSON export.
 - **Fails back, never fails open.** Every response is validated; an unexpected shape falls back to the DOM path and says so in diagnostics rather than showing an empty surface as success.
 
@@ -137,7 +137,7 @@ One caveat worth stating plainly, because it is widely reported the other way ro
 - Secondary verified viewport: 1920×1080
 - Authenticated recon routes: Home, Browse, Categories, Category, Following, Drops, Search, and Channel/chat, including the open native emote picker (2026-08-14)
 - Isolated companion proof: Chromium 151, logged out, headed and off-screen — 22/22 live checks pass at 1440×900, repeated at 1920×1080 by `release:check` (2026-08-16)
-- Mobile is intentionally out of scope.
+- The Kick site remains desktop-focused; the settings UI is also checked at 375×812 so narrow windows do not clip controls or hide the active section.
 
 Kick changes frequently. The most brittle hooks are the sidebar and chat selectors documented in [RESEARCH.md](RESEARCH.md). If the player or chat fails, disable Kick Focus first; Kick’s own help center notes that ad/privacy/script blockers can interfere with playback and chat.
 
@@ -145,7 +145,7 @@ Kick changes frequently. The most brittle hooks are the sidebar and chat selecto
 
 - **It cannot remove Kick's in-stream video ads.** Kick serves those through server-side ad insertion (SSAI): they are stitched into the video manifest itself, parsed inside an opaque Amazon IVS WASM worker the page world cannot reach, and the ad opt-out lives in a server-signed playback token. Kick Focus blocks the *separable* ad stack (display and tracking hosts) at the network and page layers and never touches playback. A subscription is the only path Kick offers to change in-stream ads, and even that does not remove them.
 - **Installation is manual and unsigned.** Chromium rejects self-hosted `.crx` files on Windows and macOS, so the companion loads via Developer Mode → Load unpacked. The userscript is the artifact that actually reaches most people; install it in Tampermonkey or Violentmonkey. On Chromium a userscript manager needs its own "Allow user scripts" toggle (Chrome 138+), and Violentmonkey's true document-start injection needs its "Alternative page mode" enabled. The Firefox package is unsigned: it runs temporarily via `about:debugging`, or permanently only on Nightly/DevEdition/ESR with signature enforcement off.
-- **It reads Kick; it never acts for you.** No automation, no writes, no entitlement changes. Every API surface it reads is one Kick's own client already calls, inheriting your existing session, and every feature degrades to reading the page when it fails.
+- **Account actions are deliberately narrow.** A click on a chat emote saves it locally. Only an explicit follow-gate from Kick can add the matching channel Follow in the same action; public artwork alone never triggers it, subscriber access is unchanged, and no chat message is inserted or sent.
 
 ## Build and verify
 

@@ -9,7 +9,7 @@
 
 const els = {
   version: document.getElementById('version'),
-  dot: document.getElementById('network-dot'),
+  networkState: document.getElementById('network-state'),
   title: document.getElementById('network-title'),
   detail: document.getElementById('network-detail'),
   blocked: document.getElementById('blocked'),
@@ -27,30 +27,58 @@ const KICK_HOST = /^https:\/\/(www\.)?kick\.com\//;
 // forever.
 const api = globalThis.browser || globalThis.chrome;
 
+function renderUnavailable() {
+  els.version.textContent = '';
+  els.rulesets.textContent = '—';
+  els.blocked.textContent = '—';
+  els.networkState.dataset.state = 'off';
+  els.networkState.textContent = 'Offline';
+  els.title.textContent = 'Companion unavailable';
+  els.detail.textContent = 'Reload the extension, then reopen this panel.';
+  els.telemetry.disabled = true;
+  els.openSettings.disabled = true;
+  els.telemetry.title = 'Kick Focus could not reach the companion service';
+  els.openSettings.title = 'Kick Focus could not reach the companion service';
+  els.note.textContent = 'No settings were changed.';
+  document.body.setAttribute('aria-busy', 'false');
+}
+
 async function activeTab() {
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   return tab || null;
 }
 
 function send(tabId, message) {
-  return Promise.resolve(api.tabs.sendMessage(tabId, message)).catch(() => null);
+  return Promise.resolve(api.tabs.sendMessage(tabId, message))
+    .then((response) => ({ ok: true, response }))
+    .catch(() => ({ ok: false, response: null }));
 }
 
 async function render() {
+  if (!api?.tabs?.query || !api?.runtime?.sendMessage) {
+    renderUnavailable();
+    return;
+  }
   const tab = await activeTab();
   const onKick = Boolean(tab?.url && KICK_HOST.test(tab.url));
 
-  const status = await api.runtime.sendMessage({
+  const status = await Promise.resolve(api.runtime.sendMessage({
     type: 'kick-focus:status',
     tabId: tab?.id ?? -1,
-  });
+  })).catch(() => null);
+
+  if (!status) {
+    renderUnavailable();
+    return;
+  }
 
   els.version.textContent = `v${status?.version ?? ''}`;
   els.rulesets.textContent = String(status?.rulesets?.length ?? 0);
   els.blocked.textContent = status?.countsAvailable ? String(status.blocked ?? 0) : '—';
 
   const adsOn = status?.rulesets?.includes('ads');
-  els.dot.dataset.state = adsOn ? 'on' : 'off';
+  els.networkState.dataset.state = adsOn ? 'on' : 'off';
+  els.networkState.textContent = adsOn ? 'Active' : 'Off';
   els.title.textContent = adsOn ? 'Network layer active' : 'Network layer off';
   els.detail.textContent = adsOn
     ? 'Ad requests are blocked before they are sent.'
@@ -59,6 +87,8 @@ async function render() {
   els.telemetry.checked = Boolean(status?.settings?.content?.reduceTelemetry);
   els.telemetry.disabled = !onKick;
   els.openSettings.disabled = !onKick;
+  els.telemetry.title = onKick ? '' : 'Open a Kick tab to change this setting';
+  els.openSettings.title = onKick ? '' : 'Open a Kick tab to open settings';
 
   if (!onKick) {
     els.note.textContent = 'Open a Kick tab to change settings.';
@@ -67,6 +97,7 @@ async function render() {
   } else {
     els.note.textContent = '';
   }
+  document.body.setAttribute('aria-busy', 'false');
 }
 
 els.telemetry.addEventListener('change', async () => {
@@ -74,16 +105,29 @@ els.telemetry.addEventListener('change', async () => {
   if (!tab?.id) return;
   const wanted = els.telemetry.checked;
   els.telemetry.disabled = true;
-  await send(tab.id, { type: 'kick-focus:set-telemetry', enabled: wanted });
+  els.telemetry.setAttribute('aria-busy', 'true');
+  els.note.textContent = 'Updating network protection…';
+  const result = await send(tab.id, { type: 'kick-focus:set-telemetry', enabled: wanted });
+  if (!result.ok) els.note.textContent = 'Could not reach this Kick tab. Reload it and try again.';
   // Re-read rather than assume: the page is the authority on whether it stuck.
-  setTimeout(render, 150);
+  setTimeout(() => {
+    els.telemetry.removeAttribute('aria-busy');
+    render();
+  }, result.ok ? 150 : 1100);
 });
 
 els.openSettings.addEventListener('click', async () => {
   const tab = await activeTab();
   if (!tab?.id) return;
-  await send(tab.id, { type: 'kick-focus:open-settings' });
-  window.close();
+  els.openSettings.disabled = true;
+  els.openSettings.textContent = 'Opening settings…';
+  const result = await send(tab.id, { type: 'kick-focus:open-settings' });
+  if (result.ok) window.close();
+  else {
+    els.openSettings.disabled = false;
+    els.openSettings.textContent = 'Open Kick Focus settings';
+    els.note.textContent = 'Could not reach this Kick tab. Reload it and try again.';
+  }
 });
 
-render();
+render().catch(renderUnavailable);
