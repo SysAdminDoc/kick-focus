@@ -11,6 +11,7 @@ import {
   FILTER_MIN_SAMPLE,
   assessAdStack,
   assessApiDrift,
+  normalizeChannelPath,
   classifyRequest,
   describeInjection,
   detectContentLabels,
@@ -215,6 +216,20 @@ test('sticker import names dropped entries rather than reporting a bare count', 
   assert.ok(note, 'expected a note naming the dropped sticker');
   assert.ok(note.includes('MissingSrc'), `expected "MissingSrc" in the note: ${note}`);
   assert.ok(/^1 sticker/.test(note), 'expected singular phrasing for one dropped entry');
+});
+
+test('hidden channels normalize and round-trip through settings', () => {
+  // A channel path or URL is normalized to a clean path.
+  assert.equal(normalizeChannelPath('xQc'), '/xqc');
+  assert.equal(normalizeChannelPath('https://kick.com/Creator/'), '/creator');
+  assert.equal(normalizeChannelPath('/already-clean'), '/already-clean');
+  assert.equal(normalizeChannelPath(''), '');
+
+  // Settings normalization caps the list and deduplicates.
+  const settings = normalizeSettings({
+    content: { hiddenChannels: ['/a', '/b', '/a', 42, '/c'] },
+  });
+  assert.deepEqual(settings.content.hiddenChannels, ['/a', '/b', '/c']);
 });
 
 test('remote blocklists accept data-only entries and reject executable or unknown fields', () => {

@@ -3373,6 +3373,14 @@ function applyPlaybackDiagnostics() {
   if (!state.playbackDiagnosticsTimer) state.playbackDiagnosticsTimer = window.setInterval(update, 1000);
 }
 
+function localChannelBlocked(path) {
+  if (!path) return false;
+  const channels = state.settings.content.hiddenChannels;
+  if (!channels.length) return false;
+  const normalized = path.toLowerCase();
+  return channels.some((entry) => normalized === entry);
+}
+
 function remoteBlocklistMatches(path, labels, text) {
   const remote = state.remoteBlocklist;
   if (remote.status !== 'ready') return false;
@@ -3552,7 +3560,8 @@ function applyContentFilters() {
     node.dataset.kfLiveCard = String(/(^|\s)live(?:\s|$)/i.test(node.textContent || ''));
     node.dataset.kfDismissed = String(Boolean(path && state.dismissed.has(path)));
     const remoteBlocked = remoteBlocklistMatches(path, context, node.textContent);
-    const hide = remoteBlocked
+    const channelBlocked = localChannelBlocked(path);
+    const hide = remoteBlocked || channelBlocked
       || (settings.hideCasino && labels.casino)
       || (settings.suppressPromoted && labels.promoted)
       || (settings.hideDropsPromotions && labels.drops);
@@ -4124,6 +4133,10 @@ const UI_CSS = `
   .kf-tool-card { min-height: 92px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
   .kf-tool-card h3 { margin: 0 0 3px; font-size: 11px; }
   .kf-tool-card p { margin: 0; color: var(--muted); font-size: 10px; }
+  .kf-channel-input-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 9px; align-items: center; }
+  .kf-channel-list { display: grid; gap: 6px; margin-top: 10px; max-height: 280px; overflow: auto; scrollbar-gutter: stable; }
+  .kf-channel-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; font-size: 13px; }
+  .kf-channel-entry span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .kf-sticker-library-shell { padding: 14px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
   .kf-sticker-library-controls { display: grid; grid-template-columns: minmax(220px, 1fr) 180px; gap: 9px; }
   .kf-sticker-library-controls .kf-select { width: 100%; height: 40px; }
@@ -4681,6 +4694,9 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidad cómoda',
     'Use compact density': 'Usar densidad compacta',
     'Change discovery spacing and save it': 'Cambia y guarda el espaciado del descubrimiento',
+    'Hidden channels': 'Canales ocultos',
+    'Hide specific channels from Home, Browse, Following, and Search.': 'Oculta canales específicos de Inicio, Explorar, Siguiendo y Búsqueda.',
+    'No channels hidden. Use the input above or the ✕ action on a card.': 'No hay canales ocultos. Usa el campo de arriba o la acción ✕ en una tarjeta.',
     'Show casino content': 'Mostrar contenido de casino',
     'Hide casino content': 'Ocultar contenido de casino',
     'Filter clearly labeled casino streams': 'Filtra streams marcados claramente como casino',
@@ -4888,6 +4904,9 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidade confortável',
     'Use compact density': 'Usar densidade compacta',
     'Change discovery spacing and save it': 'Altera e salva o espaçamento da descoberta',
+    'Hidden channels': 'Canais ocultos',
+    'Hide specific channels from Home, Browse, Following, and Search.': 'Oculte canais específicos de Início, Explorar, Seguindo e Busca.',
+    'No channels hidden. Use the input above or the ✕ action on a card.': 'Nenhum canal oculto. Use o campo acima ou a ação ✕ em um card.',
     'Show casino content': 'Mostrar conteúdo de cassino',
     'Hide casino content': 'Ocultar conteúdo de cassino',
     'Filter clearly labeled casino streams': 'Filtra transmissões claramente marcadas como cassino',
@@ -5428,6 +5447,17 @@ function renderContentPage() {
         ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
       </div>
     </section>
+    <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Hidden channels</h3><p>Hide specific channels from Home, Browse, Following, and Search.</p></div></div><div class="kf-panel">
+      <div class="kf-action-row"><div>
+        <label class="kf-sr-only" for="kf-hidden-channel-input">Channel to hide</label>
+        <div class="kf-channel-input-row">
+          <input type="text" id="kf-hidden-channel-input" class="kf-text-input" placeholder="Channel name or kick.com URL" aria-label="Channel to hide" data-kf-hidden-channel-input>
+          <button type="button" class="kf-button kf-button-small" data-action="add-hidden-channel">Hide</button>
+        </div>
+      </div></div>
+      ${value.hiddenChannels.length ? `<div class="kf-channel-list" data-kf-hidden-channel-list>${value.hiddenChannels.map((channel) => `<div class="kf-channel-entry"><span>${escapeHtml(channel.replace(/^\//, ''))}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-hidden-channel" data-channel="${escapeHtml(channel)}" aria-label="Show ${escapeHtml(channel.replace(/^\//, ''))} again">✕</button></div>`).join('')}</div>` : '<p class="kf-status-note">No channels hidden. Use the input above or the ✕ action on a card.</p>'}
+      <p class="kf-meta">${value.hiddenChannels.length} channel${value.hiddenChannels.length === 1 ? '' : 's'} hidden. These count toward the fail-open ceiling.</p>
+    </div></section>
     <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">
         ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
         ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
@@ -5849,6 +5879,27 @@ function onInterfaceClick(event) {
   else if (action === 'clear-blocklist') {
     clearRemoteBlocklist();
     showToast('Cached blocklist removed.');
+    renderSettingsPage();
+  }
+  else if (action === 'add-hidden-channel') {
+    const input = state.shadow?.querySelector('[data-kf-hidden-channel-input]');
+    const raw = input?.value?.trim();
+    if (!raw) { showToast('Enter a channel name or URL.', true); return; }
+    const path = normalizeChannelPath(raw);
+    if (!path) { showToast('That does not look like a Kick channel.', true); return; }
+    const current = state.settings.content.hiddenChannels;
+    if (current.includes(path)) { showToast('That channel is already hidden.', true); return; }
+    if (current.length >= 200) { showToast('Hidden channel list is full (200).', true); return; }
+    state.settings.content.hiddenChannels = [...current, path];
+    saveSettings(`Hidden ${path.replace(/^\//, '')}`);
+    scheduleApply(0);
+    renderSettingsPage();
+  } else if (action === 'remove-hidden-channel') {
+    const channel = actionTarget?.dataset?.channel;
+    if (!channel) return;
+    state.settings.content.hiddenChannels = state.settings.content.hiddenChannels.filter((entry) => entry !== channel);
+    saveSettings(`Showing ${channel.replace(/^\//, '')} again`);
+    scheduleApply(0);
     renderSettingsPage();
   }
   else if (action === 'clear-favorites') {

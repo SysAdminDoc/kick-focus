@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     chatHighlights: false,
     organizeChatStickers: true,
     playbackDiagnostics: false,
+    hiddenChannels: [],
     blocklistSubscription: false,
     blocklistUrl: '',
     blocklistRefreshHours: 24,
@@ -200,6 +201,7 @@ export function normalizeSettings(input) {
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
+      hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
       blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
@@ -701,7 +703,7 @@ function cleanBlocklistValues(input, normalizer, limit = 500) {
   return values;
 }
 
-function normalizeChannelPath(value) {
+export function normalizeChannelPath(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return '';
   try {

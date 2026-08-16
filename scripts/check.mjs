@@ -134,6 +134,11 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  ['ships a named-channel blocklist for discovery surfaces', source.includes('localChannelBlocked')
+    && source.includes('data-kf-hidden-channel-input')
+    && source.includes('add-hidden-channel')
+    && source.includes('remove-hidden-channel')],
+
   ['API drift is recorded and reported on the About page', source.includes('recordApiDrift')
     && source.includes('assessApiDrift')
     && source.includes('data-kf-api-drift')],
