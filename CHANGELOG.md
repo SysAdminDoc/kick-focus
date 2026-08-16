@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Added
 
+- **Add the channel you're watching to multi-stream with one click.** The Kick Focus header control now shows a **+ Multi** button on any channel page. Click it to drop that channel into the grid without leaving the page — collect several as you browse, then open them together. The button flips to **In Multi ✓** once a channel is in the grid (click again to remove it), the header shows a live **Multi (n)** count, and each add pops a toast — "Added xqc — 3 of 9" — with **View** and **Undo**. Adds and removes are now merge-safe across tabs: two tabs each adding a different channel no longer clobber each other.
 - **Kick Focus now collects emotes straight from chat as they appear.** Every realtime chat message carries the id and name of each emote in it, and until now all of that was discarded except for counting your own sends. With **live chat events** and **organize chat emotes** both on, every emote anyone posts is now recorded in your library automatically — the single biggest source of emotes on a busy channel. A newly seen emote is only saved after its image actually loads from Kick's CDN, so a faked emote token can never take a slot, and emotes already in your library just refresh their last-seen date.
 
 ### Security

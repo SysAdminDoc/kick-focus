@@ -51,7 +51,29 @@ import {
   USAGE_GLOBAL_LIMIT,
   normalizeBlocklistUrl,
   observationsFromChatEmotes,
+  mergeMultistream,
+  MULTISTREAM_MAX,
 } from '../src/core.mjs';
+
+test('multi-stream merge survives two tabs adding different channels', () => {
+  // Tab A boots with [x], adds a. Tab B boots with [x] (stale), adds b after A wrote.
+  const afterA = mergeMultistream({ streams: ['x'] }, { streams: ['x', 'a'] }, ['a'], []);
+  assert.deepEqual(afterA.streams, ['x', 'a']);
+  const afterB = mergeMultistream(afterA, { streams: ['x', 'b'] }, ['b'], []);
+  assert.deepEqual([...afterB.streams].sort(), ['a', 'b', 'x']); // A's add survived B's write
+});
+
+test('multi-stream merge applies this tab removal without dropping another tab add', () => {
+  const merged = mergeMultistream({ streams: ['x', 'a'] }, { streams: ['x'] }, [], ['x']);
+  assert.deepEqual(merged.streams, ['a']);
+});
+
+test('multi-stream merge preserves this tab order and caps at the max', () => {
+  const reordered = mergeMultistream({ streams: ['a', 'b'] }, { streams: ['b', 'a'] }, [], []);
+  assert.deepEqual(reordered.streams, ['b', 'a']);
+  const many = Array.from({ length: MULTISTREAM_MAX + 3 }, (_, index) => `c${index}`);
+  assert.equal(mergeMultistream({ streams: [] }, { streams: [] }, many, []).streams.length, MULTISTREAM_MAX);
+});
 
 test('chat-frame emotes become CDN-scoped observations, deduped by id', () => {
   const url = (id) => `https://files.kick.com/emotes/${id}/fullsize`;

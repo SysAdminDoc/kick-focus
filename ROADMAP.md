@@ -56,13 +56,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P1 — operator demand first, then trust / reliability / accessibility
 
-- [ ] R-07 — One-click "Add to Multi" from channel pages + feedback (operator-requested)
-  Why: the operator's "one-click Multi from video page" — the only add flow today is a typed panel input, and persistMultistream has a deterministic lost-update race in two-tab use.
-  Evidence: phase1b M1/M2/M3 (design-check CONFIRMED-WITH-CONDITIONS) — src/runtime.js:6884-6989,2461-2476,2125-2127; src/core.mjs:1402-1416,1415.
-  Touches: pure `mergeMultistream(stored,current,added,removed)` in core.mjs; ensureHeaderQuickControl/syncQuickButton in runtime.js; showToast action-button param; announce().
-  Acceptance: pure merge in core.mjs under node:test (all two-tab interleavings; persist RE-READS-MERGES-WRITES, no boot-snapshot clobber) + third header button visible when `route==='channel'` → addMultistream(slug) → "In Multi ✓", STAYS ON PAGE (never auto-opens grid, never navigates), live "Multi (n)" badge + named toast "Added xqc — 3 of 9" with [View]/[Undo] and announce() for SR.
-  Complexity: M
-
 - [ ] R-34 — Test the existing emote-schema 1→5 migration paths
   Why: STICKER_PREFERENCES_SCHEMA has migrated four times and no test or dimension ever read a migration path — the memo's named highest-risk unexamined area, and R-02/R-03/R-04 all touch this data.
   Evidence: phase0-memo §4 (coverage gaps) — src/core.mjs migration paths under normalizeStickerPreferences / schema handling.

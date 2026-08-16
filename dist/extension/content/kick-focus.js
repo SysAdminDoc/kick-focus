@@ -1577,6 +1577,56 @@ function normalizeMultistream(input) {
 }
 
 /**
+ * Merge a multi-stream write across tabs without a lost update.
+ *
+ * A blind `gmSet(state.multistream)` clobbers whatever another tab added since
+ * this tab booted. Instead, membership is taken from what is *stored* (the most
+ * recent write from any tab), minus this operation's `removed`, plus its
+ * `added` — so two tabs adding different channels both survive. Order follows
+ * this tab's own arrangement, then its additions, then any stored channels it
+ * has not seen yet; focus/chat/pause/mute stay this tab's presentation choice;
+ * layouts are a name-keyed union with stored winning a conflict.
+ */
+function mergeMultistream(stored, current, added = [], removed = []) {
+  const base = normalizeMultistream(stored);
+  const view = normalizeMultistream(current);
+  const lower = (slug) => String(slug).toLowerCase();
+  const removeSet = new Set((Array.isArray(removed) ? removed : []).filter((slug) => typeof slug === 'string').map(lower));
+  const addList = (Array.isArray(added) ? added : []).filter((slug) => typeof slug === 'string');
+  const allowed = new Map();
+  for (const slug of [...base.streams, ...addList]) {
+    const key = lower(slug);
+    if (removeSet.has(key) || allowed.has(key)) continue;
+    allowed.set(key, slug);
+  }
+  const streams = [];
+  const placed = new Set();
+  for (const slug of [...view.streams, ...addList, ...base.streams]) {
+    const key = lower(slug);
+    if (!allowed.has(key) || placed.has(key)) continue;
+    placed.add(key);
+    streams.push(allowed.get(key));
+  }
+  const layouts = [...base.layouts];
+  const names = new Set(base.layouts.map((layout) => layout.name.toLowerCase()));
+  for (const layout of view.layouts) {
+    if (names.has(layout.name.toLowerCase())) continue;
+    names.add(layout.name.toLowerCase());
+    layouts.push(layout);
+  }
+  return normalizeMultistream({
+    ...base,
+    streams,
+    layouts,
+    focus: view.focus,
+    chat: view.chat,
+    showChat: view.showChat,
+    paused: view.paused,
+    muted: view.muted,
+  });
+}
+
+/**
  * Should a tile carry audio?
  *
  * Exactly one tile ever does, and only when the grid is neither paused nor
@@ -5037,6 +5087,15 @@ function persistMultistream() {
   gmSet(MULTISTREAM_KEY, state.multistream);
 }
 
+// Re-read, merge, write. The multi-stream store is shared across tabs, so a
+// blind write drops channels another tab added since this tab booted. This
+// applies this tab's add/remove on top of the latest stored value.
+function commitMultistream(added = [], removed = []) {
+  state.multistream = mergeMultistream(gmGet(MULTISTREAM_KEY, {}), state.multistream, added, removed);
+  gmSet(MULTISTREAM_KEY, state.multistream);
+  return state.multistream;
+}
+
 function openMultistream() {
   const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
   if (!backdrop) return;
@@ -5380,10 +5439,46 @@ function addMultistream(raw) {
   state.multistreamError = result.ok ? '' : result.error;
   if (result.ok) {
     state.multistream = result.value;
-    persistMultistream();
+    // Merge-write so a second tab adding a different channel is not clobbered.
+    commitMultistream([slug]);
+    syncHeaderMultiState();
     announce(`${slug} added to the multi-stream grid`);
   }
   renderMultistream();
+}
+
+/**
+ * One-click add/remove of the current channel to the multi-stream grid from the
+ * header, with feedback. Stays on the page: it never opens the grid or
+ * navigates, so a viewer can collect several channels and open them together.
+ */
+function toggleCurrentChannelInMulti() {
+  const slug = currentChannelSlug();
+  if (!slug) return;
+  const inGrid = state.multistream.streams.some((entry) => entry.toLowerCase() === slug.toLowerCase());
+  if (inGrid) {
+    const result = commitMultistream([], [slug]);
+    syncHeaderMultiState();
+    renderMultistream();
+    showToast(`Removed ${slug} from Multi — ${result.streams.length} of ${MULTISTREAM_MAX}`, false, [
+      { label: 'Undo', onClick: () => { commitMultistream([slug]); syncHeaderMultiState(); renderMultistream(); } },
+    ]);
+    announce(`Removed ${slug} from multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
+    return;
+  }
+  if (state.multistream.streams.length >= MULTISTREAM_MAX) {
+    showToast(`Multi-stream is full at ${MULTISTREAM_MAX} of ${MULTISTREAM_MAX}.`, true);
+    announce(`Multi-stream is full at ${MULTISTREAM_MAX} channels.`);
+    return;
+  }
+  const result = commitMultistream([slug]);
+  syncHeaderMultiState();
+  renderMultistream();
+  showToast(`Added ${slug} — ${result.streams.length} of ${MULTISTREAM_MAX}`, false, [
+    { label: 'View', onClick: () => openMultistream() },
+    { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(`Removed ${slug} from multi-stream.`); } },
+  ]);
+  announce(`Added ${slug} to multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
 }
 
 function readRemoteBlocklist() {
@@ -7498,6 +7593,21 @@ const UI_CSS = `
     color: var(--text);
   }
   .kf-toast[data-error="true"] { border-color: var(--danger); }
+  .kf-toast:has(.kf-toast-action) { display: flex; align-items: center; gap: 10px; }
+  .kf-toast-text { flex: 1 1 auto; }
+  .kf-toast-action {
+    flex: 0 0 auto;
+    padding: 5px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .kf-toast-action:hover { background: var(--accent); color: #0b0f0d; }
+  .kf-toast-action:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
   /* Data loss is not a toast. This stays until the user acknowledges it. */
   .kf-storage-alert {
@@ -9693,14 +9803,31 @@ function storageDiagnostics() {
   return approximateStorageBytes(entries);
 }
 
-function showToast(message, isError = false) {
+function showToast(message, isError = false, actions = []) {
   const toast = state.shadow?.querySelector('[data-kf-toast]');
   if (!toast) return;
-  toast.textContent = message;
+  toast.textContent = '';
+  const text = document.createElement('span');
+  text.className = 'kf-toast-text';
+  text.textContent = message;
+  toast.append(text);
+  for (const action of actions) {
+    if (!action || typeof action.onClick !== 'function') continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'kf-toast-action';
+    button.textContent = action.label;
+    button.addEventListener('click', () => {
+      toast.hidden = true;
+      action.onClick();
+    });
+    toast.append(button);
+  }
   toast.dataset.error = String(isError);
   toast.hidden = false;
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => { toast.hidden = true; }, 3600);
+  // Action toasts stay long enough to be clicked; plain toasts clear quickly.
+  showToast.timer = setTimeout(() => { toast.hidden = true; }, actions.length ? 7000 : 3600);
 }
 
 function commandDefinitions() {
@@ -9956,6 +10083,8 @@ function ensureHeaderQuickControl() {
         button:focus-visible { outline: 2px solid #f4f7f5; outline-offset: 2px; }
         img { display: block; width: 18px; height: 18px; object-fit: contain; }
         .kf-header-multi svg { width: 15px; height: 15px; fill: currentColor; opacity: .9; }
+        .kf-header-add [data-kf-header-add-icon] { font-weight: 800; font-size: 14px; }
+        .kf-header-add[data-in-multi="true"] { border-color: #7cff2b; background: rgba(124,255,43,.2); color: #7cff2b; }
         @media (max-width: 960px) {
           button { width: 36px; padding: 0; }
           span { display: none; }
@@ -9967,7 +10096,11 @@ function ensureHeaderQuickControl() {
       </button>
       <button type="button" data-kf-header-multi class="kf-header-multi" aria-label="Open Kick Focus multi-stream" title="Multi-stream">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2.5" y="3.5" width="8.5" height="7" rx="1.5"/><rect x="13" y="3.5" width="8.5" height="7" rx="1.5"/><rect x="2.5" y="13" width="8.5" height="7" rx="1.5"/><rect x="13" y="13" width="8.5" height="7" rx="1.5"/></svg>
-        <span>Multi</span>
+        <span data-kf-header-multi-label>Multi</span>
+      </button>
+      <button type="button" data-kf-header-add-multi class="kf-header-add" hidden aria-label="Add this channel to Kick Focus multi-stream" title="Add to multi-stream">
+        <span data-kf-header-add-icon aria-hidden="true">+</span>
+        <span data-kf-header-add-label>Multi</span>
       </button>`;
     const button = shadow.querySelector('[data-kf-header-focus]');
     button.addEventListener('click', (event) => {
@@ -9984,14 +10117,46 @@ function ensureHeaderQuickControl() {
       if (multistreamOpen()) closeMultistream();
       else openMultistream();
     });
+    shadow.querySelector('[data-kf-header-add-multi]').addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleCurrentChannelInMulti();
+    });
     state.headerControlHost = host;
     state.headerControlButton = button;
+    state.headerAddMultiButton = shadow.querySelector('[data-kf-header-add-multi]');
+    state.headerMultiLabel = shadow.querySelector('[data-kf-header-multi-label]');
   }
 
   if (state.headerControlHost.parentElement !== owner || state.headerControlHost.nextElementSibling !== target) {
     owner.insertBefore(state.headerControlHost, target);
   }
+  syncHeaderMultiState();
   return state.headerControlHost.isConnected;
+}
+
+/**
+ * Keep the header's "+ Multi" button and the "Multi (n)" count in sync with the
+ * grid and the current route. The add button only appears on a channel page,
+ * and flips to an "In Multi" toggle once the channel is in the grid.
+ */
+function syncHeaderMultiState() {
+  const count = state.multistream.streams.length;
+  if (state.headerMultiLabel) state.headerMultiLabel.textContent = count ? `Multi (${count})` : 'Multi';
+  const button = state.headerAddMultiButton;
+  if (!button) return;
+  const slug = currentChannelSlug();
+  if (!slug) { button.hidden = true; return; }
+  button.hidden = false;
+  const inGrid = state.multistream.streams.some((entry) => entry.toLowerCase() === slug.toLowerCase());
+  button.dataset.inMulti = String(inGrid);
+  const icon = button.querySelector('[data-kf-header-add-icon]');
+  const label = button.querySelector('[data-kf-header-add-label]');
+  if (icon) icon.textContent = inGrid ? '✓' : '+';
+  if (label) label.textContent = inGrid ? 'In Multi' : 'Multi';
+  button.setAttribute('aria-label', inGrid
+    ? `Remove ${slug} from Kick Focus multi-stream`
+    : `Add ${slug} to Kick Focus multi-stream`);
 }
 
 function syncQuickButton() {

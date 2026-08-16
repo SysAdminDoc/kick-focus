@@ -93,6 +93,11 @@ const checks = [
     && source.includes("nativeGroups: ['Seen in chat']")
     && source.includes('renderStickerLibraryManager')
     && source.includes('stickers: stickerPreferencesValue()')],
+  ['one-click add-to-multi is race-safe and lives in the header', source.includes('function mergeMultistream')
+    && source.includes('function commitMultistream')
+    && source.includes('function toggleCurrentChannelInMulti')
+    && source.includes('data-kf-header-add-multi')
+    && source.includes('function syncHeaderMultiState')],
   ['harvests emotes from realtime chat frames, image-validated before they take a slot', source.includes('function observationsFromChatEmotes')
     && source.includes('function queueChatEmoteHarvest')
     && source.includes('settings.liveChatEvents && settings.organizeChatStickers')

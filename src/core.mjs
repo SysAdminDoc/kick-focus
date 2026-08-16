@@ -1572,6 +1572,56 @@ export function normalizeMultistream(input) {
 }
 
 /**
+ * Merge a multi-stream write across tabs without a lost update.
+ *
+ * A blind `gmSet(state.multistream)` clobbers whatever another tab added since
+ * this tab booted. Instead, membership is taken from what is *stored* (the most
+ * recent write from any tab), minus this operation's `removed`, plus its
+ * `added` — so two tabs adding different channels both survive. Order follows
+ * this tab's own arrangement, then its additions, then any stored channels it
+ * has not seen yet; focus/chat/pause/mute stay this tab's presentation choice;
+ * layouts are a name-keyed union with stored winning a conflict.
+ */
+export function mergeMultistream(stored, current, added = [], removed = []) {
+  const base = normalizeMultistream(stored);
+  const view = normalizeMultistream(current);
+  const lower = (slug) => String(slug).toLowerCase();
+  const removeSet = new Set((Array.isArray(removed) ? removed : []).filter((slug) => typeof slug === 'string').map(lower));
+  const addList = (Array.isArray(added) ? added : []).filter((slug) => typeof slug === 'string');
+  const allowed = new Map();
+  for (const slug of [...base.streams, ...addList]) {
+    const key = lower(slug);
+    if (removeSet.has(key) || allowed.has(key)) continue;
+    allowed.set(key, slug);
+  }
+  const streams = [];
+  const placed = new Set();
+  for (const slug of [...view.streams, ...addList, ...base.streams]) {
+    const key = lower(slug);
+    if (!allowed.has(key) || placed.has(key)) continue;
+    placed.add(key);
+    streams.push(allowed.get(key));
+  }
+  const layouts = [...base.layouts];
+  const names = new Set(base.layouts.map((layout) => layout.name.toLowerCase()));
+  for (const layout of view.layouts) {
+    if (names.has(layout.name.toLowerCase())) continue;
+    names.add(layout.name.toLowerCase());
+    layouts.push(layout);
+  }
+  return normalizeMultistream({
+    ...base,
+    streams,
+    layouts,
+    focus: view.focus,
+    chat: view.chat,
+    showChat: view.showChat,
+    paused: view.paused,
+    muted: view.muted,
+  });
+}
+
+/**
  * Should a tile carry audio?
  *
  * Exactly one tile ever does, and only when the grid is neither paused nor
