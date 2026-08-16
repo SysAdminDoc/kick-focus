@@ -1,4 +1,4 @@
-export const VERSION = '1.10.0';
+export const VERSION = '1.11.0';
 export const SETTINGS_SCHEMA = 3;
 
 export const DEFAULT_SETTINGS = Object.freeze({
