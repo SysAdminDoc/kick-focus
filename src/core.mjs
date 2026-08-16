@@ -431,6 +431,64 @@ export function assessAdStack(observed = {}) {
 }
 
 /**
+ * Fold one observation of an emote into its stored record.
+ *
+ * Kick edits emotes users have already pulled — a 2026-07-24 report of four
+ * changed emotes was answered by Kick support with "remastered… clear your
+ * cache" — so the local record is the only version a user can check against.
+ * `wasName`/`wasSrc` always hold the value at *first* capture, not the previous
+ * one, so a rename and a rename-back correctly reads as unchanged.
+ *
+ * Pure: no clock of its own, so the caller supplies `now` and tests are exact.
+ */
+export function recordStickerObservation(existing, observed, now) {
+  const at = cleanCaptureTime(now);
+  if (!existing) {
+    return { ...observed, firstSeen: at, lastSeen: at };
+  }
+  // An entry carried over from schema 3 keeps `firstSeen: 0` — unknown. Stamping
+  // it with today would claim the emote was first seen now, when in fact it was
+  // recorded before this build tracked dates at all.
+  const entry = { ...existing, ...observed, firstSeen: cleanCaptureTime(existing.firstSeen), lastSeen: at };
+
+  const originalName = existing.wasName || existing.name;
+  if (originalName && originalName !== entry.name) entry.wasName = originalName;
+  else delete entry.wasName;
+
+  const originalSrc = existing.wasSrc || existing.src;
+  if (originalSrc && originalSrc !== entry.src) entry.wasSrc = originalSrc;
+  else delete entry.wasSrc;
+
+  return entry;
+}
+
+/** Whether Kick has changed this entry since it was first recorded. */
+export function stickerChangedSinceCapture(entry) {
+  return Boolean(entry?.wasName || entry?.wasSrc);
+}
+
+/**
+ * Say what changed, in the user's terms. Returns '' when nothing has, so the
+ * caller can use it directly as a presence test.
+ */
+export function describeStickerChange(entry) {
+  if (!entry) return '';
+  const parts = [];
+  if (entry.wasName) parts.push(`renamed from "${entry.wasName}"`);
+  if (entry.wasSrc) parts.push('artwork replaced');
+  if (!parts.length) return '';
+  const first = cleanCaptureTime(entry.firstSeen);
+  const when = first ? ` since first seen ${new Date(first).toISOString().slice(0, 10)}` : ' since first capture';
+  return `Kick has ${parts.join(' and ')}${when}.`;
+}
+
+/** How many library entries Kick has edited since they were recorded. */
+export function countChangedStickers(library) {
+  const entries = library instanceof Map ? [...library.values()] : (Array.isArray(library) ? library : []);
+  return entries.filter((entry) => stickerChangedSinceCapture(entry)).length;
+}
+
+/**
  * Decide which chat badges this build has to draw itself.
  *
  * Kick renders some badges in its own markup but omits the collectible and
@@ -601,7 +659,23 @@ export function detectContentLabels(text, context = {}) {
   };
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 3;
+export const STICKER_PREFERENCES_SCHEMA = 4;
+
+/**
+ * Timestamps travel through the settings export, so an imported file can carry
+ * anything. Anything not a plausible epoch-millisecond reading is discarded
+ * rather than clamped, because a wrong date is worse than no date: the whole
+ * point of the record is that the user can trust it.
+ */
+const EARLIEST_CAPTURE_MS = Date.UTC(2024, 0, 1);
+
+function cleanCaptureTime(value) {
+  const time = Number(value);
+  if (!Number.isFinite(time) || time < EARLIEST_CAPTURE_MS) return 0;
+  // A reading far in the future is a broken clock or a hand-edited file.
+  if (time > EARLIEST_CAPTURE_MS + 100 * 365 * 24 * 60 * 60 * 1000) return 0;
+  return Math.floor(time);
+}
 
 function cleanStickerKeys(input, limit = 2400) {
   if (!Array.isArray(input)) return [];
@@ -684,7 +758,7 @@ function cleanStickerLibrary(input) {
     const src = cleanStickerAssetUrl(raw.src);
     if (!key || !name || !src || keys.has(key)) continue;
     keys.add(key);
-    library.push({
+    const entry = {
       key,
       id: cleanStickerText(raw.id, 120).replace(/[^a-zA-Z0-9_-]/g, ''),
       name,
@@ -693,7 +767,19 @@ function cleanStickerLibrary(input) {
         .map((group) => cleanStickerText(group, 80))
         .filter(Boolean))].slice(0, 20),
       access: enumValue(raw.access, ['available', 'observed', 'locked'], 'available'),
-    });
+      // Schema 4. Entries captured before it carry 0, which reads as unknown
+      // rather than as a date the record cannot actually support.
+      firstSeen: cleanCaptureTime(raw.firstSeen),
+      lastSeen: cleanCaptureTime(raw.lastSeen),
+    };
+    // Only present once Kick has changed the entry under the user, which is
+    // the case this record exists to catch — and keeping them optional stops a
+    // 2,400-entry library from carrying a duplicate of itself.
+    const wasName = cleanStickerText(raw.wasName, 80);
+    if (wasName && wasName !== name) entry.wasName = wasName;
+    const wasSrc = cleanStickerAssetUrl(raw.wasSrc);
+    if (wasSrc && wasSrc !== src) entry.wasSrc = wasSrc;
+    library.push(entry);
     if (library.length >= 2400) break;
   }
   return library;

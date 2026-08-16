@@ -12,6 +12,10 @@ import {
   assessAdStack,
   assessApiDrift,
   chatBadgesToRender,
+  countChangedStickers,
+  describeStickerChange,
+  recordStickerObservation,
+  stickerChangedSinceCapture,
   normalizeChannelPath,
   classifyRequest,
   describeInjection,
@@ -22,6 +26,7 @@ import {
   nextApplyDelay,
   normalizeStickerPreferences,
   normalizeSettings,
+  STICKER_PREFERENCES_SCHEMA,
   routeKind,
   sanitizeDiagnosticUrl,
   validateRemoteBlocklist,
@@ -98,7 +103,7 @@ test('sticker library keeps portable metadata, custom groups, and one assignment
       { key: 'id:300', id: '300', name: 'Protocol relative', src: '//tracker.example/emotes/300/fullsize' },
     ],
   });
-  assert.equal(value.schema, 3);
+  assert.equal(value.schema, STICKER_PREFERENCES_SCHEMA);
   assert.equal(value.view, 'group');
   assert.equal(value.groups.length, 2);
   assert.deepEqual(value.assignments, [{ key: 'id:100', groupId: 'reactions' }]);
@@ -436,6 +441,106 @@ test('ad stack drift is reported instead of passing silently', () => {
   const absent = assessAdStack({ sawPlayback: true, playbackSdkKeys: [] });
   assert.equal(absent.status, 'absent');
   assert.equal(absent.drifted, true);
+});
+
+test('the emote library records when Kick changes an emote under the user', () => {
+  const day1 = Date.UTC(2026, 0, 10);
+  const day2 = Date.UTC(2026, 5, 20);
+  const day3 = Date.UTC(2026, 7, 1);
+  const base = { key: 'id:1', id: '1', name: 'LULW', src: 'https://files.kick.com/emotes/1/fullsize', nativeGroups: [], access: 'available' };
+
+  // First capture stamps both ends and flags nothing.
+  const first = recordStickerObservation(null, base, day1);
+  assert.equal(first.firstSeen, day1);
+  assert.equal(first.lastSeen, day1);
+  assert.equal(stickerChangedSinceCapture(first), false);
+  assert.equal(describeStickerChange(first), '');
+
+  // Seeing it again moves lastSeen only.
+  const again = recordStickerObservation(first, base, day2);
+  assert.equal(again.firstSeen, day1);
+  assert.equal(again.lastSeen, day2);
+  assert.equal(stickerChangedSinceCapture(again), false);
+
+  // A rename records the *original* name and says so with the first-seen date.
+  const renamed = recordStickerObservation(again, { ...base, name: 'LULWremaster' }, day3);
+  assert.equal(renamed.wasName, 'LULW');
+  assert.equal(renamed.firstSeen, day1);
+  assert.equal(stickerChangedSinceCapture(renamed), true);
+  assert.match(describeStickerChange(renamed), /renamed from "LULW"/);
+  assert.match(describeStickerChange(renamed), /2026-01-10/);
+
+  // A second rename keeps the true original, not the previous value.
+  const renamedAgain = recordStickerObservation(renamed, { ...base, name: 'LULW3' }, day3);
+  assert.equal(renamedAgain.wasName, 'LULW');
+
+  // Renaming back to the original clears the flag rather than leaving it stuck.
+  const restored = recordStickerObservation(renamedAgain, base, day3);
+  assert.equal(restored.wasName, undefined);
+  assert.equal(stickerChangedSinceCapture(restored), false);
+
+  // A replaced asset is the case Kick support answered with "clear your cache".
+  const reart = recordStickerObservation(again, { ...base, src: 'https://files.kick.com/emotes/1/v2' }, day3);
+  assert.equal(reart.wasSrc, 'https://files.kick.com/emotes/1/fullsize');
+  assert.match(describeStickerChange(reart), /artwork replaced/);
+
+  // Both at once reads as one sentence.
+  const both = recordStickerObservation(again, { ...base, name: 'New', src: 'https://files.kick.com/emotes/1/v2' }, day3);
+  assert.match(describeStickerChange(both), /renamed from "LULW" and artwork replaced/);
+
+  // An entry carried over from schema 3 has no first-seen date. Stamping it
+  // with today would claim knowledge the record does not have, so it stays 0
+  // and only lastSeen advances.
+  const migrated = recordStickerObservation({ ...base, firstSeen: 0, lastSeen: 0 }, base, day3);
+  assert.equal(migrated.firstSeen, 0);
+  assert.equal(migrated.lastSeen, day3);
+  assert.equal(describeStickerChange({ ...migrated, wasName: 'Old' }), 'Kick has renamed from "Old" since first capture.');
+
+  assert.equal(countChangedStickers([first, renamed, reart]), 2);
+  assert.equal(countChangedStickers(new Map([['a', first]])), 0);
+  assert.equal(countChangedStickers(undefined), 0);
+});
+
+test('emote history survives the export round-trip and rejects impossible dates', () => {
+  const seen = Date.UTC(2026, 2, 3);
+  const imported = validateImportedSettings(JSON.stringify({
+    schema: SETTINGS_SCHEMA,
+    stickers: {
+      schema: 4,
+      library: [
+        {
+          key: 'id:9', id: '9', name: 'Now', src: 'https://files.kick.com/emotes/9/v2',
+          nativeGroups: [], access: 'available',
+          firstSeen: seen, lastSeen: seen + 1000,
+          wasName: 'Before', wasSrc: 'https://files.kick.com/emotes/9/fullsize',
+        },
+        // A hand-edited or clock-skewed file must not produce a date the record
+        // cannot support: a wrong date is worse than none.
+        {
+          key: 'id:10', id: '10', name: 'Junk', src: 'https://files.kick.com/emotes/10/fullsize',
+          nativeGroups: [], access: 'available',
+          firstSeen: 1, lastSeen: 'yesterday',
+        },
+      ],
+    },
+  }));
+  assert.equal(imported.ok, true);
+
+  const kept = imported.stickers.library.find((entry) => entry.key === 'id:9');
+  assert.equal(kept.firstSeen, seen);
+  assert.equal(kept.lastSeen, seen + 1000);
+  assert.equal(kept.wasName, 'Before');
+  assert.equal(stickerChangedSinceCapture(kept), true);
+
+  const junk = imported.stickers.library.find((entry) => entry.key === 'id:10');
+  assert.equal(junk.firstSeen, 0);
+  assert.equal(junk.lastSeen, 0);
+
+  // A stale wasName equal to the current name is not a change and is dropped.
+  const noop = validateImportedSettings(JSON.stringify({
+    stickers: { schema: 4, library: [{ key: 'id:11', id: '11', name: 'Same', src: 'https://files.kick.com/emotes/11/fullsize', wasName: 'Same' }] },
+  }));
+  assert.equal(noop.stickers.library[0].wasName, undefined);
 });
 
 test('chat badges fill the gap Kick leaves without duplicating what it drew', () => {

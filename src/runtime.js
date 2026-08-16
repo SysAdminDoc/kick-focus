@@ -2951,8 +2951,22 @@ function stickerNativeGroups(picker) {
   return groupsByButton;
 }
 
+/**
+ * `lastSeen` alone is not worth a storage write on every apply cycle, so it is
+ * only persisted once an hour has passed. The library can hold 2,400 entries
+ * and this runs continuously on a live channel.
+ */
+const STICKER_LAST_SEEN_WRITE_MS = 60 * 60 * 1000;
+
+/** Equality ignoring `lastSeen`, which moves constantly and means nothing alone. */
+function sameStickerRecord(a, b) {
+  const strip = (entry) => { const { lastSeen, ...rest } = entry; return rest; };
+  return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
+}
+
 function mergeStickerLibrary(observed) {
   let changed = false;
+  const now = Date.now();
   for (const sticker of observed) {
     const existing = state.stickerPreferences.library.get(sticker.key);
     const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...(sticker.nativeGroups || [])])].slice(0, 20);
@@ -2966,15 +2980,22 @@ function mergeStickerLibrary(observed) {
       : existing?.access === 'locked' || incomingAccess === 'locked'
         ? 'locked'
         : 'observed';
-    const record = {
+    // Nothing here calls Kick. The record is built from what the page and the
+    // catalog already showed, so no claim is automated and no endpoint replayed.
+    const record = recordStickerObservation(existing, {
       key: sticker.key,
       id: sticker.id,
       name: sticker.name,
       src: sticker.src,
       nativeGroups,
       access,
-    };
-    if (!existing || JSON.stringify(existing) !== JSON.stringify(record)) {
+    }, now);
+    // `lastSeen` moves on every pass, so comparing it would rewrite the whole
+    // library on every apply cycle. Only a real change is worth a write.
+    if (!existing || !sameStickerRecord(existing, record)) {
+      state.stickerPreferences.library.set(sticker.key, record);
+      changed = true;
+    } else if (record.lastSeen - existing.lastSeen > STICKER_LAST_SEEN_WRITE_MS) {
       state.stickerPreferences.library.set(sticker.key, record);
       changed = true;
     }
@@ -4286,6 +4307,11 @@ const UI_CSS = `
   .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-access[data-access="available"] { border-color: rgba(var(--accent-rgb), .55); color: var(--accent); }
   .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
+  /* Kick edits emotes users already pulled; the local record is the only copy
+     that can prove it, so a changed entry is called out rather than quietly
+     overwritten. */
+  .kf-sticker-changed { display: inline-flex; margin: 5px 0 0 5px; padding: 2px 5px; border: 1px solid rgba(217,139,58,.62); border-radius: 3px; color: #e0a367; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .kf-sticker-library-item[data-changed="true"] { border-color: rgba(217,139,58,.42); }
   .kf-sticker-library-actions { grid-column: 1 / -1; display: grid; grid-template-columns: auto auto minmax(105px, 1fr); gap: 6px; }
   .kf-sticker-library-actions .kf-select { min-width: 0; width: 100%; }
 
@@ -5437,12 +5463,23 @@ function stickerLibrarySummary() {
   const library = [...state.stickerPreferences.library.values()];
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
   const observed = library.filter((sticker) => sticker.access === 'observed').length;
-  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}`;
+  const changed = countChangedStickers(library);
+  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}`;
+}
+
+/** First/last capture in the user's terms; '' for entries recorded before schema 4. */
+function stickerSeenSummary(sticker) {
+  if (!sticker.firstSeen) return '';
+  const day = (time) => new Date(time).toISOString().slice(0, 10);
+  const first = day(sticker.firstSeen);
+  const last = sticker.lastSeen ? day(sticker.lastSeen) : '';
+  return last && last !== first ? `First seen ${first} · last ${last}` : `First seen ${first}`;
 }
 
 function stickerLibraryFilterMatches(sticker, filter) {
   if (filter === 'favorites') return state.stickerPreferences.pinned.has(sticker.key);
   if (filter === 'removed') return state.stickerPreferences.hidden.has(sticker.key);
+  if (filter === 'changed') return stickerChangedSinceCapture(sticker);
   if (filter === 'observed') return sticker.access === 'observed';
   if (filter === 'locked') return sticker.access === 'locked';
   if (filter === 'ungrouped') return !state.stickerPreferences.assignments.has(sticker.key);
@@ -5468,6 +5505,7 @@ function renderStickerLibraryManager() {
     ['all', `All recorded (${state.stickerPreferences.library.size})`],
     ['favorites', `Favorites (${state.stickerPreferences.pinned.size})`],
     ['removed', `Removed (${state.stickerPreferences.hidden.size})`],
+    ['changed', `Changed by Kick (${countChangedStickers(state.stickerPreferences.library)})`],
     ['observed', 'Seen in chat'],
     ['locked', 'Locked-only'],
     ['ungrouped', 'Ungrouped'],
@@ -5488,9 +5526,11 @@ function renderStickerLibraryManager() {
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
     const searchText = `${sticker.name} ${nativeGroups}`.toLowerCase();
     const accessLabel = sticker.access === 'available' ? 'Seen available' : sticker.access === 'observed' ? 'Seen in chat' : 'Locked only';
-    return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}">
+    const changeNote = describeStickerChange(sticker);
+    const seenNote = stickerSeenSummary(sticker);
+    return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}" data-changed="${Boolean(changeNote)}">
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
-      <div class="kf-sticker-library-copy"><strong title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small><span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span></div>
+      <div class="kf-sticker-library-copy"><strong title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}</div>
       <div class="kf-sticker-library-actions">
         <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
         <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>

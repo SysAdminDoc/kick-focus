@@ -134,6 +134,15 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // Kick edits emotes users already pulled, so the local record is the only
+  // copy that can prove it. Timestamps and the prior value must both survive.
+  ['snapshots the emote library with first-seen, last-seen, and what Kick changed',
+    source.includes('recordStickerObservation')
+    && source.includes('describeStickerChange')
+    && source.includes('countChangedStickers')
+    && source.includes('kf-sticker-changed')
+    && source.includes('wasName')],
+
   // The degradation path is the point: an unreachable badge image must read as
   // the badge's name, never as an empty box.
   ['renders the chat badges Kick omits and degrades a broken image to text',
