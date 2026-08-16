@@ -79,7 +79,7 @@ const checks = [
     && source.includes('data-kf-sticker-native-shell')
     && source.includes("nativeList.dataset.kfStickerNativeList = 'true'")
     && source.includes("shell.dataset.kfStickerNativeShell = 'true'")],
-  ['labels the sticker shelf as account-authorized', source.includes('New Kick stickers save automatically')
+  ['labels the emote shelf as account-authorized', source.includes('New Kick emotes save automatically')
     && source.includes('max-height: min(720px, 76vh)')
     && source.includes('stickerButtonUnavailable')],
   ['persists and exports the complete sticker library', source.includes('mergeStickerLibrary')

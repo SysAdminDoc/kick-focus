@@ -744,7 +744,7 @@ export function validateImportedSettings(jsonText) {
     return { ok: false, error: `Settings schema ${parsed.schema} is newer than this build supports.` };
   }
   if (parsed.stickers != null && !isRecord(parsed.stickers)) {
-    return { ok: false, error: 'The sticker library must be a JSON object.' };
+    return { ok: false, error: 'The emote library must be a JSON object.' };
   }
   if (parsed.usage != null && !isRecord(parsed.usage)) {
     return { ok: false, error: 'The emote usage counts must be a JSON object.' };
@@ -753,7 +753,7 @@ export function validateImportedSettings(jsonText) {
     return { ok: false, error: 'The multi-stream layouts must be a JSON object.' };
   }
   if (parsed.stickers?.schema != null && Number(parsed.stickers.schema) > STICKER_PREFERENCES_SCHEMA) {
-    return { ok: false, error: `Sticker schema ${parsed.stickers.schema} is newer than this build supports.` };
+    return { ok: false, error: `Emote schema ${parsed.stickers.schema} is newer than this build supports.` };
   }
 
   const value = normalizeSettings(parsed);
@@ -803,11 +803,11 @@ export function validateImportedSettings(jsonText) {
     }
     for (const field of ['pinned', 'hidden', 'groups', 'assignments']) {
       if (Array.isArray(parsed.stickers[field]) && parsed.stickers[field].length !== stickers[field].length) {
-        notes.push(`Adjusted sticker ${field} to supported entries.`);
+        notes.push(`Adjusted emote ${field} to supported entries.`);
       }
     }
     if (parsed.stickers.schema == null || Number(parsed.stickers.schema) < STICKER_PREFERENCES_SCHEMA) {
-      notes.push(`Upgraded stickers to schema ${STICKER_PREFERENCES_SCHEMA}.`);
+      notes.push(`Upgraded emotes to schema ${STICKER_PREFERENCES_SCHEMA}.`);
     }
   }
 

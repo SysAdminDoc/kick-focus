@@ -22,13 +22,13 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - Keeps home-page previews silent, blurs marked mature cards, and can filter casino, Drops, sponsored, and promoted content using Kick's own category and badge markup. Filtering suspends itself and says so rather than emptying a page.
 - Remembers volume, mute state, quality, and finite VOD position locally with separate privacy toggles; adds favorite and not-interested card actions, configurable Following/Recommended rails, an accessible search summary and clear action, useful Drops-empty guidance, and mini-player collision recovery.
 - Adds sticky chat pause with an accessible resume state, per-channel keyword highlights and private notes, optional playback diagnostics, and a panic switch that restores Kick's native page without a reload.
-- Continuously records stickers seen in live chat and every sticker Kick exposes in the open picker, including locked metadata, with a larger three-row one-click favorites shelf, scroll-stable removals, portable favorites/removals, custom groups, and full JSON export/import from settings. Chat-only discoveries remain availability-unknown, and locked subscriber stickers are never sent without Kick authorization.
+- Continuously records emotes seen in live chat and every emote Kick exposes in the open picker, including locked metadata, with a larger three-row one-click favorites shelf, scroll-stable removals, portable favorites/removals, custom groups, and full JSON export/import from settings. Chat-only discoveries remain availability-unknown, and locked subscriber emotes are never sent without Kick authorization.
 - Clears the ad flags out of Kick's `/playback` response before the player reads them, so the ad SDKs are never started, and blocks known ad and optional telemetry requests through early page-realm `fetch`, XHR, beacon, and dynamic-element hooks. A persistent observer removes ad scripts, frames, and containers after reinsertion, and the Content & Ads page warns if Kick's ad stack stops matching what this build knows.
 - **Reads Kick's own API instead of scraping the page for it**, read-only and same-origin using the session you are already signed into. The emote catalog loads with real entitlement without the picker being opened; chat events come from whichever realtime provider Kick's own broker names; removed messages say why they were removed, which the page itself discards; emote usage is counted per channel and globally, which Kick does not do at all; collectible rarity is resolved and shown only where the match is confident; wide collectibles render un-squashed; and emote names shadowed across your sets are reported. Every one of these degrades to the previous DOM behaviour if the response changes shape, and each has its own switch.
 - **Multi-stream**: up to nine channels in one grid, built on Kick's own embedded player and popout chat, with audio and chat following the focused tile and named layouts you can save. Reachable from the header control, the command menu, or settings.
 - **Starts playback without waiting for blocked ad preflight scripts.** Kick waits on Google PAL, Datazoom, and OM before requesting playback, so blocking them — which this build does — otherwise leaves the player sitting out the full timeout.
 - Can freeze animated emotes and collectibles to a static frame, applied automatically when your system asks for reduced motion.
-- Stores settings and the recorded sticker library locally in the userscript manager. There is no analytics, network update code, `@require`, or remote executable code. An optional, off-by-default subscription accepts only user-supplied JSON data containing channels, categories, and keywords.
+- Stores settings and the recorded emote library locally in the userscript manager. There is no analytics, network update code, `@require`, or remote executable code. An optional, off-by-default subscription accepts only user-supplied JSON data containing channels, categories, and keywords.
 
 ## Install
 
@@ -126,7 +126,7 @@ Multi-stream embeds Kick's own player and popout chat, so playback, subscription
 
 - Primary verified viewport: 1440×900
 - Secondary verified viewport: 1920×1080
-- Authenticated recon routes: Home, Browse, Categories, Category, Following, Drops, Search, and Channel/chat, including the open native sticker picker (2026-08-14)
+- Authenticated recon routes: Home, Browse, Categories, Category, Following, Drops, Search, and Channel/chat, including the open native emote picker (2026-08-14)
 - Isolated companion proof: Chromium 151, logged out, headed and off-screen at both supported viewports (2026-08-15)
 - Mobile is intentionally out of scope.
 

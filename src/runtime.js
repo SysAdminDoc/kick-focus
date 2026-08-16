@@ -2737,7 +2737,7 @@ function stickerImageInfo(image, options = {}) {
   if (!image) return null;
   const rawSrc = image.getAttribute('src') || image.getAttribute('data-src') || image.currentSrc || image.src || '';
   if (!/\/emotes\//i.test(rawSrc)) return null;
-  const alt = image.getAttribute('alt') || options.name || 'Sticker';
+  const alt = image.getAttribute('alt') || options.name || 'Emote';
   if (alt.trim().toLowerCase() === 'emotes') return null;
   const rawId = options.id
     || image.dataset.emoteId
@@ -2745,7 +2745,7 @@ function stickerImageInfo(image, options = {}) {
     || rawSrc.match(/\/emotes\/(\d+)/i)?.[1]
     || '';
   const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
-  const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Sticker';
+  const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Emote';
   const src = rawSrc;
   const key = (id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320);
   return { key, id, name, src };
@@ -2757,7 +2757,7 @@ function stickerButtonInfo(button, options = {}) {
   const image = button.querySelector('img[src*="/emotes/" i], img[data-src*="/emotes/" i]');
   const info = stickerImageInfo(image, {
     id: button.dataset.emoteId || button.getAttribute('data-emote-id') || '',
-    name: button.getAttribute('aria-label') || button.dataset.emoteName || 'Sticker',
+    name: button.getAttribute('aria-label') || button.dataset.emoteName || 'Emote',
   });
   return info ? { ...info, button } : null;
 }
@@ -3047,7 +3047,7 @@ function stickerProxyMarkup(descriptor) {
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
   return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}">
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use emote ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <div data-kf-sticker-tools>
       <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Remove favorite' : 'Favorite'} ${safeName}" title="${pinned ? 'Remove favorite' : 'Favorite'}">${pinned ? '★' : '☆'}</button>
       <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${hidden ? 'Restore' : 'Remove'} ${safeName}" title="${hidden ? 'Restore' : 'Remove'}">${hidden ? '↶' : '×'}</button>
@@ -3059,7 +3059,7 @@ function stickerQuickProxyMarkup(descriptor) {
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
   return `<div data-kf-sticker-quick-item="true">
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" aria-label="Use favorite sticker ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" aria-label="Use favorite emote ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
     <div data-kf-sticker-quick-tools><button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-label="Remove ${safeName} from quick favorites" title="Remove from quick favorites">×</button></div>
   </div>`;
 }
@@ -3182,18 +3182,18 @@ function renderStickerOrganizer() {
   if (organizer.dataset.kfStickerSignature === signature) return;
   organizer.dataset.kfStickerSignature = signature;
   const view = state.stickerPreferences.view;
-  const countLabel = `${visible.length} ${visible.length === 1 ? 'sticker' : 'stickers'}`;
+  const countLabel = `${visible.length} ${visible.length === 1 ? 'emote' : 'emotes'}`;
   const unavailableLabel = unavailableCount
     ? `<span data-kf-sticker-locked>${unavailableCount} locked by Kick</span>`
     : '';
   const quickShelf = quickFavorites.length
-    ? `<div data-kf-sticker-quick-grid role="group" aria-label="Three-row one-click favorite stickers">${quickFavorites.map(stickerQuickProxyMarkup).join('')}</div>`
-    : '<div data-kf-sticker-quick-empty>Favorite stickers with ☆ to fill up to three rows of one-click shortcuts.</div>';
+    ? `<div data-kf-sticker-quick-grid role="group" aria-label="Three-row one-click favorite emotes">${quickFavorites.map(stickerQuickProxyMarkup).join('')}</div>`
+    : '<div data-kf-sticker-quick-empty>Favorite emotes with ☆ to fill up to three rows of one-click shortcuts.</div>';
   const list = view === 'native'
-    ? '<div data-kf-sticker-empty>Kick’s native sticker groups are shown below.</div>'
+    ? '<div data-kf-sticker-empty>Kick’s native emote groups are shown below.</div>'
     : visible.length
       ? `<div data-kf-sticker-grid>${visible.map(stickerProxyMarkup).join('')}</div>`
-      : `<div data-kf-sticker-empty>${view === 'pinned' ? 'Favorite stickers here to build your shelf.' : view === 'group' ? 'No available stickers are assigned to this group.' : 'No stickers match this search.'}</div>`;
+      : `<div data-kf-sticker-empty>${view === 'pinned' ? 'Favorite emotes here to build your shelf.' : view === 'group' ? 'No available emotes are assigned to this group.' : 'No emotes match this search.'}</div>`;
   const customGroups = state.stickerPreferences.groups.map((group) => {
     const count = allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === group.id).length;
     const active = view === 'group' && state.stickerPreferences.activeGroup === group.id;
@@ -3205,10 +3205,10 @@ function renderStickerOrganizer() {
     : '<button type="button" data-kf-sticker-manage="true">Groups</button>';
   organizer.innerHTML = `
     <div data-kf-sticker-topline>
-      <div><strong>Sticker shelf</strong><span data-kf-sticker-count>${escapeHtml(countLabel)}</span>${unavailableLabel}</div>
+      <div><strong>Emote shelf</strong><span data-kf-sticker-count>${escapeHtml(countLabel)}</span>${unavailableLabel}</div>
       <button type="button" data-kf-sticker-manage="true">Manage</button>
     </div>
-    <div data-kf-sticker-toolbar role="group" aria-label="Sticker views and filters">
+    <div data-kf-sticker-toolbar role="group" aria-label="Emote views and filters">
       <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Quick (${state.stickerPreferences.pinned.size})</button>
       <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All (${allVisible.length})</button>
       ${groupsTab}
@@ -3216,7 +3216,7 @@ function renderStickerOrganizer() {
       <button type="button" data-kf-sticker-show-hidden="true" aria-pressed="${showHidden}">${showHidden ? 'Hide removed' : 'Removed'}</button>
     </div>
     ${customGroups ? `<div data-kf-sticker-groups><span>Groups</span>${customGroups}<button type="button" data-kf-sticker-manage="true">Edit groups</button></div>` : ''}
-    <div data-kf-sticker-note>New Kick stickers save automatically. Pin with ☆, remove with ×, and organize groups from Manage.</div>
+    <div data-kf-sticker-note>New Kick emotes save automatically. Pin with ☆, remove with ×, and organize groups from Manage.</div>
     <section data-kf-sticker-quick-shelf="true">
       <div data-kf-sticker-quick-header><strong>Quick favorites</strong><span data-kf-sticker-quick-count>${quickFavorites.length} available · 3 rows</span><button type="button" data-kf-sticker-view="pinned" aria-pressed="${view === 'pinned'}">Edit shelf</button></div>
       ${quickShelf}
@@ -3251,7 +3251,7 @@ function clearStickerPreferences() {
   resetStickerPreferences({ keepLibrary: true });
   renderSettingsPage();
   scheduleApply(0);
-  showToast('Sticker favorites, removals, and custom groups reset.');
+  showToast('Emote favorites, removals, and custom groups reset.');
 }
 
 function handleStickerAction(event) {
@@ -3279,7 +3279,7 @@ function handleStickerAction(event) {
       state.stickerPreferences.hidden.delete(key);
     }
     persistStickerPreferences();
-    announce(state.stickerPreferences.pinned.has(key) ? 'Sticker pinned' : 'Sticker unpinned');
+    announce(state.stickerPreferences.pinned.has(key) ? 'Emote pinned' : 'Emote unpinned');
   } else if (action === 'hide' && key) {
     if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
     else {
@@ -3287,7 +3287,7 @@ function handleStickerAction(event) {
       state.stickerPreferences.pinned.delete(key);
     }
     persistStickerPreferences();
-    announce(state.stickerPreferences.hidden.has(key) ? 'Sticker removed' : 'Sticker restored');
+    announce(state.stickerPreferences.hidden.has(key) ? 'Emote removed' : 'Emote restored');
   } else if (target.dataset.kfStickerView) {
     state.stickerPreferences.view = target.dataset.kfStickerView;
     state.stickerPreferences.activeGroup = target.dataset.kfStickerGroup || state.stickerPreferences.activeGroup;
@@ -3297,7 +3297,7 @@ function handleStickerAction(event) {
     persistStickerPreferences();
   } else if (target.dataset.kfStickerReset) {
     resetStickerPreferences({ keepLibrary: true });
-    announce('Sticker changes reset');
+    announce('Emote changes reset');
   } else {
     return;
   }
@@ -4728,8 +4728,8 @@ const TRANSLATIONS = {
     'Resume finite VODs from the last local playback position.': 'Reanuda los VOD finitos desde la última posición de reproducción local.',
     'Pause chat updates': 'Pausar las actualizaciones del chat',
     'Freeze the visible chat scroll with an accessible resume control.': 'Congela el desplazamiento visible del chat con un control accesible para reanudarlo.',
-    'Organize chat stickers': 'Organizar los stickers del chat',
-    'Continuously record stickers from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente los stickers del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.',
+    'Organize chat emotes': 'Organizar los emotes del chat',
+    'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente los emotes del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.',
     'Highlight chat keywords': 'Resaltar palabras clave del chat',
     'Use the per-channel keyword list below without sending it anywhere.': 'Usa la lista de palabras clave por canal de abajo sin enviarla a ningún sitio.',
     'Show playback diagnostics': 'Mostrar diagnósticos de reproducción',
@@ -4936,8 +4936,8 @@ const TRANSLATIONS = {
     'Resume finite VODs from the last local playback position.': 'Retoma os VODs finitos a partir da última posição de reprodução local.',
     'Pause chat updates': 'Pausar as atualizações do chat',
     'Freeze the visible chat scroll with an accessible resume control.': 'Congela a rolagem visível do chat com um controle acessível para retomá-la.',
-    'Organize chat stickers': 'Organizar os stickers do chat',
-    'Continuously record stickers from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente os stickers do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.',
+    'Organize chat emotes': 'Organizar os emotes do chat',
+    'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente os emotes do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.',
     'Highlight chat keywords': 'Destacar palavras-chave do chat',
     'Use the per-channel keyword list below without sending it anywhere.': 'Usa a lista de palavras-chave por canal abaixo sem enviá-la a lugar nenhum.',
     'Show playback diagnostics': 'Mostrar diagnósticos de reprodução',
@@ -5328,16 +5328,16 @@ function renderStickerLibraryManager() {
   }).join('');
   return `
     <section class="kf-subsection" data-kf-sticker-library>
-      <div class="kf-subsection-header"><div><h3>Recorded sticker library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="export">Export all settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
+      <div class="kf-subsection-header"><div><h3>Recorded emote library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="export">Export all settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
       <div class="kf-sticker-library-shell">
         <div class="kf-sticker-library-controls">
-          <input class="kf-text" type="search" value="${escapeHtml(state.runtime.stickerLibraryQuery)}" data-kf-sticker-library-search placeholder="Search recorded stickers or Kick groups" aria-label="Search recorded stickers">
-          <select class="kf-select" data-kf-sticker-library-filter aria-label="Filter recorded stickers">${filters.map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(filter, value) ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
+          <input class="kf-text" type="search" value="${escapeHtml(state.runtime.stickerLibraryQuery)}" data-kf-sticker-library-search placeholder="Search recorded emotes or Kick groups" aria-label="Search recorded emotes">
+          <select class="kf-select" data-kf-sticker-library-filter aria-label="Filter recorded emotes">${filters.map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(filter, value) ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
         </div>
-        <div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="New custom group name" aria-label="New sticker group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>
+        <div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="New custom group name" aria-label="New emote group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>
         ${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : ''}
-        <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New stickers from chat and the picker are merged automatically and included in export.</span></div>
-        ${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded stickers match this filter.' : 'Watch chat or open Kick’s sticker picker to begin the library. New stickers are saved whenever Kick exposes them.'}</div>`}
+        <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New emotes from chat and the picker are merged automatically and included in export.</span></div>
+        ${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No recorded emotes match this filter.' : 'Watch chat or open Kick’s emote picker to begin the library. New emotes are saved whenever Kick exposes them.'}</div>`}
       </div>
     </section>`;
 }
@@ -5409,12 +5409,12 @@ function renderContentPage() {
         ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
       </div>
     </section>
-    <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, stickers, and diagnostics.</p></div></div><div class="kf-panel">
+    <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">
         ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
         ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
-        ${row('Organize chat stickers', 'Continuously record stickers from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat stickers' }))}
+        ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
         ${row('Start playback without waiting for blocked ad scripts', 'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them — which this build does — leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.', toggle('content.fixPlayerLoading', value.fixPlayerLoading, { label: 'Start playback without waiting for blocked ad scripts' }))}
@@ -5422,7 +5422,7 @@ function renderContentPage() {
     </section>
     ${renderLiveDataSection(value)}
     <div class="kf-tool-grid">
-      <section class="kf-tool-card"><div><h3>Sticker library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><button type="button" class="kf-button kf-button-small" data-action="export">Export library</button></section>
+      <section class="kf-tool-card"><div><h3>Emote library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><button type="button" class="kf-button kf-button-small" data-action="export">Export library</button></section>
       <section class="kf-tool-card"><div><h3>Local discovery choices</h3><p>Favorites and not-interested choices stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear hidden</button></div></section>
     </div>
     ${renderStickerLibraryManager()}
@@ -5497,7 +5497,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks ${AD_HOSTS.length + TELEMETRY_HOSTS.length} third-party ad and telemetry hosts and <strong>no kick.com host at all</strong>, so pausing Kick Focus will not change that behaviour. Check your ad blocker&rsquo;s filters for kick.com before blaming an extension.</p></div></div>
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
-      <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded sticker metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
+      <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting and shortcut to factory defaults.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
     ${renderStorageHealthPanel()}
@@ -5611,18 +5611,18 @@ function createStickerGroup() {
   const input = state.shadow?.querySelector('[data-kf-new-sticker-group]');
   const name = cleanCustomStickerGroupName(input?.value);
   if (!name) {
-    showToast('Enter a custom sticker group name.', true);
+    showToast('Enter a custom emote group name.', true);
     input?.focus?.();
     return;
   }
   if (state.stickerPreferences.groups.some((group) => group.name.toLowerCase() === name.toLowerCase())) {
-    showToast('That sticker group already exists.', true);
+    showToast('That emote group already exists.', true);
     return;
   }
   const id = `group_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   state.stickerPreferences.groups.push({ id, name });
   state.runtime.stickerLibraryFilter = 'all';
-  saveStickerOrganization(`Created sticker group “${name}”.`);
+  saveStickerOrganization(`Created emote group “${name}”.`);
 }
 
 function renameStickerGroup(target) {
@@ -5631,15 +5631,15 @@ function renameStickerGroup(target) {
   const input = state.shadow?.querySelector(`[data-kf-sticker-group-name="${CSS.escape(id || '')}"]`);
   const name = cleanCustomStickerGroupName(input?.value);
   if (!group || !name) {
-    showToast('Enter a valid sticker group name.', true);
+    showToast('Enter a valid emote group name.', true);
     return;
   }
   if (state.stickerPreferences.groups.some((entry) => entry.id !== id && entry.name.toLowerCase() === name.toLowerCase())) {
-    showToast('That sticker group already exists.', true);
+    showToast('That emote group already exists.', true);
     return;
   }
   group.name = name;
-  saveStickerOrganization('Sticker group renamed.');
+  saveStickerOrganization('Emote group renamed.');
 }
 
 function deleteStickerGroup(target) {
@@ -5653,7 +5653,7 @@ function deleteStickerGroup(target) {
     state.stickerPreferences.view = 'all';
   }
   if (state.runtime.stickerLibraryFilter === `group:${id}`) state.runtime.stickerLibraryFilter = 'all';
-  saveStickerOrganization(`Deleted sticker group “${group.name}”.`);
+  saveStickerOrganization(`Deleted emote group “${group.name}”.`);
 }
 
 function toggleLibrarySticker(target, kind) {
@@ -5665,7 +5665,7 @@ function toggleLibrarySticker(target, kind) {
       state.stickerPreferences.pinned.add(key);
       state.stickerPreferences.hidden.delete(key);
     }
-    saveStickerOrganization(state.stickerPreferences.pinned.has(key) ? 'Sticker favorited.' : 'Sticker favorite removed.');
+    saveStickerOrganization(state.stickerPreferences.pinned.has(key) ? 'Emote favorited.' : 'Emote favorite removed.');
     return;
   }
   if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
@@ -5673,7 +5673,7 @@ function toggleLibrarySticker(target, kind) {
     state.stickerPreferences.hidden.add(key);
     state.stickerPreferences.pinned.delete(key);
   }
-  saveStickerOrganization(state.stickerPreferences.hidden.has(key) ? 'Sticker removed from the shelf.' : 'Sticker restored.');
+  saveStickerOrganization(state.stickerPreferences.hidden.has(key) ? 'Emote removed from the shelf.' : 'Emote restored.');
 }
 
 function assignLibrarySticker(selectElement) {
@@ -5685,7 +5685,7 @@ function assignLibrarySticker(selectElement) {
   } else {
     state.stickerPreferences.assignments.delete(key);
   }
-  saveStickerOrganization(groupId ? 'Sticker assigned to custom group.' : 'Sticker moved to Ungrouped.');
+  saveStickerOrganization(groupId ? 'Emote assigned to custom group.' : 'Emote moved to Ungrouped.');
 }
 
 function onInterfaceClick(event) {
@@ -5961,7 +5961,7 @@ function exportSettings() {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     const counted = Object.keys(state.emoteUsage.global || {}).length;
-    showToast(`Exported settings, ${state.stickerPreferences.library.size} stickers, ${counted} usage counts, and ${state.multistream.layouts.length} layouts.`);
+    showToast(`Exported settings, ${state.stickerPreferences.library.size} emotes, ${counted} usage counts, and ${state.multistream.layouts.length} layouts.`);
   } catch {
     showToast('Could not export settings.', true);
   }

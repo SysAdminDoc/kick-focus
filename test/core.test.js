@@ -187,7 +187,7 @@ test('settings import round-trips the sticker library without treating it as an 
   assert.equal(imported.stickers.library.length, 1);
   assert.deepEqual(imported.stickers.assignments, [{ key: 'id:100', groupId: 'memes' }]);
   assert.equal(imported.notes.some((note) => /unknown section "stickers"/.test(note)), false);
-  assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Sticker schema 99/);
+  assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Emote schema 99/);
 });
 
 test('sticker import names dropped entries rather than reporting a bare count', () => {
