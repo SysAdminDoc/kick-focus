@@ -278,6 +278,9 @@ const rewardClaimIsSafe = (bundle) => {
   return /\.disabled\)?\s*\|\|\s*.*aria-disabled/.test(region)
     && region.includes('decideRewardClaim({')
     && region.includes("dialog.dataset.kfRewardDialog === 'true'")
+    // The dialog must be disowned before the click, or the apply cycle presses
+    // the same button again for as long as the reveal is on screen.
+    && /delete open\.dataset\.kfRewardDialog;\s*\n\s*action\.click\(\)/.test(region)
     // No network of any kind in the claim path.
     && !/\bfetch\(|XMLHttpRequest|pageFetch\(|kickFetchJson\(/.test(region);
 };
@@ -537,6 +540,14 @@ const checks = [
   // visible; and the order has to be part of the render signature.
   ['the reward auto-claim drives Kick’s dialog, never a claim endpoint', rewardClaimIsSafe(source)],
   ['the reward auto-claim is off until it is turned on', rewardClaimIsOptIn(source)],
+  // The scheduling is the difference between a well-behaved feature and one
+  // that opens Kick's dialog a hundred times a day, so it is asserted rather
+  // than left to whoever edits this next.
+  ['the reward re-check is scheduled from Kick’s countdown and the nightly rollover',
+    /nextRewardCheckAt\(\{ outcome: 'claimed'/.test(source)
+    && /nextRewardCheckAt\(\{ outcome: 'not-ready'[\s\S]{0,120}?minutesRemaining/.test(source)
+    && /function nextClaimResetAt/.test(source)
+    && /CLAIM_RESET_HOUR = 20/.test(source)],
   ['the library is stored behind a provider with a synchronous fallback',
     source.includes('createLibraryStore({') && source.includes('readFallback:') && source.includes('writeFallback:')
     && /function readStickerPreferences[\s\S]{0,200}?libraryStore\.readSync\(\)/.test(source)
@@ -826,6 +837,8 @@ const redProbes = [
     !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\nif (!button.disabled) button.click();\ndecideRewardClaim({});\nfunction chatMessageInput() {}")],
   ['reward gate would catch a claim on a dialog this build did not open',
     !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\ndocument.querySelector('[role=dialog]').click();\ndecideRewardClaim({});\nfunction chatMessageInput() {}")],
+  ['reward gate would catch a claim that leaves the dialog claimable behind it',
+    !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\nif (b.disabled || b.getAttribute('aria-disabled')) return;\ndecideRewardClaim({});\ndialog.dataset.kfRewardDialog === 'true';\naction.click();\nfunction chatMessageInput() {}")],
   ['mouse-only gate would catch a completion list that captures Enter',
     !completionIsMouseOnly("function emoteCompletionHost() { list.addEventListener('keydown', accept); }\nfunction acceptEmoteCompletion() {}")],
   ['mouse-only gate would catch a completion that submits the message',

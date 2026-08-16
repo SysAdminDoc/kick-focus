@@ -79,14 +79,19 @@ import {
   emoteTriggerAt,
   rankEmoteCompletions,
   CLAIM_ACTION,
-  CLAIM_BACKOFF_MS,
   CLAIM_RECHECK_MS,
+  CLAIM_RESET_HOUR,
   decideRewardClaim,
+  nextClaimResetAt,
+  nextRewardCheckAt,
   parseClaimCountdown,
 } from '../src/core.mjs';
 
 // The dialog is open and the reward is ready — the only state that clicks.
 const READY = { enabled: true, hasTrigger: true, dialogOpen: true, hasAction: true, actionDisabled: false, now: 1_000_000 };
+/** A local wall-clock instant, so the reset arithmetic is read as a person reads it. */
+const at = (hour, minute = 0, day = 12) => new Date(2026, 7, day, hour, minute, 0, 0).getTime();
+const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 test('a reward is claimed only when Kick itself says it is ready', { tag: 'unit' }, () => {
   assert.equal(decideRewardClaim(READY).action, 'claim');
@@ -109,28 +114,77 @@ test('the setting is what gates it, not the presence of a button', { tag: 'unit'
   assert.deepEqual(decideRewardClaim({ ...READY, enabled: false, dialogOpen: false }), { action: 'absent', reason: 'off' });
 });
 
-test('the dialog is opened on a schedule, not on every apply cycle', { tag: 'unit' }, () => {
-  const base = { enabled: true, hasTrigger: true, dialogOpen: false, now: 1_000_000 };
-  assert.equal(decideRewardClaim(base).action, 'open', 'never looked before, so look now');
-
-  // The apply cycle runs every few seconds; opening Kick's dialog at that rate
-  // would fight the user for focus.
-  assert.deepEqual(decideRewardClaim({ ...base, lastAttemptAt: base.now - 1000 }),
-    { action: 'cooling', reason: 'checked-recently' });
-  assert.equal(decideRewardClaim({ ...base, lastAttemptAt: base.now - CLAIM_RECHECK_MS - 1 }).action, 'open');
-  assert.equal(decideRewardClaim({ ...base, lastAttemptAt: base.now - CLAIM_RECHECK_MS + 1 }).action, 'cooling');
+test('one stored time decides whether to look, and nothing else', { tag: 'unit' }, () => {
+  const base = { enabled: true, hasTrigger: true, dialogOpen: false, now: at(15) };
+  assert.equal(decideRewardClaim(base).action, 'open', 'no schedule yet, so look now');
+  assert.deepEqual(decideRewardClaim({ ...base, nextCheckAt: at(15, 1) }), { action: 'cooling', reason: 'not-due' });
+  assert.equal(decideRewardClaim({ ...base, nextCheckAt: at(14, 59) }).action, 'open');
+  // Exactly due counts as due, so a schedule can never stall one tick short.
+  assert.equal(decideRewardClaim({ ...base, nextCheckAt: at(15) }).action, 'open');
 });
 
-test('a reward claimed today is not chased again for hours', { tag: 'unit' }, () => {
-  const now = 5_000_000_000;
+test('the rollover is the next 8pm, today or tomorrow', { tag: 'unit' }, () => {
+  assert.equal(nextClaimResetAt(at(15)), at(CLAIM_RESET_HOUR), 'afternoon waits for tonight');
+  assert.equal(nextClaimResetAt(at(19, 59)), at(CLAIM_RESET_HOUR), 'a minute before, still tonight');
+  // On the boundary the rollover has happened, so the next one is tomorrow —
+  // otherwise a claim made at exactly 8pm would schedule itself into the past.
+  assert.equal(nextClaimResetAt(at(20)), at(CLAIM_RESET_HOUR, 0, 13));
+  assert.equal(nextClaimResetAt(at(23, 30)), at(CLAIM_RESET_HOUR, 0, 13), 'late night waits for tomorrow');
+  assert.equal(nextClaimResetAt(at(2)), at(CLAIM_RESET_HOUR), 'after midnight is still today’s rollover');
+});
+
+test('a claimed reward sleeps to the rollover instead of being re-checked', { tag: 'unit' }, () => {
   // The trigger stays in Kick's header after a claim, so without this the
-  // dialog would reopen on every recheck for the rest of the day.
-  assert.deepEqual(decideRewardClaim({ ...READY, now, lastClaimAt: now - 60_000 }),
-    { action: 'cooling', reason: 'claimed-recently' });
-  assert.equal(decideRewardClaim({ ...READY, now, lastClaimAt: now - CLAIM_BACKOFF_MS - 1 }).action, 'claim');
-  // And the backoff beats a ready button, which is the point: a second claim
-  // in the same window means something is wrong, not that a reward is owed.
-  assert.equal(decideRewardClaim({ ...READY, now, lastClaimAt: now - 1 }).action, 'cooling');
+  // dialog would reopen every ten minutes for the rest of the day.
+  assert.equal(nextRewardCheckAt({ outcome: 'claimed', now: at(21, 5) }), at(CLAIM_RESET_HOUR, 0, 13));
+  assert.equal(nextRewardCheckAt({ outcome: 'claimed', now: at(9) }), at(CLAIM_RESET_HOUR));
+});
+
+test('a reward already collected by hand also sleeps to the rollover', { tag: 'unit' }, () => {
+  // What an already-taken reward looks like: the dialog renders, but there is
+  // no action to press and nothing counting down. Re-checking that all day is
+  // exactly the polling this replaces.
+  assert.equal(
+    nextRewardCheckAt({ outcome: 'not-ready', now: at(14), minutesRemaining: null, dialogText: 'Come back tomorrow' }),
+    at(CLAIM_RESET_HOUR),
+  );
+  // An *empty* dialog is a render race, not an answer — that one is retried.
+  assert.equal(
+    nextRewardCheckAt({ outcome: 'not-ready', now: at(14), minutesRemaining: null, dialogText: '   ' }),
+    at(14) + CLAIM_RECHECK_MS,
+  );
+});
+
+test('Kick’s own countdown sets the next check, not a fixed interval', { tag: 'unit' }, () => {
+  // "Watch 54 more minutes" → look again in 55, not in 10.
+  const soon = nextRewardCheckAt({ outcome: 'not-ready', now: at(15), minutesRemaining: 54 });
+  assert.equal(soon, at(15, 55));
+  assert.ok(soon - at(15) > CLAIM_RECHECK_MS, 'and that is longer than the fallback poll');
+
+  // Never past the rollover, which also absorbs a nonsense figure.
+  assert.equal(nextRewardCheckAt({ outcome: 'not-ready', now: at(19, 30), minutesRemaining: 600 }), at(CLAIM_RESET_HOUR));
+  assert.equal(nextRewardCheckAt({ outcome: 'not-ready', now: at(15), minutesRemaining: 99_999 }), at(CLAIM_RESET_HOUR));
+});
+
+test('the whole nightly cycle: claim, sleep to 8pm, wake, claim near 9pm', { tag: 'unit' }, () => {
+  // This is the shape the schedule exists to produce, end to end.
+  const claimed = nextRewardCheckAt({ outcome: 'claimed', now: at(21, 30) });
+  assert.equal(clock(claimed), clock(at(CLAIM_RESET_HOUR, 0, 13)), 'sleeps to tomorrow’s rollover');
+
+  // It wakes at the rollover and Kick says roughly an hour of watch time is
+  // still needed, so the next look lands near nine — without "9pm" appearing
+  // anywhere: the rollover schedules the wake, the countdown schedules the claim.
+  const woke = at(CLAIM_RESET_HOUR, 0, 13);
+  const afterCountdown = nextRewardCheckAt({ outcome: 'not-ready', now: woke, minutesRemaining: 60 });
+  assert.equal(clock(afterCountdown), clock(at(21, 1, 13)));
+
+  // And at that point the reward is ready, so it is claimed and sleeps again.
+  assert.equal(decideRewardClaim({ ...READY, now: afterCountdown, nextCheckAt: afterCountdown }).action, 'claim');
+
+  // Across the whole day that is three dialog openings, not one every ten
+  // minutes — which would be well over a hundred.
+  const pollCount = (24 * 60) / (CLAIM_RECHECK_MS / 60_000);
+  assert.ok(pollCount > 100, `the fixed-interval alternative would be ${pollCount} openings a day`);
 });
 
 test('the countdown Kick renders is read back, and nothing else is', { tag: 'unit' }, () => {

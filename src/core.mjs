@@ -1,4 +1,4 @@
-export const VERSION = '1.18.1';
+export const VERSION = '1.18.2';
 export const SETTINGS_SCHEMA = 4;
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -310,15 +310,63 @@ export const CLAIM_ACTION = /^\s*(claim|open|spin|reveal|collect)\b/i;
 const CLAIM_COUNTDOWN = /watch\s+(\d+)\s+more\s+minute/i;
 
 /**
- * How long to wait before looking again after finding the reward not ready.
+ * Fallback interval, used only when Kick told us nothing usable.
  *
- * The apply cycle runs on every route change and every few seconds of DOM
- * churn; opening Kick's dialog at that rate would fight the user for focus and
- * hammer a surface that changes once an hour at most.
+ * Almost every path schedules from real information instead: the dialog's own
+ * "Watch N more minutes" countdown, or the nightly reset. Polling on a fixed
+ * timer is the thing this deliberately avoids — the apply cycle runs on every
+ * route change and every few seconds of DOM churn, and opening Kick's dialog at
+ * that rate fights the user for focus to re-read a number that barely moves.
  */
 export const CLAIM_RECHECK_MS = 10 * 60 * 1000;
-/** And after a successful claim, since the reward is daily. */
-export const CLAIM_BACKOFF_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The hour the daily reward rolls over, in local time.
+ *
+ * Observed at 20:00. Watch time then has to accrue before the reward unlocks —
+ * about an hour — so waking at the reset and reading the countdown there lands
+ * the real attempt near 21:00 without that delay being hardcoded anywhere: the
+ * reset schedules the wake-up, and the countdown schedules the claim.
+ */
+export const CLAIM_RESET_HOUR = 20;
+
+/** The next time the reward rolls over, strictly after `now`. */
+export function nextClaimResetAt(now, resetHour = CLAIM_RESET_HOUR) {
+  const at = new Date(now);
+  at.setHours(resetHour, 0, 0, 0);
+  // Already past today's rollover (or exactly on it) — the next one is tomorrow.
+  if (at.getTime() <= now) at.setDate(at.getDate() + 1);
+  return at.getTime();
+}
+
+/**
+ * When to look again, given what the dialog just said.
+ *
+ * Three cases, and only the last one is a timer:
+ * - **claimed** — nothing more is coming until the rollover, so sleep to it.
+ * - **counted** — Kick published the minutes remaining; wait that long (plus a
+ *   minute, so we do not arrive just before it flips) and no longer than the
+ *   rollover, which also absorbs a nonsense figure.
+ * - **collected** — the dialog rendered, but with no action and no countdown.
+ *   That is what an already-taken reward looks like, including one taken by
+ *   hand in another tab, so it sleeps to the rollover too rather than
+ *   rechecking all day.
+ *
+ * Anything else — an empty dialog, a shape we do not recognise — is a possible
+ * render race, and only that gets the fixed fallback.
+ */
+export function nextRewardCheckAt(facts = {}) {
+  const { outcome, now = 0, minutesRemaining = null, dialogText = '', resetHour = CLAIM_RESET_HOUR } = facts;
+  const reset = nextClaimResetAt(now, resetHour);
+  if (outcome === 'claimed') return reset;
+  if (Number.isFinite(minutesRemaining) && minutesRemaining > 0) {
+    return Math.min(now + (minutesRemaining + 1) * 60_000, reset);
+  }
+  // A dialog with real text but nothing to claim and nothing counting down is
+  // a reward that is already gone. An empty one is a race, not an answer.
+  if (String(dialogText).trim().length > 0) return reset;
+  return now + CLAIM_RECHECK_MS;
+}
 
 /** "Watch 54 more minutes to claim" → 54. */
 export function parseClaimCountdown(text) {
@@ -348,19 +396,15 @@ export function decideRewardClaim(facts = {}) {
     hasAction = false,
     actionDisabled = true,
     now = 0,
-    lastAttemptAt = 0,
-    lastClaimAt = 0,
-    recheckMs = CLAIM_RECHECK_MS,
-    backoffMs = CLAIM_BACKOFF_MS,
+    nextCheckAt = 0,
   } = facts;
 
   if (!enabled) return { action: 'absent', reason: 'off' };
   if (!hasTrigger) return { action: 'absent', reason: 'no-trigger' };
-  // A claim already made today is the common case, and the trigger stays on the
-  // page afterwards — so without this the dialog would reopen every recheck.
-  if (lastClaimAt > 0 && now - lastClaimAt < backoffMs) return { action: 'cooling', reason: 'claimed-recently' };
   if (!dialogOpen) {
-    if (lastAttemptAt > 0 && now - lastAttemptAt < recheckMs) return { action: 'cooling', reason: 'checked-recently' };
+    // One timestamp decides this, and it was written from what Kick last said
+    // — the countdown, or the rollover. There is no polling interval to tune.
+    if (nextCheckAt > now) return { action: 'cooling', reason: 'not-due' };
     return { action: 'open', reason: 'due' };
   }
   if (!hasAction) return { action: 'wait', reason: 'no-action-button' };

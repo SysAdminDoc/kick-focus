@@ -2,6 +2,16 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.18.2 — 2026-08-16
+
+### Changed
+
+- **The daily-reward check now schedules itself from what Kick actually says, instead of polling every ten minutes.** When the dialog reports "Watch 54 more minutes to claim", the next look is in 55 minutes. When the reward has already been collected — by this, or by you in another tab — it sleeps until the 8pm rollover rather than reopening the dialog all day. After claiming, it sleeps to the rollover too. Waking at 8pm and reading the countdown there lands the real attempt near 9pm on its own, without that hour being written down anywhere. Across a day that is about three openings of Kick's dialog instead of over a hundred. The Content & Ads page shows when the next check is due.
+
+### Fixed
+
+- **The reward could be clicked more than once.** Kick's dialog stays on screen for the reveal animation after a claim, and the mod re-checks every few seconds — so for those few seconds it saw a claimable dialog and pressed the button again. It now lets go of the dialog before clicking.
+
 ## 1.18.1 — 2026-08-16
 
 ### Fixed

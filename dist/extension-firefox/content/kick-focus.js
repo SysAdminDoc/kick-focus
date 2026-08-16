@@ -1,9 +1,9 @@
-/* Kick Focus 1.18.1 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.18.2 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.18.1';
+const VERSION = '1.18.2';
 const SETTINGS_SCHEMA = 4;
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -315,15 +315,63 @@ const CLAIM_ACTION = /^\s*(claim|open|spin|reveal|collect)\b/i;
 const CLAIM_COUNTDOWN = /watch\s+(\d+)\s+more\s+minute/i;
 
 /**
- * How long to wait before looking again after finding the reward not ready.
+ * Fallback interval, used only when Kick told us nothing usable.
  *
- * The apply cycle runs on every route change and every few seconds of DOM
- * churn; opening Kick's dialog at that rate would fight the user for focus and
- * hammer a surface that changes once an hour at most.
+ * Almost every path schedules from real information instead: the dialog's own
+ * "Watch N more minutes" countdown, or the nightly reset. Polling on a fixed
+ * timer is the thing this deliberately avoids — the apply cycle runs on every
+ * route change and every few seconds of DOM churn, and opening Kick's dialog at
+ * that rate fights the user for focus to re-read a number that barely moves.
  */
 const CLAIM_RECHECK_MS = 10 * 60 * 1000;
-/** And after a successful claim, since the reward is daily. */
-const CLAIM_BACKOFF_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The hour the daily reward rolls over, in local time.
+ *
+ * Observed at 20:00. Watch time then has to accrue before the reward unlocks —
+ * about an hour — so waking at the reset and reading the countdown there lands
+ * the real attempt near 21:00 without that delay being hardcoded anywhere: the
+ * reset schedules the wake-up, and the countdown schedules the claim.
+ */
+const CLAIM_RESET_HOUR = 20;
+
+/** The next time the reward rolls over, strictly after `now`. */
+function nextClaimResetAt(now, resetHour = CLAIM_RESET_HOUR) {
+  const at = new Date(now);
+  at.setHours(resetHour, 0, 0, 0);
+  // Already past today's rollover (or exactly on it) — the next one is tomorrow.
+  if (at.getTime() <= now) at.setDate(at.getDate() + 1);
+  return at.getTime();
+}
+
+/**
+ * When to look again, given what the dialog just said.
+ *
+ * Three cases, and only the last one is a timer:
+ * - **claimed** — nothing more is coming until the rollover, so sleep to it.
+ * - **counted** — Kick published the minutes remaining; wait that long (plus a
+ *   minute, so we do not arrive just before it flips) and no longer than the
+ *   rollover, which also absorbs a nonsense figure.
+ * - **collected** — the dialog rendered, but with no action and no countdown.
+ *   That is what an already-taken reward looks like, including one taken by
+ *   hand in another tab, so it sleeps to the rollover too rather than
+ *   rechecking all day.
+ *
+ * Anything else — an empty dialog, a shape we do not recognise — is a possible
+ * render race, and only that gets the fixed fallback.
+ */
+function nextRewardCheckAt(facts = {}) {
+  const { outcome, now = 0, minutesRemaining = null, dialogText = '', resetHour = CLAIM_RESET_HOUR } = facts;
+  const reset = nextClaimResetAt(now, resetHour);
+  if (outcome === 'claimed') return reset;
+  if (Number.isFinite(minutesRemaining) && minutesRemaining > 0) {
+    return Math.min(now + (minutesRemaining + 1) * 60_000, reset);
+  }
+  // A dialog with real text but nothing to claim and nothing counting down is
+  // a reward that is already gone. An empty one is a race, not an answer.
+  if (String(dialogText).trim().length > 0) return reset;
+  return now + CLAIM_RECHECK_MS;
+}
 
 /** "Watch 54 more minutes to claim" → 54. */
 function parseClaimCountdown(text) {
@@ -353,19 +401,15 @@ function decideRewardClaim(facts = {}) {
     hasAction = false,
     actionDisabled = true,
     now = 0,
-    lastAttemptAt = 0,
-    lastClaimAt = 0,
-    recheckMs = CLAIM_RECHECK_MS,
-    backoffMs = CLAIM_BACKOFF_MS,
+    nextCheckAt = 0,
   } = facts;
 
   if (!enabled) return { action: 'absent', reason: 'off' };
   if (!hasTrigger) return { action: 'absent', reason: 'no-trigger' };
-  // A claim already made today is the common case, and the trigger stays on the
-  // page afterwards — so without this the dialog would reopen every recheck.
-  if (lastClaimAt > 0 && now - lastClaimAt < backoffMs) return { action: 'cooling', reason: 'claimed-recently' };
   if (!dialogOpen) {
-    if (lastAttemptAt > 0 && now - lastAttemptAt < recheckMs) return { action: 'cooling', reason: 'checked-recently' };
+    // One timestamp decides this, and it was written from what Kick last said
+    // — the countdown, or the rollover. There is no polling interval to tune.
+    if (nextCheckAt > now) return { action: 'cooling', reason: 'not-due' };
     return { action: 'open', reason: 'due' };
   }
   if (!hasAction) return { action: 'wait', reason: 'no-action-button' };
@@ -13099,7 +13143,9 @@ function rewardRecord() {
   const record = isPlainRecord(stored) ? stored : {};
   return {
     lastClaimAt: Number(record.lastClaimAt) || 0,
-    lastAttemptAt: Number(record.lastAttemptAt) || 0,
+    // When to look again. A record written by an older build has none, which
+    // reads as zero and means "look now" — the right answer for an upgrade.
+    nextCheckAt: Number(record.nextCheckAt) || 0,
     claims: Number(record.claims) || 0,
   };
 }
@@ -13125,8 +13171,7 @@ function runRewardClaim() {
     hasAction: Boolean(action),
     actionDisabled: !action || rewardActionDisabled(action),
     now,
-    lastAttemptAt: record.lastAttemptAt,
-    lastClaimAt: record.lastClaimAt,
+    nextCheckAt: record.nextCheckAt,
   });
   state.reward.decision = decision.reason;
   if (decision.action === 'absent' || decision.action === 'cooling') return;
@@ -13141,7 +13186,9 @@ function runRewardClaim() {
     if (multistreamOpen() || panelOpen || document.activeElement?.closest?.(
       '[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"], input, textarea',
     )) return;
-    writeRewardRecord({ lastAttemptAt: now });
+    // Hold the slot before opening, so a tab that is torn down mid-open does
+    // not leave every other tab thinking a check is still due.
+    writeRewardRecord({ nextCheckAt: now + CLAIM_RECHECK_MS });
     state.reward.restoreFocusTo = document.activeElement;
     trigger.click();
     // Radix mounts the dialog synchronously off the click; claim on the next
@@ -13154,9 +13201,16 @@ function runRewardClaim() {
   }
 
   if (decision.action === 'wait') {
-    const minutes = parseClaimCountdown(open.textContent || '');
+    const dialogText = open.textContent || '';
+    const minutes = parseClaimCountdown(dialogText);
+    // Schedule from what Kick just said, not from a timer: the countdown when
+    // there is one, and the nightly rollover when the reward is already gone.
+    const nextCheckAt = nextRewardCheckAt({ outcome: 'not-ready', now, minutesRemaining: minutes, dialogText });
+    writeRewardRecord({ nextCheckAt });
     state.reward.minutesRemaining = minutes;
-    if (minutes != null) state.reward.lastMessage = `Daily reward in ${minutes} ${plural(minutes, 'minute', 'minutes')}.`;
+    state.reward.lastMessage = minutes != null
+      ? `Kick wants ${minutes} more ${plural(minutes, 'minute', 'minutes')} of watch time.`
+      : 'Already collected today.';
     closeRewardDialog(open, state.reward.restoreFocusTo);
     updateRewardStatusInPlace();
     return;
@@ -13164,16 +13218,27 @@ function runRewardClaim() {
 
   // The only click this feature ever makes. Recorded before it happens, so a
   // reward that claims but throws on the way out is still not claimed twice.
-  writeRewardRecord({ lastClaimAt: now, claims: record.claims + 1 });
+  writeRewardRecord({
+    lastClaimAt: now,
+    claims: record.claims + 1,
+    nextCheckAt: nextRewardCheckAt({ outcome: 'claimed', now }),
+  });
   state.reward.minutesRemaining = 0;
+  // Disown the dialog *before* clicking. It stays on screen for the reveal, and
+  // the apply cycle runs every few seconds — so while it is still marked as
+  // ours, every one of those passes sees a claimable dialog and presses the
+  // button again. The stored schedule cannot stop that on its own, because an
+  // open dialog is exactly the state that is allowed to skip it.
+  delete open.dataset.kfRewardDialog;
   action.click();
   state.reward.lastMessage = `Daily reward claimed at ${new Date(now).toLocaleTimeString()}.`;
   showToast('Daily reward claimed. It is in your collectibles.', false, [
     { label: 'View', onClick: () => window.open('https://kick.com/collectibles', '_blank', 'noopener') },
   ]);
   announce('Daily reward claimed.');
-  // Let the reveal animation run before closing, the way a person would.
-  window.setTimeout(() => closeRewardDialog(rewardDialog(), state.reward.restoreFocusTo), 6000);
+  // Let the reveal animation run before closing, the way a person would. The
+  // reference is held rather than re-looked-up, because it is no longer marked.
+  window.setTimeout(() => closeRewardDialog(open, state.reward.restoreFocusTo), 6000);
   updateRewardStatusInPlace();
 }
 
@@ -13185,16 +13250,20 @@ function updateRewardStatusInPlace() {
 
 function rewardStatusSummary() {
   if (!state.settings.content.autoClaimRewards) return 'Off. Kick Focus never opens the reward dialog.';
+  const record = rewardRecord();
   const parts = [];
-  if (state.reward.lastClaimAt) {
-    parts.push(`Last claimed ${new Date(state.reward.lastClaimAt).toLocaleString()} (${state.reward.claims} ${plural(state.reward.claims, 'time', 'times')} on this browser).`);
+  if (record.lastClaimAt) {
+    parts.push(`Last claimed ${new Date(record.lastClaimAt).toLocaleString()} (${record.claims} ${plural(record.claims, 'time', 'times')} on this browser).`);
   } else {
     parts.push('Nothing claimed yet on this browser.');
   }
-  if (state.reward.minutesRemaining != null && state.reward.minutesRemaining > 0) {
-    parts.push(`Kick last reported ${state.reward.minutesRemaining} ${plural(state.reward.minutesRemaining, 'minute', 'minutes')} of watch time still needed.`);
+  if (state.reward.lastMessage) parts.push(state.reward.lastMessage);
+  // The whole point of the schedule is that it is knowable, so say it.
+  if (record.nextCheckAt > Date.now()) {
+    parts.push(`Next check ${new Date(record.nextCheckAt).toLocaleString()}.`);
+  } else if (!record.nextCheckAt) {
+    parts.push('No reward button has appeared yet — it only exists while you are signed in.');
   }
-  if (!state.reward.lastAttemptAt) parts.push('No reward button has appeared yet — it only exists while you are signed in.');
   return parts.join(' ');
 }
 

@@ -1481,7 +1481,11 @@ try {
       const notReady = { clicks, reached: parts.dialog.dataset.kfRewardDialog === 'true' || parts.trigger.dataset.kfSeen === 'true' };
       // Proof the mechanism actually ran rather than being skipped: the record
       // only exists if the claim opened Kick's dialog.
-      notReady.attempted = Number(JSON.parse(localStorage.getItem('kick-focus:reward-claims') || '{}').lastAttemptAt) > 0;
+      // The schedule is the point: "Watch 54 more minutes" has to buy roughly
+      // 55 minutes of quiet, not another look in ten.
+      const afterNotReady = JSON.parse(localStorage.getItem('kick-focus:reward-claims') || '{}');
+      notReady.attempted = Number(afterNotReady.nextCheckAt) > 0;
+      notReady.waitMinutes = Math.round((Number(afterNotReady.nextCheckAt) - Date.now()) / 60000);
       teardown(parts);
       localStorage.removeItem('kick-focus:reward-claims');
       await settle();
@@ -1491,6 +1495,8 @@ try {
       parts = mount(true);
       await cycle();
       const ready = { clicks, stored: JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null') };
+      // A claim sleeps to the nightly rollover, whatever hour the run happens at.
+      ready.nextHour = ready.stored?.nextCheckAt ? new Date(ready.stored.nextCheckAt).getHours() : null;
 
       // 3. Already claimed: the backoff must stop a second claim.
       clicks = 0;
@@ -1523,14 +1529,18 @@ try {
     }
   })()`);
   const reward = rewardProbe.value || {};
-  record('a reward Kick has not unlocked is never clicked',
+  record('a reward Kick has not unlocked is never clicked, and its countdown sets the next look',
     // `attempted` is what makes this non-vacuous: it proves the claim really
-    // opened the dialog and then declined, rather than never running.
-    reward.ok === true && reward.notReady?.clicks === 0 && reward.notReady?.attempted === true,
-    reward.ok ? `dialog opened=${reward.notReady?.attempted}, disabled claim button clicked ${reward.notReady?.clicks} times ${JSON.stringify(reward.diag)}` : reward.why);
-  record('a ready reward is claimed exactly once and recorded',
-    reward.ok === true && reward.ready?.clicks === 1 && Number(reward.ready?.stored?.lastClaimAt) > 0,
-    reward.ok ? `clicks=${reward.ready?.clicks}, stored claims=${reward.ready?.stored?.claims}` : reward.why);
+    // opened the dialog and then declined, rather than never running. The wait
+    // proves it scheduled from Kick's own "Watch 54 more minutes" rather than
+    // from the fallback interval.
+    reward.ok === true && reward.notReady?.clicks === 0 && reward.notReady?.attempted === true
+      && reward.notReady?.waitMinutes >= 50 && reward.notReady?.waitMinutes <= 56,
+    reward.ok ? `dialog opened=${reward.notReady?.attempted}, clicked ${reward.notReady?.clicks} times, next look in ${reward.notReady?.waitMinutes} min` : reward.why);
+  record('a ready reward is claimed once and then sleeps to the nightly rollover',
+    reward.ok === true && reward.ready?.clicks === 1 && Number(reward.ready?.stored?.lastClaimAt) > 0
+      && reward.ready?.nextHour === 20,
+    reward.ok ? `clicks=${reward.ready?.clicks}, stored claims=${reward.ready?.stored?.claims}, next check at hour ${reward.ready?.nextHour}` : reward.why);
   record('a reward already claimed is not chased again',
     reward.ok === true && reward.again?.clicks === 0,
     reward.ok ? `second pass clicked ${reward.again?.clicks} times` : reward.why);
