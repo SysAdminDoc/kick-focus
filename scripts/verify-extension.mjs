@@ -28,6 +28,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { LOCATOR_PROBES } from '../src/compatibility.mjs';
 
 async function findChromium() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
@@ -797,6 +798,56 @@ try {
       && tip.shown.left >= 8
       && tip.afterUnrelated === null,
     tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
+
+  // Kick DOM drift, measured against the ordered probes the runtime actually
+  // uses rather than a second list that would rot separately.
+  //
+  // Each hook in LOCATOR_PROBES is stable-id first, then structural and
+  // accessible fallbacks. Everything keeps working when the first one stops
+  // matching — that is what the fallbacks are for — which is exactly why it is
+  // worth failing on: it is the early warning, and it is silent otherwise. A
+  // hook with nothing matching at all is normal here for the ones this route
+  // has no business showing (an expanded sidebar has no expand control), so
+  // only a *fallen-through* hook is drift.
+  const probeReport = await evaluate(pageClient, `(() => {
+    const probes = ${JSON.stringify(LOCATOR_PROBES)};
+    const out = {};
+    for (const [hook, list] of Object.entries(probes)) {
+      out[hook] = list.map((probe) => {
+        try { return { id: probe.id, count: document.querySelectorAll(probe.selector).length }; }
+        catch { return { id: probe.id, count: -1 }; }
+      });
+    }
+    return out;
+  })()`);
+  const probes = probeReport.value || {};
+  // Only the hooks every Kick route carries can be *required* to match their
+  // best probe here. The chat hooks are route-shaped — this gate runs on the
+  // home page, where the chat panel is a preview that has never carried
+  // `#channel-chatroom` — so a fall-through there is reported, not failed. It
+  // is still the number to watch: the day it appears for `main` or `card`, the
+  // stable ids went away and the fallbacks are all that is holding the mod up.
+  const REQUIRED_HOOKS = new Set(['main', 'sidebar', 'card']);
+  const drifted = [];
+  const softened = [];
+  const winners = [];
+  for (const [hook, list] of Object.entries(probes)) {
+    const first = list.findIndex((probe) => probe.count > 0);
+    if (first === -1) continue; // nothing on this route uses that hook
+    winners.push(`${hook}:${list[first].id}`);
+    if (first === 0) continue;
+    const note = `${hook} fell back to ${list[first].id}; ${list[0].id} matched nothing`;
+    if (REQUIRED_HOOKS.has(hook)) drifted.push(note);
+    else softened.push(note);
+  }
+  record('every shell hook Kick shows on all routes matches its most stable probe',
+    Object.keys(probes).length > 0 && drifted.length === 0,
+    drifted.length
+      ? drifted.join(' | ')
+      : `${winners.length} hooks: ${winners.join(', ')}${softened.length ? ` | route-shaped fall-through (not a failure): ${softened.join('; ')}` : ''}`);
+  record('no shell hook lost every probe it has',
+    Object.values(probes).every((list) => list.some((probe) => probe.count >= 0)),
+    'a -1 here is a selector Kick made invalid, not merely absent');
 
   // The library provider against Chromium's real IndexedDB. The pure split and
   // merge are covered by node:test with a stub; what only a browser can answer
