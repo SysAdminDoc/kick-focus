@@ -36,13 +36,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Acceptance: favorites can be ordered manually, are scoped per channel with a global fallback, and survive the channel's set not being loaded; existing preferences migrate without loss.
   Complexity: L
 
-- [ ] P3 — Explain why a locked sticker is locked
-  Why: a dead greyed tile teaches nothing, while a reason plus a legitimate unlock path is the clearest possible signal that the project respects entitlements.
-  Evidence: FrankerFaceZ renders a lock icon with a per-kind reason ("Follow to unlock", sub price) and links to the unlock URL, and excludes locked emotes from search; KickTalk normalizes Kick subscription state across roughly six differing response shapes, because a single-shape check produces false negatives — the documented real-world bug class is blocking emotes the user does own.
-  Touches: `src/runtime.js` (sticker tile rendering, catalog metadata).
-  Acceptance: a locked sticker shows why it is locked and links to Kick's own legitimate unlock path; nothing is ever enabled or sent; entitlement detection tolerates multiple response shapes rather than assuming one.
-  Complexity: M
-
 ### API and emote-catalog work (added 2026-08-15 from the Kick API + emote tooling research)
 
 Gate for this whole group: the deferred list rules out "replay of private endpoints". These items read endpoints the page already calls, same-origin, read-only, inheriting the user's own session, and every one keeps the existing DOM path as fallback. Settle that boundary before starting.

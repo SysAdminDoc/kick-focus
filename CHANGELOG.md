@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+_Nothing yet._
+
+## 1.8.0 — 2026-08-15
+
 Emote schema 4. Existing libraries migrate without loss.
 
 ### Added
@@ -14,11 +18,18 @@ Emote schema 4. Existing libraries migrate without loss.
 - **Saved layouts are shareable and show who is live.** A layout copies as a kick.com link carrying channel names and nothing else; opening one revalidates every slug through the same rules the grid uses, then strips the parameter so a reload does not silently reopen it. Live status for the grid and every saved layout comes from one bulk request rather than per-channel polling.
 - **The badges Kick's own markup omits now render.** Kick's chat payload carries collectible and global badges the legacy array leaves out, so a client reading only the DOM showed a gap. Badges Kick already drew are skipped, and a badge image that fails to load is replaced by its name rather than an empty box.
 - **API drift detection.** When a normalizer rejects a payload for a shape reason, the endpoint and reason are recorded, and the About page reports accumulated drift instead of silently falling back.
+- **A locked emote now says why it is locked** — subscriber emote, collectible you have not pulled, or a denial Kick gives no reason for — and links to Kick's own unlock path. Nothing is enabled or sent; the link is the only action offered. Entitlement is read across every shape Kick has used, and the default with no signal is unlocked, because the expensive failure is greying out an emote you actually own.
 
 ### Changed
 
 - **The realtime transport is now swappable.** Frame parsing and subscription management moved into shared protocol functions and per-provider connection details into a registry, so Kick switching providers is one added entry rather than a rewrite. Kick's own gateway is registered but marked unverified — this project has never contacted it — and a verified provider wins when the broker offers both. An unverified transport that never delivers a frame degrades to reading the page and names itself.
 - The README now corrects a widely repeated claim: a cross-origin WebSocket is not blocked by CORS. What can block Kick's gateway from a page context is the server rejecting the origin or its Cloudflare front requiring a token, and which applies remains untested here.
+- **Translation is now a single forward lookup.** Every string used to be resolved by scanning all ~250 dictionary entries to map a possibly-already-translated value back to English — ambiguous by construction, since several English sources are also translated values of other strings. The English original is remembered per node instead, so a re-render or a language change translates from the source rather than from what is on screen.
+- **Language names are no longer translated.** A picker that renames "Português" to "Portugués" is harder to use, not easier; endonyms now appear the same in every locale.
+
+### Internal
+
+- Tile reuse across multi-stream renders, the single-unmuted-tile rule, and the deletion-annotates-once guard are now covered offline. Replacing an `<iframe>` restarts its stream, so the reuse rule is load-bearing; it was previously asserted only by a headed browser run that `npm run verify` does not execute. The reuse test was verified red against a deliberately broken plan before being trusted.
 
 ## 1.7.0 — 2026-08-15
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.7.0
+// @version      1.8.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -22,7 +22,7 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const SETTINGS_SCHEMA = 3;
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -70,6 +70,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     chatHighlights: false,
     organizeChatStickers: true,
     playbackDiagnostics: false,
+    hiddenChannels: [],
     blocklistSubscription: false,
     blocklistUrl: '',
     blocklistRefreshHours: 24,
@@ -78,6 +79,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     liveEmoteCatalog: true,
     liveChatEvents: true,
     showModerationReasons: true,
+    showChatBadges: true,
     countEmoteUsage: true,
     showEmoteRarity: true,
     warnShadowedEmotes: true,
@@ -224,12 +226,14 @@ function normalizeSettings(input) {
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
+      hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
       blocklistUrl: typeof content.blocklistUrl === 'string' && content.blocklistUrl.length <= 2048 ? content.blocklistUrl.trim() : defaults.content.blocklistUrl,
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
       liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
       liveChatEvents: bool(content.liveChatEvents, defaults.content.liveChatEvents),
       showModerationReasons: bool(content.showModerationReasons, defaults.content.showModerationReasons),
+      showChatBadges: bool(content.showChatBadges, defaults.content.showChatBadges),
       countEmoteUsage: bool(content.countEmoteUsage, defaults.content.countEmoteUsage),
       showEmoteRarity: bool(content.showEmoteRarity, defaults.content.showEmoteRarity),
       warnShadowedEmotes: bool(content.warnShadowedEmotes, defaults.content.warnShadowedEmotes),
@@ -451,6 +455,93 @@ function assessAdStack(observed = {}) {
 }
 
 /**
+ * Fold one observation of an emote into its stored record.
+ *
+ * Kick edits emotes users have already pulled — a 2026-07-24 report of four
+ * changed emotes was answered by Kick support with "remastered… clear your
+ * cache" — so the local record is the only version a user can check against.
+ * `wasName`/`wasSrc` always hold the value at *first* capture, not the previous
+ * one, so a rename and a rename-back correctly reads as unchanged.
+ *
+ * Pure: no clock of its own, so the caller supplies `now` and tests are exact.
+ */
+function recordStickerObservation(existing, observed, now) {
+  const at = cleanCaptureTime(now);
+  if (!existing) {
+    return { ...observed, firstSeen: at, lastSeen: at };
+  }
+  // An entry carried over from schema 3 keeps `firstSeen: 0` — unknown. Stamping
+  // it with today would claim the emote was first seen now, when in fact it was
+  // recorded before this build tracked dates at all.
+  const entry = { ...existing, ...observed, firstSeen: cleanCaptureTime(existing.firstSeen), lastSeen: at };
+
+  const originalName = existing.wasName || existing.name;
+  if (originalName && originalName !== entry.name) entry.wasName = originalName;
+  else delete entry.wasName;
+
+  const originalSrc = existing.wasSrc || existing.src;
+  if (originalSrc && originalSrc !== entry.src) entry.wasSrc = originalSrc;
+  else delete entry.wasSrc;
+
+  return entry;
+}
+
+/** Whether Kick has changed this entry since it was first recorded. */
+function stickerChangedSinceCapture(entry) {
+  return Boolean(entry?.wasName || entry?.wasSrc);
+}
+
+/**
+ * Say what changed, in the user's terms. Returns '' when nothing has, so the
+ * caller can use it directly as a presence test.
+ */
+function describeStickerChange(entry) {
+  if (!entry) return '';
+  const parts = [];
+  if (entry.wasName) parts.push(`renamed from "${entry.wasName}"`);
+  if (entry.wasSrc) parts.push('artwork replaced');
+  if (!parts.length) return '';
+  const first = cleanCaptureTime(entry.firstSeen);
+  const when = first ? ` since first seen ${new Date(first).toISOString().slice(0, 10)}` : ' since first capture';
+  return `Kick has ${parts.join(' and ')}${when}.`;
+}
+
+/** How many library entries Kick has edited since they were recorded. */
+function countChangedStickers(library) {
+  const entries = library instanceof Map ? [...library.values()] : (Array.isArray(library) ? library : []);
+  return entries.filter((entry) => stickerChangedSinceCapture(entry)).length;
+}
+
+/**
+ * Decide which chat badges this build has to draw itself.
+ *
+ * Kick renders some badges in its own markup but omits the collectible and
+ * global ones `badges_v2` carries, so the job is to fill that gap without
+ * duplicating what is already on screen. An image URL is the only reliable
+ * identity — badge `type` is absent on some entries and `text` is localised —
+ * so a badge whose image Kick already drew is skipped, and a badge with no
+ * image at all is kept because it cannot be matched and reads as text anyway.
+ */
+function chatBadgesToRender(badges, drawnImageUrls = []) {
+  if (!Array.isArray(badges)) return [];
+  const drawn = drawnImageUrls instanceof Set ? drawnImageUrls : new Set(drawnImageUrls);
+  const seen = new Set();
+  const render = [];
+  for (const badge of badges) {
+    if (!badge || typeof badge !== 'object') continue;
+    const label = badge.text || badge.type;
+    if (!label) continue;
+    if (badge.image && drawn.has(badge.image)) continue;
+    // A payload repeating the same badge must not draw it twice.
+    const key = badge.image || `text:${label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    render.push({ label, image: badge.image || '' });
+  }
+  return render;
+}
+
+/**
  * Accumulated API drift report.
  *
  * Kick removed an endpoint, dropped a header, and changed moderation behaviour
@@ -592,7 +683,23 @@ function detectContentLabels(text, context = {}) {
   };
 }
 
-const STICKER_PREFERENCES_SCHEMA = 3;
+const STICKER_PREFERENCES_SCHEMA = 4;
+
+/**
+ * Timestamps travel through the settings export, so an imported file can carry
+ * anything. Anything not a plausible epoch-millisecond reading is discarded
+ * rather than clamped, because a wrong date is worse than no date: the whole
+ * point of the record is that the user can trust it.
+ */
+const EARLIEST_CAPTURE_MS = Date.UTC(2024, 0, 1);
+
+function cleanCaptureTime(value) {
+  const time = Number(value);
+  if (!Number.isFinite(time) || time < EARLIEST_CAPTURE_MS) return 0;
+  // A reading far in the future is a broken clock or a hand-edited file.
+  if (time > EARLIEST_CAPTURE_MS + 100 * 365 * 24 * 60 * 60 * 1000) return 0;
+  return Math.floor(time);
+}
 
 function cleanStickerKeys(input, limit = 2400) {
   if (!Array.isArray(input)) return [];
@@ -675,7 +782,7 @@ function cleanStickerLibrary(input) {
     const src = cleanStickerAssetUrl(raw.src);
     if (!key || !name || !src || keys.has(key)) continue;
     keys.add(key);
-    library.push({
+    const entry = {
       key,
       id: cleanStickerText(raw.id, 120).replace(/[^a-zA-Z0-9_-]/g, ''),
       name,
@@ -684,7 +791,19 @@ function cleanStickerLibrary(input) {
         .map((group) => cleanStickerText(group, 80))
         .filter(Boolean))].slice(0, 20),
       access: enumValue(raw.access, ['available', 'observed', 'locked'], 'available'),
-    });
+      // Schema 4. Entries captured before it carry 0, which reads as unknown
+      // rather than as a date the record cannot actually support.
+      firstSeen: cleanCaptureTime(raw.firstSeen),
+      lastSeen: cleanCaptureTime(raw.lastSeen),
+    };
+    // Only present once Kick has changed the entry under the user, which is
+    // the case this record exists to catch — and keeping them optional stops a
+    // 2,400-entry library from carrying a duplicate of itself.
+    const wasName = cleanStickerText(raw.wasName, 80);
+    if (wasName && wasName !== name) entry.wasName = wasName;
+    const wasSrc = cleanStickerAssetUrl(raw.wasSrc);
+    if (wasSrc && wasSrc !== src) entry.wasSrc = wasSrc;
+    library.push(entry);
     if (library.length >= 2400) break;
   }
   return library;
@@ -1043,6 +1162,40 @@ function cleanSlugList(input) {
   return slugs;
 }
 
+/**
+ * Layout links.
+ *
+ * Path-style grid URLs are the field's de facto sharing format, but this
+ * project runs on kick.com and cannot claim a path there — so the layout rides
+ * on a query parameter Kick ignores and Kick Focus reads on boot.
+ *
+ * The link carries slugs and nothing else: no settings, no identifiers, and no
+ * state from the sender's machine. Every slug is revalidated on the way in,
+ * because a link is untrusted input no matter who sent it.
+ */
+const MULTISTREAM_LINK_PARAM = 'kf-multi';
+
+function multistreamLayoutLink(streams, origin = 'https://kick.com') {
+  const slugs = cleanSlugList(streams);
+  if (!slugs.length) return '';
+  return `${origin}/?${MULTISTREAM_LINK_PARAM}=${encodeURIComponent(slugs.join(','))}`;
+}
+
+/**
+ * Read a layout out of a URL. Returns [] for anything unusable, so a malformed
+ * or hostile link opens nothing rather than opening something unexpected.
+ */
+function parseMultistreamLink(href) {
+  let value = '';
+  try {
+    value = new URL(String(href), 'https://kick.com').searchParams.get(MULTISTREAM_LINK_PARAM) || '';
+  } catch {
+    return [];
+  }
+  if (!value || value.length > 1024) return [];
+  return cleanSlugList(value.split(','));
+}
+
 function normalizeMultistream(input) {
   const source = isRecord(input) ? input : {};
   const streams = cleanSlugList(source.streams);
@@ -1116,6 +1269,36 @@ function multistreamTileActive(value, slug, suspended) {
   if (slug === state.focus) return true;
   const set = suspended instanceof Set ? suspended : new Set(suspended || []);
   return !set.has(slug);
+}
+
+/**
+ * Decide which tiles to keep, build, and drop for a render.
+ *
+ * Replacing an `<iframe>` restarts its stream, so a tile that is still wanted
+ * must be reused rather than recreated — adding a tenth channel must not
+ * interrupt the nine already playing. Keeping that decision here makes the
+ * invariant testable without a browser; the DOM layer only carries it out.
+ */
+function planMultistreamTiles(existing, wanted) {
+  const present = new Set((existing instanceof Set ? [...existing] : (Array.isArray(existing) ? existing : [])));
+  const order = Array.isArray(wanted) ? wanted : [];
+  const reuse = [];
+  const create = [];
+  const seen = new Set();
+  for (const slug of order) {
+    if (typeof slug !== 'string' || !slug || seen.has(slug)) continue;
+    seen.add(slug);
+    if (present.has(slug)) reuse.push(slug);
+    else create.push(slug);
+  }
+  return {
+    order: [...seen],
+    reuse,
+    create,
+    // Anything present but no longer wanted. A tile that is still wanted must
+    // never appear here, or the render would tear down a playing stream.
+    remove: [...present].filter((slug) => !seen.has(slug)),
+  };
 }
 
 /**
@@ -1378,7 +1561,67 @@ function parseChannelInput(raw) {
 // Realtime
 // ---------------------------------------------------------------------------
 
-const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(['PUSHER']);
+/** Pusher's documented client handshake. The key never appears in our source. */
+function pusherSocketUrl({ appKey, cluster }, version = '8.6.0') {
+  return `wss://ws-${cluster}.pusher.com/app/${appKey}?protocol=7&client=js&version=${version}&flash=false`;
+}
+
+/**
+ * Kick's own gateway, which speaks the same wire protocol as the hosted Pusher
+ * path — same `pusher:subscribe` frames, same `chatrooms.{id}.v2` channel
+ * names, same `App\Events\ChatMessageEvent` payloads. Only the handshake
+ * differs: a token instead of an app key and cluster.
+ *
+ * Never contacted from this project. It is registered so a forced migration is
+ * an added URL builder rather than a rewrite, and it is marked unverified so
+ * nothing claims it works until a live run says so.
+ */
+function kickGatewaySocketUrl({ token }) {
+  return `wss://websockets.kick.com/viewer/v1/connect?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * One entry per realtime provider Kick's broker can name.
+ *
+ * The split that matters: `socketUrl` and `credentials` are the *transport* and
+ * differ per provider, while the frame protocol below is shared because Kick's
+ * own gateway reuses Pusher's wire format. Adding a provider is one entry here,
+ * not a change to frame parsing or subscription management.
+ */
+const REALTIME_TRANSPORTS = Object.freeze({
+  PUSHER: Object.freeze({
+    id: 'PUSHER',
+    label: 'Pusher',
+    // Verified by anonymous handshake against the live service on 2026-08-15.
+    verified: true,
+    credentials(entry) {
+      const appKey = entry?.credentials?.app_key;
+      const cluster = entry?.credentials?.cluster;
+      if (typeof appKey !== 'string' || !appKey) return null;
+      if (typeof cluster !== 'string' || !cluster) return null;
+      return { appKey, cluster };
+    },
+    socketUrl: pusherSocketUrl,
+  }),
+  KICK: Object.freeze({
+    id: 'KICK',
+    label: 'Kick gateway',
+    // Never reached from this project. See "Realtime transport" in README.
+    verified: false,
+    credentials(entry) {
+      const token = entry?.credentials?.token || entry?.credentials?.auth_token;
+      if (typeof token !== 'string' || !token) return null;
+      return { token };
+    },
+    socketUrl: kickGatewaySocketUrl,
+  }),
+});
+
+const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(Object.keys(REALTIME_TRANSPORTS));
+
+function realtimeTransport(provider) {
+  return REALTIME_TRANSPORTS[String(provider || '').toUpperCase()] || null;
+}
 
 /**
  * Read the broker's answer without assuming Pusher.
@@ -1389,34 +1632,74 @@ const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(['PUSHER']);
  * hardcodes the Pusher app key keeps working right up until it silently does
  * not, so an unrecognised provider must degrade to the DOM path rather than
  * throw or guess.
+ *
+ * A verified provider is preferred over an unverified one when the broker
+ * offers both, so a migration only takes effect once Kick stops offering the
+ * path this project has actually run against.
  */
 function normalizeRealtimeConnection(payload) {
   const connections = payload?.data?.connections;
   if (!Array.isArray(connections) || connections.length === 0) {
     return { ok: false, reason: 'no-connections' };
   }
-  const usable = connections.find((entry) => SUPPORTED_REALTIME_PROVIDERS.includes(entry?.provider));
-  if (!usable) {
+  const known = connections
+    .map((entry) => ({ entry, transport: realtimeTransport(entry?.provider) }))
+    .filter((candidate) => candidate.transport);
+  if (!known.length) {
     const offered = connections.map((entry) => String(entry?.provider || 'unknown'));
     return { ok: false, reason: 'unsupported-provider', offered };
   }
-  const appKey = usable.credentials?.app_key;
-  const cluster = usable.credentials?.cluster;
-  if (typeof appKey !== 'string' || !appKey || typeof cluster !== 'string' || !cluster) {
-    return { ok: false, reason: 'incomplete-credentials' };
-  }
+  const chosen = known.find((candidate) => candidate.transport.verified) || known[0];
+  const credentials = chosen.transport.credentials(chosen.entry);
+  if (!credentials) return { ok: false, reason: 'incomplete-credentials' };
   return {
     ok: true,
-    provider: usable.provider,
-    appKey,
-    cluster,
+    provider: chosen.transport.id,
+    transport: chosen.transport,
+    verified: chosen.transport.verified,
+    ...credentials,
     mode: payload?.data?.mode || 'WEBSOCKET',
   };
 }
 
-/** Pusher's documented client handshake. The key never appears in our source. */
-function pusherSocketUrl({ appKey, cluster }, version = '8.6.0') {
-  return `wss://ws-${cluster}.pusher.com/app/${appKey}?protocol=7&client=js&version=${version}&flash=false`;
+/**
+ * The frame protocol, shared by every transport.
+ *
+ * Kept apart from the connection method on purpose: this is what a second
+ * transport must *not* have to reimplement.
+ */
+function realtimeSubscribeFrame(channel) {
+  // Public channels need no auth; an empty auth string is what Kick's own
+  // client sends for them.
+  return JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel } });
+}
+
+/**
+ * Classify one inbound frame. Returns a `kind` the caller dispatches on, so
+ * frame shape knowledge lives here rather than in the socket wiring.
+ */
+function parseRealtimeFrame(raw) {
+  let frame;
+  try {
+    frame = JSON.parse(raw);
+  } catch {
+    // A run of frames we cannot read means Kick changed its payload shape.
+    // That is a different problem from silence and deserves to be visible.
+    return { kind: 'unparsable' };
+  }
+  const event = String(frame?.event || '');
+  if (event === 'pusher:connection_established') return { kind: 'established', event };
+  if (event === 'pusher_internal:subscription_succeeded') return { kind: 'subscription-ack', event };
+
+  let payload = frame?.data;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { return { kind: 'other', event }; }
+  }
+  if (!payload || typeof payload !== 'object') return { kind: 'other', event };
+
+  if (event.endsWith('ChatMessageEvent')) return { kind: 'chat-message', event, payload };
+  if (event.endsWith('MessageDeletedEvent')) return { kind: 'deletion', event, payload };
+  return { kind: 'other', event, payload };
 }
 
 /**
@@ -1467,6 +1750,9 @@ function normalizeChannel(payload) {
     userId: Number(payload.user_id) || 0,
     slug: typeof payload.slug === 'string' ? payload.slug : '',
     chatroomId: Number(payload.chatroom?.id) || 0,
+    // The bulk live-status endpoint keys on the livestream, not the channel, so
+    // an offline channel has no id here — which is itself the answer.
+    livestreamId: Number(livestream?.id) || 0,
     followers: Number(payload.followers_count) || 0,
     isLive: Boolean(livestream?.is_live),
     viewers: Number(livestream?.viewer_count) || 0,
@@ -1568,6 +1854,60 @@ function normalizeEmoteSets(payload) {
   if (!sets.length) return { ok: false, reason: 'no-sets', sets: [], emotes: [] };
   if (!emotes.length) return { ok: false, reason: 'no-emotes', sets, emotes };
   return { ok: true, sets, emotes };
+}
+
+/**
+ * Why an emote is unavailable, and where Kick itself lets you unlock it.
+ *
+ * Entitlement is read across several shapes on purpose. Kick has expressed
+ * subscription state in more than one way, and a single-shape check produces
+ * *false negatives* — the documented failure is a client greying out emotes the
+ * user does own, which is far worse than showing one it cannot confirm. So the
+ * default when nothing says otherwise is unlocked, and only an explicit signal
+ * locks an entry.
+ *
+ * Nothing here enables anything or sends anything. It explains, and links to
+ * Kick's own page.
+ */
+function emoteLockState(emote, slug = '') {
+  const source = emote && typeof emote === 'object' ? emote : {};
+  const channel = String(slug || source.setName || '').trim();
+
+  // Any of these, in any of the shapes seen, means Kick says it is available.
+  const entitled = source.subscribed ?? source.is_subscribed ?? source.subscription
+    ?? source.entitled ?? source.unlocked ?? source.owned;
+  if (entitled === true || entitled === 1 || (entitled && typeof entitled === 'object')) {
+    return { locked: false, reason: '', unlockUrl: '' };
+  }
+
+  // An explicit denial is the only thing that locks an entry.
+  const denied = source.locked === true
+    || source.is_locked === true
+    || entitled === false || entitled === 0
+    || source.access === 'locked';
+  if (!denied) return { locked: false, reason: '', unlockUrl: '' };
+
+  if (source.collectible || isCollectibleEmote(source.name)) {
+    return {
+      locked: true,
+      reason: 'A collectible you have not pulled yet. These come from Kick’s daily rewards, not from a purchase.',
+      unlockUrl: `${KICK_ORIGIN}/collectibles`,
+    };
+  }
+  if (source.subscribersOnly || source.subscribers_only) {
+    return {
+      locked: true,
+      reason: channel
+        ? `Subscriber emote. Subscribing to ${channel} on Kick unlocks it, and it then works in every chat.`
+        : 'Subscriber emote. Subscribing to this channel on Kick unlocks it, and it then works in every chat.',
+      unlockUrl: channel && isValidSlug(channel) ? `${KICK_ORIGIN}/${encodeURIComponent(channel)}` : '',
+    };
+  }
+  return {
+    locked: true,
+    reason: 'Kick reports this emote as unavailable to your account, without saying why.',
+    unlockUrl: channel && isValidSlug(channel) ? `${KICK_ORIGIN}/${encodeURIComponent(channel)}` : '',
+  };
 }
 
 /**
@@ -1827,6 +2167,104 @@ function joinCollectibleRarity(cards, emotes, { minConfidence = RARITY_MIN_CONFI
     usable: total > 0 && matched.length > 0,
   };
 }
+
+/**
+ * Bulk live status, as Kick's own sidebar reads it.
+ *
+ * One request answers for every channel in the grid and every saved layout, so
+ * a shelf of layouts costs what a single channel would. A channel absent from
+ * the response is offline by Kick's own convention — it only returns entries
+ * for channels that are live — so absence is treated as offline rather than
+ * unknown, and a reshaped payload reports rather than inventing a status.
+ */
+function normalizeCurrentViewers(payload) {
+  const list = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
+  if (!list) return { ok: false, reason: 'not-a-list' };
+  const entries = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const id = raw.livestream_id ?? raw.id ?? raw.channel_id;
+    if (id == null) continue;
+    const viewers = Number(raw.viewers ?? raw.viewer_count ?? raw.count);
+    entries.push({
+      id: String(id).slice(0, LIMITS.id),
+      viewers: Number.isFinite(viewers) && viewers >= 0 ? Math.floor(viewers) : 0,
+      // Presence in this response is Kick's own signal that a channel is live.
+      live: true,
+    });
+    if (entries.length >= 200) break;
+  }
+  return { ok: true, entries };
+}
+
+/**
+ * Summarise the user's own collectible inventory.
+ *
+ * Kick publishes no drop odds and documents no duplicate protection, so the
+ * only trustworthy duplicate figure is the one the user's own inventory shows.
+ * Whether it shows one at all depends on Kick returning a per-card quantity,
+ * which is read tolerantly across the names it might use — and when no card
+ * carries one, `quantityKnown` is false and the caller must say the number is
+ * unavailable rather than present `distinct` as if it were the whole story.
+ */
+function summarizeCollectibleInventory(cards) {
+  const list = (Array.isArray(cards) ? cards : []).filter((card) => card && typeof card === 'object');
+  if (!list.length) return { ok: false, reason: 'no-cards' };
+
+  let copies = 0;
+  let quantityKnown = false;
+  for (const card of list) {
+    const raw = card.quantity ?? card.count ?? card.amount ?? card.owned;
+    const value = Math.floor(Number(raw));
+    if (Number.isFinite(value) && value >= 1) {
+      copies += value;
+      quantityKnown = true;
+    } else {
+      // No quantity on this card: it is still one copy, so the total stays a
+      // lower bound rather than becoming a guess.
+      copies += 1;
+    }
+  }
+
+  const distinct = list.length;
+  const duplicates = quantityKnown ? Math.max(0, copies - distinct) : 0;
+  return {
+    ok: true,
+    distinct,
+    copies,
+    duplicates,
+    quantityKnown,
+    duplicateRate: quantityKnown && copies > 0 ? duplicates / copies : 0,
+  };
+}
+
+/**
+ * What Kick does not explain about collectibles, stated only where a source
+ * exists. Every line is either something Kick has published, something Kick
+ * support has said, or an absence that can be verified by looking.
+ */
+const COLLECTIBLE_FACTS = Object.freeze([
+  Object.freeze({
+    claim: 'The daily streak does not improve what you get.',
+    detail: 'Kick support has stated the streak confers no bonus to drop quality or odds — it only tracks consecutive claims. Nothing in the collectibles response carries a streak multiplier either.',
+  }),
+  Object.freeze({
+    claim: 'Kick does not publish drop odds.',
+    detail: 'No rarity probability appears in any response this build reads, and none is documented. Any odds you have seen quoted are someone else’s estimate, not Kick’s figure.',
+  }),
+  Object.freeze({
+    claim: 'Duplicate protection is undocumented.',
+    detail: 'Kick has never stated whether a drop can repeat an item you already own. The count below is what your own inventory shows, which is the only evidence available.',
+  }),
+  Object.freeze({
+    claim: 'The collectibles page and your chat emote set can disagree.',
+    detail: 'They are served by different endpoints and are reported to fall out of sync. The emote set is the one chat actually accepts, so trust that when they differ.',
+  }),
+  Object.freeze({
+    claim: 'Kick can change an emote you already pulled.',
+    detail: 'Reported in July 2026 and answered by Kick support with “remastered… clear your cache”. Your local library records the name and artwork at first capture, so a changed entry is flagged rather than quietly replaced.',
+  }),
+]);
 
 /**
  * Ordered DOM probes for Kick's shell.
@@ -2155,20 +2593,28 @@ const state = {
     catalogError: '',
     collisions: [],
     rarity: null,
+    inventory: null,
     socket: null,
     socketState: 'offline',
     lastFrameAt: 0,
     unparsable: 0,
     subscribed: [],
     deletions: new Map(),
+    pendingBadges: new Map(),
     reconnectAt: 0,
     reconnectAttempts: 0,
     provider: '',
+    providerVerified: true,
+    lastLiveAt: 0,
     apiDrift: [],
   },
   emoteUsage: readEmoteUsage(),
   multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
   multistreamError: '',
+  // slug -> Kick channel id, and slug -> live, both filled from Kick's own
+  // responses. Kept apart from `multistream` so neither is ever persisted.
+  multistreamIds: new Map(),
+  multistreamLive: new Map(),
   multistreamSuspended: new Set(),
   multistreamSuspensionInstalled: false,
   chatStickerScanTimer: 0,
@@ -3409,6 +3855,34 @@ const SITE_CSS = `
     html[data-kf-sidebar="dropdown"] #sidebar-wrapper { transition: none; }
   }
 
+  /* Badges Kick's own markup omits. badges_v2 carries collectible and global
+     badges the legacy array does not, so these fill a gap rather than restyle
+     what Kick already drew. Sized to sit on the identity line. */
+  .kf-chat-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-right: 4px;
+    vertical-align: text-bottom;
+  }
+  .kf-chat-badge {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    border-radius: 3px;
+  }
+  .kf-chat-badge-text {
+    padding: 1px 5px;
+    border: 1px solid var(--kf-border-strong);
+    border-radius: 3px;
+    color: var(--kf-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
   /* Why a message disappeared. The DOM only removes the node; the realtime
      event carries the reason, and no DOM-scraping tool can see it. */
   .kf-deletion-note {
@@ -3666,6 +4140,7 @@ async function refreshLiveChannel() {
   state.live.catalogError = '';
   state.live.collisions = [];
   state.live.rarity = null;
+  state.live.inventory = null;
 
   if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
 
@@ -3741,6 +4216,10 @@ async function refreshCollectibleRarity(slug) {
   if (!cards.length) return;
   const join = joinCollectibleRarity(cards, state.live.catalog.emotes);
   state.live.rarity = join.usable ? join : null;
+  // The user's own inventory is the only evidence for a duplicate rate, since
+  // Kick publishes no odds and documents no duplicate protection.
+  const inventory = summarizeCollectibleInventory(cards);
+  state.live.inventory = inventory.ok ? inventory : null;
   refreshLiveDiagnostics();
 }
 
@@ -3756,6 +4235,8 @@ function teardownRealtime() {
   state.live.socketState = 'offline';
   state.live.subscribed = [];
   state.live.provider = '';
+  state.live.providerVerified = true;
+  state.live.lastLiveAt = 0;
   try { socket?.close(); } catch { /* already gone */ }
 }
 
@@ -3787,9 +4268,13 @@ async function connectRealtime() {
   }
 
   state.live.provider = connection.provider;
+  state.live.providerVerified = connection.verified;
   let socket;
   try {
-    socket = new WebSocket(pusherSocketUrl(connection));
+    // The transport owns the URL; everything below is protocol, shared by all
+    // of them, so a second provider is an entry in REALTIME_TRANSPORTS rather
+    // than a second copy of this function.
+    socket = new WebSocket(connection.transport.socketUrl(connection));
   } catch {
     state.live.socketState = 'offline';
     return;
@@ -3803,9 +4288,7 @@ async function connectRealtime() {
     state.live.lastFrameAt = Date.now();
     state.live.reconnectAttempts = 0;
     for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
-      // Public channels need no auth; an empty auth string is what Kick's own
-      // client sends for them.
-      socket.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: name } }));
+      socket.send(realtimeSubscribeFrame(name));
       state.live.subscribed.push(name);
     }
     refreshLiveDiagnostics();
@@ -3815,6 +4298,16 @@ async function connectRealtime() {
     if (state.live.socket !== socket) return;
     state.live.socket = null;
     state.live.socketState = 'offline';
+    // An unverified transport that never delivered a frame is a migration this
+    // build has not been proven against. Retrying it forever would keep chat
+    // features broken silently; degrading to the DOM path says so instead.
+    if (!state.live.providerVerified && !state.live.lastLiveAt) {
+      state.live.socketState = 'unsupported';
+      state.live.catalogError = `Kick's ${connection.transport.label} transport did not connect; chat features fall back to the page.`;
+      recordApiDrift('realtime', 'unverified-transport-failed', connection.transport.id);
+      refreshLiveDiagnostics();
+      return;
+    }
     scheduleRealtimeReconnect();
   });
   socket.addEventListener('error', () => { state.live.socketState = 'error'; });
@@ -3830,35 +4323,32 @@ function scheduleRealtimeReconnect() {
 
 function onRealtimeFrame(event) {
   state.live.lastFrameAt = Date.now();
-  let frame;
-  try {
-    frame = JSON.parse(event.data);
-  } catch {
-    // A run of frames we cannot read means Kick changed its payload shape.
-    // That is a different problem from silence and deserves to be visible.
+  const frame = parseRealtimeFrame(event.data);
+  if (frame.kind === 'unparsable') {
     state.live.unparsable += 1;
     refreshLiveDiagnostics();
     return;
   }
   state.live.unparsable = 0;
-  if (frame.event === 'pusher:connection_established') { state.live.socketState = 'live'; refreshLiveDiagnostics(); return; }
-  if (frame.event === 'pusher_internal:subscription_succeeded') return;
-
-  let payload = frame.data;
-  if (typeof payload === 'string') {
-    try { payload = JSON.parse(payload); } catch { return; }
+  if (frame.kind === 'established') {
+    state.live.socketState = 'live';
+    // Proof this transport actually works, which is what lets an unverified
+    // one reconnect normally instead of degrading on its first close.
+    state.live.lastLiveAt = Date.now();
+    refreshLiveDiagnostics();
+    return;
   }
-  if (!payload || typeof payload !== 'object') return;
-
-  const name = String(frame.event || '');
-  if (name.endsWith('ChatMessageEvent')) onRealtimeChatMessage(payload);
-  else if (name.endsWith('MessageDeletedEvent')) onRealtimeDeletion(payload);
+  if (frame.kind === 'chat-message') onRealtimeChatMessage(frame.payload);
+  else if (frame.kind === 'deletion') onRealtimeDeletion(frame.payload);
 }
 
 function onRealtimeChatMessage(payload) {
-  if (!state.settings.content.countEmoteUsage) return;
+  const settings = state.settings.content;
+  if (!settings.countEmoteUsage && !settings.showChatBadges) return;
   const message = normalizeChatMessage(payload);
-  if (!message?.emotes.length) return;
+  if (!message) return;
+  if (settings.showChatBadges && message.badges.length) queueChatBadges(message);
+  if (!settings.countEmoteUsage || !message.emotes.length) return;
   // Only the local user's own sends are counted. Counting everyone's would
   // measure the channel, not the person, and the shelf exists to rank what
   // *this* user actually reaches for.
@@ -3869,6 +4359,90 @@ function onRealtimeChatMessage(payload) {
     state.emoteUsage = recordEmoteUse(state.emoteUsage, { channel, id: emote.id, name: emote.name, at });
   }
   queueUsagePersist();
+}
+
+/**
+ * Kick's chat identity payload carries `badges_v2`, which includes the
+ * collectible and global badges the legacy array omits entirely — so a client
+ * reading only the rendered DOM shows a gap where other clients show a badge.
+ *
+ * A realtime frame routinely arrives before Kick has rendered the message, so
+ * an unrenderable badge set is held briefly and retried on the apply cycle
+ * rather than dropped. The map only holds messages still waiting for a node,
+ * which is a handful even in a fast chat.
+ */
+const CHAT_BADGE_WAIT_MS = 30_000;
+
+function queueChatBadges(message) {
+  if (renderChatBadges(message)) return;
+  state.live.pendingBadges.set(message.id, { message, at: Date.now() });
+  if (state.live.pendingBadges.size > 200) {
+    const oldest = state.live.pendingBadges.keys().next().value;
+    state.live.pendingBadges.delete(oldest);
+  }
+}
+
+function replayPendingBadges() {
+  if (!state.settings.content.showChatBadges || !state.live.pendingBadges.size) return;
+  const now = Date.now();
+  for (const [id, entry] of state.live.pendingBadges) {
+    if (renderChatBadges(entry.message) || now - entry.at > CHAT_BADGE_WAIT_MS) {
+      state.live.pendingBadges.delete(id);
+    }
+  }
+}
+
+function chatMessageNode(id) {
+  return document.querySelector(`[data-index="${CSS.escape(id)}"], [data-message-id="${CSS.escape(id)}"], [data-chat-entry="${CSS.escape(id)}"]`);
+}
+
+/**
+ * Render the badges Kick's own markup left out. Returns whether the message
+ * node was found, which is what decides between done and retry.
+ *
+ * Badges already drawn by Kick are skipped by image URL, so this adds to the
+ * identity rather than duplicating it. Every value here came through
+ * `normalizeChatMessage`, which bounds the strings and accepts an image only
+ * as an https URL on a Kick host; nodes are still built with textContent
+ * rather than markup.
+ */
+function renderChatBadges(message) {
+  const node = chatMessageNode(message.id);
+  if (!node) return false;
+  if (node.dataset.kfBadgesDrawn === 'true') return true;
+  node.dataset.kfBadgesDrawn = 'true';
+
+  const drawn = new Set([...node.querySelectorAll('img')].map((image) => image.src));
+  const missing = chatBadgesToRender(message.badges, drawn);
+  if (!missing.length) return true;
+
+  const strip = document.createElement('span');
+  strip.className = 'kf-chat-badges';
+  strip.dataset.kfChatBadges = 'true';
+  for (const badge of missing) {
+    if (!badge.image) {
+      strip.append(chatBadgeText(badge.label));
+      continue;
+    }
+    const image = document.createElement('img');
+    image.className = 'kf-chat-badge';
+    image.alt = badge.label;
+    image.title = badge.label;
+    image.loading = 'lazy';
+    // A broken badge image must read as the badge, not as an empty box.
+    image.addEventListener('error', () => image.replaceWith(chatBadgeText(badge.label)), { once: true });
+    image.src = badge.image;
+    strip.append(image);
+  }
+  node.prepend(strip);
+  return true;
+}
+
+function chatBadgeText(label) {
+  const text = document.createElement('span');
+  text.className = 'kf-chat-badge-text';
+  text.textContent = label;
+  return text;
 }
 
 /**
@@ -3955,7 +4529,10 @@ function liveStatusSummary() {
     unparsable: state.live.unparsable,
     now: Date.now(),
   });
-  parts.push(`Chat events: ${health.state}${health.detail ? ` — ${health.detail}` : ''}`);
+  const via = state.live.provider
+    ? ` via ${realtimeTransport(state.live.provider)?.label || state.live.provider}${state.live.providerVerified ? '' : ' (unverified transport)'}`
+    : '';
+  parts.push(`Chat events: ${health.state}${via}${health.detail ? ` — ${health.detail}` : ''}`);
   if (state.live.rarity) parts.push(`Rarity resolved for ${state.live.rarity.matched.length} of ${state.live.rarity.total} collectibles.`);
   if (state.live.collisions.length) parts.push(`${state.live.collisions.length} emote name${state.live.collisions.length === 1 ? '' : 's'} shadowed.`);
   if (state.live.catalogError) parts.push(state.live.catalogError);
@@ -3988,6 +4565,38 @@ function openMultistream() {
   renderMultistream();
   backdrop.querySelector('[data-kf-multistream-input]')?.focus();
   announce(tr('Multi-stream opened'));
+  // Fire-and-forget: live status is an enhancement, and every path already
+  // renders correctly without it.
+  resolveMultistreamLive().catch(() => {});
+}
+
+/**
+ * Resolve channel ids for the grid and every saved layout, then read all of
+ * their live states in one request.
+ *
+ * Identity is looked up once per channel and cached for the session; the live
+ * state, which is the part that actually changes, is a single bulk call no
+ * matter how many layouts are saved.
+ */
+async function resolveMultistreamLive() {
+  if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
+  const slugs = [...new Set([
+    ...state.multistream.streams,
+    ...state.multistream.layouts.flatMap((layout) => layout.streams),
+  ].map((slug) => slug.toLowerCase()))];
+  const unresolved = slugs.filter((slug) => !state.multistreamIds.has(slug)).slice(0, MULTISTREAM_MAX * 3);
+  for (const slug of unresolved) {
+    const response = await kickFetchJson(endpoints.channel(slug));
+    if (!response.ok) continue;
+    const channel = normalizeChannel(response.body);
+    if (!channel) { recordApiDrift('channel', 'shape-changed'); continue; }
+    // An offline channel has no livestream id, which is already the answer and
+    // costs nothing to record.
+    state.multistreamIds.set(slug, channel.livestreamId);
+    state.multistreamLive.set(slug, channel.isLive);
+  }
+  if (unresolved.length) renderMultistream();
+  await refreshMultistreamLive();
 }
 
 function closeMultistream() {
@@ -4093,8 +4702,12 @@ function renderMultistream() {
     existing.set(tile.dataset.kfMultistreamTile, tile);
   }
 
+  // Which tiles survive this render is decided in core, where it is tested
+  // without a browser: replacing an iframe restarts its stream, so a channel
+  // that is still wanted must keep the exact element it already had.
+  const plan = planMultistreamTiles([...existing.keys()], streams);
   const ordered = [];
-  for (const slug of streams) {
+  for (const slug of plan.order) {
     let tile = existing.get(slug);
     if (tile) {
       existing.delete(slug);
@@ -4226,9 +4839,48 @@ function renderMultistreamControls(backdrop) {
   const savedList = backdrop.querySelector('[data-kf-multistream-layouts]');
   if (savedList) {
     savedList.innerHTML = layouts.length
-      ? layouts.map((layout) => `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} <small>${layout.streams.length}</small></button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`).join('')
+      ? layouts.map((layout) => {
+        // Live counts come from one bulk request for every saved channel, so a
+        // shelf of layouts costs the same as a single one.
+        const live = layout.streams.filter((slug) => state.multistreamLive.get(slug.toLowerCase())).length;
+        const status = state.multistreamLive.size
+          ? `<small class="kf-ms-live" data-live="${live > 0}">${live}/${layout.streams.length} live</small>`
+          : `<small>${layout.streams.length}</small>`;
+        return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to layout ${escapeHtml(layout.name)}" title="Copy link">🔗</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`;
+      }).join('')
       : '<span class="kf-ms-empty">No saved layouts yet.</span>';
   }
+}
+
+/**
+ * Refresh live status for every channel across the grid and saved layouts in
+ * one request. Kick's own sidebar uses this endpoint; per-channel polling for a
+ * shelf of layouts would be dozens of requests for the same answer.
+ */
+async function refreshMultistreamLive() {
+  const slugs = [...new Set([
+    ...state.multistream.streams,
+    ...state.multistream.layouts.flatMap((layout) => layout.streams),
+  ].map((slug) => slug.toLowerCase()))];
+  if (!slugs.length) return;
+  // The endpoint keys on livestream id, so only channels known to have one are
+  // asked about; a channel with none is already known to be offline.
+  const ids = slugs.map((slug) => state.multistreamIds.get(slug)).filter(Boolean);
+  if (!ids.length) return;
+  const response = await kickFetchJson(endpoints.currentViewers(ids));
+  if (!response.ok) return;
+  const status = normalizeCurrentViewers(response.body);
+  if (!status.ok) {
+    recordApiDrift('current-viewers', status.reason);
+    return;
+  }
+  // Kick returns entries only for channels that are still live, so absence
+  // from the response means the stream ended.
+  const stillLive = new Set(status.entries.map((entry) => String(entry.id)));
+  for (const [slug, id] of state.multistreamIds) {
+    if (id) state.multistreamLive.set(slug, stillLive.has(String(id)));
+  }
+  renderMultistream();
 }
 
 function addMultistream(raw) {
@@ -4846,8 +5498,22 @@ function stickerNativeGroups(picker) {
   return groupsByButton;
 }
 
+/**
+ * `lastSeen` alone is not worth a storage write on every apply cycle, so it is
+ * only persisted once an hour has passed. The library can hold 2,400 entries
+ * and this runs continuously on a live channel.
+ */
+const STICKER_LAST_SEEN_WRITE_MS = 60 * 60 * 1000;
+
+/** Equality ignoring `lastSeen`, which moves constantly and means nothing alone. */
+function sameStickerRecord(a, b) {
+  const strip = (entry) => { const { lastSeen, ...rest } = entry; return rest; };
+  return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
+}
+
 function mergeStickerLibrary(observed) {
   let changed = false;
+  const now = Date.now();
   for (const sticker of observed) {
     const existing = state.stickerPreferences.library.get(sticker.key);
     const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...(sticker.nativeGroups || [])])].slice(0, 20);
@@ -4861,15 +5527,22 @@ function mergeStickerLibrary(observed) {
       : existing?.access === 'locked' || incomingAccess === 'locked'
         ? 'locked'
         : 'observed';
-    const record = {
+    // Nothing here calls Kick. The record is built from what the page and the
+    // catalog already showed, so no claim is automated and no endpoint replayed.
+    const record = recordStickerObservation(existing, {
       key: sticker.key,
       id: sticker.id,
       name: sticker.name,
       src: sticker.src,
       nativeGroups,
       access,
-    };
-    if (!existing || JSON.stringify(existing) !== JSON.stringify(record)) {
+    }, now);
+    // `lastSeen` moves on every pass, so comparing it would rewrite the whole
+    // library on every apply cycle. Only a real change is worth a write.
+    if (!existing || !sameStickerRecord(existing, record)) {
+      state.stickerPreferences.library.set(sticker.key, record);
+      changed = true;
+    } else if (record.lastSeen - existing.lastSeen > STICKER_LAST_SEEN_WRITE_MS) {
       state.stickerPreferences.library.set(sticker.key, record);
       changed = true;
     }
@@ -5397,6 +6070,14 @@ function applyPlaybackDiagnostics() {
   if (!state.playbackDiagnosticsTimer) state.playbackDiagnosticsTimer = window.setInterval(update, 1000);
 }
 
+function localChannelBlocked(path) {
+  if (!path) return false;
+  const channels = state.settings.content.hiddenChannels;
+  if (!channels.length) return false;
+  const normalized = path.toLowerCase();
+  return channels.some((entry) => normalized === entry);
+}
+
 function remoteBlocklistMatches(path, labels, text) {
   const remote = state.remoteBlocklist;
   if (remote.status !== 'ready') return false;
@@ -5576,7 +6257,8 @@ function applyContentFilters() {
     node.dataset.kfLiveCard = String(/(^|\s)live(?:\s|$)/i.test(node.textContent || ''));
     node.dataset.kfDismissed = String(Boolean(path && state.dismissed.has(path)));
     const remoteBlocked = remoteBlocklistMatches(path, context, node.textContent);
-    const hide = remoteBlocked
+    const channelBlocked = localChannelBlocked(path);
+    const hide = remoteBlocked || channelBlocked
       || (settings.hideCasino && labels.casino)
       || (settings.suppressPromoted && labels.promoted)
       || (settings.hideDropsPromotions && labels.drops);
@@ -5700,6 +6382,7 @@ function scheduleApply(delay = 50) {
     // rejected promise here must never interrupt the apply cycle.
     refreshLiveChannel().catch(() => {});
     replayPendingDeletions();
+    replayPendingBadges();
     renderStickerOrganizer();
     applyChatHighlights();
     applyPlaybackDiagnostics();
@@ -6148,6 +6831,10 @@ const UI_CSS = `
   .kf-tool-card { min-height: 92px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
   .kf-tool-card h3 { margin: 0 0 3px; font-size: 11px; }
   .kf-tool-card p { margin: 0; color: var(--muted); font-size: 10px; }
+  .kf-channel-input-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 9px; align-items: center; }
+  .kf-channel-list { display: grid; gap: 6px; margin-top: 10px; max-height: 280px; overflow: auto; scrollbar-gutter: stable; }
+  .kf-channel-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; font-size: 13px; }
+  .kf-channel-entry span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .kf-sticker-library-shell { padding: 14px; border: 1px solid var(--border); border-radius: 4px; background: #0d100e; }
   .kf-sticker-library-controls { display: grid; grid-template-columns: minmax(220px, 1fr) 180px; gap: 9px; }
   .kf-sticker-library-controls .kf-select { width: 100%; height: 40px; }
@@ -6167,6 +6854,15 @@ const UI_CSS = `
   .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-access[data-access="available"] { border-color: rgba(var(--accent-rgb), .55); color: var(--accent); }
   .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
+  /* Kick edits emotes users already pulled; the local record is the only copy
+     that can prove it, so a changed entry is called out rather than quietly
+     overwritten. */
+  .kf-sticker-changed { display: inline-flex; margin: 5px 0 0 5px; padding: 2px 5px; border: 1px solid rgba(217,139,58,.62); border-radius: 3px; color: #e0a367; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .kf-sticker-library-item[data-changed="true"] { border-color: rgba(217,139,58,.42); }
+  /* A dead greyed tile teaches nothing; a reason plus Kick's own unlock path
+     is the clearest possible signal that entitlements are respected. */
+  .kf-sticker-lock { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.5; white-space: normal; }
+  .kf-sticker-lock a { color: var(--accent); }
   .kf-sticker-library-actions { grid-column: 1 / -1; display: grid; grid-template-columns: auto auto minmax(105px, 1fr); gap: 6px; }
   .kf-sticker-library-actions .kf-select { min-width: 0; width: 100%; }
 
@@ -6328,6 +7024,13 @@ const UI_CSS = `
     .kf-storage-alert { border: 2px solid CanvasText; }
   }
 
+  /* Kick publishes no drop odds and documents no duplicate protection, so this
+     states what is known and attributes it, rather than filling the gap. */
+  .kf-fact-list { margin: 0; padding: 0; display: grid; gap: 10px; }
+  .kf-fact { margin: 0; padding: 10px 12px; border-left: 3px solid var(--border-subtle); background: rgba(255,255,255,.02); border-radius: 0 4px 4px 0; }
+  .kf-fact dt { margin: 0 0 3px; font-size: 12px; font-weight: 700; }
+  .kf-fact dd { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+
   /* Rarity is shown only when the join is confident; see joinCollectibleRarity. */
   .kf-rarity {
     display: inline-flex;
@@ -6470,6 +7173,10 @@ const UI_CSS = `
   .kf-ms-layout button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
   .kf-ms-layout button:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-layout small { opacity: .6; }
+  /* One bulk request answers for every saved layout, so live status is cheap
+     enough to show on all of them at once. */
+  .kf-ms-layout small.kf-ms-live { opacity: 1; color: var(--muted); }
+  .kf-ms-layout small.kf-ms-live[data-live="true"] { color: var(--accent); font-weight: 700; }
   .kf-ms-empty { font-size: 11px; opacity: .6; }
 
   .kf-shadow-warning { display: grid; gap: 6px; }
@@ -6624,9 +7331,8 @@ const TRANSLATIONS = {
     'Language': 'Idioma',
     'Choose the language for Kick Focus settings and commands.': 'Elige el idioma de la configuración y los comandos de Kick Focus.',
     'Auto': 'Automático',
-    'English': 'Inglés',
-    'Español': 'Español',
-    'Português': 'Portugués',
+    // Language names stay as endonyms in every locale: a picker that renames
+    // "Português" to "Portugués" is harder to use, not easier.
     'Sidebar mode': 'Modo de barra lateral',
     'Chat layout': 'Diseño del chat',
     'Chat width': 'Ancho del chat',
@@ -6705,6 +7411,11 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidad cómoda',
     'Use compact density': 'Usar densidad compacta',
     'Change discovery spacing and save it': 'Cambia y guarda el espaciado del descubrimiento',
+    'Show badges Kick leaves out': 'Mostrar insignias que Kick omite',
+    'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.': 'La respuesta del chat de Kick incluye insignias globales y de coleccionables que su propio marcado omite, dejando un hueco donde otros clientes muestran una insignia. Si la imagen no carga, se sustituye por su nombre.',
+    'Hidden channels': 'Canales ocultos',
+    'Hide specific channels from Home, Browse, Following, and Search.': 'Oculta canales específicos de Inicio, Explorar, Siguiendo y Búsqueda.',
+    'No channels hidden. Use the input above or the ✕ action on a card.': 'No hay canales ocultos. Usa el campo de arriba o la acción ✕ en una tarjeta.',
     'Show casino content': 'Mostrar contenido de casino',
     'Hide casino content': 'Ocultar contenido de casino',
     'Filter clearly labeled casino streams': 'Filtra streams marcados claramente como casino',
@@ -6831,9 +7542,7 @@ const TRANSLATIONS = {
     'Language': 'Idioma',
     'Choose the language for Kick Focus settings and commands.': 'Escolha o idioma das configurações e comandos do Kick Focus.',
     'Auto': 'Automático',
-    'English': 'Inglês',
-    'Español': 'Espanhol',
-    'Português': 'Português',
+    // Endonyms; see the note in the Spanish dictionary.
     'Sidebar mode': 'Modo da barra lateral',
     'Chat layout': 'Layout do chat',
     'Chat width': 'Largura do chat',
@@ -6912,6 +7621,11 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidade confortável',
     'Use compact density': 'Usar densidade compacta',
     'Change discovery spacing and save it': 'Altera e salva o espaçamento da descoberta',
+    'Show badges Kick leaves out': 'Mostrar selos que o Kick omite',
+    'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.': 'A resposta do chat do Kick traz selos globais e de colecionáveis que a própria marcação omite, deixando uma lacuna onde outros clientes mostram um selo. Se a imagem não carregar, ela é substituída pelo nome.',
+    'Hidden channels': 'Canais ocultos',
+    'Hide specific channels from Home, Browse, Following, and Search.': 'Oculte canais específicos de Início, Explorar, Seguindo e Busca.',
+    'No channels hidden. Use the input above or the ✕ action on a card.': 'Nenhum canal oculto. Use o campo acima ou a ação ✕ em um card.',
     'Show casino content': 'Mostrar conteúdo de cassino',
     'Hide casino content': 'Ocultar conteúdo de cassino',
     'Filter clearly labeled casino streams': 'Filtra transmissões claramente marcadas como cassino',
@@ -7009,18 +7723,22 @@ function activeLocale() {
   return 'en';
 }
 
-function canonicalTranslation(value) {
-  const text = String(value);
-  for (const dictionary of Object.values(TRANSLATIONS)) {
-    for (const [source, translated] of Object.entries(dictionary)) {
-      if (translated === text) return source;
-    }
-  }
-  return text;
-}
+/**
+ * The English source of a node this build has already translated.
+ *
+ * Held off the DOM, so nothing is serialised into markup and an entry is
+ * collected with its node. This is what makes a second pass a forward lookup of
+ * the same key instead of a reverse scan: without it, re-localising had to map
+ * a possibly-already-translated value back to English by searching every
+ * dictionary — ambiguous by construction, because several English source
+ * strings are also translated values of other strings.
+ */
+const TEXT_SOURCE = new WeakMap();
+const ATTRIBUTE_SOURCE = new WeakMap();
 
+/** One forward lookup. An unknown string is its own answer. */
 function tr(value) {
-  const source = canonicalTranslation(value);
+  const source = String(value);
   return TRANSLATIONS[activeLocale()]?.[source] || source;
 }
 
@@ -7028,18 +7746,36 @@ function localizeInterface(root = state.shadow) {
   if (!root) return;
   const walk = (node) => {
     if (node.nodeType === 3) {
-      const text = node.nodeValue;
+      // Always translate from the recorded English, never from what is on
+      // screen, so a re-render or a language change cannot compound.
+      const recorded = TEXT_SOURCE.get(node);
+      const text = recorded === undefined ? node.nodeValue : recorded;
       const trimmed = text.trim();
       if (!trimmed || node.parentElement?.matches?.('input, textarea')) return;
+      if (recorded === undefined) TEXT_SOURCE.set(node, text);
       const start = text.indexOf(trimmed);
       node.nodeValue = `${text.slice(0, start)}${tr(trimmed)}${text.slice(start + trimmed.length)}`;
       return;
     }
     if (node.nodeType !== 1 && node.nodeType !== 11) return;
     if (node.nodeType === 1) {
+      let sources = ATTRIBUTE_SOURCE.get(node);
       for (const attribute of ['aria-label', 'placeholder', 'title']) {
-        if (node.hasAttribute(attribute)) node.setAttribute(attribute, tr(node.getAttribute(attribute)));
+        if (!node.hasAttribute(attribute)) continue;
+        const recorded = sources?.[attribute];
+        const value = recorded === undefined ? node.getAttribute(attribute) : recorded;
+        if (recorded === undefined) {
+          sources = sources || {};
+          sources[attribute] = value;
+          ATTRIBUTE_SOURCE.set(node, sources);
+        }
+        node.setAttribute(attribute, tr(value));
       }
+      // Content that is user data rather than this build's own prose. An emote
+      // or channel named "Reset" is not the button label "Reset", and must not
+      // be renamed by a dictionary hit. The element's own attributes above are
+      // still this build's chrome, so they are translated first.
+      if (node.hasAttribute('data-kf-no-translate')) return;
     }
     for (const child of node.childNodes || []) walk(child);
   };
@@ -7308,12 +8044,23 @@ function stickerLibrarySummary() {
   const library = [...state.stickerPreferences.library.values()];
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
   const observed = library.filter((sticker) => sticker.access === 'observed').length;
-  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}`;
+  const changed = countChangedStickers(library);
+  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}`;
+}
+
+/** First/last capture in the user's terms; '' for entries recorded before schema 4. */
+function stickerSeenSummary(sticker) {
+  if (!sticker.firstSeen) return '';
+  const day = (time) => new Date(time).toISOString().slice(0, 10);
+  const first = day(sticker.firstSeen);
+  const last = sticker.lastSeen ? day(sticker.lastSeen) : '';
+  return last && last !== first ? `First seen ${first} · last ${last}` : `First seen ${first}`;
 }
 
 function stickerLibraryFilterMatches(sticker, filter) {
   if (filter === 'favorites') return state.stickerPreferences.pinned.has(sticker.key);
   if (filter === 'removed') return state.stickerPreferences.hidden.has(sticker.key);
+  if (filter === 'changed') return stickerChangedSinceCapture(sticker);
   if (filter === 'observed') return sticker.access === 'observed';
   if (filter === 'locked') return sticker.access === 'locked';
   if (filter === 'ungrouped') return !state.stickerPreferences.assignments.has(sticker.key);
@@ -7339,6 +8086,7 @@ function renderStickerLibraryManager() {
     ['all', `All recorded (${state.stickerPreferences.library.size})`],
     ['favorites', `Favorites (${state.stickerPreferences.pinned.size})`],
     ['removed', `Removed (${state.stickerPreferences.hidden.size})`],
+    ['changed', `Changed by Kick (${countChangedStickers(state.stickerPreferences.library)})`],
     ['observed', 'Seen in chat'],
     ['locked', 'Locked-only'],
     ['ungrouped', 'Ungrouped'],
@@ -7359,9 +8107,16 @@ function renderStickerLibraryManager() {
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
     const searchText = `${sticker.name} ${nativeGroups}`.toLowerCase();
     const accessLabel = sticker.access === 'available' ? 'Seen available' : sticker.access === 'observed' ? 'Seen in chat' : 'Locked only';
-    return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}">
+    const changeNote = describeStickerChange(sticker);
+    const seenNote = stickerSeenSummary(sticker);
+    // A greyed tile with no explanation teaches nothing. Nothing here enables
+    // or sends anything; it names the reason and links to Kick's own page.
+    const lock = sticker.access === 'locked'
+      ? emoteLockState({ ...sticker, locked: true }, sticker.nativeGroups[0] || '')
+      : { locked: false, reason: '', unlockUrl: '' };
+    return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}" data-changed="${Boolean(changeNote)}">
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
-      <div class="kf-sticker-library-copy"><strong title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small><span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span></div>
+      <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}${lock.locked ? `<small class="kf-sticker-lock">${escapeHtml(lock.reason)}${lock.unlockUrl ? ` <a href="${escapeHtml(lock.unlockUrl)}" target="_blank" rel="noopener">Unlock on Kick</a>` : ''}</small>` : ''}</div>
       <div class="kf-sticker-library-actions">
         <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
         <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>
@@ -7405,6 +8160,27 @@ function applyStickerLibrarySearch(value = state.runtime.stickerLibraryQuery) {
  * behaviour when turned off, so the section can be read as "how much of Kick's
  * own data should this use" rather than "which features work".
  */
+/**
+ * What Kick leaves unexplained about collectibles, plus the only numbers the
+ * local record can actually support. Where Kick's response carries no
+ * quantity, the duplicate count says so rather than presenting the distinct
+ * count as though it answered the question.
+ */
+function renderCollectiblePanel() {
+  const inventory = state.live.inventory;
+  const changed = countChangedStickers(state.stickerPreferences.library);
+  const observed = inventory
+    ? (inventory.quantityKnown
+      ? `Your inventory holds ${inventory.copies} collectible${inventory.copies === 1 ? '' : 's'} across ${inventory.distinct} distinct item${inventory.distinct === 1 ? '' : 's'} — ${inventory.duplicates} duplicate${inventory.duplicates === 1 ? '' : 's'}, or ${Math.round(inventory.duplicateRate * 100)}% of what you have pulled.`
+      : `Your inventory holds ${inventory.distinct} distinct collectible${inventory.distinct === 1 ? '' : 's'}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.`)
+    : 'Open a channel with collectibles while signed in to read your own inventory. Nothing is fetched otherwise.';
+  return `
+    <div class="kf-panel">
+      <div class="kf-action-row"><div><h3>What Kick does not explain</h3><p>${escapeHtml(observed)}${changed ? ` ${changed} recorded emote${changed === 1 ? ' has' : 's have'} been changed by Kick since first capture — see the Changed by Kick filter in the library below.` : ''}</p></div></div>
+      <dl class="kf-fact-list">${COLLECTIBLE_FACTS.map((fact) => `<div class="kf-fact"><dt>${escapeHtml(fact.claim)}</dt><dd>${escapeHtml(fact.detail)}</dd></div>`).join('')}</dl>
+    </div>`;
+}
+
 function renderLiveDataSection(value) {
   const collisions = state.live.collisions;
   const rarity = state.live.rarity;
@@ -7416,11 +8192,13 @@ function renderLiveDataSection(value) {
         ${row('Load the emote catalog from Kick', 'Read the full channel, global, and emoji sets with their real entitlement, instead of scraping the picker. Falls back to the picker if the response changes shape.', toggle('content.liveEmoteCatalog', value.liveEmoteCatalog, { label: 'Load the emote catalog from Kick' }))}
         ${row('Follow live chat events', 'Subscribe to the same realtime chat feed Kick’s own client uses. The provider is read from Kick rather than hardcoded.', toggle('content.liveChatEvents', value.liveChatEvents, { label: 'Follow live chat events' }))}
         ${row('Explain removed messages', 'Kick’s automatic moderation removes messages without saying why. The realtime event carries the reason; the page does not.', toggle('content.showModerationReasons', value.showModerationReasons, { label: 'Explain removed messages' }))}
+        ${row('Show badges Kick leaves out', 'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.', toggle('content.showChatBadges', value.showChatBadges, { label: 'Show badges Kick leaves out' }))}
         ${row('Count emote usage', 'Kick’s own “Frequently Used” never counts anything, so no real ranking exists. This one is yours, stored locally and exported with your library.', toggle('content.countEmoteUsage', value.countEmoteUsage, { label: 'Count emote usage' }))}
         ${row('Show collectible rarity', 'Kick publishes rarity on card art and identity in the picker, with no key joining them. Rarity is shown only where the match is confident.', toggle('content.showEmoteRarity', value.showEmoteRarity, { label: 'Show collectible rarity' }))}
         ${row('Warn about shadowed emote names', 'Subscriber emotes work in every chat and Kick resolves typed names through one map, so two channels sharing a name means one silently sends the other’s.', toggle('content.warnShadowedEmotes', value.warnShadowedEmotes, { label: 'Warn about shadowed emote names' }))}
         ${row('Freeze animated emotes', 'Render animated emotes and collectibles as a single static frame, in chat and in the picker. Applied automatically when your system asks for reduced motion.', toggle('content.staticEmotes', value.staticEmotes, { label: 'Freeze animated emotes' }))}
       </div>
+      ${renderCollectiblePanel()}
       ${rarity ? `<div class="kf-panel"><div class="kf-action-row"><div><h3>Collectible rarity</h3><p>Resolved ${rarity.matched.length} of ${rarity.total} collectible emotes. ${rarity.unmatched.length ? `${rarity.unmatched.length} could not be matched confidently and are shown without a rarity — a wrong label is worse than none.` : 'Every collectible in this channel was matched.'}</p></div></div></div>` : ''}
       ${collisions.length ? `<div class="kf-panel"><div class="kf-action-row"><div class="kf-shadow-warning"><h3>Shadowed emote names</h3><p>These names exist in more than one of your sets. Kick sends the last one loaded, so typing the name may not send what you expect.</p>${collisions.slice(0, 12).map((collision) => `<p><code>${escapeHtml(collision.name)}</code> — sends <strong>${escapeHtml(collision.winner.setName)}</strong>, shadowing ${escapeHtml(collision.shadowed.map((entry) => entry.setName).join(', '))}</p>`).join('')}${collisions.length > 12 ? `<p>…and ${collisions.length - 12} more.</p>` : ''}</div></div></div>` : ''}
     </section>`;
@@ -7452,6 +8230,17 @@ function renderContentPage() {
         ${row('Reduce tracking telemetry', 'Block observed third-party video and error telemetry hosts.', toggle('content.reduceTelemetry', value.reduceTelemetry, { label: 'Reduce tracking telemetry' }))}
       </div>
     </section>
+    <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Hidden channels</h3><p>Hide specific channels from Home, Browse, Following, and Search.</p></div></div><div class="kf-panel">
+      <div class="kf-action-row"><div>
+        <label class="kf-sr-only" for="kf-hidden-channel-input">Channel to hide</label>
+        <div class="kf-channel-input-row">
+          <input type="text" id="kf-hidden-channel-input" class="kf-text-input" placeholder="Channel name or kick.com URL" aria-label="Channel to hide" data-kf-hidden-channel-input>
+          <button type="button" class="kf-button kf-button-small" data-action="add-hidden-channel">Hide</button>
+        </div>
+      </div></div>
+      ${value.hiddenChannels.length ? `<div class="kf-channel-list" data-kf-hidden-channel-list>${value.hiddenChannels.map((channel) => `<div class="kf-channel-entry"><span>${escapeHtml(channel.replace(/^\//, ''))}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-hidden-channel" data-channel="${escapeHtml(channel)}" aria-label="Show ${escapeHtml(channel.replace(/^\//, ''))} again">✕</button></div>`).join('')}</div>` : '<p class="kf-status-note">No channels hidden. Use the input above or the ✕ action on a card.</p>'}
+      <p class="kf-meta">${value.hiddenChannels.length} channel${value.hiddenChannels.length === 1 ? '' : 's'} hidden. These count toward the fail-open ceiling.</p>
+    </div></section>
     <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">
         ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
         ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
@@ -7845,6 +8634,17 @@ function onInterfaceClick(event) {
       announce(`Loaded layout ${layout.name}`);
     }
   }
+  else if (action === 'multistream-copy-layout') {
+    const layout = state.multistream.layouts.find((entry) => entry.name === actionTarget.dataset.layout);
+    if (!layout) return;
+    const link = multistreamLayoutLink(layout.streams);
+    if (!link) { showToast('That layout has no usable channels.', true); return; }
+    // The link carries channel names and nothing else — no settings, no
+    // identifiers, nothing from this machine.
+    navigator.clipboard?.writeText(link)
+      .then(() => showToast(`Copied a link to ${layout.name}.`))
+      .catch(() => showToast('Could not reach the clipboard.', true));
+  }
   else if (action === 'multistream-delete-layout') {
     const name = actionTarget.dataset.layout;
     state.multistream = normalizeMultistream({
@@ -7873,6 +8673,27 @@ function onInterfaceClick(event) {
   else if (action === 'clear-blocklist') {
     clearRemoteBlocklist();
     showToast('Cached blocklist removed.');
+    renderSettingsPage();
+  }
+  else if (action === 'add-hidden-channel') {
+    const input = state.shadow?.querySelector('[data-kf-hidden-channel-input]');
+    const raw = input?.value?.trim();
+    if (!raw) { showToast('Enter a channel name or URL.', true); return; }
+    const path = normalizeChannelPath(raw);
+    if (!path) { showToast('That does not look like a Kick channel.', true); return; }
+    const current = state.settings.content.hiddenChannels;
+    if (current.includes(path)) { showToast('That channel is already hidden.', true); return; }
+    if (current.length >= 200) { showToast('Hidden channel list is full (200).', true); return; }
+    state.settings.content.hiddenChannels = [...current, path];
+    saveSettings(`Hidden ${path.replace(/^\//, '')}`);
+    scheduleApply(0);
+    renderSettingsPage();
+  } else if (action === 'remove-hidden-channel') {
+    const channel = actionTarget?.dataset?.channel;
+    if (!channel) return;
+    state.settings.content.hiddenChannels = state.settings.content.hiddenChannels.filter((entry) => entry !== channel);
+    saveSettings(`Showing ${channel.replace(/^\//, '')} again`);
+    scheduleApply(0);
     renderSettingsPage();
   }
   else if (action === 'clear-favorites') {
@@ -8588,6 +9409,37 @@ function installCompanionBridge() {
   document.addEventListener('kick-focus:set-telemetry', (event) => {
     updateSetting('content.reduceTelemetry', Boolean(event.detail?.enabled));
   });
+  openSharedLayoutFromUrl();
+}
+
+/**
+ * Open a layout someone shared as a link.
+ *
+ * Every slug is revalidated by `parseMultistreamLink` before use — a link is
+ * untrusted input regardless of who sent it — and the grid is only replaced
+ * when the link actually names channels. The parameter is then stripped from
+ * the address bar so a reload does not silently reopen it.
+ */
+function openSharedLayoutFromUrl() {
+  const shared = parseMultistreamLink(location.href);
+  if (!shared.length) return;
+  state.multistream = normalizeMultistream({
+    ...state.multistream,
+    streams: shared,
+    focus: shared[0],
+    chat: shared[0],
+  });
+  state.multistreamError = '';
+  persistMultistream();
+  try {
+    const url = new URL(location.href);
+    url.searchParams.delete(MULTISTREAM_LINK_PARAM);
+    history.replaceState(history.state, '', url.href);
+  } catch {
+    // A URL this build cannot rewrite is not a reason to refuse the layout.
+  }
+  openMultistream();
+  announce(`Opened a shared layout with ${shared.length} channel${shared.length === 1 ? '' : 's'}.`);
 }
 
 function startWhenBodyExists() {
