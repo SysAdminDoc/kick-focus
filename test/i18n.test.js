@@ -62,6 +62,32 @@ test('no locale declares the same key twice', async () => {
   }
 });
 
+test('the translator is forward-only and never renames a language', async () => {
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+
+  // The reverse map was ambiguous by construction: several English source
+  // strings are also translated values of other strings, so mapping a value
+  // back to English could land on the wrong key. Lookup is now one forward
+  // hit, and the English original is remembered per node instead.
+  assert.equal(
+    /function canonicalTranslation/.test(source),
+    false,
+    'canonicalTranslation reintroduces a reverse scan of every dictionary',
+  );
+  assert.match(source, /const TEXT_SOURCE = new WeakMap\(\)/);
+  assert.match(source, /const ATTRIBUTE_SOURCE = new WeakMap\(\)/);
+
+  // A language picker that renames "Português" to "Portugués" is harder to
+  // use, not easier. Endonyms must appear the same in every locale.
+  for (const endonym of ['English', 'Español', 'Português']) {
+    assert.equal(
+      source.includes(`    '${endonym}': '`),
+      false,
+      `a locale translates the language name ${endonym}; language names stay as endonyms`,
+    );
+  }
+});
+
 test('every locale covers the same strings', async () => {
   const locales = await readLocales();
   const union = new Set([...locales.values()].flat());

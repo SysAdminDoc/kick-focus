@@ -4861,9 +4861,8 @@ const TRANSLATIONS = {
     'Language': 'Idioma',
     'Choose the language for Kick Focus settings and commands.': 'Elige el idioma de la configuración y los comandos de Kick Focus.',
     'Auto': 'Automático',
-    'English': 'Inglés',
-    'Español': 'Español',
-    'Português': 'Portugués',
+    // Language names stay as endonyms in every locale: a picker that renames
+    // "Português" to "Portugués" is harder to use, not easier.
     'Sidebar mode': 'Modo de barra lateral',
     'Chat layout': 'Diseño del chat',
     'Chat width': 'Ancho del chat',
@@ -5073,9 +5072,7 @@ const TRANSLATIONS = {
     'Language': 'Idioma',
     'Choose the language for Kick Focus settings and commands.': 'Escolha o idioma das configurações e comandos do Kick Focus.',
     'Auto': 'Automático',
-    'English': 'Inglês',
-    'Español': 'Espanhol',
-    'Português': 'Português',
+    // Endonyms; see the note in the Spanish dictionary.
     'Sidebar mode': 'Modo da barra lateral',
     'Chat layout': 'Layout do chat',
     'Chat width': 'Largura do chat',
@@ -5256,18 +5253,22 @@ function activeLocale() {
   return 'en';
 }
 
-function canonicalTranslation(value) {
-  const text = String(value);
-  for (const dictionary of Object.values(TRANSLATIONS)) {
-    for (const [source, translated] of Object.entries(dictionary)) {
-      if (translated === text) return source;
-    }
-  }
-  return text;
-}
+/**
+ * The English source of a node this build has already translated.
+ *
+ * Held off the DOM, so nothing is serialised into markup and an entry is
+ * collected with its node. This is what makes a second pass a forward lookup of
+ * the same key instead of a reverse scan: without it, re-localising had to map
+ * a possibly-already-translated value back to English by searching every
+ * dictionary — ambiguous by construction, because several English source
+ * strings are also translated values of other strings.
+ */
+const TEXT_SOURCE = new WeakMap();
+const ATTRIBUTE_SOURCE = new WeakMap();
 
+/** One forward lookup. An unknown string is its own answer. */
 function tr(value) {
-  const source = canonicalTranslation(value);
+  const source = String(value);
   return TRANSLATIONS[activeLocale()]?.[source] || source;
 }
 
@@ -5275,18 +5276,36 @@ function localizeInterface(root = state.shadow) {
   if (!root) return;
   const walk = (node) => {
     if (node.nodeType === 3) {
-      const text = node.nodeValue;
+      // Always translate from the recorded English, never from what is on
+      // screen, so a re-render or a language change cannot compound.
+      const recorded = TEXT_SOURCE.get(node);
+      const text = recorded === undefined ? node.nodeValue : recorded;
       const trimmed = text.trim();
       if (!trimmed || node.parentElement?.matches?.('input, textarea')) return;
+      if (recorded === undefined) TEXT_SOURCE.set(node, text);
       const start = text.indexOf(trimmed);
       node.nodeValue = `${text.slice(0, start)}${tr(trimmed)}${text.slice(start + trimmed.length)}`;
       return;
     }
     if (node.nodeType !== 1 && node.nodeType !== 11) return;
     if (node.nodeType === 1) {
+      let sources = ATTRIBUTE_SOURCE.get(node);
       for (const attribute of ['aria-label', 'placeholder', 'title']) {
-        if (node.hasAttribute(attribute)) node.setAttribute(attribute, tr(node.getAttribute(attribute)));
+        if (!node.hasAttribute(attribute)) continue;
+        const recorded = sources?.[attribute];
+        const value = recorded === undefined ? node.getAttribute(attribute) : recorded;
+        if (recorded === undefined) {
+          sources = sources || {};
+          sources[attribute] = value;
+          ATTRIBUTE_SOURCE.set(node, sources);
+        }
+        node.setAttribute(attribute, tr(value));
       }
+      // Content that is user data rather than this build's own prose. An emote
+      // or channel named "Reset" is not the button label "Reset", and must not
+      // be renamed by a dictionary hit. The element's own attributes above are
+      // still this build's chrome, so they are translated first.
+      if (node.hasAttribute('data-kf-no-translate')) return;
     }
     for (const child of node.childNodes || []) walk(child);
   };
@@ -5622,7 +5641,7 @@ function renderStickerLibraryManager() {
     const seenNote = stickerSeenSummary(sticker);
     return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}" data-changed="${Boolean(changeNote)}">
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
-      <div class="kf-sticker-library-copy"><strong title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}</div>
+      <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}</div>
       <div class="kf-sticker-library-actions">
         <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
         <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>

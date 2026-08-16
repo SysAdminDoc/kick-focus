@@ -134,6 +134,14 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // A reverse scan of 252 entries per string, on every text node, on every
+  // render — and ambiguous, because some English sources are also translated
+  // values. Lookup is one forward hit against a remembered original.
+  ['translation is a forward lookup with no reverse scan',
+    source.includes('const TEXT_SOURCE = new WeakMap()')
+    && source.includes('const ATTRIBUTE_SOURCE = new WeakMap()')
+    && !source.includes('function canonicalTranslation')],
+
   // A shared link is untrusted input, so it must go back through the same slug
   // validation the grid uses rather than being spread into state directly.
   ['layouts are shareable as links and revalidated on the way in',
