@@ -93,7 +93,67 @@ export function parseChannelInput(raw) {
 // Realtime
 // ---------------------------------------------------------------------------
 
-export const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(['PUSHER']);
+/** Pusher's documented client handshake. The key never appears in our source. */
+export function pusherSocketUrl({ appKey, cluster }, version = '8.6.0') {
+  return `wss://ws-${cluster}.pusher.com/app/${appKey}?protocol=7&client=js&version=${version}&flash=false`;
+}
+
+/**
+ * Kick's own gateway, which speaks the same wire protocol as the hosted Pusher
+ * path — same `pusher:subscribe` frames, same `chatrooms.{id}.v2` channel
+ * names, same `App\Events\ChatMessageEvent` payloads. Only the handshake
+ * differs: a token instead of an app key and cluster.
+ *
+ * Never contacted from this project. It is registered so a forced migration is
+ * an added URL builder rather than a rewrite, and it is marked unverified so
+ * nothing claims it works until a live run says so.
+ */
+export function kickGatewaySocketUrl({ token }) {
+  return `wss://websockets.kick.com/viewer/v1/connect?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * One entry per realtime provider Kick's broker can name.
+ *
+ * The split that matters: `socketUrl` and `credentials` are the *transport* and
+ * differ per provider, while the frame protocol below is shared because Kick's
+ * own gateway reuses Pusher's wire format. Adding a provider is one entry here,
+ * not a change to frame parsing or subscription management.
+ */
+export const REALTIME_TRANSPORTS = Object.freeze({
+  PUSHER: Object.freeze({
+    id: 'PUSHER',
+    label: 'Pusher',
+    // Verified by anonymous handshake against the live service on 2026-08-15.
+    verified: true,
+    credentials(entry) {
+      const appKey = entry?.credentials?.app_key;
+      const cluster = entry?.credentials?.cluster;
+      if (typeof appKey !== 'string' || !appKey) return null;
+      if (typeof cluster !== 'string' || !cluster) return null;
+      return { appKey, cluster };
+    },
+    socketUrl: pusherSocketUrl,
+  }),
+  KICK: Object.freeze({
+    id: 'KICK',
+    label: 'Kick gateway',
+    // Never reached from this project. See "Realtime transport" in README.
+    verified: false,
+    credentials(entry) {
+      const token = entry?.credentials?.token || entry?.credentials?.auth_token;
+      if (typeof token !== 'string' || !token) return null;
+      return { token };
+    },
+    socketUrl: kickGatewaySocketUrl,
+  }),
+});
+
+export const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(Object.keys(REALTIME_TRANSPORTS));
+
+export function realtimeTransport(provider) {
+  return REALTIME_TRANSPORTS[String(provider || '').toUpperCase()] || null;
+}
 
 /**
  * Read the broker's answer without assuming Pusher.
@@ -104,34 +164,74 @@ export const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(['PUSHER']);
  * hardcodes the Pusher app key keeps working right up until it silently does
  * not, so an unrecognised provider must degrade to the DOM path rather than
  * throw or guess.
+ *
+ * A verified provider is preferred over an unverified one when the broker
+ * offers both, so a migration only takes effect once Kick stops offering the
+ * path this project has actually run against.
  */
 export function normalizeRealtimeConnection(payload) {
   const connections = payload?.data?.connections;
   if (!Array.isArray(connections) || connections.length === 0) {
     return { ok: false, reason: 'no-connections' };
   }
-  const usable = connections.find((entry) => SUPPORTED_REALTIME_PROVIDERS.includes(entry?.provider));
-  if (!usable) {
+  const known = connections
+    .map((entry) => ({ entry, transport: realtimeTransport(entry?.provider) }))
+    .filter((candidate) => candidate.transport);
+  if (!known.length) {
     const offered = connections.map((entry) => String(entry?.provider || 'unknown'));
     return { ok: false, reason: 'unsupported-provider', offered };
   }
-  const appKey = usable.credentials?.app_key;
-  const cluster = usable.credentials?.cluster;
-  if (typeof appKey !== 'string' || !appKey || typeof cluster !== 'string' || !cluster) {
-    return { ok: false, reason: 'incomplete-credentials' };
-  }
+  const chosen = known.find((candidate) => candidate.transport.verified) || known[0];
+  const credentials = chosen.transport.credentials(chosen.entry);
+  if (!credentials) return { ok: false, reason: 'incomplete-credentials' };
   return {
     ok: true,
-    provider: usable.provider,
-    appKey,
-    cluster,
+    provider: chosen.transport.id,
+    transport: chosen.transport,
+    verified: chosen.transport.verified,
+    ...credentials,
     mode: payload?.data?.mode || 'WEBSOCKET',
   };
 }
 
-/** Pusher's documented client handshake. The key never appears in our source. */
-export function pusherSocketUrl({ appKey, cluster }, version = '8.6.0') {
-  return `wss://ws-${cluster}.pusher.com/app/${appKey}?protocol=7&client=js&version=${version}&flash=false`;
+/**
+ * The frame protocol, shared by every transport.
+ *
+ * Kept apart from the connection method on purpose: this is what a second
+ * transport must *not* have to reimplement.
+ */
+export function realtimeSubscribeFrame(channel) {
+  // Public channels need no auth; an empty auth string is what Kick's own
+  // client sends for them.
+  return JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel } });
+}
+
+/**
+ * Classify one inbound frame. Returns a `kind` the caller dispatches on, so
+ * frame shape knowledge lives here rather than in the socket wiring.
+ */
+export function parseRealtimeFrame(raw) {
+  let frame;
+  try {
+    frame = JSON.parse(raw);
+  } catch {
+    // A run of frames we cannot read means Kick changed its payload shape.
+    // That is a different problem from silence and deserves to be visible.
+    return { kind: 'unparsable' };
+  }
+  const event = String(frame?.event || '');
+  if (event === 'pusher:connection_established') return { kind: 'established', event };
+  if (event === 'pusher_internal:subscription_succeeded') return { kind: 'subscription-ack', event };
+
+  let payload = frame?.data;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { return { kind: 'other', event }; }
+  }
+  if (!payload || typeof payload !== 'object') return { kind: 'other', event };
+
+  if (event.endsWith('ChatMessageEvent')) return { kind: 'chat-message', event, payload };
+  if (event.endsWith('MessageDeletedEvent')) return { kind: 'deletion', event, payload };
+  return { kind: 'other', event, payload };
 }
 
 /**

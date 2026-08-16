@@ -11,9 +11,14 @@ import {
   normalizeEmoteSets,
   normalizeRealtimeConnection,
   parseEmoteTokens,
+  parseRealtimeFrame,
   pusherSocketUrl,
+  kickGatewaySocketUrl,
   realtimeChannels,
   realtimeHealth,
+  realtimeSubscribeFrame,
+  realtimeTransport,
+  REALTIME_TRANSPORTS,
 } from '../src/api.mjs';
 import { rankEmoteUsage, recordEmoteUse, unusedEmotes } from '../src/core.mjs';
 
@@ -47,6 +52,91 @@ test('the realtime broker is read rather than assumed to be Pusher', () => {
     normalizeRealtimeConnection({ data: { connections: [{ provider: 'PUSHER', credentials: {} }] } }).reason,
     'incomplete-credentials',
   );
+});
+
+test('a second realtime transport is an added entry, not a rewrite', () => {
+  // The seam: every transport supplies credentials + a URL, and nothing else.
+  // Frame parsing and subscription management below are shared by all of them.
+  for (const transport of Object.values(REALTIME_TRANSPORTS)) {
+    assert.equal(typeof transport.credentials, 'function', `${transport.id} needs credentials()`);
+    assert.equal(typeof transport.socketUrl, 'function', `${transport.id} needs socketUrl()`);
+    assert.equal(typeof transport.verified, 'boolean', `${transport.id} must state whether it is verified`);
+  }
+
+  // Kick's own gateway takes a token where Pusher takes a key and cluster.
+  assert.equal(
+    kickGatewaySocketUrl({ token: 'abc/123' }),
+    'wss://websockets.kick.com/viewer/v1/connect?token=abc%2F123',
+  );
+  assert.equal(realtimeTransport('kick').id, 'KICK');
+  assert.equal(realtimeTransport('pusher').id, 'PUSHER');
+  assert.equal(realtimeTransport('ABLY'), null);
+  assert.equal(realtimeTransport(undefined), null);
+
+  // Kick's gateway is registered but has never been contacted from this
+  // project, so it must not claim to be verified.
+  assert.equal(REALTIME_TRANSPORTS.KICK.verified, false);
+  assert.equal(REALTIME_TRANSPORTS.PUSHER.verified, true);
+
+  // Broker naming the gateway alone: usable, and flagged unverified.
+  const gateway = normalizeRealtimeConnection({
+    data: { connections: [{ provider: 'KICK', credentials: { token: 'tok' } }] },
+  });
+  assert.equal(gateway.ok, true);
+  assert.equal(gateway.provider, 'KICK');
+  assert.equal(gateway.verified, false);
+  assert.equal(gateway.transport.socketUrl(gateway), 'wss://websockets.kick.com/viewer/v1/connect?token=tok');
+
+  // Offered both, the verified one wins: a migration only lands once Kick
+  // stops offering the path this build has actually run against.
+  const both = normalizeRealtimeConnection({
+    data: {
+      connections: [
+        { provider: 'KICK', credentials: { token: 'tok' } },
+        { provider: 'PUSHER', credentials: { app_key: 'k', cluster: 'us2' } },
+      ],
+    },
+  });
+  assert.equal(both.provider, 'PUSHER');
+  assert.equal(both.verified, true);
+
+  // A known provider with the wrong credential shape is incomplete, not usable.
+  assert.equal(
+    normalizeRealtimeConnection({ data: { connections: [{ provider: 'KICK', credentials: {} }] } }).reason,
+    'incomplete-credentials',
+  );
+});
+
+test('frame parsing is shared by every transport and classifies by kind', () => {
+  // Subscription management is one function, so a new transport reuses it.
+  assert.equal(
+    realtimeSubscribeFrame('chatrooms.88.v2'),
+    '{"event":"pusher:subscribe","data":{"auth":"","channel":"chatrooms.88.v2"}}',
+  );
+
+  assert.equal(parseRealtimeFrame('not json').kind, 'unparsable');
+  assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'pusher:connection_established' })).kind, 'established');
+  assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'pusher_internal:subscription_succeeded' })).kind, 'subscription-ack');
+
+  // Kick double-encodes `data` as a JSON string; both forms must classify.
+  const nested = parseRealtimeFrame(JSON.stringify({
+    event: 'App\\Events\\ChatMessageEvent',
+    data: JSON.stringify({ id: 'm1', content: 'hi' }),
+  }));
+  assert.equal(nested.kind, 'chat-message');
+  assert.equal(nested.payload.id, 'm1');
+
+  const plain = parseRealtimeFrame(JSON.stringify({
+    event: 'App\\Events\\MessageDeletedEvent',
+    data: { id: 'm2' },
+  }));
+  assert.equal(plain.kind, 'deletion');
+  assert.equal(plain.payload.id, 'm2');
+
+  // Anything else is 'other' rather than throwing or being mistaken for a message.
+  assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'App\\Events\\SomethingNew', data: {} })).kind, 'other');
+  assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: 'not json' })).kind, 'other');
+  assert.equal(parseRealtimeFrame(JSON.stringify({ event: 'x', data: null })).kind, 'other');
 });
 
 test('realtime channel names keep Kick\'s inconsistent separators', () => {

@@ -140,6 +140,8 @@ const state = {
     reconnectAt: 0,
     reconnectAttempts: 0,
     provider: '',
+    providerVerified: true,
+    lastLiveAt: 0,
     apiDrift: [],
   },
   emoteUsage: readEmoteUsage(),
@@ -1732,6 +1734,8 @@ function teardownRealtime() {
   state.live.socketState = 'offline';
   state.live.subscribed = [];
   state.live.provider = '';
+  state.live.providerVerified = true;
+  state.live.lastLiveAt = 0;
   try { socket?.close(); } catch { /* already gone */ }
 }
 
@@ -1763,9 +1767,13 @@ async function connectRealtime() {
   }
 
   state.live.provider = connection.provider;
+  state.live.providerVerified = connection.verified;
   let socket;
   try {
-    socket = new WebSocket(pusherSocketUrl(connection));
+    // The transport owns the URL; everything below is protocol, shared by all
+    // of them, so a second provider is an entry in REALTIME_TRANSPORTS rather
+    // than a second copy of this function.
+    socket = new WebSocket(connection.transport.socketUrl(connection));
   } catch {
     state.live.socketState = 'offline';
     return;
@@ -1779,9 +1787,7 @@ async function connectRealtime() {
     state.live.lastFrameAt = Date.now();
     state.live.reconnectAttempts = 0;
     for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
-      // Public channels need no auth; an empty auth string is what Kick's own
-      // client sends for them.
-      socket.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: name } }));
+      socket.send(realtimeSubscribeFrame(name));
       state.live.subscribed.push(name);
     }
     refreshLiveDiagnostics();
@@ -1791,6 +1797,16 @@ async function connectRealtime() {
     if (state.live.socket !== socket) return;
     state.live.socket = null;
     state.live.socketState = 'offline';
+    // An unverified transport that never delivered a frame is a migration this
+    // build has not been proven against. Retrying it forever would keep chat
+    // features broken silently; degrading to the DOM path says so instead.
+    if (!state.live.providerVerified && !state.live.lastLiveAt) {
+      state.live.socketState = 'unsupported';
+      state.live.catalogError = `Kick's ${connection.transport.label} transport did not connect; chat features fall back to the page.`;
+      recordApiDrift('realtime', 'unverified-transport-failed', connection.transport.id);
+      refreshLiveDiagnostics();
+      return;
+    }
     scheduleRealtimeReconnect();
   });
   socket.addEventListener('error', () => { state.live.socketState = 'error'; });
@@ -1806,29 +1822,23 @@ function scheduleRealtimeReconnect() {
 
 function onRealtimeFrame(event) {
   state.live.lastFrameAt = Date.now();
-  let frame;
-  try {
-    frame = JSON.parse(event.data);
-  } catch {
-    // A run of frames we cannot read means Kick changed its payload shape.
-    // That is a different problem from silence and deserves to be visible.
+  const frame = parseRealtimeFrame(event.data);
+  if (frame.kind === 'unparsable') {
     state.live.unparsable += 1;
     refreshLiveDiagnostics();
     return;
   }
   state.live.unparsable = 0;
-  if (frame.event === 'pusher:connection_established') { state.live.socketState = 'live'; refreshLiveDiagnostics(); return; }
-  if (frame.event === 'pusher_internal:subscription_succeeded') return;
-
-  let payload = frame.data;
-  if (typeof payload === 'string') {
-    try { payload = JSON.parse(payload); } catch { return; }
+  if (frame.kind === 'established') {
+    state.live.socketState = 'live';
+    // Proof this transport actually works, which is what lets an unverified
+    // one reconnect normally instead of degrading on its first close.
+    state.live.lastLiveAt = Date.now();
+    refreshLiveDiagnostics();
+    return;
   }
-  if (!payload || typeof payload !== 'object') return;
-
-  const name = String(frame.event || '');
-  if (name.endsWith('ChatMessageEvent')) onRealtimeChatMessage(payload);
-  else if (name.endsWith('MessageDeletedEvent')) onRealtimeDeletion(payload);
+  if (frame.kind === 'chat-message') onRealtimeChatMessage(frame.payload);
+  else if (frame.kind === 'deletion') onRealtimeDeletion(frame.payload);
 }
 
 function onRealtimeChatMessage(payload) {
@@ -1931,7 +1941,10 @@ function liveStatusSummary() {
     unparsable: state.live.unparsable,
     now: Date.now(),
   });
-  parts.push(`Chat events: ${health.state}${health.detail ? ` — ${health.detail}` : ''}`);
+  const via = state.live.provider
+    ? ` via ${realtimeTransport(state.live.provider)?.label || state.live.provider}${state.live.providerVerified ? '' : ' (unverified transport)'}`
+    : '';
+  parts.push(`Chat events: ${health.state}${via}${health.detail ? ` — ${health.detail}` : ''}`);
   if (state.live.rarity) parts.push(`Rarity resolved for ${state.live.rarity.matched.length} of ${state.live.rarity.total} collectibles.`);
   if (state.live.collisions.length) parts.push(`${state.live.collisions.length} emote name${state.live.collisions.length === 1 ? '' : 's'} shadowed.`);
   if (state.live.catalogError) parts.push(state.live.catalogError);

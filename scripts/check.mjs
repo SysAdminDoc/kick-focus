@@ -215,6 +215,20 @@ const checks = [
     && source.includes('endpoints.realtimeChat')
     // The app key must never be written in this source; it is read at runtime.
     && !source.includes('32cbd69e4b950bf97679')],
+  // The transport (URL + credentials) is the only per-provider part. If the
+  // socket wiring ever inlines a subscribe frame or a JSON.parse of a frame
+  // again, a second provider becomes a rewrite instead of a registry entry.
+  ['realtime transport is swappable without touching the frame protocol',
+    source.includes('REALTIME_TRANSPORTS')
+    && source.includes('connection.transport.socketUrl(connection)')
+    && source.includes('realtimeSubscribeFrame')
+    && source.includes('parseRealtimeFrame')
+    && !source.includes("event: 'pusher:subscribe', data: { auth: '', channel: name }")],
+  // An unverified transport must never be described as working.
+  ['an unverified realtime transport degrades and says so',
+    source.includes('providerVerified')
+    && source.includes('unverified-transport-failed')
+    && source.includes('(unverified transport)')],
   ['sources the emote catalog from the API but keeps the DOM fallback',
     source.includes('refreshEmoteCatalog')
     && source.includes('normalizeEmoteSets')

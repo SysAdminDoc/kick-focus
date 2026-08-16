@@ -117,6 +117,14 @@ Since 1.5.0 Kick Focus calls Kick's own endpoints rather than only scraping the 
 
 Multi-stream embeds Kick's own player and popout chat, so playback, subscriptions, and entitlements remain entirely Kick's.
 
+### Realtime transport
+
+Chat events arrive over whichever realtime provider Kick's own broker names, so no connection key is written in this source. Two providers are registered: the hosted **Pusher** path, which this project has run against, and **Kick's own gateway** (`websockets.kick.com`), which it has not. They share one wire protocol — the same subscribe frames and event payloads — so only the handshake differs, and adding a third is one registry entry rather than a rewrite.
+
+When the broker offers both, the verified one is used. If it ever offers only the gateway, Kick Focus attempts it and reports the transport as unverified; if that connection fails it degrades to reading the page and says so rather than retrying a path it cannot vouch for.
+
+One caveat worth stating plainly, because it is widely reported the other way round: **a cross-origin WebSocket is not blocked by CORS.** The handshake carries an `Origin` header and the server decides; there is no preflight and no `Access-Control-Allow-Origin` requirement. What can actually block the gateway from a page context is the server rejecting the origin, or its Cloudflare front requiring a token the page has not been issued. Which of those applies is untested here, so the userscript build's ability to follow a forced migration remains unproven.
+
 ## Credits
 
 - The blocked-preflight fix is adapted from [KickCX/KickFixPlayerLoading](https://github.com/KickCX/KickFixPlayerLoading) (MIT).
