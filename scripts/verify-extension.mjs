@@ -378,6 +378,53 @@ try {
       && locale.spanish?.toast === 'Escribe un nombre de canal o una URL.',
     locale.ok ? `count "${locale.english?.count}" -> "${locale.spanish?.count}"; toast "${locale.english?.toast}" -> "${locale.spanish?.toast}"` : locale.why);
 
+  // Typing an emote name reaches into Kick's own composer, so prove against a
+  // real contenteditable that the plain name lands at the caret and that
+  // nothing in the path submits: no Enter, no send click, no form submit.
+  const insertProbe = await evaluate(pageClient, `(async () => {
+    const host = document.getElementById('kick-focus-root');
+    const shadow = host && host.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 400));
+    const box = document.createElement('div');
+    box.setAttribute('contenteditable', 'true');
+    box.setAttribute('role', 'textbox');
+    box.setAttribute('data-testid', 'chat-input');
+    box.style.cssText = 'position:fixed;left:4px;bottom:4px;width:200px;height:32px';
+    document.body.append(box);
+    const submits = [];
+    for (const type of ['keydown', 'keypress', 'submit']) {
+      document.addEventListener(type, (event) => {
+        if (type === 'submit' || event.key === 'Enter') submits.push(type + ':' + (event.key || ''));
+      }, true);
+    }
+    shadow.querySelector('[data-page="content"]').click();
+    await settle();
+    // The action is gated by its own setting, not merely by the button being
+    // rendered — so turn it on the way a user would.
+    const toggle = shadow.querySelector('[data-set="content.insertEmoteName"]');
+    if (!toggle) { box.remove(); return { ok: false, why: 'no insert-name setting' }; }
+    if (toggle.getAttribute('aria-checked') !== 'true') { toggle.click(); await settle(); }
+    // The library lives inside the bundle IIFE, so take a key from a rendered
+    // card rather than reaching for a private binding.
+    const seeded = shadow.querySelector('[data-action="insert-sticker-name"]');
+    if (!seeded) { box.remove(); return { ok: false, why: 'library is empty on this profile' }; }
+    seeded.click();
+    await settle();
+    const typed = box.textContent;
+    const toast = String(shadow.querySelector('.kf-toast-text')?.textContent || '');
+    box.remove();
+    return { ok: true, typed, toast, submits };
+  })()`);
+  const insert = insertProbe.value || {};
+  record('typing an emote name inserts the plain name at the caret and never sends',
+    insert.ok === true
+      && typeof insert.typed === 'string' && insert.typed.length > 0
+      && /^[A-Za-z0-9_]+$/.test(insert.typed)
+      && !insert.typed.includes('[emote:')
+      && Array.isArray(insert.submits) && insert.submits.length === 0,
+    insert.ok ? `typed ${JSON.stringify(insert.typed)}; submit-shaped events ${JSON.stringify(insert.submits)}` : insert.why);
+
   // The hover card is built from a synthetic annotated image rather than from
   // whatever chat happened to say during the run: the wiring under test is the
   // delegated listener and the clamping, and waiting for a real emote to arrive

@@ -56,6 +56,7 @@ import {
   MULTISTREAM_MAX,
   normalizeShortcut,
   emoteTooltipText,
+  insertionPlanFor,
   findShortcutConflict,
   planStorageCommit,
   topmostOverlayLayer,
@@ -106,6 +107,51 @@ test('shortcut reassignment rejects a value already bound to another action (REA
   assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
   assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
 });
+
+test('an emote insertion plan carries the plain name and never the wire token', () => {
+  const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];
+
+  const plain = insertionPlanFor({ name: 'KEKW', id: 4821 }, [], 'observed');
+  assert.equal(plain.ok, true);
+  assert.equal(plain.text, 'KEKW');
+  assert.equal(plain.sendable, true);
+  assert.equal(plain.warning, '');
+  // The id must not appear anywhere in the plan — emitting `[emote:4821:KEKW]`
+  // is exactly the entitlement bypass this boundary exists to prevent.
+  assert.equal(JSON.stringify(plan_has_no_id(plain)), 'true');
+
+  // A descriptor that already holds a wire token is refused, not repaired into
+  // something that looks close enough.
+  for (const name of ['[emote:1:KEKW]', 'two words', 'colon:name', 'bad[bracket', '', '   ']) {
+    const refused = insertionPlanFor({ name }, [], 'observed');
+    assert.equal(refused.ok, false, `${JSON.stringify(name)} must be refused`);
+    assert.equal(refused.text, '');
+  }
+  assert.equal(insertionPlanFor(null, [], 'observed').ok, false);
+  assert.equal(insertionPlanFor({ name: 'a'.repeat(65) }, [], 'observed').ok, false);
+
+  // Subscriber-only: the public name still copies, but the plan says plainly
+  // that typing it will not produce the emote.
+  const locked = insertionPlanFor({ name: 'SubOnly' }, [], 'locked');
+  assert.equal(locked.ok, true);
+  assert.equal(locked.text, 'SubOnly');
+  assert.equal(locked.sendable, false);
+  assert.match(locked.warning, /subscriber-only/);
+
+  // Shadowed: name which emote a typed name actually sends.
+  const shadowed = insertionPlanFor({ name: 'PogChamp' }, collisions, 'channel');
+  assert.equal(shadowed.text, 'PogChamp');
+  assert.match(shadowed.warning, /shadows PogChamp — typing it sends bigchannel/);
+  // A collision with no recorded winner still warns without inventing one.
+  assert.match(insertionPlanFor({ name: 'PogChamp' }, [{ name: 'PogChamp' }], 'channel').warning, /may send a different emote/);
+  // Locked outranks shadowed: "you cannot send this" is the more useful fact.
+  assert.match(insertionPlanFor({ name: 'PogChamp' }, collisions, 'locked').warning, /subscriber-only/);
+});
+
+/** No field of a plan may carry the emote id, in any form. */
+function plan_has_no_id(plan) {
+  return !JSON.stringify(plan).includes('4821');
+}
 
 test('the chat emote hover card names the set, access, capture and shadowing winner', () => {
   const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];

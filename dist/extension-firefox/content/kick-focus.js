@@ -52,6 +52,10 @@ const DEFAULT_SETTINGS = Object.freeze({
     chatHighlights: false,
     organizeChatStickers: true,
     clickChatEmotes: true,
+    // Off by default: this one types into Kick's chat input. Copying a name to
+    // the clipboard needs no permission and always ships; putting characters in
+    // someone's message box is an opt-in.
+    insertEmoteName: false,
     // Where a newly favorited emote lands. Global by default: changing this
     // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
@@ -231,6 +235,55 @@ function emoteTooltipText(entry, collisions = [], saved = false) {
 }
 
 /**
+ * A Kick emote name as it may be typed into chat: the plain token, nothing else.
+ *
+ * This is the boundary that keeps "use an emote you have seen" from becoming
+ * "send an emote you do not own". Kick's wire form is `[emote:<id>:<name>]`,
+ * and putting that in the input is an entitlement bypass — so a name carrying
+ * a bracket, colon, or whitespace is refused outright rather than sanitised
+ * into something that looks close enough.
+ */
+const PLAIN_EMOTE_NAME = /^[A-Za-z0-9_]{1,64}$/;
+
+/**
+ * What may be copied or typed for one recorded emote.
+ *
+ * Emotes discovered in chat are dead weight outside the library manager: you
+ * can see them, but not use them. This makes the *name* available while leaving
+ * entitlement exactly where Kick put it — the name is what a user would type by
+ * hand, and typing it resolves through Kick's own map or does nothing.
+ *
+ * `text` is always the plain name. There is no branch that emits an id or a
+ * wire token, and nothing here sends anything: the caller inserts at the caret
+ * and stops.
+ */
+function insertionPlanFor(descriptor, collisions = [], access = '') {
+  const name = isRecord(descriptor) ? String(descriptor.name ?? '').trim() : '';
+  if (!name) return { ok: false, text: '', warning: '', sendable: false, reason: 'unnamed' };
+  if (!PLAIN_EMOTE_NAME.test(name)) {
+    // A descriptor that already holds a wire token, or a name with characters
+    // chat would not treat as one token, is refused rather than repaired.
+    return { ok: false, text: '', warning: '', sendable: false, reason: 'not-a-plain-name' };
+  }
+
+  // Subscriber-only stays subscriber-only. The name copies — it is public — but
+  // the plan says plainly that typing it will not produce the emote, instead of
+  // letting the user discover that in a live chat.
+  const sendable = access !== 'locked';
+  const collision = (Array.isArray(collisions) ? collisions : [])
+    .find((item) => isRecord(item) && item.name === name);
+  const winner = isRecord(collision?.winner) ? collision.winner.setName : '';
+  const warning = !sendable
+    ? `${name} is subscriber-only, so typing it will not send the emote.`
+    : collision
+      ? (winner
+        ? `Another set shadows ${name} — typing it sends ${winner}'s emote.`
+        : `Another set shadows ${name}, so typing it may send a different emote.`)
+      : '';
+  return { ok: true, text: name, warning, sendable, reason: '' };
+}
+
+/**
  * The overlay layers this build can stack, outermost last. The first one that
  * is open is the one on top.
  *
@@ -379,6 +432,7 @@ function normalizeSettings(input) {
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
+      insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
@@ -9080,6 +9134,12 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canales ocultos. Cuentan para el límite de seguridad.',
     'channel': 'canal',
     'channels': 'canales',
+    'Type an emote name into chat': 'Escribir el nombre de un emote en el chat',
+    'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Añade una acción Escribir en el chat junto a Copiar nombre en la biblioteca de emotes. Escribe solo el nombre en la posición del cursor y se detiene ahí: nunca el código interno, nunca un id, y nunca envía el mensaje.',
+    'That emote has no plain name to copy.': 'Ese emote no tiene un nombre simple que copiar.',
+    'That emote has no plain name to type.': 'Ese emote no tiene un nombre simple que escribir.',
+    'Open a channel chat first.': 'Abre primero el chat de un canal.',
+    'Kick’s chat box did not accept the text. The name is on your clipboard instead.': 'El cuadro de chat de Kick no aceptó el texto. El nombre está en tu portapapeles.',
     'Seen available': 'Visto como disponible',
     'Seen in chat': 'Visto en el chat',
     'Click to save': 'Haz clic para guardar',
@@ -9419,6 +9479,12 @@ const TRANSLATIONS = {
     'channels hidden. These count toward the fail-open ceiling.': 'canais ocultos. Eles contam para o limite de segurança.',
     'channel': 'canal',
     'channels': 'canais',
+    'Type an emote name into chat': 'Digitar o nome de um emote no chat',
+    'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Adiciona uma ação Digitar no chat ao lado de Copiar nome na biblioteca de emotes. Digita apenas o nome na posição do cursor e para por aí: nunca o código interno, nunca um id, e nunca envia a mensagem.',
+    'That emote has no plain name to copy.': 'Esse emote não tem um nome simples para copiar.',
+    'That emote has no plain name to type.': 'Esse emote não tem um nome simples para digitar.',
+    'Open a channel chat first.': 'Abra primeiro o chat de um canal.',
+    'Kick’s chat box did not accept the text. The name is on your clipboard instead.': 'A caixa de chat do Kick não aceitou o texto. O nome está na sua área de transferência.',
     'Seen available': 'Visto como disponível',
     'Seen in chat': 'Visto no chat',
     'Click to save': 'Clique para salvar',
@@ -9941,6 +10007,8 @@ function renderStickerLibraryManager() {
       <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}${lock.locked ? `<small class="kf-sticker-lock">${escapeHtml(lock.reason)}${lock.unlockUrl ? ` <a href="${escapeHtml(lock.unlockUrl)}" target="_blank" rel="noopener">Unlock on Kick</a>` : ''}</small>` : ''}</div>
       <div class="kf-sticker-library-actions">
         <a class="kf-button kf-button-small" href="${escapeHtml(sticker.src)}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(sticker.name)} artwork">Open artwork</a>
+        <button type="button" class="kf-button kf-button-small" data-action="copy-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="Copy the name ${escapeHtml(sticker.name)}">Copy name</button>
+        ${state.settings.content.insertEmoteName ? `<button type="button" class="kf-button kf-button-small" data-action="insert-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="Type the name ${escapeHtml(sticker.name)} into chat">Type in chat</button>` : ''}
         <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
         <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>
         <select class="kf-select" data-kf-sticker-assignment="${escapeHtml(sticker.key)}" aria-label="Custom group for ${escapeHtml(sticker.name)}">${stickerGroupOptions(groupId)}</select>
@@ -10189,6 +10257,7 @@ function renderContentPage() {
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
         ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
+        ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
         ${row('New favorites apply to', 'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.', segmented('content.favoriteScope', value.favoriteScope, [['global', 'Everywhere'], ['channel', 'This channel']]))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
@@ -10547,6 +10616,8 @@ function onInterfaceClick(event) {
   else if (action === 'export') exportSettings();
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
   else if (action === 'undo-import') undoImport();
+  else if (action === 'copy-sticker-name') copyStickerName(actionTarget);
+  else if (action === 'insert-sticker-name') insertStickerName(actionTarget);
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
@@ -10979,6 +11050,79 @@ function undoImport() {
   renderSettingsPage();
   scheduleApply(0);
   showToast('Import undone — your previous settings are back.');
+}
+
+function libraryStickerFor(target) {
+  const key = target?.dataset?.kfStickerKey;
+  return key ? state.stickerPreferences.library.get(key) || null : null;
+}
+
+function emoteInsertionPlan(sticker) {
+  return insertionPlanFor(sticker, state.live.collisions, sticker?.access);
+}
+
+async function copyStickerName(target) {
+  const sticker = libraryStickerFor(target);
+  const plan = emoteInsertionPlan(sticker);
+  if (!plan.ok) {
+    showToast('That emote has no plain name to copy.', true);
+    return;
+  }
+  if (!await copyText(plan.text)) {
+    showToast('Could not reach the clipboard.', true);
+    return;
+  }
+  showToast(plan.warning ? `Copied ${plan.text}. ${plan.warning}` : `Copied ${plan.text}.`, Boolean(plan.warning));
+}
+
+/**
+ * Kick's own message box for the channel you are on.
+ *
+ * Deliberately not the multi-stream grid: those chats are cross-origin
+ * `player.kick.com` frames whose documents cannot be reached, and Kick blocks
+ * sending from an embedded chat anyway. Typing into the page's own input is the
+ * only target, and it must be the real one — a contenteditable that is not
+ * Kick's would be an arbitrary write into the page.
+ */
+function chatMessageInput() {
+  if (multistreamOpen()) return null;
+  const input = document.querySelector('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]');
+  if (!input || input.closest('[data-kf-multistream-backdrop], iframe')) return null;
+  return input.isContentEditable || input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input : null;
+}
+
+/**
+ * Type the plain name at the caret. Never sends.
+ *
+ * `execCommand('insertText')` is the only path: it goes through the editor's own
+ * input handling, so Kick's composer sees a real edit and keeps its state
+ * consistent. There is deliberately no `textContent` fallback — writing text
+ * directly into a rich editor leaves its internal model out of sync with the
+ * DOM, and a message assembled that way is not one the user composed. No
+ * synthetic Enter, no send-button click, anywhere in this path.
+ */
+function insertStickerName(target) {
+  // The setting gates the action, not just the button. Hiding a control is
+  // presentation; this path types into someone's message box.
+  if (!state.settings.content.insertEmoteName) return;
+  const sticker = libraryStickerFor(target);
+  const plan = emoteInsertionPlan(sticker);
+  if (!plan.ok) {
+    showToast('That emote has no plain name to type.', true);
+    return;
+  }
+  const input = chatMessageInput();
+  if (!input) {
+    showToast('Open a channel chat first.', true);
+    return;
+  }
+  input.focus();
+  if (!document.execCommand('insertText', false, plan.text)) {
+    showToast('Kick’s chat box did not accept the text. The name is on your clipboard instead.', true);
+    copyText(plan.text);
+    return;
+  }
+  showToast(plan.warning ? `Typed ${plan.text}. ${plan.warning}` : `Typed ${plan.text} at your cursor.`, Boolean(plan.warning));
 }
 
 async function copyText(text) {

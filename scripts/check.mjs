@@ -123,6 +123,15 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  // Typing an emote name must stay a name. The wire form `[emote:id:name]` is
+  // entitlement, and no path here may compose one, fall back to writing raw
+  // text into Kick's editor, or send anything.
+  ['emote name insertion stays a plain name, never sends, and has no raw-text fallback',
+    bundleTargets.every(([, bundleSource]) => bundleSource.includes('function insertionPlanFor')
+      && bundleSource.includes("execCommand('insertText', false, plan.text)")
+      && bundleSource.includes('const PLAIN_EMOTE_NAME')
+      && !/\[emote:\$\{/.test(bundleSource)
+      && !/insertStickerName[\s\S]{0,1200}?(key:\s*'Enter'|click\(\)|form\.submit)/.test(bundleSource))],
   // The hover card must stay keyed to the save affordance and stay out of the
   // pointer's way: a card that can be hovered fights the emote for the hover,
   // and one keyed on "any image in chat" annotates unrelated injected content.

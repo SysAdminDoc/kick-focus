@@ -65,13 +65,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: `npm run verify` green AND `npm run verify:extension` green after the move (a green offline build alone does not prove a refactor equivalent); no symbol asserted only by `source.includes`; bundle parses under `node --check`.
   Complexity: L
 
-- [ ] R-17 — Make chat-'observed' emotes usable: copy-name first, gated name-insert second (operator-requested)
-  Why: observed emotes are dead weight outside the library manager; users want to use them without an entitlement bypass.
-  Evidence: phase1b E5 (design-check CONFIRMED-WITH-CONDITIONS) — src/runtime.js:2716-2717,5811,6249-6258; src/api.mjs:481-482; README.md:105,114.
-  Touches: pure `insertionPlanFor(descriptor,collisions,access)` in core.mjs; clipboard copy + focus/caret/execCommand in runtime.js; off-by-default setting.
-  Acceptance: pure function in core.mjs under node:test — inserts the plain NAME only (never the `[emote:id:name]` wire token or id — that is an entitlement bypass), NO auto-send ever (no synthetic Enter, no send-button click, never targets multi-stream embedded chat), insertion via `execCommand('insertText')` with NO raw textContent fallback, warns on shadowed names; copy-name ships unconditionally, insert-into-input behind an off-by-default setting.
-  Complexity: M
-
 - [ ] R-18 — Picker "Most Used"/recent sections + organizer scale pass (operator-requested)
   Why: 7TV/BTTV ship recency/frequency sections KF lacks, and full innerHTML rebuilds break down before the 2400 cap does — urgent once R-06 inflates the library. (Two independent features: presentational Most-Used, and the organizer windowing pass.)
   Evidence: phase1b E7/E8 — src/runtime.js:3443,3472-3529,5688-5767; SevenTV discussion #379; FFZ emote_menu.jsx.

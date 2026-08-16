@@ -47,6 +47,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
     chatHighlights: false,
     organizeChatStickers: true,
     clickChatEmotes: true,
+    // Off by default: this one types into Kick's chat input. Copying a name to
+    // the clipboard needs no permission and always ships; putting characters in
+    // someone's message box is an opt-in.
+    insertEmoteName: false,
     // Where a newly favorited emote lands. Global by default: changing this
     // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
@@ -226,6 +230,55 @@ export function emoteTooltipText(entry, collisions = [], saved = false) {
 }
 
 /**
+ * A Kick emote name as it may be typed into chat: the plain token, nothing else.
+ *
+ * This is the boundary that keeps "use an emote you have seen" from becoming
+ * "send an emote you do not own". Kick's wire form is `[emote:<id>:<name>]`,
+ * and putting that in the input is an entitlement bypass — so a name carrying
+ * a bracket, colon, or whitespace is refused outright rather than sanitised
+ * into something that looks close enough.
+ */
+const PLAIN_EMOTE_NAME = /^[A-Za-z0-9_]{1,64}$/;
+
+/**
+ * What may be copied or typed for one recorded emote.
+ *
+ * Emotes discovered in chat are dead weight outside the library manager: you
+ * can see them, but not use them. This makes the *name* available while leaving
+ * entitlement exactly where Kick put it — the name is what a user would type by
+ * hand, and typing it resolves through Kick's own map or does nothing.
+ *
+ * `text` is always the plain name. There is no branch that emits an id or a
+ * wire token, and nothing here sends anything: the caller inserts at the caret
+ * and stops.
+ */
+export function insertionPlanFor(descriptor, collisions = [], access = '') {
+  const name = isRecord(descriptor) ? String(descriptor.name ?? '').trim() : '';
+  if (!name) return { ok: false, text: '', warning: '', sendable: false, reason: 'unnamed' };
+  if (!PLAIN_EMOTE_NAME.test(name)) {
+    // A descriptor that already holds a wire token, or a name with characters
+    // chat would not treat as one token, is refused rather than repaired.
+    return { ok: false, text: '', warning: '', sendable: false, reason: 'not-a-plain-name' };
+  }
+
+  // Subscriber-only stays subscriber-only. The name copies — it is public — but
+  // the plan says plainly that typing it will not produce the emote, instead of
+  // letting the user discover that in a live chat.
+  const sendable = access !== 'locked';
+  const collision = (Array.isArray(collisions) ? collisions : [])
+    .find((item) => isRecord(item) && item.name === name);
+  const winner = isRecord(collision?.winner) ? collision.winner.setName : '';
+  const warning = !sendable
+    ? `${name} is subscriber-only, so typing it will not send the emote.`
+    : collision
+      ? (winner
+        ? `Another set shadows ${name} — typing it sends ${winner}'s emote.`
+        : `Another set shadows ${name}, so typing it may send a different emote.`)
+      : '';
+  return { ok: true, text: name, warning, sendable, reason: '' };
+}
+
+/**
  * The overlay layers this build can stack, outermost last. The first one that
  * is open is the one on top.
  *
@@ -374,6 +427,7 @@ export function normalizeSettings(input) {
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
+      insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),

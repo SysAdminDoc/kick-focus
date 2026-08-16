@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Added
 
+- **Recorded emotes can now be used, not just looked at.** Every emote in the library gets Copy name, and an off-by-default setting adds Type in chat, which puts the plain name at your cursor in Kick's own message box. It types the name and nothing else — never Kick's internal `[emote:id:name]` token, never an id — and it never sends the message, so entitlement stays exactly where Kick put it. Subscriber-only and shadowed names say so when you copy or type them, instead of letting you find out in a live chat.
 - **Hovering a chat emote tells you what it is before you save it.** A small card names the emote, the Kick set it belongs to, its access level, when you first saw it, and whether it is already in your collection — all of which was recorded but only reachable by opening the library manager. If another channel's emote shadows the name, the card says which one typing that name actually sends. It follows the keyboard too, never intercepts the pointer, and stays on screen near the edges.
 
 ### Changed
