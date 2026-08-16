@@ -29,6 +29,12 @@ import {
   normalizeStickerPreferences,
   normalizeSettings,
   STICKER_PREFERENCES_SCHEMA,
+  FAVORITES_PER_SCOPE_LIMIT,
+  favoriteScope,
+  favoritesForChannel,
+  isStickerFavorite,
+  toggleStickerFavorite,
+  moveStickerFavorite,
   routeKind,
   sanitizeDiagnosticUrl,
   validateRemoteBlocklist,
@@ -66,21 +72,135 @@ test('v2 migrates the former desktop defaults without overwriting custom layout 
   assert.equal(custom.layout.chatWidth, 455);
 });
 
-test('sticker preferences keep pins, removals, and view modes bounded and local', () => {
+test('emote preferences keep favorites, removals, and view modes bounded and local', () => {
+  // Schema 4 and earlier stored a flat `pinned` array. Position in it was the
+  // order, so it migrates to ordered global favorites with nothing lost.
   const value = normalizeStickerPreferences({
     pinned: ['id:1', ' id:1 ', 'id:2', ''],
     hidden: ['id:2', 'id:3'],
     view: 'pinned',
     showHidden: true,
   });
-  assert.deepEqual(value.pinned, ['id:1']);
+  assert.deepEqual(value.favorites, [{ key: 'id:1', channel: '', order: 0 }]);
   assert.deepEqual(value.hidden, ['id:2', 'id:3']);
   assert.equal(value.view, 'pinned');
   assert.equal(value.showHidden, true);
 
+  // A longer legacy list keeps its order across the migration.
+  const ordered = normalizeStickerPreferences({ pinned: ['id:9', 'id:7', 'id:8'] });
+  assert.deepEqual(ordered.favorites.map((entry) => entry.key), ['id:9', 'id:7', 'id:8']);
+  assert.deepEqual(ordered.favorites.map((entry) => entry.order), [0, 1, 2]);
+
   assert.equal(normalizeStickerPreferences({ view: 'unexpected' }).view, 'all');
   assert.equal(normalizeStickerPreferences(null).showHidden, false);
-  assert.equal(normalizeStickerPreferences({ pinned: Array.from({ length: 2401 }, (_, index) => `id:${index}`) }).pinned.length, 2400);
+  assert.equal(
+    normalizeStickerPreferences({ pinned: Array.from({ length: 200 }, (_, index) => `id:${index}`) }).favorites.length,
+    FAVORITES_PER_SCOPE_LIMIT,
+  );
+});
+
+test('favorites are scoped per channel with a global fallback', () => {
+  const favorites = normalizeStickerPreferences({
+    favorites: [
+      { key: 'id:g1', channel: '', order: 0 },
+      { key: 'id:g2', channel: '', order: 1 },
+      { key: 'id:x1', channel: 'xqc', order: 0 },
+    ],
+  }).favorites;
+
+  // On the channel: its own first, then the globals it has not overridden.
+  assert.deepEqual(favoritesForChannel(favorites, 'xqc'), ['id:x1', 'id:g1', 'id:g2']);
+  // Anywhere else, only the globals — a channel favorite stays on its channel.
+  assert.deepEqual(favoritesForChannel(favorites, 'someone-else'), ['id:g1', 'id:g2']);
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['id:g1', 'id:g2']);
+
+  assert.equal(isStickerFavorite(favorites, 'id:x1', 'xqc'), true);
+  assert.equal(isStickerFavorite(favorites, 'id:x1', 'other'), false);
+  assert.equal(isStickerFavorite(favorites, 'id:g1', 'other'), true);
+
+  // The same emote favorited in both scopes appears once, not twice.
+  const both = normalizeStickerPreferences({
+    favorites: [{ key: 'id:a', channel: '', order: 0 }, { key: 'id:a', channel: 'xqc', order: 0 }],
+  }).favorites;
+  assert.deepEqual(favoritesForChannel(both, 'xqc'), ['id:a']);
+
+  // Scope names are validated like any other slug.
+  assert.equal(favoriteScope('XQC'), 'xqc');
+  assert.equal(favoriteScope('../evil'), '');
+  assert.equal(favoriteScope(undefined), '');
+  assert.deepEqual(favoritesForChannel(undefined, 'xqc'), []);
+});
+
+test('favorites can be reordered explicitly, within their own scope only', () => {
+  let favorites = normalizeStickerPreferences({
+    favorites: [
+      { key: 'a', channel: '', order: 0 },
+      { key: 'b', channel: '', order: 1 },
+      { key: 'c', channel: '', order: 2 },
+      { key: 'z', channel: 'xqc', order: 0 },
+    ],
+  }).favorites;
+
+  favorites = moveStickerFavorite(favorites, 'c', '', -1);
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['a', 'c', 'b']);
+  favorites = moveStickerFavorite(favorites, 'a', '', 1);
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['c', 'a', 'b']);
+
+  // Reordering a global must not disturb a channel scope.
+  assert.deepEqual(favoritesForChannel(favorites, 'xqc'), ['z', 'c', 'a', 'b']);
+
+  // Moving past either end is a no-op, not a wrap or a throw.
+  const atTop = moveStickerFavorite(favorites, 'c', '', -1);
+  assert.deepEqual(favoritesForChannel(atTop, ''), ['c', 'a', 'b']);
+  const atEnd = moveStickerFavorite(favorites, 'b', '', 1);
+  assert.deepEqual(favoritesForChannel(atEnd, ''), ['c', 'a', 'b']);
+
+  // An unknown key changes nothing.
+  assert.deepEqual(favoritesForChannel(moveStickerFavorite(favorites, 'nope', '', -1), ''), ['c', 'a', 'b']);
+});
+
+test('toggling a favorite touches one scope and respects the ceiling', () => {
+  let favorites = [];
+
+  favorites = toggleStickerFavorite(favorites, 'a', '');
+  favorites = toggleStickerFavorite(favorites, 'b', 'xqc');
+  assert.deepEqual(favoritesForChannel(favorites, 'xqc'), ['b', 'a']);
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['a']);
+
+  // Removing the channel-scoped one leaves the global untouched.
+  favorites = toggleStickerFavorite(favorites, 'b', 'xqc');
+  assert.deepEqual(favoritesForChannel(favorites, 'xqc'), ['a']);
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['a']);
+
+  // New favorites append rather than displacing an existing order.
+  favorites = toggleStickerFavorite(favorites, 'c', '');
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['a', 'c']);
+
+  // The per-scope ceiling holds, and hitting it never drops what is there.
+  let full = [];
+  for (let index = 0; index < FAVORITES_PER_SCOPE_LIMIT + 10; index += 1) {
+    full = toggleStickerFavorite(full, `k${index}`, '');
+  }
+  assert.equal(favoritesForChannel(full, '').length, FAVORITES_PER_SCOPE_LIMIT);
+  assert.equal(favoritesForChannel(full, '')[0], 'k0');
+
+  // The ceiling is per scope, so a channel still gets its own allowance.
+  const scoped = toggleStickerFavorite(full, 'chan', 'xqc');
+  assert.equal(scoped.filter((entry) => entry.channel === 'xqc').length, 1);
+});
+
+test('a hidden emote can never be favorited, in any scope', () => {
+  // Hidden wins, or the shelf keeps offering an emote the user just removed.
+  const value = normalizeStickerPreferences({
+    hidden: ['id:gone'],
+    favorites: [
+      { key: 'id:gone', channel: '', order: 0 },
+      { key: 'id:gone', channel: 'xqc', order: 0 },
+      { key: 'id:kept', channel: '', order: 1 },
+    ],
+  });
+  assert.deepEqual(value.favorites.map((entry) => entry.key), ['id:kept']);
+  assert.deepEqual(favoritesForChannel(value.favorites, 'xqc'), ['id:kept']);
 });
 
 test('sticker library keeps portable metadata, custom groups, and one assignment per sticker', () => {

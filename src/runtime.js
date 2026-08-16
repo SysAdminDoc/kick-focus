@@ -1537,9 +1537,46 @@ function readPersistentRecord(key) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+/**
+ * Which scope a favorite action applies to right now.
+ *
+ * On a channel page that is the channel, so a favorite can be scoped to where
+ * it is actually used; anywhere else it is the global scope. New favorites
+ * follow the Favorite scope setting, which defaults to global so existing
+ * muscle memory is unchanged.
+ */
+function favoriteChannel() {
+  return favoriteScope(currentChannelSlug());
+}
+
+function newFavoriteChannel() {
+  return state.settings.content.favoriteScope === 'channel' ? favoriteChannel() : '';
+}
+
+/** Ordered favorite keys for the current channel: its own first, then global. */
+function favoriteKeysInOrder() {
+  return favoritesForChannel(state.stickerPreferences.favorites, favoriteChannel());
+}
+
+function isFavorited(key) {
+  return isStickerFavorite(state.stickerPreferences.favorites, key, favoriteChannel());
+}
+
+function favoriteCount() {
+  return favoriteKeysInOrder().length;
+}
+
+/** Which scope a key is favorited in here, for labelling. '' means global. */
+function favoriteScopeOf(key) {
+  const channel = favoriteChannel();
+  const scoped = state.stickerPreferences.favorites
+    .some((entry) => entry.key === key && entry.channel === channel);
+  return scoped ? channel : '';
+}
+
 function stickerPreferencesFromValue(value) {
   return {
-    pinned: new Set(value.pinned),
+    favorites: value.favorites,
     hidden: new Set(value.hidden),
     view: value.view,
     showHidden: value.showHidden,
@@ -1553,7 +1590,7 @@ function stickerPreferencesFromValue(value) {
 function stickerPreferencesValue(preferences = state.stickerPreferences) {
   return normalizeStickerPreferences({
     schema: STICKER_PREFERENCES_SCHEMA,
-    pinned: [...preferences.pinned],
+    favorites: preferences.favorites,
     hidden: [...preferences.hidden],
     view: preferences.view,
     showHidden: preferences.showHidden,
@@ -3246,7 +3283,7 @@ function stickerDescriptors(picker) {
 
   for (const descriptor of descriptors.values()) {
     const hidden = state.stickerPreferences.hidden.has(descriptor.key);
-    const pinned = state.stickerPreferences.pinned.has(descriptor.key);
+    const pinned = isFavorited(descriptor.key);
     for (const original of descriptor.originals) {
       original.dataset.kfStickerKey = descriptor.key;
       original.dataset.kfStickerHidden = String(hidden);
@@ -3296,14 +3333,20 @@ function measureEmoteAspect(scope) {
 }
 
 function stickerProxyMarkup(descriptor) {
-  const pinned = state.stickerPreferences.pinned.has(descriptor.key);
+  const pinned = isFavorited(descriptor.key);
   const hidden = state.stickerPreferences.hidden.has(descriptor.key);
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
-  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}">
+  // Reorder controls only where order is visible and means something. Kick
+  // ranks nothing, so this is the only place an explicit order exists.
+  const ordering = pinned && state.stickerPreferences.view === 'pinned';
+  const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
+  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
     <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use emote ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <div data-kf-sticker-tools>
-      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Remove favorite' : 'Favorite'} ${safeName}" title="${pinned ? 'Remove favorite' : 'Favorite'}">${pinned ? '★' : '☆'}</button>
+      ${ordering ? `<button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="up" data-kf-sticker-key="${safeKey}" aria-label="Move ${safeName} earlier" title="Move earlier">‹</button>
+      <button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="down" data-kf-sticker-key="${safeKey}" aria-label="Move ${safeName} later" title="Move later">›</button>` : ''}
+      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Remove favorite' : 'Favorite'} ${safeName}" title="${pinned ? `Remove favorite${scope ? ` (this channel)` : ''}` : 'Favorite'}">${pinned ? '★' : '☆'}</button>
       <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${hidden ? 'Restore' : 'Remove'} ${safeName}" title="${hidden ? 'Restore' : 'Remove'}">${hidden ? '↶' : '×'}</button>
     </div>
   </div>`;
@@ -3413,10 +3456,15 @@ function renderStickerOrganizer() {
   const matches = (descriptor) => (!query || descriptor.name.toLowerCase().includes(query))
     && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
   const allVisible = descriptors.filter(matches);
-  const quickFavorites = descriptors.filter((descriptor) => state.stickerPreferences.pinned.has(descriptor.key)
-    && !state.stickerPreferences.hidden.has(descriptor.key));
+  // Favorites render in their explicit order, not in picker order — that
+  // ordering is the whole point, and the picker's own order is Kick's.
+  const favoriteOrder = favoriteKeysInOrder();
+  const byFavoriteOrder = (left, right) => favoriteOrder.indexOf(left.key) - favoriteOrder.indexOf(right.key);
+  const quickFavorites = descriptors
+    .filter((descriptor) => isFavorited(descriptor.key) && !state.stickerPreferences.hidden.has(descriptor.key))
+    .sort(byFavoriteOrder);
   const visible = state.stickerPreferences.view === 'pinned'
-    ? allVisible.filter((descriptor) => state.stickerPreferences.pinned.has(descriptor.key))
+    ? allVisible.filter((descriptor) => isFavorited(descriptor.key)).sort(byFavoriteOrder)
     : state.stickerPreferences.view === 'group'
       ? allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === state.stickerPreferences.activeGroup)
       : allVisible;
@@ -3428,7 +3476,9 @@ function renderStickerOrganizer() {
     query,
     descriptors.map((descriptor) => descriptor.key).join(','),
     String(unavailableCount),
-    [...state.stickerPreferences.pinned].join(','),
+    // Order is part of the signature: reordering changes nothing else, so
+    // without it the shelf would keep the stale arrangement on screen.
+    favoriteKeysInOrder().join(','),
     [...state.stickerPreferences.hidden].join(','),
     state.stickerPreferences.groups.map((group) => `${group.id}:${group.name}`).join(','),
     [...state.stickerPreferences.assignments].map(([key, groupId]) => `${key}:${groupId}`).join(','),
@@ -3463,7 +3513,7 @@ function renderStickerOrganizer() {
       <button type="button" data-kf-sticker-manage="true">Manage</button>
     </div>
     <div data-kf-sticker-toolbar role="group" aria-label="Emote views and filters">
-      <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Quick (${state.stickerPreferences.pinned.size})</button>
+      <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Quick (${favoriteCount()})</button>
       <button type="button" data-kf-sticker-view="all" data-active="${view === 'all'}" aria-pressed="${view === 'all'}">All (${allVisible.length})</button>
       ${groupsTab}
       <button type="button" data-kf-sticker-view="native" data-active="${view === 'native'}" aria-pressed="${view === 'native'}">Native</button>
@@ -3487,7 +3537,7 @@ function resetStickerPreferences(options = {}) {
   state.runtime.stickerLibraryFilter = 'all';
   state.runtime.stickerLibraryQuery = '';
   state.stickerPreferences = {
-    pinned: new Set(),
+    favorites: [],
     hidden: new Set(),
     view: 'all',
     showHidden: false,
@@ -3527,18 +3577,30 @@ function handleStickerAction(event) {
   }
   if ((action === 'pin' || action === 'hide') && key) rememberStickerGridScroll(target);
   if (action === 'pin' && key) {
-    if (state.stickerPreferences.pinned.has(key)) state.stickerPreferences.pinned.delete(key);
-    else {
-      state.stickerPreferences.pinned.add(key);
-      state.stickerPreferences.hidden.delete(key);
-    }
+    // Removing clears whichever scope this channel actually sees it through, so
+    // un-favoriting a global from a channel page does not silently do nothing.
+    const scope = isFavorited(key) ? favoriteScopeOf(key) : newFavoriteChannel();
+    state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferences.favorites, key, scope);
+    if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
     persistStickerPreferences();
-    announce(state.stickerPreferences.pinned.has(key) ? 'Emote pinned' : 'Emote unpinned');
+    announce(isFavorited(key) ? 'Emote pinned' : 'Emote unpinned');
+  } else if (action === 'move-favorite' && key) {
+    const earlier = target.dataset.kfStickerMove === 'up';
+    state.stickerPreferences.favorites = moveStickerFavorite(
+      state.stickerPreferences.favorites,
+      key,
+      favoriteScopeOf(key),
+      earlier ? -1 : 1,
+    );
+    persistStickerPreferences();
+    announce(earlier ? 'Emote moved earlier' : 'Emote moved later');
   } else if (action === 'hide' && key) {
     if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
     else {
       state.stickerPreferences.hidden.add(key);
-      state.stickerPreferences.pinned.delete(key);
+      // Hidden wins over favorited in every scope, or the shelf would keep
+      // offering an emote the user just removed.
+      state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
     }
     persistStickerPreferences();
     announce(state.stickerPreferences.hidden.has(key) ? 'Emote removed' : 'Emote restored');
@@ -3559,7 +3621,7 @@ function handleStickerAction(event) {
     const descriptor = state.stickerCatalog.get(key);
     for (const original of descriptor?.originals || []) {
       original.dataset.kfStickerHidden = String(state.stickerPreferences.hidden.has(key));
-      original.dataset.kfStickerPinned = String(state.stickerPreferences.pinned.has(key));
+      original.dataset.kfStickerPinned = String(isFavorited(key));
     }
   }
   applySettingsAttributes();
@@ -4397,6 +4459,11 @@ const UI_CSS = `
      overwritten. */
   .kf-sticker-changed { display: inline-flex; margin: 5px 0 0 5px; padding: 2px 5px; border: 1px solid rgba(217,139,58,.62); border-radius: 3px; color: #e0a367; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-library-item[data-changed="true"] { border-color: rgba(217,139,58,.42); }
+  /* A favorite saved for this channel only, so it is obvious why it is not
+     on the shelf elsewhere. */
+  #chat-emotes-picker-panel [data-kf-sticker-item][data-kf-sticker-scoped="true"] .kf-sticker-proxy {
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .5);
+  }
   /* A dead greyed tile teaches nothing; a reason plus Kick's own unlock path
      is the clearest possible signal that entitlements are respected. */
   .kf-sticker-lock { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.5; white-space: normal; }
@@ -4949,6 +5016,10 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidad cómoda',
     'Use compact density': 'Usar densidad compacta',
     'Change discovery spacing and save it': 'Cambia y guarda el espaciado del descubrimiento',
+    'New favorites apply to': 'Los nuevos favoritos se aplican a',
+    'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.': 'Los favoritos globales te acompañan en todas partes. Los favoritos por canal solo aparecen en el canal donde los guardaste, encima de los globales. Los favoritos existentes son globales y no se mueven.',
+    'Everywhere': 'En todas partes',
+    'This channel': 'Este canal',
     'Show badges Kick leaves out': 'Mostrar insignias que Kick omite',
     'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.': 'La respuesta del chat de Kick incluye insignias globales y de coleccionables que su propio marcado omite, dejando un hueco donde otros clientes muestran una insignia. Si la imagen no carga, se sustituye por su nombre.',
     'Hidden channels': 'Canales ocultos',
@@ -5159,6 +5230,10 @@ const TRANSLATIONS = {
     'Use comfortable density': 'Usar densidade confortável',
     'Use compact density': 'Usar densidade compacta',
     'Change discovery spacing and save it': 'Altera e salva o espaçamento da descoberta',
+    'New favorites apply to': 'Novos favoritos se aplicam a',
+    'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.': 'Os favoritos globais acompanham você em todos os lugares. Os favoritos por canal aparecem apenas no canal onde foram salvos, acima dos globais. Os favoritos existentes são globais e não são movidos.',
+    'Everywhere': 'Em todos os lugares',
+    'This channel': 'Este canal',
     'Show badges Kick leaves out': 'Mostrar selos que o Kick omite',
     'Kick’s chat payload carries collectible and global badges its own markup omits, leaving a gap where other clients show a badge. A badge image that fails to load is replaced by its name.': 'A resposta do chat do Kick traz selos globais e de colecionáveis que a própria marcação omite, deixando uma lacuna onde outros clientes mostram um selo. Se a imagem não carregar, ela é substituída pelo nome.',
     'Hidden channels': 'Canais ocultos',
@@ -5583,7 +5658,7 @@ function stickerLibrarySummary() {
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
   const observed = library.filter((sticker) => sticker.access === 'observed').length;
   const changed = countChangedStickers(library);
-  return `${library.length} recorded · ${state.stickerPreferences.pinned.size} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}`;
+  return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} locked-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}`;
 }
 
 /** First/last capture in the user's terms; '' for entries recorded before schema 4. */
@@ -5596,7 +5671,7 @@ function stickerSeenSummary(sticker) {
 }
 
 function stickerLibraryFilterMatches(sticker, filter) {
-  if (filter === 'favorites') return state.stickerPreferences.pinned.has(sticker.key);
+  if (filter === 'favorites') return isFavorited(sticker.key);
   if (filter === 'removed') return state.stickerPreferences.hidden.has(sticker.key);
   if (filter === 'changed') return stickerChangedSinceCapture(sticker);
   if (filter === 'observed') return sticker.access === 'observed';
@@ -5615,14 +5690,14 @@ function renderStickerLibraryManager() {
   const library = [...state.stickerPreferences.library.values()]
     .filter((sticker) => stickerLibraryFilterMatches(sticker, filter))
     .sort((left, right) => {
-      const favoriteDifference = Number(state.stickerPreferences.pinned.has(right.key)) - Number(state.stickerPreferences.pinned.has(left.key));
+      const favoriteDifference = Number(isFavorited(right.key)) - Number(isFavorited(left.key));
       if (favoriteDifference) return favoriteDifference;
       const removedDifference = Number(state.stickerPreferences.hidden.has(left.key)) - Number(state.stickerPreferences.hidden.has(right.key));
       return removedDifference || left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
     });
   const filters = [
     ['all', `All recorded (${state.stickerPreferences.library.size})`],
-    ['favorites', `Favorites (${state.stickerPreferences.pinned.size})`],
+    ['favorites', `Favorites (${favoriteCount()})`],
     ['removed', `Removed (${state.stickerPreferences.hidden.size})`],
     ['changed', `Changed by Kick (${countChangedStickers(state.stickerPreferences.library)})`],
     ['observed', 'Seen in chat'],
@@ -5639,7 +5714,7 @@ function renderStickerLibraryManager() {
     </div>`;
   }).join('');
   const cards = library.map((sticker) => {
-    const favorite = state.stickerPreferences.pinned.has(sticker.key);
+    const favorite = isFavorited(sticker.key);
     const removed = state.stickerPreferences.hidden.has(sticker.key);
     const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
@@ -5785,6 +5860,7 @@ function renderContentPage() {
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
+        ${row('New favorites apply to', 'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.', segmented('content.favoriteScope', value.favoriteScope, [['global', 'Everywhere'], ['channel', 'This channel']]))}
         ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
         ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
         ${row('Start playback without waiting for blocked ad scripts', 'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them — which this build does — leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.', toggle('content.fixPlayerLoading', value.fixPlayerLoading, { label: 'Start playback without waiting for blocked ad scripts' }))}
@@ -6031,18 +6107,16 @@ function toggleLibrarySticker(target, kind) {
   const key = target.dataset.kfStickerKey;
   if (!state.stickerPreferences.library.has(key)) return;
   if (kind === 'favorite') {
-    if (state.stickerPreferences.pinned.has(key)) state.stickerPreferences.pinned.delete(key);
-    else {
-      state.stickerPreferences.pinned.add(key);
-      state.stickerPreferences.hidden.delete(key);
-    }
-    saveStickerOrganization(state.stickerPreferences.pinned.has(key) ? 'Emote favorited.' : 'Emote favorite removed.');
+    const scope = isFavorited(key) ? favoriteScopeOf(key) : newFavoriteChannel();
+    state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferences.favorites, key, scope);
+    if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
+    saveStickerOrganization(isFavorited(key) ? 'Emote favorited.' : 'Emote favorite removed.');
     return;
   }
   if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
   else {
     state.stickerPreferences.hidden.add(key);
-    state.stickerPreferences.pinned.delete(key);
+    state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
   }
   saveStickerOrganization(state.stickerPreferences.hidden.has(key) ? 'Emote removed from the shelf.' : 'Emote restored.');
 }

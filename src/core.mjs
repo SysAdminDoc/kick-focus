@@ -45,6 +45,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     stickyChatPause: false,
     chatHighlights: false,
     organizeChatStickers: true,
+    // Where a newly favorited emote lands. Global by default: changing this
+    // under existing users would make favorites vanish when they switch channel.
+    favoriteScope: 'global',
     playbackDiagnostics: false,
     hiddenChannels: [],
     blocklistSubscription: false,
@@ -201,6 +204,7 @@ export function normalizeSettings(input) {
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
+      favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
@@ -659,7 +663,7 @@ export function detectContentLabels(text, context = {}) {
   };
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 4;
+export const STICKER_PREFERENCES_SCHEMA = 5;
 
 /**
  * Timestamps travel through the settings export, so an imported file can carry
@@ -785,6 +789,120 @@ function cleanStickerLibrary(input) {
   return library;
 }
 
+/**
+ * Favorites, scoped and ordered.
+ *
+ * A favorite is `{ key, channel, order }`. `channel` is a lowercased Kick slug,
+ * or `''` for a favorite that follows you everywhere. Order is explicit and
+ * per scope, because "frequently used" ranks nothing on Kick and alphabetical
+ * is not how anyone reaches for an emote.
+ *
+ * The emote's own data is not duplicated here — the library already holds a
+ * full snapshot per key, so a favorite still renders when its set is not
+ * loaded. That is the property that matters, and it costs nothing extra.
+ */
+export const FAVORITES_PER_SCOPE_LIMIT = 60;
+
+export function favoriteScope(channel) {
+  const slug = String(channel ?? '').trim().toLowerCase();
+  return /^[a-z0-9_][a-z0-9_-]{0,63}$/.test(slug) ? slug : '';
+}
+
+function cleanStickerFavorites(input, legacyPinned, hiddenSet) {
+  const entries = [];
+  const seen = new Set();
+  const add = (key, channel, order) => {
+    const scope = favoriteScope(channel);
+    const id = `${scope} ${key}`;
+    if (!key || hiddenSet.has(key) || seen.has(id)) return;
+    seen.add(id);
+    entries.push({ key, channel: scope, order: Number.isFinite(order) ? order : entries.length });
+  };
+
+  if (Array.isArray(input)) {
+    for (const raw of input) {
+      if (!isRecord(raw)) continue;
+      const key = cleanStickerKeys([raw.key], 1)[0];
+      add(key, raw.channel, Number(raw.order));
+    }
+  } else {
+    // Schema 4 and earlier stored a flat `pinned` array with no scope and no
+    // explicit order. Position in that array *was* the order, so it carries
+    // over as a global favorite and nothing is lost.
+    for (const key of cleanStickerKeys(legacyPinned)) add(key, '', entries.length);
+  }
+
+  // Renumber densely per scope so an imported file cannot smuggle sparse or
+  // colliding orders past the reorder controls.
+  const byScope = new Map();
+  for (const entry of entries) {
+    const list = byScope.get(entry.channel) || [];
+    list.push(entry);
+    byScope.set(entry.channel, list);
+  }
+  const cleaned = [];
+  for (const [, list] of byScope) {
+    list.sort((left, right) => left.order - right.order);
+    list.slice(0, FAVORITES_PER_SCOPE_LIMIT).forEach((entry, index) => {
+      cleaned.push({ key: entry.key, channel: entry.channel, order: index });
+    });
+  }
+  return cleaned;
+}
+
+/**
+ * The keys to show on a channel, in order: that channel's own favorites first,
+ * then the global ones it has not already overridden.
+ */
+export function favoritesForChannel(favorites, channel) {
+  const list = Array.isArray(favorites) ? favorites : [];
+  const scope = favoriteScope(channel);
+  const ordered = (wanted) => list
+    .filter((entry) => entry.channel === wanted)
+    .sort((left, right) => left.order - right.order)
+    .map((entry) => entry.key);
+  const scoped = scope ? ordered(scope) : [];
+  const seen = new Set(scoped);
+  return [...scoped, ...ordered('').filter((key) => !seen.has(key))];
+}
+
+export function isStickerFavorite(favorites, key, channel) {
+  return favoritesForChannel(favorites, channel).includes(key);
+}
+
+/** Add or remove one favorite in one scope, leaving every other scope alone. */
+export function toggleStickerFavorite(favorites, key, channel) {
+  const list = Array.isArray(favorites) ? favorites : [];
+  const scope = favoriteScope(channel);
+  const present = list.some((entry) => entry.key === key && entry.channel === scope);
+  if (present) {
+    return renumberFavorites(list.filter((entry) => !(entry.key === key && entry.channel === scope)));
+  }
+  const inScope = list.filter((entry) => entry.channel === scope).length;
+  if (inScope >= FAVORITES_PER_SCOPE_LIMIT) return renumberFavorites(list);
+  return renumberFavorites([...list, { key, channel: scope, order: inScope }]);
+}
+
+/** Move a favorite within its own scope. `delta` is -1 for earlier, +1 for later. */
+export function moveStickerFavorite(favorites, key, channel, delta) {
+  const list = Array.isArray(favorites) ? favorites : [];
+  const scope = favoriteScope(channel);
+  const inScope = list
+    .filter((entry) => entry.channel === scope)
+    .sort((left, right) => left.order - right.order);
+  const index = inScope.findIndex((entry) => entry.key === key);
+  const target = index + (Number(delta) < 0 ? -1 : 1);
+  if (index < 0 || target < 0 || target >= inScope.length) return renumberFavorites(list);
+  const reordered = [...inScope];
+  [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+  const rest = list.filter((entry) => entry.channel !== scope);
+  return renumberFavorites([...rest, ...reordered.map((entry, order) => ({ ...entry, order }))]);
+}
+
+function renumberFavorites(list) {
+  return cleanStickerFavorites(list, [], new Set());
+}
+
 export function normalizeStickerPreferences(input) {
   const source = isRecord(input) ? input : {};
   const hidden = cleanStickerKeys(source.hidden);
@@ -795,7 +913,7 @@ export function normalizeStickerPreferences(input) {
   const view = enumValue(source.view, ['all', 'pinned', 'native', 'group'], 'all');
   return {
     schema: STICKER_PREFERENCES_SCHEMA,
-    pinned: cleanStickerKeys(source.pinned).filter((key) => !hiddenSet.has(key)),
+    favorites: cleanStickerFavorites(source.favorites, source.pinned, hiddenSet),
     hidden,
     view: view === 'group' && !activeGroup ? 'all' : view,
     showHidden: bool(source.showHidden, false),
@@ -948,7 +1066,7 @@ export function validateImportedSettings(jsonText) {
         notes.push(`${dropped.length} sticker${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`);
       }
     }
-    for (const field of ['pinned', 'hidden', 'groups', 'assignments']) {
+    for (const field of ['favorites', 'hidden', 'groups', 'assignments']) {
       if (Array.isArray(parsed.stickers[field]) && parsed.stickers[field].length !== stickers[field].length) {
         notes.push(`Adjusted emote ${field} to supported entries.`);
       }

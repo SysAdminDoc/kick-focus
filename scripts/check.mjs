@@ -134,6 +134,17 @@ const checks = [
   ['ads ruleset ships enabled', ruleFiles.find((entry) => entry.id === 'ads')?.enabled === true],
   ['telemetry ruleset ships opt-in', ruleFiles.find((entry) => entry.id === 'telemetry')?.enabled === false],
 
+  // Favorites are ordered and scoped. The shelf must render them in the stored
+  // order rather than the picker's, or the ordering controls do nothing
+  // visible; and the order has to be part of the render signature.
+  ['favorites are scoped per channel and explicitly ordered',
+    source.includes('favoritesForChannel')
+    && source.includes('toggleStickerFavorite')
+    && source.includes('moveStickerFavorite')
+    && source.includes('byFavoriteOrder')
+    && source.includes('favoriteKeysInOrder().join')
+    && source.includes("data-kf-sticker-move=\"up\"")],
+
   // A locked tile must explain itself and link to Kick's own unlock path —
   // and must never enable anything. The link is the only action offered.
   ['a locked emote says why and links to Kick own unlock path',
