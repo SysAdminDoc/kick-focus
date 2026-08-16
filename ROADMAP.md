@@ -88,13 +88,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
   Acceptance: pure ranking in core.mjs under node:test (prefix>substring; tiebreak favorite/per-channel-usage/global-usage/name-length; Chatterino #1962/#3440 collisions as fixtures); insertion reuses R-17's boundary — plain NAME only, never the wire token, NO auto-send ever; mouse-only click-to-accept is the shipped default — Tab/arrow/Enter capture ships ONLY on explicit operator sign-off (no-new-shortcuts rule).
   Complexity: L
 
-- [ ] R-28 — Kick Drops read-only viewer panel
-  Why: a fully-documented first-party surface nobody surfaces read-only; MSI 2026/Riot partnership is a demand driver.
-  Evidence: kick-platform + kick-mods streams — docs.kick.com /drops routes (/campaigns, /coming-soon, /claimed, Inventory).
-  Touches: read-only Drops fetch + panel in runtime.js.
-  Acceptance: a panel shows the user's own Drops campaigns/progress read-only with no auto-claim path anywhere in the code; NEEDS LIVE VALIDATION that a read-only Drops endpoint is reachable with the user's session — if it is not, record the finding in RESEARCH.md and close the item.
-  Complexity: M
-
 - [ ] R-29 — IndexedDB provider abstraction behind one proxy
   Why: raises the library cap orders of magnitude and adds a blob store + cross-tab sync, with localStorage as the -1000 fallback.
   Evidence: twitch-mods + perf-storage streams — FFZ providers.ts (priority-scored providers, quota-exceeded event, BroadcastChannel); NipahTV Dexie schema (borrow shape only, Dexie is a DEP).
