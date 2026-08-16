@@ -176,13 +176,16 @@ scripts/              Deterministic build, artifact checks, live proof, release 
 src/core.mjs          Settings, routing, blocklist, storage registry, and validation logic
 src/api.mjs           Kick API endpoint shapes, emote/catalog parsing, chat frame normalization
 src/compatibility.mjs Shell/selector probes that detect Kick DOM drift
+src/live.mjs          Same-origin reads of Kick's own endpoints, realtime chat, badges, deletions
 src/multistream.mjs   Multi-stream grid, tile lifecycle, and the cross-tab roll-call
 src/runtime.js        Live DOM, layout, settings UI, commands, emote library, and request hooks
 src/extension/        Chromium/Firefox manifests, bridges, service workers, popup
 test/                 Node test suite (offline gate + vm boot/companion gates)
 ```
 
-The build concatenates `core.mjs` → `api.mjs` → `compatibility.mjs` → `multistream.mjs` → `runtime.js` into one IIFE, in that order, stripping `import`/`export` as it goes: concat order is what supplies an imported name, so each module can declare its real dependencies and still load on its own under `node --test`.
+The build concatenates `core.mjs` → `api.mjs` → `compatibility.mjs` → `live.mjs` → `multistream.mjs` → `runtime.js` into one IIFE, in that order, stripping `import`/`export` as it goes: concat order is what supplies an imported name, so each module can declare its real dependencies and still load on its own under `node --test`.
+
+`live.mjs` and `multistream.mjs` each export a factory that takes the page-owned collaborators (`state`, storage, toasts, translation) as an argument rather than reading them out of the bundle scope. That boundary is what lets both be exercised by the test suite without a browser.
 
 See [RESEARCH.md](RESEARCH.md) for the dated audit and evidence, [ROADMAP.md](ROADMAP.md) for prioritized follow-up work, and [CHANGELOG.md](CHANGELOG.md) for release history.
 

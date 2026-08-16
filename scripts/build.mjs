@@ -8,11 +8,12 @@ import { createZip } from './zip.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative) => readFile(resolve(root, relative), 'utf8');
 
-const [metadata, core, api, compatibility, multistream, runtime, appearancePreview] = await Promise.all([
+const [metadata, core, api, compatibility, live, multistream, runtime, appearancePreview] = await Promise.all([
   read('src/metadata.txt'),
   read('src/core.mjs'),
   read('src/api.mjs'),
   read('src/compatibility.mjs'),
+  read('src/live.mjs'),
   read('src/multistream.mjs'),
   read('src/runtime.js'),
   readFile(resolve(root, 'src/assets/appearance-preview.jpg')),
@@ -41,13 +42,14 @@ const bundled = (source) => source
 const bundledCore = bundled(core);
 const bundledApi = bundled(api);
 const bundledCompatibility = bundled(compatibility);
+const bundledLive = bundled(live);
 const bundledMultistream = bundled(multistream);
 const bundledRuntime = runtime
   .replaceAll('__KICK_FOCUS_ICON__', `data:image/png;base64,${renderIcon(32).toString('base64')}`)
   .replaceAll('__KICK_FOCUS_PREVIEW__', `data:image/jpeg;base64,${appearancePreview.toString('base64')}`);
 // Concat order is the dependency order: everything a module imports must have
 // been declared by an earlier entry in this list.
-const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledMultistream}\n${bundledRuntime}\n})();\n`;
+const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledLive}\n${bundledMultistream}\n${bundledRuntime}\n})();\n`;
 
 await mkdir(resolve(root, 'dist'), { recursive: true });
 const userscript = `${metadata.replaceAll('__VERSION__', VERSION)}${body}`;
