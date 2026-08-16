@@ -440,6 +440,65 @@ test('removed keys are never re-materialised into the library on normalize', () 
   assert.deepEqual(value.library.map((item) => item.key), ['id:kept']);
 });
 
+test('the emote preferences migrate losslessly from every historical schema to 5', () => {
+  const cdn = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
+  const day = Date.UTC(2026, 0, 10);
+
+  // Schema 1: a flat pinned list, no library, no scope. Position was the order.
+  const s1 = normalizeStickerPreferences({ schema: 1, pinned: ['id:1', 'id:2'] });
+  assert.equal(s1.schema, STICKER_PREFERENCES_SCHEMA);
+  assert.deepEqual(s1.favorites, [
+    { key: 'id:1', channel: '', order: 0 },
+    { key: 'id:2', channel: '', order: 1 },
+  ]);
+
+  // Schema 3: pinned + groups + assignments + a library without provenance.
+  const s3 = normalizeStickerPreferences({
+    schema: 3,
+    pinned: ['id:5'],
+    groups: [{ id: 'g1', name: 'Faves' }],
+    assignments: [{ key: 'id:5', groupId: 'g1' }],
+    library: [{ key: 'id:5', id: '5', name: 'Old', src: cdn(5), nativeGroups: ['Set'], access: 'available' }],
+  });
+  assert.equal(s3.favorites[0].key, 'id:5');
+  assert.equal(s3.favorites[0].channel, ''); // pinned migrates to global
+  assert.deepEqual(s3.groups, [{ id: 'g1', name: 'Faves' }]);
+  assert.deepEqual(s3.assignments, [{ key: 'id:5', groupId: 'g1' }]);
+  assert.equal(s3.library[0].firstSeen, 0); // pre-schema-4 entry: unknown, not faked
+
+  // Schema 4: pinned + a library carrying first-seen and Kick-edit provenance.
+  const s4 = normalizeStickerPreferences({
+    schema: 4,
+    pinned: ['id:7'],
+    library: [{
+      key: 'id:7', id: '7', name: 'New', src: cdn(7), nativeGroups: ['S'], access: 'available',
+      firstSeen: day, lastSeen: day, wasName: 'Older', wasSrc: cdn('7v1'),
+    }],
+  });
+  assert.equal(s4.favorites[0].key, 'id:7');
+  assert.equal(s4.library[0].firstSeen, day);       // provenance preserved
+  assert.equal(s4.library[0].wasName, 'Older');     // Kick-rename record preserved
+  assert.equal(s4.library[0].wasSrc, cdn('7v1'));   // Kick-reart record preserved
+
+  // Schema 5: scoped, ordered favorites survive a round-trip unchanged.
+  const s5 = normalizeStickerPreferences({
+    schema: 5,
+    favorites: [{ key: 'id:9', channel: 'xqc', order: 0 }, { key: 'id:8', channel: '', order: 0 }],
+  });
+  assert.deepEqual(s5.favorites, [
+    { key: 'id:9', channel: 'xqc', order: 0 },
+    { key: 'id:8', channel: '', order: 0 },
+  ]);
+
+  // A corrupted intermediate is caught: provenance that no longer differs from
+  // the current name must NOT be carried as a phantom rename.
+  const clean = normalizeStickerPreferences({
+    schema: 4,
+    library: [{ key: 'id:7', id: '7', name: 'Same', src: cdn(7), nativeGroups: [], access: 'available', wasName: 'Same' }],
+  });
+  assert.ok(!('wasName' in clean.library[0]), 'wasName equal to name must not be recorded');
+});
+
 test('route classifier covers every audited desktop surface', () => {
   assert.equal(routeKind('https://kick.com/'), 'home');
   assert.equal(routeKind('/browse'), 'browse');

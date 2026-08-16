@@ -56,13 +56,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 
 ### P1 — operator demand first, then trust / reliability / accessibility
 
-- [ ] R-34 — Test the existing emote-schema 1→5 migration paths
-  Why: STICKER_PREFERENCES_SCHEMA has migrated four times and no test or dimension ever read a migration path — the memo's named highest-risk unexamined area, and R-02/R-03/R-04 all touch this data.
-  Evidence: phase0-memo §4 (coverage gaps) — src/core.mjs migration paths under normalizeStickerPreferences / schema handling.
-  Touches: extract each documented 1→2…4→5 migration step into a pure function if not already; test/core.test.js.
-  Acceptance: a node:test loads a fixture at each historical schema version and asserts the 1→5 upgrade is lossless (favorites, groups, provenance preserved); a deliberately corrupted intermediate makes it fail.
-  Complexity: M
-
 - [ ] R-09 — IVS player ad-break observability (supersedes "Next" item 2)
   Why: the IVS Web Player SDK emits first-party AD_BREAK_STARTED/ENDED, AD_CREATIVE_STARTED, AD_TIME_UPDATE — authoritative read-only ad-break state without touching the manifest or WASM worker.
   Evidence: ads-ssai stream — aws.github.io amazon-ivs-player-docs PlayerEventType/AdBreak; supersedes ROADMAP "Next" item 2.
