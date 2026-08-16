@@ -22,7 +22,8 @@
   },
   "permissions": [
     "storage",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback"
   ],
   "host_permissions": [
     "https://kick.com/*",
@@ -34,15 +35,25 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://kick.com/*", "https://www.kick.com/*"],
-      "js": ["content/kick-focus.js"],
+      "matches": [
+        "https://kick.com/*",
+        "https://www.kick.com/*"
+      ],
+      "js": [
+        "content/kick-focus.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
-      "matches": ["https://kick.com/*", "https://www.kick.com/*"],
-      "js": ["content/bridge.js"],
+      "matches": [
+        "https://kick.com/*",
+        "https://www.kick.com/*"
+      ],
+      "js": [
+        "content/bridge.js"
+      ],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": false

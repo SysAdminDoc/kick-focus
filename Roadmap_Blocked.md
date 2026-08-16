@@ -6,4 +6,5 @@ Items here require external state or an operator decision and are not active imp
 - P1 — Verify logged-in account, subscription, and moderation surfaces. Blocked because this workspace has no authenticated Kick session, and testing those controls requires an account owner to provide a logged-in browser context.
 - P1 — Scrub stitched ad ranges from the HLS manifest. Blocked by the measured IVS WASM/blob-worker path: the manifest is not visible to the page realm, and worker injection into the opaque WASM pipeline is unverified and playback-critical.
 - P3 — Add an optional update manifest. Blocked until a publication channel and update-host trust decision are explicitly approved.
+- P1 — Resolve the telemetry strategy contradiction between layers. Blocked because acceptance requires a multi-hour session recording request counts and CPU behaviour for the telemetry hosts with the companion installed, which is a sustained live measurement task.
 - P3 — Evaluate an accessible first-run tour. Blocked until real-user feedback exists to guide the tour scope and timing.

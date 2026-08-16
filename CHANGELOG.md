@@ -6,6 +6,27 @@ All notable changes are documented here. Dates use ISO 8601.
 
 _Nothing yet._
 
+## 1.7.0 — 2026-08-15
+
+Trust, naming, and diagnostics pass.
+
+### Fixed
+
+- **The Chromium manifest requested "Read your browsing history" for nothing.** `declarativeNetRequestFeedback` is only useful for unpacked installs, which have the API regardless, so the release manifest now omits it. A dev manifest variant is emitted alongside for debugging. The popup already showed a dash when the counter was unavailable.
+- **The Firefox manifest requested `<all_urls>` and `tabs` it did not need.** Permissions are now enumerated from the same host lists the page-realm classifier uses, plus kick.com. The `tabs` permission was unused. `data_collection_permissions` is now declared as required by AMO since 2025-11-03.
+- **The remote blocklist was fetched from the page realm.** The request is now CORS-free: the companion background fetches it when present, `GM_xmlhttpRequest` when the userscript manager provides it, and the page-realm path remains only as a last resort. The summary states which method was used.
+
+### Added
+
+- **API drift detection.** When a normalizer rejects a payload for a shape reason, the endpoint and reason are recorded. The About page reports accumulated drift rather than silently falling back, following the ad-stack drift report pattern. Covers the channel, emote, and realtime endpoints.
+- **Importing a library now names what was dropped.** A sticker import that loses entries states how many and names up to five, rather than reporting a bare count difference.
+- The README now states the Firefox channel limitations (Release and Beta cannot install unsigned XPIs persistently) and the Violentmonkey MV3 timing constraint (real `document-start` requires Alternative page mode, off by default).
+
+### Changed
+
+- **User-facing "sticker" vocabulary renamed to "emote"** throughout settings, translations, toasts, announcements, aria-labels, validation messages, and the README. Kick ships no product called a sticker — its API, chat wire format, and picker DOM all say emote. Internal identifiers and storage keys stay unchanged to preserve existing data without a migration.
+- Node engine floor updated to 22+ in the README to match `package.json`.
+
 ## 1.6.0 — 2026-08-15
 
 Accessibility, data safety, and hardening pass over everything 1.5.0 shipped.

@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Kick Focus",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Desktop-first layout, accessibility, content filters, and network-level ad defense for Kick.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -21,28 +21,53 @@
   },
   "permissions": [
     "storage",
-    "tabs",
     "webRequest",
     "webRequestBlocking",
-    "<all_urls>"
+    "*://kick.com/*",
+    "*://www.kick.com/*",
+    "*://*.imasdk.googleapis.com/*",
+    "*://*.pagead2.googlesyndication.com/*",
+    "*://*.pubads.g.doubleclick.net/*",
+    "*://*.securepubads.g.doubleclick.net/*",
+    "*://*.googleads.g.doubleclick.net/*",
+    "*://*.partner.googleadservices.com/*",
+    "*://*.adservice.google.com/*",
+    "*://*.tpc.googlesyndication.com/*",
+    "*://*.litix.io/*",
+    "*://*.browser-intake-datadoghq.com/*",
+    "*://*.reporting.cdndex.io/*"
   ],
   "background": {
-    "scripts": ["background.js"],
+    "scripts": [
+      "background.js"
+    ],
     "persistent": false
   },
   "content_scripts": [
     {
-      "matches": ["https://kick.com/*", "https://www.kick.com/*"],
-      "js": ["content/bridge.js"],
+      "matches": [
+        "https://kick.com/*",
+        "https://www.kick.com/*"
+      ],
+      "js": [
+        "content/bridge.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }
   ],
-  "web_accessible_resources": ["content/kick-focus.js"],
+  "web_accessible_resources": [
+    "content/kick-focus.js"
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "kick-focus@sysadmindoc",
-      "strict_min_version": "120.0"
+      "strict_min_version": "120.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
     }
   }
 }

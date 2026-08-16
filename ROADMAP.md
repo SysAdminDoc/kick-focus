@@ -25,27 +25,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 
 ### P1
 
-- [ ] P1 — Strip permissions and version floors that cost users trust
-  Why: the shipped manifests request access they do not need, and the declared Node floor endorses an end-of-life runtime.
-  Evidence: `src/extension/manifest.json:26` ships `declarativeNetRequestFeedback`, which is unpacked-only for `onRuleMatchedDebug`/`getMatchedRules` yet still triggers the "read your browsing history" warning; `src/extension/manifest.firefox.json` requests `<all_urls>` and `tabs` (tab `status` updates need no permission) and omits `browser_specific_settings.gecko.data_collection_permissions`, mandatory for AMO since 2025-11-03; `package.json` declares `engines.node >= 20`, EOL 2026-04-30 with 3 HIGH CVEs unpatched in that line.
-  Touches: `src/extension/manifest.json`, `src/extension/manifest.firefox.json`, `scripts/build.mjs` (dev-only manifest variant), `package.json`.
-  Acceptance: the release Chromium manifest drops the feedback permission while a dev variant keeps it; the Firefox manifest enumerates kick.com plus the generated hosts instead of `<all_urls>`, drops `tabs`, and declares `data_collection_permissions: { required: ["none"] }`; `engines.node` is `>=22`; the block counter degrades gracefully where debug feedback is unavailable.
-  Complexity: M
-
-- [ ] P1 — Fetch the remote blocklist off the page realm
-  Why: the subscription request currently runs as a page-origin `fetch`, so it is subject to CORS (most JSON hosts will simply fail) and is observable and interceptable by Kick's own code.
-  Evidence: `src/runtime.js:2424` uses page `fetch`; `src/metadata.txt` grants no `GM_xmlhttpRequest` and declares no `@connect`; the companion never fetches it from the background.
-  Touches: `src/metadata.txt`, `src/runtime.js`, `src/extension/background.js`, `src/extension/background.firefox.js`, bridge messaging.
-  Acceptance: under a userscript manager the fetch uses `GM_xmlhttpRequest` with an explicit `@connect` allowlist; under a companion it is performed in the background and handed back over the existing bridge; the page-realm path remains only as a last resort and the UI states which was used.
-  Complexity: M
-
-- [ ] P1 — Resolve the telemetry strategy contradiction between layers
-  Why: the two layers implement opposite strategies, and installing the companion silently replaces the storm-safe one with a hard cancel.
-  Evidence: `blockedResponse` and `simulateEmptySuccess` in `src/runtime.js` resolve an empty 200 (matching the community's `no-fetch-if` fix), while `reduceTelemetry` defaults true and enables a companion ruleset that cancels the same hosts at the network layer, where a cancel wins the race. A 5-minute measurement on 2026-08-14 did not reproduce the reported retry storm.
-  Touches: `src/extension/background.js` rulesets, `src/core.mjs` `TELEMETRY_HOSTS`, Content settings copy.
-  Acceptance: a multi-hour session with the companion installed records request counts for the telemetry hosts and CPU behaviour; whichever strategy is kept is applied consistently across both layers, and the settings copy states which one is in effect.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — Snapshot the collectibles inventory locally
@@ -54,13 +33,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Touches: `src/runtime.js` (sticker library), `src/core.mjs` (schema), Content & Ads library UI.
   Acceptance: the library records first-seen and last-seen timestamps per sticker and flags entries whose name or asset changed since first capture; the export carries the history; nothing automates claiming and no private endpoint is replayed.
   Complexity: M
-
-- [ ] P2 — Report availability changes when a sticker library is imported
-  Why: the export/import round-trip is this project's unique differentiator in the Twitch+Kick field, and an import that silently drops unavailable entries undermines exactly the trust it exists to provide.
-  Evidence: no other project exports an emote library — BetterTTV states it is structurally impossible (#3660) and 7TV closed the request (#694); `src/core.mjs:763` currently reports only array-length differences.
-  Touches: `src/core.mjs` (`validateImportedSettings` sticker path), Content & Ads import UI.
-  Acceptance: import states how many stickers are no longer available in the current account/channel and names a sample, rather than reporting a bare count difference.
-  Complexity: S
 
 - [ ] P2 — Add a named-channel blocklist for discovery surfaces
   Why: a distinct, explicitly unmet want — users ask to hide specific promoted channels, which the existing promoted/gambling filters do not address because those key on content labels, not identity.
@@ -75,13 +47,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
   Touches: `src/runtime.js` (`TRANSLATIONS`, `tr`, `localizeInterface`, settings render paths).
   Acceptance: markup carries stable keys and lookup is a single forward map with no reverse scan and no double-translation on re-render; the language picker shows endonyms (`Español`, `Português`) in every locale rather than translating language names.
   Complexity: M
-
-- [ ] P2 — State the distribution and timing limits the project actually has
-  Why: two constraints materially change whether a user gets any protection, and neither is documented.
-  Evidence: Firefox Release and Beta cannot install unsigned XPIs at all (only `about:debugging`, wiped on restart, or Developer Edition/Nightly/ESR with `xpinstall.signatures.required=false`), and AMO signing is excluded by the no-signing policy; Violentmonkey 2.47.0 (MV3, 2026-08-06) does not provide real `document-start` unless "Alternative page mode" is enabled, which is off by default.
-  Touches: `README.md`, About settings page.
-  Acceptance: the README states the Firefox install reality per channel and the Violentmonkey setting by name; the About page already measures injection timing and links the fix when it reports a late start.
-  Complexity: S
 
 ### P3
 
@@ -102,13 +67,6 @@ Added 2026-08-15 from the research pass recorded in [RESEARCH.md](RESEARCH.md).
 ### API and emote-catalog work (added 2026-08-15 from the Kick API + emote tooling research)
 
 Gate for this whole group: the deferred list rules out "replay of private endpoints". These items read endpoints the page already calls, same-origin, read-only, inheriting the user's own session, and every one keeps the existing DOM path as fallback. Settle that boundary before starting.
-
-- [ ] P1 — Rename the "sticker" vocabulary to "emote"
-  Why: Kick ships no product called a sticker — its API path, chat wire format and picker DOM all say emote — so the current wording breaks the match between this UI and the one users are looking at.
-  Evidence: `kick.com/emotes/{slug}`, chat tokens `[emote:5748003:collectiblesGoldenLULW]` captured live 2026-08-15, and Kick's own picker container `#chat-emotes-picker-panel`.
-  Touches: `README.md`, settings copy in `src/runtime.js`, `TRANSLATIONS`, storage keys (migrate, do not rename in place), `scripts/check.mjs` gate strings.
-  Acceptance: user-facing text says emote; stored keys either stay or migrate with a schema bump; no gate still asserts the old wording.
-  Complexity: M
 
 ## Research-Driven Additions — differential pass
 
@@ -139,13 +97,6 @@ Added 2026-08-15 from the differential research pass recorded in [RESEARCH.md](R
   Evidence: 7+ distinct users 2026-07-18 to 2026-08-09 confused or burned — the daily streak confers nothing (confirmed by a quoted Kick support reply), duplicate protection is undocumented, drop odds are opaque, unlock state desyncs between the collectibles page and the chat emote set, and Kick retroactively changed already-pulled emotes. Extends the existing "Snapshot the collectibles inventory locally" item rather than replacing it: that one records history, this one explains the mechanics.
   Touches: `src/runtime.js` (collectibles surface), `src/core.mjs`.
   Acceptance: the collectibles view states what the streak does and does not do, shows observed duplicate rate from the user's own local history, and flags entries whose name or asset changed since first capture; nothing is claimed that the local record cannot support.
-  Complexity: M
-
-- [ ] P2 — Detect Kick API drift instead of discovering it through breakage
-  Why: Kick removed an endpoint, dropped a header requirement, and changed moderation behaviour inside four weeks, and each was found by a competing client breaking in public.
-  Evidence: NipahTV v1.5.110 (2026-07-29) exists solely because `/api/v1/video/:livestream_id` was deleted; Kickerino shipped fixes for collectible badges appearing in chat payloads (v1.31, 2026-08-08), the XSRF requirement being dropped (v1.33, 2026-08-11), and timeout/ban-delete behaviour changing (v1.34, 2026-08-13). Kick Focus is exposed to none of the three — verified by grep, no XSRF header is sent and no `/api/v1/video/` path is referenced — but has no mechanism to notice the next one.
-  Touches: `src/api.mjs` (response validation), `src/runtime.js` (diagnostics), `scripts/`.
-  Acceptance: when a normalizer rejects a payload for a shape reason, diagnostics record which endpoint and which field, and the About page reports accumulated drift rather than silently falling back; the existing `assessAdStack` drift report is the model.
   Complexity: M
 
 - [ ] P2 — Render collectible badges now that chat payloads carry them
