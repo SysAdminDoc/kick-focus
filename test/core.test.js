@@ -60,6 +60,9 @@ import {
   MULTISTREAM_MAX,
   normalizeShortcut,
   emoteTooltipText,
+  emoteReach,
+  formatUptime,
+  MAX_UPTIME_MS,
   insertionPlanFor,
   recordApplyCost,
   applyCostSummary,
@@ -642,6 +645,61 @@ function plan_has_no_id(plan) {
   return !JSON.stringify(plan).includes('4821');
 }
 
+test('an emote says where it can be sent, or says nothing at all', { tag: 'unit' }, () => {
+  // Reach is not access. Measured 2026-08-16 by posting each kind into a real
+  // chatroom: a free channel emote is refused outside its channel
+  // (FOREIGN_CHANNEL_EMOTE_ERROR), an owned subscriber emote is accepted
+  // everywhere. Kick's own interface states neither.
+  assert.deepEqual(emoteReach({ usableEverywhere: true }), { text: 'Works in every chat', channel: '' });
+  assert.deepEqual(emoteReach({ usableEverywhere: false, sourceSlug: 'xqc' }), {
+    // The channel is returned separately: interpolating it here would produce a
+    // string no dictionary can match, and the i18n gate only scans literals.
+    text: 'Only works in {channel}’s chat',
+    channel: 'xqc',
+  });
+  assert.deepEqual(emoteReach({ usableEverywhere: false }), { text: 'Only works in its own channel', channel: '' });
+
+  // An emote the account cannot send says nothing about reach. Kick's flag still
+  // reads platform-wide — that is what a subscriber emote is to a subscriber —
+  // and printing it beside "Subscriber-only" told someone who cannot send it at
+  // all that it works everywhere. Seen on real account data before it shipped.
+  assert.deepEqual(emoteReach({ usableEverywhere: true, usableHere: false }), { text: '', channel: '' });
+
+  // Not established — a chat-only observation, or a record written before this
+  // was known. Silence is the honest answer; a guess would read as measurement.
+  assert.equal(emoteReach({ name: 'seen-in-chat-only' }).text, '');
+  assert.equal(emoteReach(null).text, '');
+
+  // The hover card carries it, so chat and the library cannot disagree.
+  assert.deepEqual(
+    emoteTooltipText({ name: 'xqcLK', nativeGroups: ['xqc'], access: 'channel', usableEverywhere: false, sourceSlug: 'xqc' }, [], false),
+    ['xqcLK', 'xqc · Channel-only', 'Only works in xqc’s chat', 'Click to save'],
+  );
+});
+
+test('uptime counts from Kick own start time and refuses implausible values', { tag: 'unit' }, () => {
+  const now = Date.UTC(2026, 7, 16, 12, 0, 0);
+  assert.equal(formatUptime(now - 45_000, now), '0:45');
+  assert.equal(formatUptime(now - 5 * 60_000 - 7000, now), '5:07');
+  // Past an hour the minutes pad, so the clock stops jumping between widths.
+  assert.equal(formatUptime(now - (3 * 3600 + 4 * 60 + 9) * 1000, now), '3:04:09');
+  assert.equal(formatUptime(now - 3600_000, now), '1:00:00');
+
+  // Nothing to report rather than a zero or a NaN clock.
+  assert.equal(formatUptime(0, now), '');
+  assert.equal(formatUptime(undefined, now), '');
+  assert.equal(formatUptime(Number.NaN, now), '');
+
+  // A start in the future is bad data, not a negative duration.
+  assert.equal(formatUptime(now + 60_000, now), '');
+
+  // A stale start_time on a re-used livestream record would otherwise render a
+  // clock counting into the hundreds of hours, which reads as a bug here rather
+  // than as bad data from Kick.
+  assert.equal(formatUptime(now - MAX_UPTIME_MS - 1, now), '');
+  assert.notEqual(formatUptime(now - MAX_UPTIME_MS + 1000, now), '');
+});
+
 test('the chat emote hover card names the set, access, capture and shadowing winner', { tag: 'unit' }, () => {
   const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];
   const entry = {
@@ -980,6 +1038,18 @@ test('Poor mode is opt-in and identifies only spending controls', { tag: 'unit' 
   assert.equal(monetizationKind({ testId: 'kicks-top-nav' }), 'currency');
   assert.equal(monetizationKind({ testId: 'get-kicks' }), 'currency');
   assert.equal(monetizationKind({ ariaLabel: 'Expand leaderboard' }), 'leaderboard');
+
+  // Measured on a signed-in channel page 2026-08-16: these two are the only
+  // spend surfaces Poor mode left standing. Neither is a control — the balance
+  // is a <span> whose text is just the number, and the shop is a panel — so
+  // both are identified by test id and nothing else.
+  assert.equal(monetizationKind({ testId: 'kicks-value', text: '0' }), 'currency');
+  assert.equal(monetizationKind({ testId: 'gift-shop-panel' }), 'gift');
+
+  // The balance's sibling is the free channel-points counter, which reads the
+  // same way and must not be swept up with it.
+  assert.equal(monetizationKind({ testId: 'channel-points-value', text: '80' }), '');
+  assert.equal(monetizationKind({ testId: 'channel-points-button' }), '');
 
   // Poor mode must leave free/community actions intact and never classify a
   // chat sentence just because it happens to mention a purchase word.

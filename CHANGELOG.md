@@ -2,6 +2,26 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.20.0 — 2026-08-17
+
+### Added
+
+- **Your emotes, stated rather than guessed.** Kick's `/emotes/{slug}` answers differently depending on who is asking. Read anonymously it returns the channel's own artwork, Global and Emojis. Read with the session's bearer token it returns those *plus every channel you subscribe to* and the collectibles you have pulled — measured on one live channel as three sets and 12,566 bytes against thirteen sets and 44,404 bytes. That larger answer is Kick's own statement of what your account may send, which is the explicit entitlement this build has always required and never had. The emote library now uses it: an emote you own reads as available, a subscriber emote from a channel you do not subscribe to is marked denied rather than merely unconfirmed, and a new line at the top of the library says how many emotes you can use in any chat and how many subscribed channels they come from. Kick shows that nowhere — its picker only ever shows the channel you are standing in.
+- **Where an emote actually works.** `subscribers_only` is inverted from what its name suggests, and the consequences are what matter: a *free* channel emote is refused everywhere except its own channel (`FOREIGN_CHANNEL_EMOTE_ERROR`), while a subscriber emote you own works in every chat. Both were measured by posting each kind into a real chatroom. Library tiles and the chat hover card now say which one an emote is — "Works in every chat", or "Only works in {channel}'s chat" — so a name you type is one that arrives. Where the catalog has not established reach, nothing is claimed.
+- **Stream uptime.** Kick sends the start time with every channel and displays it nowhere. A small clock in the player corner counts from it. It costs no request: the value rides along on a payload the mod already reads, and falls back to the stream's start in Kick's own structured data in the page — which also means it still works when Kick's channel API is rate-limiting the tab. On by default; an offline channel and a VOD both show nothing.
+
+### Fixed
+
+- **Session-gated reads were being made without the session.** `kickFetchJson` sent cookies and no bearer token, on the recorded belief that these endpoints authenticate by cookie alone. They do not: `/gamification/collectibles` answers **403** to a cookie-only read and 200 with the header, so collectible rarity and the duplicate-rate summary had been degrading for every signed-in user with no error to show for it. Kick's own page reads the same `session_token` cookie and sends it the same way. The header is attached to Kick origins only.
+- **A catalog emote that said "available" was filed as subscriber-only.** The library merge read the native picker's `available` flag but not the catalog's own `access`, so everything the catalog reported as usable — every Global and Emoji emote, and now everything the account owns — fell through to the locked branch.
+- **Overlays were being appended inside the `<video>` element, where nothing renders.** Kick's video carries `id="video-player"`, and `closest()` tests the element itself first, so the ancestor lookup returned the video. Children of a media element are fallback content and are never drawn. That silently disabled the playback diagnostics panel and the `[data-kf-player] video` contain rule at once. Overlays now resolve to a container that holds the video, preferring one that already establishes a containing block so nothing of Kick's is restyled.
+- **Poor mode left two spend surfaces standing.** The KICKs balance in the chat footer and the gift-shop panel are not controls — the balance is a `<span>` whose entire text is a number — and the tagger walked only buttons and links. Both are now identified by test id, which is also why the free channel-points counter sitting directly beside the balance is untouched.
+
+### Changed
+
+- The live gate gained three checks: that a player overlay anchors to a container and never to the video, that the uptime chip agrees with Kick's own start time read as UTC, and that Poor mode reaches the non-control spend surfaces while leaving Follow and channel points alone. The last two skip with a reason rather than failing when the route carries no live channel or no spend surface, so the default home-page run stays honest about what it did not cover.
+- The migration check no longer asserts the library's exact size. Home carries a live chat preview and emote discovery is on by default, so a message arriving mid-check legitimately added an entry — making it fail on a busy minute and pass on a quiet one. It now asserts that both imported entries survive and that every stored key carries the platform prefix.
+
 ## 1.19.0 — 2026-08-16
 
 ### Added

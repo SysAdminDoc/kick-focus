@@ -20,6 +20,9 @@ import {
   recordEmoteUse,
 } from './core.mjs';
 import {
+  KICK_ORIGIN,
+  KICK_WEB_ORIGIN,
+  applyAccountEntitlement,
   catalogEmoteAccess,
   emoteImageUrl,
   endpoints,
@@ -92,21 +95,64 @@ export function createLive(host) {
   } = host;
 
   /**
+   * The bearer token Kick's own page sends, read from its own cookie.
+   *
+   * The belief this replaces — that these endpoints authenticate with cookies
+   * and no token is ever involved — was wrong, and wrong silently. Measured
+   * 2026-08-16 from a signed-in page: `/gamification/collectibles` answers
+   * **403** to a cookie-only read and 200 with the header, so collectible
+   * rarity had been degrading for every signed-in user; `/emotes/{slug}`
+   * answers with three sets and 12,566 bytes without it and thirteen sets and
+   * 44,404 bytes with it. Kick's SPA reads the same `session_token` cookie and
+   * sends it the same way — see the `Authorization` on any `search.kick.com`
+   * request the page makes.
+   *
+   * Same-origin only. `kickFetchJson` is called with Kick URLs exclusively and
+   * the header is attached under that assumption, so the guard below is what
+   * keeps a future caller from handing the token to another host.
+   */
+  function kickBearerToken() {
+    const raw = document.cookie.split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('session_token='));
+    if (!raw) return '';
+    try {
+      return decodeURIComponent(raw.slice('session_token='.length));
+    } catch {
+      return '';
+    }
+  }
+
+  /** Is this a Kick origin, and therefore an origin its own session may reach? */
+  function isKickUrl(url) {
+    try {
+      const { origin } = new URL(String(url), window.location.href);
+      return origin === KICK_ORIGIN || origin === KICK_WEB_ORIGIN;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Same-origin JSON with a deadline and a size ceiling.
    *
-   * `credentials: 'include'` is what makes the session-gated reads (collectibles,
-   * the user's own inventory) work at all — those endpoints authenticate with
-   * cookies, not bearer tokens, which is exactly why a page context is the only
-   * client that can read them and why nothing here ever sees a token.
+   * `credentials: 'include'` carries the session cookie; the bearer header
+   * carries the account. Some endpoints need only the first, several need both,
+   * and none of them say so — see `kickBearerToken`.
    */
   async function kickFetchJson(url, { credentials = 'include' } = {}) {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
     try {
+      const headers = { accept: 'application/json' };
+      if (isKickUrl(url)) {
+        const token = kickBearerToken();
+        if (token) headers.authorization = `Bearer ${token}`;
+      }
       const response = await pageFetch(url, {
         credentials,
         signal: controller.signal,
-        headers: { accept: 'application/json' },
+        headers,
       });
       if (!response.ok) return { ok: false, status: response.status };
       const text = await response.text();
@@ -183,6 +229,7 @@ export function createLive(host) {
     state.live.collisions = [];
     state.live.rarity = null;
     state.live.inventory = null;
+    state.live.standing = { known: false, subscribed: null, following: null, moderator: null };
 
     if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
 
@@ -206,15 +253,47 @@ export function createLive(host) {
     refreshLiveDiagnostics();
   }
 
+  /**
+   * This account's standing in one channel, or nulls where Kick will not say.
+   *
+   * A 401 is the signed-out answer and is not an error: every caller treats a
+   * null subscription as "unknown", never as "denied", which is the difference
+   * between not knowing and greying out an emote the user owns.
+   */
+  async function readChannelStanding(slug) {
+    const response = await kickFetchJson(endpoints.channelMe(slug));
+    if (!response.ok) return { known: false, subscribed: null, following: null, moderator: null };
+    const body = response.body && typeof response.body === 'object' ? response.body : null;
+    if (!body) {
+      recordApiDrift('channel-me', 'shape-changed');
+      return { known: false, subscribed: null, following: null, moderator: null };
+    }
+    return {
+      known: true,
+      subscribed: body.subscription != null,
+      following: body.is_following === true,
+      moderator: body.is_moderator === true,
+    };
+  }
+
   async function refreshEmoteCatalog(slug) {
-    const response = await kickFetchJson(endpoints.emoteSets(slug), { credentials: 'include' });
+    const [response, standing] = await Promise.all([
+      kickFetchJson(endpoints.emoteSets(slug), { credentials: 'include' }),
+      readChannelStanding(slug),
+    ]);
     if (state.live.slug !== slug) return;
+    state.live.standing = standing;
     if (!response.ok) {
       state.live.catalogError = `Kick's emote API answered ${response.status}; using the picker instead.`;
       refreshLiveDiagnostics();
       return;
     }
-    const catalog = normalizeEmoteSets(response.body);
+    const parsed = normalizeEmoteSets(response.body);
+    const catalog = applyAccountEntitlement(parsed, {
+      slug,
+      authenticated: standing.known,
+      subscribedToChannel: standing.known ? standing.subscribed : null,
+    });
     if (!catalog.ok) {
       // A changed shape must not produce an empty organizer that looks like an
       // account with no emotes. Keep scraping and say why.
@@ -228,20 +307,23 @@ export function createLive(host) {
     state.live.catalogError = '';
     state.live.collisions = state.settings.content.warnShadowedEmotes ? findShadowedNames(catalog.emotes) : [];
 
-    // The endpoint publishes every image but normally carries no ownership
-    // signal. Seed the library without claiming that subscriber artwork is
-    // sendable; the native picker can still upgrade a confirmed tile later.
+    // An anonymous read publishes every image and carries no ownership signal,
+    // so it seeds the library without claiming subscriber artwork is sendable.
+    // An authenticated one is Kick's own account answer and has already been
+    // folded in above — see `applyAccountEntitlement`.
     mergeStickerLibrary(catalog.emotes.map((emote) => ({
       key: platformStickerKey(`id:${emote.id}`),
       id: emote.id,
       name: emote.name,
       src: emote.url,
-      nativeGroups: [emote.kind === 'channel' ? emote.setName : emote.setName],
+      nativeGroups: [emote.setName],
       access: catalogEmoteAccess(emote),
       sourceSlug: emote.sourceSlug,
       requiresFollow: emote.requiresFollow,
       followed: emote.followed,
       subscribersOnly: emote.subscribersOnly,
+      usableEverywhere: emote.usableEverywhere,
+      usableHere: emote.usableHere,
     })));
 
     if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);

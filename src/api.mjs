@@ -26,6 +26,13 @@ export function emoteImageUrl(id, size = 'fullsize') {
 export const endpoints = {
   channel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}`,
   followChannel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}/follow`,
+  /**
+   * This account's relationship to one channel: `subscription`, `is_following`,
+   * `is_moderator`, `banned`. The only first-party statement of subscription
+   * this build has ever had — measured 2026-08-16, it answers 401 to a
+   * cookie-only read and 200 to the same read carrying Kick's bearer token.
+   */
+  channelMe: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}/me`,
   emoteSets: (slug) => `${KICK_ORIGIN}/emotes/${encodeURIComponent(slug)}`,
   chatSettings: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/chat/settings`,
   chatHistory: (chatroomId) => `${KICK_WEB_ORIGIN}/api/v1/chat/${encodeURIComponent(chatroomId)}/history`,
@@ -274,6 +281,61 @@ export function realtimeHealth({ lastFrameAt = 0, unparsable = 0, now = 0, conne
 // Channel identity
 // ---------------------------------------------------------------------------
 
+/**
+ * Kick's livestream timestamps, as milliseconds, or 0.
+ *
+ * `created_at` and `start_time` arrive as `2026-08-16 23:53:38` — a space
+ * instead of a `T` and no zone marker at all. `new Date()` reads that as
+ * *local* time, so a viewer in New York would have seen a stream that started
+ * four minutes ago reported as four hours and four minutes. The values are
+ * UTC — confirmed against the same channel's `livestream.created_at` and the
+ * live viewer's own clock on 2026-08-16 — so the zone is supplied here rather
+ * than trusted to the engine's parse of an ambiguous string.
+ */
+export function parseKickTimestamp(value) {
+  if (typeof value !== 'string' || !value) return 0;
+  const iso = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(value.trim())
+    ? `${value.trim().replace(' ', 'T')}Z`
+    : value;
+  const at = Date.parse(iso);
+  return Number.isFinite(at) ? at : 0;
+}
+
+/**
+ * A live stream's start time out of the page's own structured data.
+ *
+ * Kick ships a schema.org `VideoObject` whose `uploadDate` is the stream start,
+ * in the same zone-less form as the API's `start_time`. It is in the HTML, so
+ * it needs no request — which matters because Kick's bot defence answers 429 to
+ * the channel API often enough that a feature depending on that read alone
+ * silently does nothing. Measured 2026-08-16: a live channel carries the block;
+ * an offline one carries only `ProfilePage`, so its absence is itself the
+ * liveness answer.
+ *
+ * Takes the raw script texts rather than a document, so the parse is testable
+ * without a DOM. Kick ships several blocks and not all of them parse — a bad
+ * one is skipped rather than treated as the answer.
+ */
+export function streamStartFromLinkedData(texts) {
+  if (!Array.isArray(texts)) return 0;
+  for (const text of texts) {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(String(text));
+    } catch {
+      continue;
+    }
+    const nodes = Array.isArray(parsed?.['@graph']) ? parsed['@graph'] : [parsed];
+    for (const node of nodes) {
+      if (node && typeof node === 'object' && node['@type'] === 'VideoObject') {
+        const at = parseKickTimestamp(node.uploadDate);
+        if (at) return at;
+      }
+    }
+  }
+  return 0;
+}
+
 export function normalizeChannel(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const id = Number(payload.id);
@@ -289,6 +351,8 @@ export function normalizeChannel(payload) {
     livestreamId: Number(livestream?.id) || 0,
     followers: Number(payload.followers_count) || 0,
     isLive: Boolean(livestream?.is_live),
+    // Kick returns this and shows it nowhere: its own page has no uptime.
+    startedAt: parseKickTimestamp(livestream?.start_time) || parseKickTimestamp(livestream?.created_at),
     viewers: Number(livestream?.viewer_count) || 0,
     title: typeof livestream?.session_title === 'string' ? livestream.session_title : '',
     mature: Boolean(livestream?.is_mature),
@@ -333,6 +397,11 @@ function setKind(name) {
   const label = String(name || '').toLowerCase();
   if (label === 'global') return 'global';
   if (label === 'emojis') return 'emoji';
+  // Only an authenticated read carries this set, and it holds the collectibles
+  // this account has actually pulled. Without its own kind it parses as a
+  // channel named "Collectibles" whose free emotes look channel-local, which is
+  // the opposite of true: a pulled collectible is usable in every chat.
+  if (label === 'collectibles') return 'collectible';
   return 'channel';
 }
 
@@ -376,7 +445,7 @@ export function emoteFollowRequirement(emote, slug = '') {
  */
 export function catalogEmoteAccess(emote) {
   const source = emote && typeof emote === 'object' ? emote : {};
-  if (source.kind === 'global' || source.kind === 'emoji') return 'available';
+  if (source.kind === 'global' || source.kind === 'emoji' || source.kind === 'collectible') return 'available';
   const follow = emoteFollowRequirement(source);
   if (follow.required && !follow.followed) return 'locked';
   if (!source.subscribersOnly && !source.subscribers_only) return 'channel';
@@ -442,6 +511,97 @@ export function normalizeEmoteSets(payload) {
   if (!sets.length) return { ok: false, reason: 'no-sets', sets: [], emotes: [] };
   if (!emotes.length) return { ok: false, reason: 'no-emotes', sets, emotes };
   return { ok: true, sets, emotes };
+}
+
+/**
+ * Fold this account's own entitlement into a normalized catalog.
+ *
+ * Measured against Kick on 2026-08-16, reading `/emotes/xqc` twice from the
+ * same page: a cookie-only read returned three sets (the channel, Global,
+ * Emojis) and 12,566 bytes. The same read carrying Kick's bearer token returned
+ * thirteen sets and 44,404 bytes — the nine extra channel sets were every
+ * channel this account subscribes to, each one entirely `subscribers_only`,
+ * plus a Collectibles set of the collectibles it had pulled.
+ *
+ * So the authenticated response *is* Kick's own answer to "what may this
+ * account send", which is the explicit entitlement this build has always
+ * required and never had. A set Kick returns for a channel other than the one
+ * asked about is returned because the account owns it; that is a statement,
+ * not an inference from artwork.
+ *
+ * Two server refusals, both measured by sending into a real chatroom, fix the
+ * other half of the model:
+ *
+ *   - `SUBSCRIBERS_ONLY_EMOTE_ERROR` — a subscriber emote from a channel this
+ *     account does not subscribe to is refused, in that channel's own chat and
+ *     everywhere else alike.
+ *   - `FOREIGN_CHANNEL_EMOTE_ERROR` — a *free* channel emote is refused
+ *     anywhere but its own channel.
+ *
+ * Which is Kick's inverted `subscribers_only` stated as consequences: a free
+ * channel emote is local, an owned subscriber emote is global.
+ *
+ * Anonymous catalogs are returned untouched. Entitlement is never invented for
+ * a reader Kick did not recognise.
+ */
+export function applyAccountEntitlement(catalog, { slug = '', authenticated = false, subscribedToChannel = null } = {}) {
+  if (!catalog?.ok || !Array.isArray(catalog.emotes)) return catalog;
+  if (!authenticated) return { ...catalog, account: { authenticated: false, ownedSets: [], ownedEmotes: 0 } };
+
+  const asked = String(slug || '').toLowerCase();
+  const ownedSets = new Set();
+  let ownedEmotes = 0;
+
+  const decide = (emote) => {
+    // Global, Emojis, and the collectibles this account has pulled.
+    if (emote.kind !== 'channel') return { entitlement: 'granted', usableEverywhere: true, usableHere: true };
+    const own = String(emote.sourceSlug || emote.setName || '').toLowerCase() === asked;
+    if (!own) {
+      // A set for another channel, in a response Kick only serves to its owner.
+      return { entitlement: 'granted', usableEverywhere: true, usableHere: true };
+    }
+    if (!emote.subscribersOnly) {
+      // Free, and therefore local to this channel — usable here, nowhere else.
+      return { entitlement: emote.entitlement, usableEverywhere: false, usableHere: true };
+    }
+    if (subscribedToChannel === true) return { entitlement: 'granted', usableEverywhere: true, usableHere: true };
+    if (subscribedToChannel === false) return { entitlement: 'denied', usableEverywhere: true, usableHere: false };
+    return { entitlement: emote.entitlement, usableEverywhere: true, usableHere: false };
+  };
+
+  const remap = (emote) => {
+    const verdict = decide(emote);
+    const next = { ...emote, ...verdict };
+    if (verdict.entitlement === 'granted') {
+      ownedEmotes += 1;
+      if (next.kind === 'channel' && next.setName) ownedSets.add(next.setName);
+    }
+    return next;
+  };
+
+  const emotes = catalog.emotes.map(remap);
+  const byKey = new Map(emotes.map((emote) => [`${emote.setId}|${emote.id}`, emote]));
+  const sets = catalog.sets.map((set) => ({
+    ...set,
+    emotes: set.emotes.map((emote) => byKey.get(`${set.id}|${emote.id}`) || emote),
+  }));
+  return {
+    ...catalog,
+    sets,
+    emotes,
+    account: { authenticated: true, ownedSets: [...ownedSets].sort(), ownedEmotes },
+  };
+}
+
+/**
+ * Where an emote may actually be sent, phrased for a person rather than as a
+ * flag. `channel` is the slug the catalog was read for.
+ */
+export function emoteReachLabel(emote, channel = '') {
+  const source = emote && typeof emote === 'object' ? emote : {};
+  if (source.usableHere === false) return 'not-yours';
+  if (source.usableEverywhere) return 'anywhere';
+  return channel ? 'this-channel' : 'source-channel';
 }
 
 /**

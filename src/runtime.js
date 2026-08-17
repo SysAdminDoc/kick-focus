@@ -194,6 +194,9 @@ const state = {
     collisions: [],
     rarity: null,
     inventory: null,
+    // This account's standing in the current channel, from Kick's own /me read.
+    // `subscribed: null` means Kick did not say, which is never "denied".
+    standing: { known: false, subscribed: null, following: null, moderator: null },
     socket: null,
     socketState: 'offline',
     lastFrameAt: 0,
@@ -236,6 +239,7 @@ const state = {
   mediaBound: new WeakSet(),
   mediaSaveTimers: new WeakMap(),
   playbackDiagnosticsTimer: 0,
+  uptimeTimer: 0,
   remoteSyncTimer: 0,
   remoteSyncInFlight: false,
 };
@@ -1314,7 +1318,7 @@ const SITE_CSS = `
       font-weight: 760 !important;
     }
 
-    [data-kf-chat-status], [data-kf-playback-diagnostics] {
+    [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-uptime] {
       position: absolute !important;
       z-index: 7 !important;
       border: 1px solid rgba(255,255,255,.18) !important;
@@ -1326,6 +1330,14 @@ const SITE_CSS = `
 
     [data-kf-chat-status] { top: 44px !important; right: 8px !important; padding: 5px 8px !important; }
     [data-kf-playback-diagnostics] { right: 12px !important; bottom: 12px !important; padding: 6px 8px !important; pointer-events: none !important; }
+    /* Top-left, where a broadcast clock is conventionally read, and clear of
+       the player's own bottom control bar and of the diagnostics panel. */
+    [data-kf-uptime] {
+      top: 10px !important; left: 10px !important; padding: 4px 7px !important;
+      background: rgba(13,16,14,.82) !important; pointer-events: none !important;
+      font-variant-numeric: tabular-nums !important; letter-spacing: .02em !important;
+      opacity: .92 !important;
+    }
 
     [data-kf-search-meta] {
       box-sizing: border-box !important;
@@ -1830,7 +1842,12 @@ function tagMonetizationSurfaces() {
     delete node.dataset.kfMonetization;
   }
   if (!state.settings.content.hideMonetization) return;
-  for (const control of document.querySelectorAll('button, a, [role="button"]')) {
+  // Controls, plus the exact test ids of the surfaces that are not controls —
+  // a balance readout is a `<span>` and the gift shop is a panel, and neither
+  // was reachable while this walked buttons alone. Ids only: `monetizationKind`
+  // never matches prose, so widening the walk cannot widen what it identifies.
+  const selector = 'button, a, [role="button"], [data-testid="kicks-value"], [data-testid="gift-shop-panel"]';
+  for (const control of document.querySelectorAll(selector)) {
     if (state.root?.contains(control)) continue;
     const kind = monetizationKind({
       text: control.textContent,
@@ -2693,11 +2710,48 @@ function applyMediaMemory() {
   applyQualityMemory();
 }
 
+/**
+ * The element an overlay of ours may be appended to, which is never the video.
+ *
+ * Kick's `<video>` carries `id="video-player"`, and `closest()` tests the
+ * element itself first — so the obvious `video.closest('[id*="player" i]')`
+ * returns the video. Appending to a `<video>` is not an error: children of a
+ * media element are fallback content and are never rendered, so the panel
+ * silently does not exist. Measured on a live channel 2026-08-16, that had
+ * disabled three features at once — the playback diagnostics panel, the
+ * `[data-kf-player] video` contain rule, and the uptime chip added beside them.
+ *
+ * The walk starts at the parent for that reason, and prefers the nearest
+ * ancestor that already establishes a containing block, so an absolutely
+ * positioned overlay lands on the video box without this build restyling any
+ * of Kick's own elements.
+ */
+function playerContainerFor(video) {
+  const start = video?.parentElement;
+  if (!start) return null;
+  return start.closest?.('[data-testid*="player" i], [data-player], [id*="player" i]') || start;
+}
+
+function playerOverlayHost(video) {
+  const container = playerContainerFor(video);
+  if (!container) return null;
+  try {
+    if (typeof getComputedStyle !== 'function') return container;
+    for (let node = video.parentElement; node && node !== document.body; node = node.parentElement) {
+      const position = getComputedStyle(node)?.position;
+      if (position && position !== 'static') return node;
+    }
+  } catch {
+    // A stubbed or partial DOM: the container is still a correct answer.
+  }
+  return container;
+}
+
 function applyPlayerResilience() {
   const videos = [...document.querySelectorAll('video')];
   if (state.settings.layout.playerContainVideo) {
     for (const video of videos) {
-      const owner = video.closest?.('[data-testid*="player" i], [data-player], [id*="player" i]');
+      const owner = playerContainerFor(video);
       if (owner) owner.dataset.kfPlayer = 'true';
     }
   }
@@ -2904,7 +2958,12 @@ function mergeStickerLibrary(observed) {
     if (state.stickerPreferences.hidden.has(sticker.key)) continue;
     const existing = state.stickerPreferences.library.get(sticker.key);
     const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...(sticker.nativeGroups || [])])].slice(0, 20);
-    const incomingAccess = sticker.available
+    // `available` is the native picker's signal; `access` is the catalog's,
+    // already decided by `catalogEmoteAccess`. Reading only the first meant a
+    // catalog entry that said 'available' — every Global and Emoji emote, and
+    // since entitlement landed, every emote the account actually owns — fell
+    // through to 'locked' and was filed as subscriber-only.
+    const incomingAccess = sticker.available || sticker.access === 'available'
       ? 'available'
       : sticker.access === 'observed'
         ? 'observed'
@@ -2925,6 +2984,12 @@ function mergeStickerLibrary(observed) {
       requiresFollow: sticker.requiresFollow === true || existing?.requiresFollow === true,
       followed: sticker.followed === true || existing?.followed === true,
       subscribersOnly: sticker.subscribersOnly === true || existing?.subscribersOnly === true,
+      // Where Kick will accept it, which is not what its access level says: a
+      // free channel emote is `channel` access and works in exactly one chat,
+      // while an owned subscriber emote works in all of them. Absent on records
+      // written before this was known, which reads as "not established".
+      ...(sticker.usableEverywhere === undefined ? {} : { usableEverywhere: sticker.usableEverywhere === true }),
+      ...(sticker.usableHere === undefined ? {} : { usableHere: sticker.usableHere === true }),
     }, now);
     // `lastSeen` moves on every pass, so comparing it would rewrite the whole
     // library on every apply cycle. Only a real change is worth a write.
@@ -3960,6 +4025,81 @@ function collectKeywordRanges(root, keywords, ranges) {
   }
 }
 
+/**
+ * How long this stream has been live, which Kick's own page never says.
+ *
+ * The value rides along on the channel payload the live surface already reads,
+ * so this costs no request: `state.live.channel.startedAt`. It ticks locally
+ * from that one timestamp rather than re-reading anything, and it removes
+ * itself the moment the channel is offline or the route changes — an uptime
+ * left on screen for a stream that ended is worse than no uptime.
+ */
+/**
+ * When the current stream started, from whichever source can answer.
+ *
+ * The channel API is preferred and is not depended on: Kick's bot defence
+ * answers 429 to it often enough that a feature reading only that does nothing
+ * at all for some sessions — which is exactly how this shipped broken and how
+ * the live gate caught it. Kick's own `VideoObject` in the page carries the
+ * same start, needs no request, and is absent on an offline channel, so its
+ * absence is the liveness answer.
+ *
+ * The linked-data fallback is confined to a bare channel page. A VOD lives at
+ * `/{slug}/videos/{id}`, which is also route `channel` and also carries a
+ * `VideoObject` — one whose date is when the recording was made. Timing that
+ * would report a "stream" that has been live for weeks.
+ */
+function streamStartedAt() {
+  const channel = state.live.channel;
+  if (channel?.isLive && channel.startedAt) return channel.startedAt;
+  if (channel && !channel.isLive) return 0;
+  if (location.pathname.split('/').filter(Boolean).length !== 1) return 0;
+  return streamStartFromLinkedData(
+    [...document.querySelectorAll('script[type="application/ld+json"]')].map((node) => node.textContent),
+  );
+}
+
+function applyStreamUptime() {
+  const existing = document.querySelector('[data-kf-uptime]');
+  const startedAt = streamStartedAt();
+  const enabled = state.settings.content.showUptime
+    && state.route === 'channel'
+    && formatUptime(startedAt);
+  if (!enabled) {
+    existing?.remove();
+    clearInterval(state.uptimeTimer);
+    state.uptimeTimer = 0;
+    return;
+  }
+  const video = document.querySelector('video');
+  const owner = playerOverlayHost(video);
+  if (!owner) return;
+  let chip = owner.querySelector?.('[data-kf-uptime]');
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.dataset.kfUptime = 'true';
+    // Announced, not decorative: a screen reader user has no other way to know
+    // this text exists, and it changes every second — polite, never assertive.
+    chip.setAttribute('role', 'status');
+    chip.setAttribute('aria-live', 'off');
+    owner.append(chip);
+  }
+  const update = () => {
+    const text = formatUptime(streamStartedAt());
+    if (!text) {
+      chip.remove();
+      clearInterval(state.uptimeTimer);
+      state.uptimeTimer = 0;
+      return;
+    }
+    chip.textContent = text;
+    chip.setAttribute('aria-label', trf('Live for {duration}', { duration: text }));
+    chip.title = trf('Live for {duration}', { duration: text });
+  };
+  update();
+  if (!state.uptimeTimer) state.uptimeTimer = window.setInterval(update, 1000);
+}
+
 function applyPlaybackDiagnostics() {
   const existing = document.querySelector('[data-kf-playback-diagnostics]');
   if (!state.settings.content.playbackDiagnostics || state.route !== 'channel') {
@@ -3970,7 +4110,7 @@ function applyPlaybackDiagnostics() {
   }
   const video = document.querySelector('video');
   if (!video) return;
-  const owner = video.closest?.('[data-testid*="player" i], [data-player], [id*="player" i]') || video.parentElement;
+  const owner = playerOverlayHost(video);
   if (!owner) return;
   let panel = owner.querySelector?.('[data-kf-playback-diagnostics]');
   if (!panel) {
@@ -4354,6 +4494,7 @@ async function runApplyCycle() {
     renderStickerOrganizer();
     applyChatHighlights();
     applyPlaybackDiagnostics();
+    applyStreamUptime();
     state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
     updateCompatibilityInPlace();
     syncQuickButton();
@@ -5701,6 +5842,18 @@ const TRANSLATIONS = {
     'Hide Drops and gambling promotions': 'Ocultar promociones de Drops y apuestas',
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta los módulos claramente marcados como promociones de Drops y apuestas.',
     'Poor mode': 'Modo sin gastos',
+    'Show how long the stream has been live': 'Mostrar cuánto tiempo lleva en directo',
+    'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
+    'Show stream uptime': 'Mostrar tiempo en directo',
+    'Live for {duration}': 'En directo desde hace {duration}',
+    '{count} emotes usable in any chat': '{count} emotes utilizables en cualquier chat',
+    'subscribed channel': 'canal suscrito',
+    'subscribed channels': 'canales suscritos',
+    'your global sets': 'tus conjuntos globales',
+    'Kick reports no emotes this account can send anywhere.': 'Kick no indica ningún emote que esta cuenta pueda enviar en cualquier chat.',
+    'Works in every chat': 'Funciona en todos los chats',
+    'Only works in its own channel': 'Solo funciona en su propio canal',
+    'Only works in {channel}’s chat': 'Solo funciona en el chat de {channel}',
     'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.': 'Oculta Suscribirse, Regalar subs/dubs, Obtener KICKs, la tienda de regalos y las clasificaciones de gasto. Seguir, el chat y las recompensas diarias gratuitas siguen disponibles.',
     'Enable Poor mode': 'Activar modo sin gastos',
     'Disable Poor mode': 'Desactivar modo sin gastos',
@@ -6083,6 +6236,18 @@ const TRANSLATIONS = {
     'Hide Drops and gambling promotions': 'Ocultar promoções de Drops e apostas',
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta os módulos claramente marcados como promoções de Drops e apostas.',
     'Poor mode': 'Modo sem gastos',
+    'Show how long the stream has been live': 'Mostrar há quanto tempo a transmissão está ao vivo',
+    'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
+    'Show stream uptime': 'Mostrar tempo ao vivo',
+    'Live for {duration}': 'Ao vivo há {duration}',
+    '{count} emotes usable in any chat': '{count} emotes utilizáveis em qualquer chat',
+    'subscribed channel': 'canal assinado',
+    'subscribed channels': 'canais assinados',
+    'your global sets': 'seus conjuntos globais',
+    'Kick reports no emotes this account can send anywhere.': 'O Kick não indica nenhum emote que esta conta possa enviar em qualquer chat.',
+    'Works in every chat': 'Funciona em todos os chats',
+    'Only works in its own channel': 'Só funciona no próprio canal',
+    'Only works in {channel}’s chat': 'Só funciona no chat de {channel}',
     'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.': 'Oculta Inscrever-se, Presentear subs/dubs, Obter KICKs, a loja de presentes e os placares de gastos. Seguir, o chat e as recompensas diárias gratuitas continuam disponíveis.',
     'Enable Poor mode': 'Ativar modo sem gastos',
     'Disable Poor mode': 'Desativar modo sem gastos',
@@ -6717,6 +6882,25 @@ function remoteBlocklistControls() {
     </section>`;
 }
 
+/**
+ * What this account may actually send, in one line.
+ *
+ * Kick never states this anywhere: its picker shows the emotes of the channel
+ * you are standing in, so the answer to "what do I own" is only reachable by
+ * visiting every channel you subscribe to. The authenticated catalog answers it
+ * in one read — see `applyAccountEntitlement`.
+ */
+function emoteInventorySummary() {
+  const account = state.live.catalog?.account;
+  if (!account?.authenticated) return '';
+  const sets = account.ownedSets.length;
+  if (!account.ownedEmotes) return tr('Kick reports no emotes this account can send anywhere.');
+  const from = sets
+    ? `${sets} ${plural(sets, 'subscribed channel', 'subscribed channels')}`
+    : tr('your global sets');
+  return `${trf('{count} emotes usable in any chat', { count: account.ownedEmotes })} · ${from}`;
+}
+
 function stickerLibrarySummary() {
   const library = [...state.stickerPreferences.library.values()];
   const locked = library.filter((sticker) => sticker.access === 'locked').length;
@@ -6790,6 +6974,9 @@ function renderStickerLibraryManager() {
     // Shared with the chat hover card, so the two cannot describe the same
     // emote differently.
     const accessLabel = emoteAccessLabel(sticker.access);
+    // Reach, not ownership — the two are independent, and Kick shows neither.
+    const reach = emoteReach(sticker);
+    const reachNote = reach.text ? trf(reach.text, { channel: reach.channel }) : '';
     const changeNote = describeStickerChange(sticker);
     const seenNote = stickerSeenSummary(sticker);
     // A greyed tile with no explanation teaches nothing. Nothing here enables
@@ -6799,7 +6986,7 @@ function renderStickerLibraryManager() {
       : { locked: false, reason: '', unlockUrl: '' };
     return `<article class="kf-sticker-library-item" data-kf-sticker-library-item data-kf-sticker-search="${escapeHtml(searchText)}" data-removed="${removed}" data-changed="${Boolean(changeNote)}">
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
-      <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}${lock.locked ? `<small class="kf-sticker-lock">${escapeHtml(lock.reason)}${lock.unlockUrl ? ` <a href="${escapeHtml(lock.unlockUrl)}" target="_blank" rel="noopener">Unlock on Kick</a>` : ''}</small>` : ''}</div>
+      <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${reachNote ? `<span class="kf-sticker-access kf-sticker-reach" data-reach="${sticker.usableEverywhere ? 'anywhere' : 'local'}">${escapeHtml(reachNote)}</span>` : ''}${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}${lock.locked ? `<small class="kf-sticker-lock">${escapeHtml(lock.reason)}${lock.unlockUrl ? ` <a href="${escapeHtml(lock.unlockUrl)}" target="_blank" rel="noopener">Unlock on Kick</a>` : ''}</small>` : ''}</div>
       <div class="kf-sticker-library-actions">
         <a class="kf-button kf-button-small" href="${escapeHtml(sticker.src)}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(sticker.name)} artwork">Open artwork</a>
         <button type="button" class="kf-button kf-button-small" data-action="copy-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="Copy the name ${escapeHtml(sticker.name)}">Copy name</button>
@@ -6810,9 +6997,10 @@ function renderStickerLibraryManager() {
       </div>
     </article>`;
   }).join('');
+  const inventory = emoteInventorySummary();
   return `
     <section class="kf-subsection" data-kf-sticker-library>
-      <div class="kf-subsection-header"><div><h3>Recorded emote library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="export">Export all settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
+      <div class="kf-subsection-header"><div><h3>Recorded emote library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p>${inventory ? `<p class="kf-meta" data-kf-emote-inventory data-kf-no-translate>${escapeHtml(inventory)}</p>` : ''}</div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="export">Export all settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
       <div class="kf-sticker-library-shell">
         <div class="kf-emote-catalog-browser">
           <h4>Browse any channel’s emotes</h4>
@@ -7050,6 +7238,7 @@ function renderContentPage() {
         ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
         ${row('Always start at the highest quality', 'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.', toggle('content.preferBestQuality', value.preferBestQuality, { label: 'Always start at the highest quality' }))}
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
+        ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.', toggle('content.showUptime', value.showUptime, { label: 'Show stream uptime' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
         ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}

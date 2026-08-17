@@ -6,6 +6,8 @@ import {
   findShadowedNames,
   joinCollectibleRarity,
   normalizeChannel,
+  parseKickTimestamp,
+  streamStartFromLinkedData,
   normalizeChatMessage,
   normalizeDeletion,
   normalizeEmoteSets,
@@ -20,6 +22,8 @@ import {
   realtimeTransport,
   emoteLockState,
   emoteFollowRequirement,
+  applyAccountEntitlement,
+  emoteReachLabel,
   catalogEmoteAccess,
   channelCatalogEmotes,
   normalizeCurrentViewers,
@@ -352,6 +356,149 @@ test('emote sets keep access honest when the public catalog carries no entitleme
   assert.equal(malformed.ok, false);
   assert.equal(malformed.reason, 'no-emotes');
   assert.equal(malformed.emotes.length, 0);
+});
+
+/**
+ * The fixture is the shape measured on 2026-08-16 by reading `/emotes/xqc`
+ * twice from one signed-in page: anonymously it answered with the channel set,
+ * Global and Emojis; with Kick's own bearer token it answered with those plus
+ * every channel the account subscribes to (each one entirely subscriber-only)
+ * and a Collectibles set. That difference is the entitlement.
+ */
+const AUTHENTICATED_CATALOG = () => normalizeEmoteSets([
+  {
+    id: 668, name: 'xqc', slug: 'xqc',
+    emotes: [
+      { id: 1153261, channel_id: 668, name: 'xqcLK', subscribers_only: false },
+      { id: 1082364, channel_id: 668, name: 'xqcAM', subscribers_only: true },
+    ],
+  },
+  {
+    id: 25478204, name: 'peyx', slug: 'peyx',
+    emotes: [{ id: 700, channel_id: 25478204, name: 'peyxwhy', subscribers_only: true }],
+  },
+  { id: null, name: 'Global', emotes: [{ id: 37226, name: 'KEKW', subscribers_only: false }] },
+  { id: null, name: 'Collectibles', emotes: [{ id: 5748003, name: 'collectiblesCooked', subscribers_only: false }] },
+]);
+
+test('a live stream start is readable from the page itself, not only the API', { tag: 'unit' }, () => {
+  // Kick's own structured data, captured from a live channel 2026-08-16. Same
+  // zone-less form as the API, and in the HTML — so it answers when the channel
+  // API is rate-limiting, which it does often enough to matter.
+  const live = [
+    '{"@context":"https://schema.org","@type":"ProfilePage","name":"xQc"}',
+    '{"@context":"https://schema.org","@type":"VideoObject","name":"stream","uploadDate":"2026-08-16 23:53:38"}',
+  ];
+  assert.equal(streamStartFromLinkedData(live), Date.UTC(2026, 7, 16, 23, 53, 38));
+
+  // Kick ships several blocks and not all of them parse. A bad one is skipped,
+  // never treated as the answer and never thrown.
+  assert.equal(streamStartFromLinkedData(['{not json', ...live]), Date.UTC(2026, 7, 16, 23, 53, 38));
+
+  // Nested under @graph, which is the other shape Kick emits.
+  assert.equal(
+    streamStartFromLinkedData(['{"@graph":[{"@type":"VideoObject","uploadDate":"2026-08-16 23:53:38"}]}']),
+    Date.UTC(2026, 7, 16, 23, 53, 38),
+  );
+
+  // An offline channel carries only ProfilePage — measured, not assumed — so
+  // "no VideoObject" is itself the answer that nothing is live.
+  assert.equal(streamStartFromLinkedData(['{"@type":"ProfilePage","name":"Mattronaut’s Profile"}']), 0);
+  assert.equal(streamStartFromLinkedData([]), 0);
+  assert.equal(streamStartFromLinkedData(null), 0);
+  assert.equal(streamStartFromLinkedData(['{"@type":"VideoObject"}']), 0);
+});
+
+test('Kick zone-less timestamps are read as UTC, not as local time', { tag: 'unit' }, () => {
+  // Kick sends `2026-08-16 23:53:38` — a space instead of a T and no zone
+  // marker. `new Date()` reads that as local, so west of UTC an uptime is
+  // hours too long and east of it the stream has not started yet.
+  assert.equal(parseKickTimestamp('2026-08-16 23:53:38'), Date.UTC(2026, 7, 16, 23, 53, 38));
+  assert.equal(parseKickTimestamp('2026-08-16T23:53:38'), Date.UTC(2026, 7, 16, 23, 53, 38));
+
+  // A value that already declares its zone is left for the engine to parse.
+  assert.equal(parseKickTimestamp('2026-08-16T23:53:38Z'), Date.UTC(2026, 7, 16, 23, 53, 38));
+  assert.equal(parseKickTimestamp('2026-08-16T23:53:38.000000Z'), Date.UTC(2026, 7, 16, 23, 53, 38));
+
+  // Anything unparseable is 0, which every caller treats as "no start time".
+  assert.equal(parseKickTimestamp(''), 0);
+  assert.equal(parseKickTimestamp(null), 0);
+  assert.equal(parseKickTimestamp('soon'), 0);
+
+  // It reaches the channel record, preferring start_time over created_at.
+  const channel = normalizeChannel({
+    id: 668,
+    livestream: { id: 1, is_live: true, start_time: '2026-08-16 23:53:35', created_at: '2026-08-16 23:53:38' },
+  });
+  assert.equal(channel.startedAt, Date.UTC(2026, 7, 16, 23, 53, 35));
+  // Offline channels have no livestream at all, and therefore no start.
+  assert.equal(normalizeChannel({ id: 668 }).startedAt, 0);
+});
+
+test('an authenticated catalog states entitlement; an anonymous one never does', { tag: 'unit' }, () => {
+  const at = (catalog, name) => catalog.emotes.find((emote) => emote.name === name);
+
+  // Anonymous: untouched, and explicitly marked as carrying no account answer.
+  const anonymous = applyAccountEntitlement(AUTHENTICATED_CATALOG(), { slug: 'xqc', authenticated: false });
+  assert.deepEqual(anonymous.account, { authenticated: false, ownedSets: [], ownedEmotes: 0 });
+  assert.equal(at(anonymous, 'peyxwhy').entitlement, 'unknown');
+  assert.equal(catalogEmoteAccess(at(anonymous, 'peyxwhy')), 'locked');
+
+  // Authenticated, not subscribed to the channel being viewed.
+  const guest = applyAccountEntitlement(AUTHENTICATED_CATALOG(), {
+    slug: 'xqc', authenticated: true, subscribedToChannel: false,
+  });
+
+  // Another channel's set is in the response because this account owns it.
+  assert.partialDeepStrictEqual(at(guest, 'peyxwhy'), {
+    entitlement: 'granted', usableEverywhere: true, usableHere: true,
+  });
+  assert.equal(catalogEmoteAccess(at(guest, 'peyxwhy')), 'available');
+  assert.equal(emoteReachLabel(at(guest, 'peyxwhy'), 'xqc'), 'anywhere');
+
+  // The viewed channel's own subscriber emote: Kick said no, so it is denied
+  // rather than merely unknown. Sending it answers SUBSCRIBERS_ONLY_EMOTE_ERROR.
+  assert.partialDeepStrictEqual(at(guest, 'xqcAM'), { entitlement: 'denied', usableHere: false });
+  assert.equal(catalogEmoteAccess(at(guest, 'xqcAM')), 'locked');
+  assert.equal(emoteReachLabel(at(guest, 'xqcAM'), 'xqc'), 'not-yours');
+
+  // Its free emote is usable here and refused anywhere else — the measured
+  // FOREIGN_CHANNEL_EMOTE_ERROR, and the half Kick's own interface never says.
+  assert.partialDeepStrictEqual(at(guest, 'xqcLK'), { usableEverywhere: false, usableHere: true });
+  assert.equal(emoteReachLabel(at(guest, 'xqcLK'), 'xqc'), 'this-channel');
+
+  // A pulled collectible travels, and is not a channel named "Collectibles".
+  assert.equal(at(guest, 'collectiblesCooked').kind, 'collectible');
+  assert.equal(catalogEmoteAccess(at(guest, 'collectiblesCooked')), 'available');
+  assert.equal(emoteReachLabel(at(guest, 'collectiblesCooked')), 'anywhere');
+
+  // The summary counts only what the account may send, and names the sets.
+  assert.deepEqual(guest.account.ownedSets, ['peyx']);
+  assert.equal(guest.account.ownedEmotes, 3); // peyxwhy + KEKW + the collectible
+
+  // Subscribed to the channel being viewed: its subscriber emote is now owned.
+  const subscriber = applyAccountEntitlement(AUTHENTICATED_CATALOG(), {
+    slug: 'xqc', authenticated: true, subscribedToChannel: true,
+  });
+  assert.partialDeepStrictEqual(at(subscriber, 'xqcAM'), { entitlement: 'granted', usableHere: true });
+  assert.equal(catalogEmoteAccess(at(subscriber, 'xqcAM')), 'available');
+  assert.deepEqual(subscriber.account.ownedSets, ['peyx', 'xqc']);
+
+  // Kick declining to answer is not a denial: unknown stays unknown, and the
+  // emote stays locked without ever being asserted as unavailable.
+  const unsure = applyAccountEntitlement(AUTHENTICATED_CATALOG(), {
+    slug: 'xqc', authenticated: true, subscribedToChannel: null,
+  });
+  assert.equal(at(unsure, 'xqcAM').entitlement, 'unknown');
+
+  // The sets carry the same objects as the flat list, so the organizer and the
+  // picker cannot disagree about one emote.
+  const inSet = subscriber.sets.find((set) => set.name === 'peyx').emotes[0];
+  assert.equal(inSet.entitlement, 'granted');
+
+  // A catalog that failed to parse is passed through untouched rather than
+  // being given an account summary it cannot support.
+  assert.equal(applyAccountEntitlement({ ok: false }, { authenticated: true }).ok, false);
 });
 
 test('follow-gated emotes require an explicit Kick marker before account mutation', { tag: 'unit' }, () => {

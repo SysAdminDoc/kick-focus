@@ -137,6 +137,20 @@ const record = (label, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? ` — ${detail}` : ''}`);
 };
 
+/**
+ * A check whose subject Kick did not put on this route.
+ *
+ * Distinct from a failure on purpose: the default run targets the home page,
+ * where there is no Subscribe button and no live channel to time, and a red
+ * gate that means "you did not point me at a channel" trains people to ignore
+ * it. Distinct from silence too — the run says out loud what it did not cover,
+ * and how to cover it. Pass a channel URL to `npm run verify:extension` to
+ * turn these into real assertions.
+ */
+const skip = (label, why) => {
+  console.log(`SKIP  ${label} — ${why}`);
+};
+
 async function json(path) {
   const res = await fetch(`http://127.0.0.1:${PORT}${path}`);
   return res.json();
@@ -606,9 +620,16 @@ try {
   })()`);
   const m = migrationProbe.value || { why: migrationProbe.error || 'probe returned nothing' };
   const prefixed = (list) => Array.isArray(list) && list.length > 0 && list.every((key) => key.startsWith('kick:'));
+  // The claim is that the migration loses nothing, not that the library holds
+  // only what was imported. Home carries a live chat preview and emote
+  // discovery is on by default, so a message arriving mid-probe legitimately
+  // adds an entry — which made an exact-length assertion fail on a busy minute
+  // and pass on a quiet one. Both legacy entries must be there, and every key
+  // in the store must carry the platform prefix, observations included.
   record('a backup from the previous build migrates to the platform-prefixed key space without loss',
     m.ok === true && m.schema === 8
-      && m.names?.length === 2 && m.names[0] === 'LegacyOne' && m.names[1] === 'LegacyTwo'
+      && m.names?.includes('LegacyOne') && m.names?.includes('LegacyTwo')
+      && m.keys?.includes('kick:id:9001') && m.keys?.includes('kick:id:9002')
       && prefixed(m.keys) && prefixed(m.favorites) && prefixed(m.hidden) && prefixed(m.assignments)
       // The favorite and the assignment must still resolve against the library.
       && m.keys.includes(m.favorites[0]) && m.keys.includes(m.assignments[0])
@@ -1046,6 +1067,224 @@ try {
     store.ok
       ? `stores ${JSON.stringify(store.stores)}; database holds ${store.stored} entries, seed holds ${store.seeded} of ${store.seedTotal}`
       : store.why);
+
+  // An overlay of ours must land somewhere that renders. Kick's <video> carries
+  // `id="video-player"`, and `closest()` tests the element itself first, so the
+  // obvious ancestor lookup returns the video — and children of a media element
+  // are fallback content that is never drawn. That silently disabled three
+  // features at once, and no unit test can see it: it needs Kick's real player
+  // markup to reproduce.
+  const overlayProbe = await evaluate(pageClient, `(async () => {
+    const settle = () => new Promise((done) => setTimeout(done, 700));
+    const video = document.querySelector('video');
+    if (!video) return { ok: false, why: 'no video on this route' };
+    window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+    await settle();
+    const tagged = document.querySelector('[data-kf-player]');
+    return {
+      ok: true,
+      videoId: video.id || '',
+      // The bug: the tag landing on the video itself. The contain rule is a
+      // descendant selector, so it can never match in that case.
+      taggedIsVideo: tagged === video,
+      taggedTag: tagged ? tagged.tagName : null,
+      taggedContainsVideo: Boolean(tagged && tagged !== video && tagged.contains(video)),
+      containRuleMatches: document.querySelectorAll('[data-kf-player] video').length,
+    };
+  })()`);
+  const overlay = overlayProbe.value || {};
+  record('a player overlay anchors to a container, never to the video element itself',
+    overlay.ok === true
+      && overlay.taggedIsVideo === false
+      && overlay.taggedContainsVideo === true
+      && overlay.containRuleMatches >= 1,
+    overlay.ok
+      ? `video id=${JSON.stringify(overlay.videoId)}; tagged ${overlay.taggedTag}, is the video=${overlay.taggedIsVideo}, contains it=${overlay.taggedContainsVideo}; contain rule matches ${overlay.containRuleMatches}`
+      : overlay.why);
+
+  // Uptime, in a tab of its own on a live channel.
+  //
+  // It needs a channel page and it needs one that is actually live, and by this
+  // point the shared page has been navigated back to the home route by earlier
+  // probes — which is what the first version of this check reported, correctly,
+  // as "no chip on route=home". A separate tab is how the roll-call check
+  // solves the same problem, and it leaves every later probe's page untouched.
+  //
+  // The channel comes from Kick's own live rail rather than a hardcoded name,
+  // so the check does not go permanently yellow the day one streamer stops
+  // streaming.
+  const liveSlugProbe = await evaluate(pageClient, `(() => {
+    const links = [...document.querySelectorAll('a[href^="/"]')];
+    for (const link of links) {
+      const slug = link.getAttribute('href').split('/').filter(Boolean);
+      if (slug.length !== 1) continue;
+      if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(slug[0])) continue;
+      // Kick marks a live rail entry with its own viewer count or LIVE badge.
+      if (!/\bLIVE\b|\d/.test(link.textContent || '')) continue;
+      return slug[0];
+    }
+    return '';
+  })()`);
+  const liveSlug = liveSlugProbe.value || '';
+
+  const uptimeTab = liveSlug ? await (async () => {
+    const c = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await c.ready;
+    const r = await c.send('Target.createTarget', { url: `https://kick.com/${liveSlug}` });
+    c.close();
+    return r.result.targetId;
+  })() : '';
+  if (uptimeTab) await sleep(9000);
+
+  const uptime = uptimeTab ? await (async () => {
+    const target = (await json('/json/list')).find((t) => t.id === uptimeTab);
+    if (!target?.webSocketDebuggerUrl) return { ok: false, why: 'the uptime tab did not attach' };
+    const c = cdp(target.webSocketDebuggerUrl);
+    await c.ready;
+    try {
+      const probe = await evaluate(c, `(async () => {
+        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+        if (!shadow) return { ok: false, why: 'the mod did not mount on the channel tab' };
+        const settle = () => new Promise((done) => setTimeout(done, 900));
+        const chip = () => document.querySelector('[data-kf-uptime]');
+
+        // The reference comes out of the page rather than the API: Kick's own
+        // JSON-LD carries the stream's start as uploadDate, in the same
+        // zone-less form, so this needs no request and works signed out — and
+        // this browser is one Kick's bot defence answers 429 to. An offline
+        // channel carries no VideoObject at all, which is the liveness answer.
+        const reference = (() => {
+          for (const node of document.querySelectorAll('script[type="application/ld+json"]')) {
+            try {
+              const parsed = JSON.parse(node.textContent);
+              const nodes = Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed];
+              for (const entry of nodes) {
+                if (entry && entry['@type'] === 'VideoObject' && entry.uploadDate) return String(entry.uploadDate);
+              }
+            } catch { /* Kick ships more than one block; a bad one is not the answer */ }
+          }
+          return '';
+        })();
+        if (!reference) return { ok: false, why: 'this channel is not live right now' };
+        // Read as UTC, deliberately: that is the claim under test. A build that
+        // read it as local time lands whole hours away. (On a machine set to
+        // UTC both readings coincide and this cannot fail — the unit test in
+        // test/api.test.js is what pins the parse itself.)
+        const expected = Math.floor((Date.now() - Date.parse(reference.replace(' ', 'T') + 'Z')) / 1000);
+        if (!(expected > 0)) return { ok: false, why: 'this channel is not live right now' };
+
+        const shown = chip();
+        if (!shown) return { ok: false, why: 'no uptime chip while the channel is live and the setting is on' };
+        const parts = shown.textContent.split(':').map(Number);
+        const seconds = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+        // Rendered where it can be seen, which appending to a <video> is not.
+        const box = shown.getBoundingClientRect();
+
+        let removed = null;
+        try {
+          shadow.querySelector('[data-action="open-settings"]')?.click();
+          await settle();
+          shadow.querySelector('[data-page="content"]')?.click();
+          await settle();
+          // Re-queried each time, never held: changing a setting re-renders the
+          // page, so the node clicked first is detached by the second click and
+          // that click does nothing at all. Same reason the hide-chip probe
+          // above keeps its control behind a function.
+          const toggle = () => shadow.querySelector('[data-set="content.showUptime"]');
+          if (toggle()) { toggle().click(); await settle(); removed = !chip(); toggle()?.click(); }
+        } finally {
+          shadow.querySelector('[data-action="close-settings"]')?.click();
+        }
+        // Poll rather than sleep a fixed beat: the chip comes back on the next
+        // apply cycle, which yields to input and is not on a fixed clock.
+        let restored = false;
+        for (let attempt = 0; attempt < 12 && !restored; attempt += 1) {
+          await settle();
+          restored = Boolean(chip());
+        }
+        return { ok: true, text: shown.textContent, seconds, expected, width: Math.round(box.width), height: Math.round(box.height), removed, restored };
+      })()`);
+      return probe.value || { ok: false, why: probe.error || 'the uptime probe returned nothing' };
+    } finally {
+      c.close();
+      const closer = cdp((await json('/json/version')).webSocketDebuggerUrl);
+      await closer.ready;
+      await closer.send('Target.closeTarget', { targetId: uptimeTab });
+      closer.close();
+    }
+  })() : { ok: false, why: 'no live channel on the rail to time' };
+
+  if (uptime.ok !== true && /not live right now|no live channel/.test(uptime.why || '')) {
+    skip('the uptime chip counts from Kick own start time, read as UTC',
+      `${uptime.why}; the check needs a channel that is live at run time`);
+  } else record('the uptime chip counts from Kick own start time, read as UTC',
+    uptime.ok === true
+      // Within a minute of the value computed from Kick's own field. A timezone
+      // misparse is off by whole hours and cannot pass this.
+      && Math.abs(uptime.seconds - uptime.expected) <= 60
+      && uptime.width > 0 && uptime.height > 0
+      && uptime.removed === true && uptime.restored === true,
+    uptime.ok
+      ? `chip reads ${uptime.text} (${uptime.seconds}s) against ${uptime.expected}s from Kick's own page data; ${uptime.width}x${uptime.height}px; hides when switched off=${uptime.removed}, comes back=${uptime.restored}`
+      : uptime.why);
+
+  // Poor mode against the two surfaces it used to miss. Both are identified by
+  // test id alone and neither is a control — the KICKs balance is a <span>
+  // whose whole text is a number, and the gift shop is a panel — so a tagger
+  // that walks buttons and links cannot reach either.
+  const poorProbe = await evaluate(pageClient, `(async () => {
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const settle = () => new Promise((done) => setTimeout(done, 800));
+    const before = JSON.parse(localStorage.getItem('kick-focus:settings') || '{}');
+    const seen = (id) => document.querySelector('[data-testid="' + id + '"]');
+    const present = ['sub-button', 'kicks-value', 'gift-shop-panel'].filter(seen);
+    try {
+      shadow.querySelector('[data-action="open-settings"]')?.click();
+      await settle();
+      shadow.querySelector('[data-page="content"]')?.click();
+      await settle();
+      const toggle = shadow.querySelector('[data-set="content.hideMonetization"]');
+      if (!toggle) return { ok: false, why: 'the Poor mode toggle is not on the content page' };
+      toggle.click();
+      await settle();
+      const tagged = Object.fromEntries(present.map((id) => [id, seen(id)?.closest('[data-kf-monetization]')?.dataset.kfMonetization || null]));
+      const hidden = Object.fromEntries(present.map((id) => {
+        const node = seen(id).closest('[data-kf-monetization]') || seen(id);
+        return [id, getComputedStyle(node).display === 'none'];
+      }));
+      // Free surfaces must survive: Follow, and the channel-points counter that
+      // sits directly beside the KICKs balance and reads exactly like it.
+      const free = {
+        follow: Boolean(document.querySelector('[data-testid="follow-button"]'))
+          && !document.querySelector('[data-testid="follow-button"]')?.closest('[data-kf-monetization]'),
+        points: !document.querySelector('[data-testid="channel-points-value"]')?.closest('[data-kf-monetization]'),
+      };
+      toggle.click();
+      await settle();
+      const restored = Object.fromEntries(present.map((id) => [id, Boolean(seen(id))]));
+      return { ok: true, present, tagged, hidden, free, restored };
+    } finally {
+      localStorage.setItem('kick-focus:settings', JSON.stringify(before));
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+    }
+  })()`);
+  const poor = poorProbe.value || {};
+  if (poor.ok === true && poor.present.length === 0) {
+    skip('Poor mode reaches the spend surfaces that are not controls, and leaves free ones alone',
+      'Kick rendered no spend surface on this route; run the gate against a channel URL to assert it');
+  } else record('Poor mode reaches the spend surfaces that are not controls, and leaves free ones alone',
+    poor.ok === true
+      && poor.present?.length > 0
+      // Every surface Kick rendered on this page is both identified and hidden.
+      && poor.present.every((id) => poor.tagged?.[id] && poor.hidden?.[id] === true)
+      && poor.free?.points === true
+      && poor.present.every((id) => poor.restored?.[id] === true),
+    poor.ok
+      ? `present ${JSON.stringify(poor.present)}; kinds ${JSON.stringify(poor.tagged)}; hidden ${JSON.stringify(poor.hidden)}; free surfaces intact ${JSON.stringify(poor.free)}`
+      : poor.why);
 
   // Colon completion, driven the way a person drives it: turn the setting on,
   // seed a library entry, type into Kick's own composer, click a suggestion.

@@ -1,4 +1,4 @@
-export const VERSION = '1.19.0';
+export const VERSION = '1.20.0';
 export const SETTINGS_SCHEMA = 4;
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -50,6 +50,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // see QUALITY_LADDER_KEY in the runtime.
     preferBestQuality: false,
     rememberVodPosition: true,
+    // On: it reads a field Kick already sends with the channel payload and
+    // shows it, which is the whole feature. No extra request, no polling.
+    showUptime: true,
     stickyChatPause: false,
     chatHighlights: false,
     organizeChatStickers: true,
@@ -330,6 +333,65 @@ export function emoteAccessLabel(access) {
 }
 
 /**
+ * A stream's elapsed time as `h:mm:ss`, or `mm:ss` under an hour.
+ *
+ * Returns '' for a start that is missing, in the future, or implausibly old, so
+ * the caller can use it as a presence test. The ceiling is deliberate: a stale
+ * `start_time` on a re-used livestream record would otherwise render a clock
+ * counting into the hundreds of hours, which reads as a bug in the mod rather
+ * than as bad data from Kick. Fourteen days is well past the longest
+ * subathons and far short of a parse error.
+ */
+export const MAX_UPTIME_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function formatUptime(startedAt, now = Date.now()) {
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return '';
+  const elapsed = now - startedAt;
+  if (elapsed < 0 || elapsed > MAX_UPTIME_MS) return '';
+  const total = Math.floor(elapsed / 1000);
+  const seconds = String(total % 60).padStart(2, '0');
+  const minutes = total >= 3600 ? String(Math.floor(total / 60) % 60).padStart(2, '0') : String(Math.floor(total / 60));
+  const hours = Math.floor(total / 3600);
+  return hours ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
+}
+
+/**
+ * Where an emote can be sent, which is a different question from whether the
+ * account owns it — and the one Kick's interface never answers.
+ *
+ * Measured 2026-08-16 by posting each kind into a real chatroom: a *free*
+ * channel emote is refused outside its own channel (`FOREIGN_CHANNEL_EMOTE_-
+ * ERROR`), while a subscriber emote the account owns is accepted everywhere.
+ * So "channel-only" and "subscriber-only" are not two points on one scale;
+ * they are reach and ownership, and a picker that shows only the second leaves
+ * users typing an emote that silently never arrives.
+ *
+ * Returns '' when the catalog has not established reach — an entry recorded
+ * from chat alone, or written before this was known. Saying nothing is correct
+ * there; a guess would be indistinguishable from a measurement.
+ *
+ * The channel name is returned separately rather than pasted into the sentence.
+ * An interpolated string matches no dictionary entry, which is how a line ends
+ * up permanently English while the i18n gate — which only scans fixed literals
+ * — stays green.
+ */
+export function emoteReach(entry) {
+  if (!isRecord(entry)) return { text: '', channel: '' };
+  // An emote the account cannot send has no useful reach to report. Kick's flag
+  // still says "platform-wide", because that is what a subscriber emote is *to
+  // a subscriber* — printing it beside "Subscriber-only" told a user who cannot
+  // send it at all that it works everywhere. The lock reason is the answer
+  // there, and it already says how to unlock it.
+  if (entry.usableHere === false) return { text: '', channel: '' };
+  if (entry.usableEverywhere === true) return { text: 'Works in every chat', channel: '' };
+  if (entry.usableEverywhere !== false) return { text: '', channel: '' };
+  const source = typeof entry.sourceSlug === 'string' && entry.sourceSlug ? entry.sourceSlug : '';
+  return source
+    ? { text: 'Only works in {channel}’s chat', channel: source }
+    : { text: 'Only works in its own channel', channel: '' };
+}
+
+/**
  * The lines of the hover card for one chat emote.
  *
  * Everything here is already recorded — name, Kick's own set names, access
@@ -351,6 +413,8 @@ export function emoteTooltipText(entry, collisions = [], saved = false) {
   const sets = (Array.isArray(entry.nativeGroups) ? entry.nativeGroups : [])
     .filter((group) => group && group !== access);
   lines.push(sets.length ? `${sets.join(' · ')} · ${access}` : access);
+  const reach = emoteReach(entry);
+  if (reach.text) lines.push(reach.text.replace('{channel}', reach.channel));
   if (Number.isFinite(entry.firstSeen) && entry.firstSeen > 0) {
     lines.push(`First seen ${new Date(entry.firstSeen).toISOString().slice(0, 10)}`);
   }
@@ -826,6 +890,7 @@ export function normalizeSettings(input) {
       rememberQuality: bool(content.rememberQuality, defaults.content.rememberQuality),
       preferBestQuality: bool(content.preferBestQuality, defaults.content.preferBestQuality),
       rememberVodPosition: bool(content.rememberVodPosition, defaults.content.rememberVodPosition),
+      showUptime: bool(content.showUptime, defaults.content.showUptime),
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
@@ -1308,8 +1373,13 @@ export function detectContentLabels(text, context = {}) {
 export function monetizationKind({ text = '', ariaLabel = '', title = '', testId = '' } = {}) {
   const id = String(testId).trim().toLowerCase();
   if (id === 'sub-button') return 'subscribe';
-  if (id === 'gift-sub-button' || id === 'gift-shop-button') return 'gift';
-  if (id === 'kicks-top-nav' || id === 'get-kicks') return 'currency';
+  if (id === 'gift-sub-button' || id === 'gift-shop-button' || id === 'gift-shop-panel') return 'gift';
+  // `kicks-value` is the balance readout in the chat footer, not a control. It
+  // survived Poor mode until 2026-08-16 for two reasons: the tagger walked only
+  // buttons and links, and the button around it carries no label of its own —
+  // its whole text is the number. A balance is the spend prompt without the
+  // verb, so it goes with the rest.
+  if (id === 'kicks-top-nav' || id === 'get-kicks' || id === 'kicks-value') return 'currency';
 
   const label = [text, ariaLabel, title]
     .map((value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase())
