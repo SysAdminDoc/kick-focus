@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## 1.21.0 — 2026-08-18
 
+### Added
+
+- **The Firefox companion is now proven against a real Firefox.** It had never been executed anywhere: Firefox Release refuses to install unsigned packages permanently, so every claim about the Manifest V2 build rested on reading the code. A new gate drives Firefox over WebDriver BiDi, installs the package as a temporary add-on, and asserts against live Kick that the page bundle runs, the bridge handshake reaches the page, the interface mounts, and — the one only a real browser can answer — that an ad host requested by the Kick page is refused by the browser's own network layer. It joins the release gate and skips cleanly on a machine with no Firefox.
+
 ### Fixed
 
 - **The Firefox package no longer hands kick.com a permanent identifier.** It used to inject its page bundle from a `moz-extension://` address, and that address contains a UUID which Firefox generates per install and never changes — so any script on the page could read it as a tracking identifier that survives clearing cookies. The bundle is now carried inside the extension's own bridge and injected as source, the address never reaches the page, and the package no longer marks anything web-accessible. This depends on Kick shipping no Content Security Policy, which it does not; the README says what happens if that changes.

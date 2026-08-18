@@ -78,13 +78,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P1 — trust, accessibility, and two expired blockers
 
-- [ ] P1 — R-46, prove the Firefox companion against a real Firefox
-  Why: `Roadmap_Blocked.md` blocks the Firefox live proof on "no Firefox installation or profile exists in this checkout". Firefox 153.0 is installed. The MV2 package's blocking listener, the bridge handshake, the popup, and R-42's inline-injection change are all currently unproven anywhere.
-  Evidence: `C:\Program Files\Mozilla Firefox\firefox.exe` reports "Mozilla Firefox 153.0" (2026-08-17); Playwright's `firefox-1538` is also present. Firefox 128+ supports WebDriver BiDi `webExtension.install` for temporary unsigned add-ons — the zero-dependency equivalent of the Chromium gate's CDP `Extensions.loadUnpacked`.
-  Touches: a Firefox arm of `scripts/verify-extension.mjs` (or a sibling sharing its probes), `package.json` scripts, `README.md`, `Roadmap_Blocked.md` (delete the entry)
-  Acceptance: A command installs `dist/extension-firefox/` into a disposable Firefox profile over BiDi and asserts the background page loaded, `webRequestBlocking` cancelled a Kick-initiated ad-host request, the bridge handshake reached the page, the popup rendered live ruleset state, and no `moz-extension://` URL appears in the page DOM or resource timeline. Skips with a reason when no Firefox is found, exactly as the Chromium gate does.
-  Complexity: L
-
 - [ ] P1 — R-47, cover the realtime half of `live.mjs`
   Why: The module was extracted behind a `host` factory precisely so it could be tested without a browser, and the realtime paths — the ones that touch a live socket and mutate chat — are the half never driven through it.
   Evidence: `npm run coverage` 2026-08-17: `live.mjs` 57.34% lines / 67.90% branches / 48.72% functions, the lowest in the tree. Uncovered ranges are `connectRealtime` (:381-442), `onRealtimeFrame`/`onRealtimeChatMessage` (:453-496), badge queue, render and replay (:543-606), deletion annotation and replay (:620-650).

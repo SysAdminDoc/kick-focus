@@ -49,6 +49,13 @@ for (const [label, size, file] of [
   if (code !== 0) process.exit(code || 1);
 }
 
+// The Firefox package is a separate engine with its own network layer, and it
+// had never been executed anywhere until this gate existed. Skipped rather than
+// failed when no Firefox is installed, matching the Chromium gate's contract.
+console.log('\nRelease checklist: Firefox companion');
+const firefox = await run(process.execPath, ['scripts/verify-firefox.mjs'], { KF_ALLOW_NO_FIREFOX: '1' });
+if (firefox !== 0) process.exit(firefox || 1);
+
 console.log(`\nRelease screenshots, when live Kick was reachable: ${screenshotRoot}`);
 console.log('Compare both captures with the current design references and inspect for overflow, clipped controls, and changed shell geometry before publishing.');
 console.log('The live checks fail the release gate when Chromium is absent (set KF_ALLOW_NO_CHROMIUM=1 to downgrade to a skip); the offline gate above is always authoritative.');

@@ -13,6 +13,7 @@
     "coverage": "node --test --experimental-test-coverage",
     "verify": "npm run check && npm test",
     "verify:extension": "node scripts/verify-extension.mjs",
+    "verify:firefox": "node scripts/verify-firefox.mjs",
     "release:check": "node scripts/release-checklist.mjs"
   },
   "engines": {
