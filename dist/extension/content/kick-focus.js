@@ -823,6 +823,33 @@ function emoteTriggerAt(textBeforeCaret) {
  * channel, then overall, then the shorter name. The final comparison is on the
  * name itself so two otherwise-equal candidates never swap between renders.
  */
+/**
+ * Will Kick refuse this emote in this channel, as a matter of record?
+ *
+ * Two refusals were measured against a real chatroom on 2026-08-16 and they are
+ * the whole model: `SUBSCRIBERS_ONLY_EMOTE_ERROR` for a subscriber emote the
+ * account does not own, and `FOREIGN_CHANNEL_EMOTE_ERROR` for a *free* channel
+ * emote used outside its own channel. Offering either is offering something the
+ * user will watch bounce.
+ *
+ * Only positive knowledge filters. An anonymous read cannot answer "can I send
+ * this" — it returns the same shape for an emote the account owns and one it
+ * never will — so an unknown reach is offered exactly as it is today. Hiding on
+ * uncertainty would empty the list for every signed-out user, which is the
+ * opposite of the fix.
+ */
+function completionWouldBounce(entry, channel = '') {
+  if (!isRecord(entry)) return false;
+  // Kick says this account cannot send it where it is standing.
+  if (entry.usableHere === false) return true;
+  // A free channel emote: usable in its own channel and refused everywhere else.
+  if (entry.usableEverywhere !== false) return false;
+  const source = typeof entry.sourceSlug === 'string' ? entry.sourceSlug : '';
+  const here = typeof channel === 'string' ? channel : '';
+  if (!source || !here) return false;
+  return source.toLowerCase() !== here.toLowerCase();
+}
+
 function rankEmoteCompletions(query, candidates, options = {}) {
   const { favorites = new Set(), usage = null, channel = '', limit = 8 } = options;
   const needle = String(query ?? '').trim().toLowerCase();
@@ -839,6 +866,10 @@ function rankEmoteCompletions(query, candidates, options = {}) {
     if (!name || !PLAIN_EMOTE_NAME.test(name)) continue;
     const at = name.toLowerCase().indexOf(needle);
     if (at === -1) continue;
+    // Nothing that Kick is on record as refusing here. The reach data has been
+    // on every catalog record since v1.20.0; this is the ranker finally reading
+    // it, so the list stops offering emotes that bounce.
+    if (completionWouldBounce(candidate, channel)) continue;
     const key = typeof candidate.key === 'string' && candidate.key ? candidate.key : name;
     if (seen.has(key)) continue;
     seen.add(key);

@@ -62,6 +62,7 @@ import {
   emoteTooltipText,
   emoteReach,
   appendMergedMessage,
+  completionWouldBounce,
   dropMergedChannel,
   formatUptime,
   formatVodRetention,
@@ -2472,4 +2473,46 @@ test('dropping a channel removes only its messages', { tag: 'unit' }, () => {
   const left = dropMergedChannel(entries, 'alpha');
   assert.deepEqual(left.map((entry) => entry.text), ['b']);
   assert.deepEqual(dropMergedChannel(entries, 'gamma').length, 3, 'a channel that was never there changes nothing');
+});
+
+
+test('the completion list never offers an emote Kick is on record as refusing', { tag: 'unit' }, () => {
+  const here = 'alpha';
+  const candidates = [
+    { key: 'k:1', id: '1', name: 'poggers', usableHere: true, usableEverywhere: true },
+    // Subscriber emote the account does not own -> SUBSCRIBERS_ONLY_EMOTE_ERROR.
+    { key: 'k:2', id: '2', name: 'pogchamp', usableHere: false, usableEverywhere: true },
+    // Free channel emote from another channel -> FOREIGN_CHANNEL_EMOTE_ERROR.
+    { key: 'k:3', id: '3', name: 'pogtastic', usableEverywhere: false, sourceSlug: 'beta' },
+    // The same kind of emote, but in its own channel, where it does work.
+    { key: 'k:4', id: '4', name: 'pogging', usableEverywhere: false, sourceSlug: 'alpha' },
+  ];
+  const offered = rankEmoteCompletions('pog', candidates, { channel: here }).map((entry) => entry.name);
+  assert.deepEqual(offered.sort(), ['poggers', 'pogging']);
+});
+
+test('an unknown reach is still offered, because an anonymous read cannot know', { tag: 'unit' }, () => {
+  // The signed-out case: Kick returns the same shape for an emote the account
+  // owns and one it never will, so filtering on uncertainty would empty the
+  // list for every signed-out user.
+  const candidates = [
+    { key: 'k:1', id: '1', name: 'poggers' },
+    { key: 'k:2', id: '2', name: 'pogchamp', usableHere: null },
+    { key: 'k:3', id: '3', name: 'pogtastic', usableEverywhere: false },
+  ];
+  const offered = rankEmoteCompletions('pog', candidates, { channel: 'alpha' }).map((entry) => entry.name);
+  assert.deepEqual(offered.sort(), ['pogchamp', 'poggers', 'pogtastic'],
+    'nothing is hidden without a positive refusal on record');
+});
+
+test('completionWouldBounce answers only from positive knowledge', { tag: 'unit' }, () => {
+  assert.equal(completionWouldBounce({ usableHere: false }, 'alpha'), true);
+  assert.equal(completionWouldBounce({ usableEverywhere: false, sourceSlug: 'beta' }, 'alpha'), true);
+  // Case is Kick's, not the user's.
+  assert.equal(completionWouldBounce({ usableEverywhere: false, sourceSlug: 'Alpha' }, 'alpha'), false);
+  assert.equal(completionWouldBounce({ usableEverywhere: false, sourceSlug: 'beta' }, ''), false);
+  assert.equal(completionWouldBounce({ usableEverywhere: false }, 'alpha'), false);
+  assert.equal(completionWouldBounce({ usableEverywhere: true }, 'alpha'), false);
+  assert.equal(completionWouldBounce({}, 'alpha'), false);
+  assert.equal(completionWouldBounce(null, 'alpha'), false);
 });
