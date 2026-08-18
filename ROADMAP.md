@@ -73,21 +73,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P3 — differentiators and future-proofing
 
-- [ ] P3 — R-55, bring the four loyalty systems into one view
-  Why: Drops, Daily Rewards, Kick Levels and Channel Points are four disconnected progressions Kick never presents together, and the dominant Drops complaint is simply "did my watch time count and did the claim land". The mod already owns the reward-claim schedule, so the state is half-collected.
-  Evidence: help.kick.com/en/articles/15715119 (Daily Rewards: at least 1h/day cumulative across channels, resets daily), /15332522 (Levels: passive, global, off by default, progress reset at launch), /11033027 (Channel Points), about.kick.com Drops campaign pages; Facepunch's support article documents claims taking up to 10 minutes and needing a "Check For Missing Drops" button. Kick Focus already reads the reward countdown and the 20:00 rollover (`src/core.mjs:600`).
-  Touches: `src/live.mjs`, `src/runtime.js` (Content & Ads page), `src/core.mjs`, `test/core.test.js`
-  Acceptance: One panel shows daily watch progress toward the reward, whether it is unclaimed, global level progress, and per-channel points for the current channel, each reading only endpoints the page already calls and each degrading to nothing when its source is unavailable; nothing claims, spends or votes beyond the existing opt-in reward claim. The Drops half stays out until the authenticated-session blocker clears.
-  Complexity: L
-
-## Research-Driven Additions — 2026-08-18 (re-verification pass)
-
-Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against an unchanged v1.20.0. Continues the R-NN scheme from R-57.
-
-Two existing items were **edited in place rather than duplicated**: R-38's premise was invalidated and rewritten (the card-actions defect it described does not exist), and R-48 gained FrankerFaceZ's concrete search design so it needs no further research. R-40's acceptance is now unblocked — `release:check` passes 55/55 at both viewports as of 2026-08-18, so nothing but R-38/R-39 stands between HEAD and a release.
-
-### P1 — the drift gate has an API-shaped hole
-
 - [ ] P3 — R-59, one read-only chat across every channel in the grid
   Why: The grid shows nine streams and one chat — the focused tile's — and the two closest multi-stream competitors both went past that to unified cross-channel chat. It is the single named feature gap in the surface Kick Focus otherwise leads on, and it stays inside the read-only boundary.
   Evidence: Kickplex (CWS v1.1.4, 2026-06-09) ships unified tabbed chat with an emote picker and recents alongside DVR rewind; streamgrids.tv keeps chat beside the active stream; viewgrid.tv runs up to 20 streams. Critically, **chat is the field's universal weak point** — there is no good Kick chat embed, so third parties fall back to an unofficial relay (`chat.kick.cx`), while Kick Focus already reads Kick's own realtime chat same-origin per channel through `src/live.mjs` (`connectRealtime` :381) and uses Kick's own popout chat on-origin. The capability is already in the building.
