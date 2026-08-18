@@ -67,13 +67,13 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.2
 
 Cross-references to existing work: R-56's derived-value assertions belong with "Next" item 1's fixture reducer and should land together, not beside each other. Nothing here covers autocomplete reach filtering — that is "Next" item 2 and stays there. R-45 and R-46 are the unblocks for two [Roadmap_Blocked.md](Roadmap_Blocked.md) items whose stated blockers have expired (the repo is public; Firefox 153 is installed); on completion, delete those entries from that file rather than leaving them recorded as blocked.
 
-### P0 — the gate is red, and it is right to be
+### P0 — the gate cries wolf, and it cost a research pass
 
-- [ ] P0 — R-38, card actions render nothing on Kick's Home route
-  Why: Favourite, Not-interested and the multi chip all hang off one early return, so all three are silently absent on the route most users land on; the drift gate passes because the probe hook resolves and only the value derived from it is gone.
-  Evidence: Live gate 2026-08-17 against `https://kick.com/` — `a discovery card can be collected into the grid without opening it — no card chip rendered on this page`, alongside `card detection found Kick cards — 27 cards scored`; the same gate against `https://kick.com/browse` passes with `chip for davooxeneize -> grid ["xqc","davooxeneize"]`. Second instance this month of the silent-death class (`CLAUDE.md` 2026-08-17, `closest()` returning the video).
-  Touches: `src/runtime.js` (`applyCardActions` :2257, `cardPath` :2133, `mainCardCandidates` :2246, `cardCandidates` :2168), `src/core.mjs` (`cardSlugFromPath` :2361), `scripts/verify-extension.mjs` (:1370-1410)
-  Acceptance: The chip probe reports counts rather than a bare "no chip" — cards found in `main`, how many carried an anchor, how many yielded a slug — and names which stage returned zero. With the cause fixed, both chip checks pass on `https://kick.com/` as they already do on `/browse`, and a check asserts favourite and not-interested render on any discovery route.
+- [ ] P0 — R-38, make every live probe wait for the thing it asserts
+  Why: The file has 42 `{ok:false, why}` bail-out sites, the great majority reached from a single unwaited `querySelector`; exactly one probe first forces the mod to paint. One of them reported a shipped feature as dead, which was investigated as a P0 and was a false positive — a gate that cries wolf is worse than no gate, and this one is release-blocking because `release-checklist.mjs:44-48` runs the live gate twice and exits on the first non-zero.
+  Evidence: **Premise corrected 2026-08-18 — the 2026-08-17 version of this item claimed card actions were dead on Kick's Home route. They are not.** On identical code: live gate 54/54 on `https://kick.com/`, `release:check` 55/55 at 1440×900 and 55/55 at 1920×1080, exit 0; direct DOM measurement on live Kick shows 42/42 Home cards carry an `<a href>` and yield a valid slug through the real `cardPath()`→`cardSlugFromPath()` path, with card nodes stable across 10s with injected children intact. Same check, same code: FAIL 2026-08-17 ("27 cards scored"), PASS 2026-08-18 ("627 cards scored"). The one probe that gets this right is the apply-cost probe (`scripts/verify-extension.mjs:404`), which loops `document.body.append(document.createComment('kf-poke'))` and settles before reading.
+  Touches: `scripts/verify-extension.mjs` (`record` :137, the chip probe :1376, the 14 `no shadow host` bail-outs, and the poke pattern at :404 to generalise)
+  Acceptance: A shared helper waits for a condition with a timeout and is used by every probe that reads mod-painted state; no probe reaches a verdict from a single unwaited sample. The chip probe, when it does fail, reports counts — cards found in `main`, how many carried an anchor, how many yielded a slug — rather than a bare "no chip". Ten consecutive `release:check` runs are green. Lands with R-39: they are one design change.
   Complexity: M
 
 - [ ] P0 — R-39, give the live gate a real SKIP outcome instead of two conventions
@@ -144,10 +144,10 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 ### P2 — quick wins, then the 2026 platform
 
 - [ ] P2 — R-48, search the settings
-  Why: Roughly 90 settings across five pages with no way to find one by name; the field's reference implementation has had cross-page settings search for years, and it is the one FrankerFaceZ affordance with no Kick Focus equivalent.
-  Evidence: `grep -n "settings-search\|searchSettings\|filterSettings" src/runtime.js` returns nothing; `DEFAULT_SETTINGS` (`src/core.mjs:4`) spans five groups; the live gate measured 326 controls across the five pages.
-  Touches: `src/runtime.js` (settings shell ~:6760-7400), `src/core.mjs` (a pure matcher over label, description and page), `test/core.test.js`, `test/i18n-coverage.test.js`
-  Acceptance: Typing in the settings header filters to matching controls across all five pages with the owning page named on each result, matches description as well as label, works in es and pt against the translated strings, clears back to the full page, and is reachable and operable by keyboard; the matcher is a pure function with its own tests.
+  Why: Roughly 90 settings across five pages with no way to find one by name; FrankerFaceZ is the only project in the field that has solved this, and BetterTTV has no search at all — so there is a proven design to copy and no reason to invent one.
+  Evidence: `grep -n "settings-search\|searchSettings\|filterSettings" src/runtime.js` returns nothing; `DEFAULT_SETTINGS` (`src/core.mjs:4`) spans five groups; the live gate measured 326 controls. FFZ's implementation, read at source 2026-08-18 (`src/modules/main_menu/index.js` ~640-810): **no index and no fuzzy matching** — each setting gets `search_terms` = `[key, translated title, translated description, ...getExtraTerms()]`, each HTML-stripped and lowercased, newline-joined; every container concatenates its children's blob **and walks up the parent chain appending to every ancestor**, so one substring test against a page's blob says whether anything beneath it matches and the tree prunes in a single pass. When the locale is not English it also indexes the untranslated English strings, so English keys still find a localized setting. `getExtraTerms()` carries synonyms (FFZ's storage setting registers `['storage','local','indexeddb','localstorage']`). Verified by reading BTTV's settings module and component list that it ships no equivalent.
+  Touches: `src/runtime.js` (settings shell ~:6760-7400), `src/core.mjs` (a pure matcher plus the term-blob builder), `test/core.test.js`, `test/i18n-coverage.test.js`
+  Acceptance: Typing in the settings header filters to matching controls across all five pages with the owning page named on each result; matches description and synonyms as well as label; **matches an English key while the interface is in es or pt**; clears back to the full page; reachable and operable by keyboard. The term-blob builder and matcher are pure functions with their own tests, and a test asserts the parent roll-up — that a query matching one leaf also matches every ancestor of that leaf.
   Complexity: M
 
 - [ ] P2 — R-49, say when a VOD expires
@@ -214,4 +214,28 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
   Touches: `README.md`, `src/metadata.txt`
   Acceptance: A short section states the single purpose, what is collected and transmitted (nothing), why `@connect *` is requested and what uses it, why the project ships no remote code, and which of the three channels each artifact could be listed on. Narrow `@connect` to the shipped defaults if the blocklist feature tolerates it, and say so if it cannot.
   Complexity: S
+
+## Research-Driven Additions — 2026-08-18 (re-verification pass)
+
+Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against an unchanged v1.20.0. Continues the R-NN scheme from R-57.
+
+Two existing items were **edited in place rather than duplicated**: R-38's premise was invalidated and rewritten (the card-actions defect it described does not exist), and R-48 gained FrankerFaceZ's concrete search design so it needs no further research. R-40's acceptance is now unblocked — `release:check` passes 55/55 at both viewports as of 2026-08-18, so nothing but R-38/R-39 stands between HEAD and a release.
+
+### P1 — the drift gate has an API-shaped hole
+
+- [ ] P1 — R-58, assert that the endpoints the mod reads still answer
+  Why: Kick deletes endpoints without notice, and the drift gate covers DOM probes only — so the first report of a removed endpoint would come from a user, not the gate.
+  Evidence: Kick removed `/api/v1/video/:livestream_id` entirely in July 2026 and broke NipahTV's VOD pages outright; its latest commit (2026-07-29) is the firefight — "Kick deleted the entire `/api/v1/video/:livestream_id` endpoint making NTV no longer load on VOD pages" (github.com/Xzensi/NipahTV). Kick Focus degrades correctly — `kickFetchJson` (`src/live.mjs:143`) returns `{ok:false, status}` preserving the status, and `recordApiDrift` (`:202`) records into a bounded diagnostics list — but nothing distinguishes a permanent 404/410 from a transient 429, and `compatibilitySnapshot()` (`src/compatibility.mjs:242`) asserts only that DOM probes resolve.
+  Touches: `scripts/verify-extension.mjs`, `src/live.mjs` (`recordApiDrift`), `src/compatibility.mjs`, `src/api.mjs`, `test/api.test.js`
+  Acceptance: The live gate reads each endpoint the mod depends on and fails when one answers 404 or 410, naming the endpoint; a rate-limited (429) or auth-gated (401/403) answer is reported, not failed, because the gate runs logged out and Kick rate-limits it (the uptime chip's own fallback exists for exactly that). The endpoint list is derived from `src/api.mjs` rather than hand-written beside it, following the `missingExports()` precedent in `scripts/check.mjs` — a second hand-maintained list would rot silently.
+  Complexity: M
+
+### P3 — the one multi-stream gap two competitors both fill
+
+- [ ] P3 — R-59, one read-only chat across every channel in the grid
+  Why: The grid shows nine streams and one chat — the focused tile's — and the two closest multi-stream competitors both went past that to unified cross-channel chat. It is the single named feature gap in the surface Kick Focus otherwise leads on, and it stays inside the read-only boundary.
+  Evidence: Kickplex (CWS v1.1.4, 2026-06-09) ships unified tabbed chat with an emote picker and recents alongside DVR rewind; streamgrids.tv keeps chat beside the active stream; viewgrid.tv runs up to 20 streams. Critically, **chat is the field's universal weak point** — there is no good Kick chat embed, so third parties fall back to an unofficial relay (`chat.kick.cx`), while Kick Focus already reads Kick's own realtime chat same-origin per channel through `src/live.mjs` (`connectRealtime` :381) and uses Kick's own popout chat on-origin. The capability is already in the building.
+  Touches: `src/live.mjs` (multiple concurrent realtime connections), `src/multistream.mjs`, `src/runtime.js`, `src/core.mjs` (merge and ordering), `test/live.test.js`, `test/multistream.test.js`
+  Acceptance: An opt-in merged view interleaves messages from every channel in the grid, each labelled with its source channel, ordered by arrival, capped so a busy grid cannot grow without bound; it is strictly read-only — no composer, no send path, consistent with `README.md:105`; connections are torn down with their tiles and a channel removed from the grid stops consuming one; the existing per-tile chat remains the default. Depends on R-47 (the realtime paths need coverage before they are asked to run nine at once).
+  Complexity: L
 
