@@ -175,6 +175,10 @@ const state = {
   compatibility: null,
   // Set once at boot when the build changed under the user; the About page reads it.
   updateNotice: null,
+  // The settings search: the live query, and the index it searches.
+  settingsQuery: '',
+  settingsIndex: null,
+  settingsSearchTimer: 0,
   observers: {
     document: null,
     body: null,
@@ -396,6 +400,11 @@ function loadSettings() {
 }
 
 function saveSettings(message = 'Autosaved') {
+  // The search index carries each row's translated terms and the copy that
+  // reflects current state, so any settings change can stale it — a language
+  // switch most obviously, which would otherwise leave a Spanish reader
+  // searching an index built in English.
+  state.settingsIndex = null;
   clearTimeout(state.saveTimer);
   state.saveTimer = window.setTimeout(() => {
     const saved = gmSet(STORAGE_KEY, state.settings);
@@ -4900,6 +4909,46 @@ const UI_CSS = `
 
   .kf-page { min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 26px 34px 40px 38px; scrollbar-color: var(--border-control) transparent; scrollbar-width: thin; }
   .kf-page:focus { outline: 0; }
+  .kf-nav-search { padding: 0 10px 10px; }
+  .kf-nav-search input {
+    width: 100%;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+  }
+  .kf-nav-search input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .kf-search-results { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+  .kf-search-result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+    /* The 24px target floor the rest of this panel holds; density and the
+       interface scale must not shrink a result below it. */
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .kf-search-result:hover, .kf-search-result:focus-visible { border-color: var(--accent); background: var(--surface-inset); }
+  .kf-search-result-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .kf-search-result-copy strong { font-size: 13px; }
+  .kf-search-result-copy small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+  .kf-search-result-page { flex: none; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .kf-search-empty { padding: 18px; color: var(--muted); }
+  .kf-search-empty p { margin: 0 0 6px; }
+
   .kf-page-header { min-height: 90px; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
   .kf-page-header h2 { margin: 2px 0 5px; font-size: 28px; line-height: 1.08; letter-spacing: -.035em; }
   .kf-page-header p { max-width: 560px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
@@ -5771,6 +5820,11 @@ const TRANSLATIONS = {
     'Announce layout changes': 'Anunciar cambios de diseño',
     'Text size': 'Tamaño del texto',
     'Caption background opacity': 'Opacidad del fondo de subtítulos',
+    'Search': 'Buscar',
+    'Every page, searched at once.': 'Todas las páginas, buscadas a la vez.',
+    'Try a shorter word, or the name of the Kick control you are looking for.': 'Prueba con una palabra más corta o con el nombre del control de Kick que buscas.',
+    'Nothing matches “{query}”.': 'Nada coincide con «{query}».',
+    'Search settings': 'Buscar ajustes',
     'Kick Focus updated to {version}.': 'Kick Focus se actualizó a {version}.',
     'Changed defaults: {list}.': 'Valores predeterminados que cambiaron: {list}.',
     'What changed': 'Qué cambió',
@@ -6167,6 +6221,11 @@ const TRANSLATIONS = {
     'Announce layout changes': 'Anunciar mudanças de layout',
     'Text size': 'Tamanho do texto',
     'Caption background opacity': 'Opacidade do fundo das legendas',
+    'Search': 'Pesquisar',
+    'Every page, searched at once.': 'Todas as páginas, pesquisadas de uma vez.',
+    'Try a shorter word, or the name of the Kick control you are looking for.': 'Tente uma palavra mais curta ou o nome do controle da Kick que procura.',
+    'Nothing matches “{query}”.': 'Nada corresponde a “{query}”.',
+    'Search settings': 'Pesquisar configurações',
     'Kick Focus updated to {version}.': 'O Kick Focus foi atualizado para {version}.',
     'Changed defaults: {list}.': 'Padrões que mudaram: {list}.',
     'What changed': 'O que mudou',
@@ -6596,6 +6655,7 @@ function buildInterface() {
         </header>
         <div class="kf-body">
           <nav class="kf-nav" aria-label="Kick Focus settings">
+            <div class="kf-nav-search"><input type="search" class="kf-input" data-kf-settings-search placeholder="Search settings" aria-label="Search settings" aria-controls="kf-settings-page"></div>
             ${NAV_ITEMS.map(([id, title, description, icon]) => `<button type="button" data-page="${id}">${uiIcon(icon)}<span class="kf-nav-copy"><strong>${title}</strong><span>${description}</span></span></button>`).join('')}
           </nav>
           <main class="kf-page" data-kf-page tabindex="-1"></main>
@@ -7420,6 +7480,74 @@ function focusRestoreKey(element) {
   return '';
 }
 
+/**
+ * Every setting this build renders, as searchable rows.
+ *
+ * Built by rendering each page into a detached node and reading the real DOM
+ * rather than pattern-matching the markup strings — a regex over generated HTML
+ * would rot the first time a row gained a wrapper.
+ *
+ * Each row is indexed under both its English source *and* its translation, which
+ * is FrankerFaceZ's trick and the reason its search still works in a localized
+ * interface: this build assembles markup in English and translates it afterwards,
+ * so an index built from the markup alone would never match what a Spanish or
+ * Portuguese user is actually reading.
+ *
+ * Cached until something invalidates it, because rendering five pages on every
+ * keystroke would be the most expensive thing this panel does.
+ */
+function settingsSearchIndex() {
+  if (state.settingsIndex) return state.settingsIndex;
+  const scratch = document.createElement('div');
+  const renderers = {
+    layout: renderLayoutPage,
+    appearance: renderAppearancePage,
+    content: renderContentPage,
+    accessibility: renderAccessibilityPage,
+    about: renderAboutPage,
+  };
+  const index = [];
+  for (const [id, pageTitle] of NAV_ITEMS) {
+    const renderer = renderers[id];
+    if (!renderer) continue;
+    try {
+      setMarkup(scratch, renderer());
+    } catch {
+      // A page that cannot render is a bug worth seeing on the page itself, not
+      // one worth taking the whole search down with.
+      continue;
+    }
+    for (const row of scratch.querySelectorAll('.kf-row, .kf-action-row, .kf-subsection-header')) {
+      const title = row.querySelector('h3')?.textContent?.trim() || '';
+      if (!title) continue;
+      const description = row.querySelector('p')?.textContent?.trim() || '';
+      index.push({
+        page: id,
+        pageTitle,
+        title,
+        description,
+        terms: [title, description, tr(title), tr(description)].join('\n'),
+      });
+    }
+  }
+  state.settingsIndex = index;
+  return index;
+}
+
+/** Results for a query, grouped under the page each setting lives on. */
+function renderSettingsSearchResults(query) {
+  const matches = rankSettingsMatches(query, settingsSearchIndex());
+  const header = pageHeader('Search', 'Every page, searched at once.', 'Matches', String(matches.length));
+  if (!matches.length) {
+    return `${header}<section class="kf-panel kf-search-empty"><p>${escapeHtml(trf('Nothing matches “{query}”.', { query }))}</p><p>${escapeHtml(tr('Try a shorter word, or the name of the Kick control you are looking for.'))}</p></section>`;
+  }
+  return `${header}<section class="kf-panel kf-search-results">${matches.map((match) => `
+    <button type="button" class="kf-search-result" data-kf-search-goto="${escapeHtml(match.page)}">
+      <span class="kf-search-result-copy"><strong>${escapeHtml(match.title)}</strong>${match.description ? `<small>${escapeHtml(match.description)}</small>` : ''}</span>
+      <span class="kf-search-result-page">${escapeHtml(match.pageTitle)}</span>
+    </button>`).join('')}</section>`;
+}
+
 function renderSettingsPage() {
   if (!state.shadow) return;
   const page = state.shadow.querySelector('[data-kf-page]');
@@ -7430,6 +7558,15 @@ function renderSettingsPage() {
   const active = state.shadow.activeElement;
   const focusKey = active && page.contains(active) ? focusRestoreKey(active) : '';
   const scrollTop = page.scrollTop;
+  // A query replaces the page body with results from every page, so the
+  // renderer below is skipped entirely while searching.
+  if (state.settingsQuery) {
+    setMarkup(page, renderSettingsSearchResults(state.settingsQuery));
+    page.dataset.kfCurrentPage = 'search';
+    page.scrollTop = 0;
+    localizeInterface();
+    return;
+  }
   const renderer = {
     layout: renderLayoutPage,
     appearance: renderAppearancePage,
@@ -7454,7 +7591,8 @@ function renderSettingsPage() {
     }
   }
   for (const button of state.shadow.querySelectorAll('[data-page]')) {
-    button.setAttribute('aria-current', button.dataset.page === state.currentPage ? 'page' : 'false');
+    // While results are showing, no page is the current one.
+    button.setAttribute('aria-current', !state.settingsQuery && button.dataset.page === state.currentPage ? 'page' : 'false');
   }
   state.shadow.querySelector(`[data-page="${state.currentPage}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const reset = state.shadow.querySelector('[data-action="reset-page"]');
@@ -7639,9 +7777,19 @@ function assignLibrarySticker(selectElement) {
 }
 
 function onInterfaceClick(event) {
+  const searchResult = event.target.closest('[data-kf-search-goto]');
+  if (searchResult) {
+    state.currentPage = searchResult.dataset.kfSearchGoto;
+    clearSettingsSearch();
+    renderSettingsPage();
+    state.shadow.querySelector('[data-kf-page]')?.focus();
+    return;
+  }
+
   const pageButton = event.target.closest('[data-page]');
   if (pageButton) {
     state.currentPage = pageButton.dataset.page;
+    clearSettingsSearch();
     state.shortcutCapture = null;
     state.shortcutError = '';
     renderSettingsPage();
@@ -7867,9 +8015,33 @@ function onInterfaceChange(event) {
   updateSetting(input.dataset.set, coerceSetting(input.dataset.set, input.value));
 }
 
+/** Drop the query and put the input back in step with it. */
+function clearSettingsSearch() {
+  clearTimeout(state.settingsSearchTimer);
+  state.settingsQuery = '';
+  const input = state.shadow?.querySelector('input[data-kf-settings-search]');
+  if (input && input.value) input.value = '';
+}
+
 function onInterfaceInput(event) {
   const search = event.target.closest('input[data-kf-sticker-library-search]');
   if (search) applyStickerLibrarySearch(search.value);
+
+  const settingsSearch = event.target.closest('input[data-kf-settings-search]');
+  if (settingsSearch) {
+    // Debounced: re-rendering the results on every keystroke re-serialises the
+    // whole page body, and the index behind it renders five pages the first time.
+    clearTimeout(state.settingsSearchTimer);
+    const value = settingsSearch.value;
+    state.settingsSearchTimer = window.setTimeout(() => {
+      const query = String(value || '').trim();
+      if (query === state.settingsQuery) return;
+      state.settingsQuery = query;
+      renderSettingsPage();
+      // The input is inside the nav, which the page render does not replace, so
+      // focus and caret survive without the restore dance the page body needs.
+    }, 160);
+  }
 }
 
 function onInterfaceKeydown(event) {

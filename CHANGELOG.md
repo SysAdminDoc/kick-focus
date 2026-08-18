@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Added
 
+- **Search the settings.** Roughly ninety settings live across five pages, and finding one meant knowing which page it was on. A box above the page list searches all of them at once and shows what matched, with the page each setting lives on; clicking a result takes you there. It searches descriptions as well as names, and it matches the English name even when the interface is in Spanish or Portuguese — so a setting someone read about in English is still findable in a translated panel.
 - **Kick Focus tells you when it has changed under you.** After an update, one dismissible notice names the new version and offers a link to a short summary on the About page, and any setting whose default moved is called out by name. It stays quiet on a first install and on a profile that predates this feature — in neither case can it honestly claim to know what changed. Kick shipped ads to viewers with no notice in May 2026 and was rightly criticised for it; this build should not do the same thing to its own users.
 
 ### Changed

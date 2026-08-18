@@ -2021,6 +2021,96 @@ try {
 
 
   /**
+   * Settings search, driven through the real panel.
+   *
+   * The interesting assertions are the ones a unit test cannot make: that the
+   * index is built from what the pages actually render, that a result carries
+   * you to the page the setting lives on, and that an English key still finds a
+   * row while the interface is in Spanish — the property FrankerFaceZ's design
+   * exists for, and the one this build would lose by indexing only its markup.
+   */
+  const search = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = () => new Promise((done) => setTimeout(done, 420));
+    shadow.querySelector('[data-kf-quick]').click();
+    await settle();
+    const input = shadow.querySelector('input[data-kf-settings-search]');
+    if (!input) return { ok: false, why: 'the settings search input is not rendered' };
+
+    const type = async (value) => {
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await settle();
+      return [...shadow.querySelectorAll('[data-kf-search-goto]')];
+    };
+
+    // A word that appears on more than one page, so a single-page filter would
+    // look like it worked.
+    const hits = await type('chat');
+    const pages = [...new Set(hits.map((row) => row.dataset.kfSearchGoto))];
+    const smallest = hits.length ? Math.min(...hits.map((row) => row.getBoundingClientRect().height)) : 0;
+
+    const oneLetter = await type('c');
+    const nonsense = await type('zzzqqq');
+    const emptyShown = Boolean(shadow.querySelector('.kf-search-empty'));
+
+    // An English key while the interface is in Spanish.
+    await type('');
+    // The language control lives on the Appearance page, so get there first —
+    // clearing the query returns to whichever page was current, not to it.
+    shadow.querySelector('[data-page="appearance"]')?.click();
+    await settle();
+    const select = shadow.querySelector('[data-set="appearance.language"]');
+    let bilingual = -1;
+    if (select) {
+      select.value = 'es';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+      bilingual = (await type('theme')).length;
+      select.value = 'auto';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+    }
+
+    // A result navigates to the page that setting lives on, and clears itself.
+    await type('chat');
+    const target = shadow.querySelector('[data-kf-search-goto]');
+    const wanted = target?.dataset.kfSearchGoto || '';
+    target?.click();
+    await settle();
+    const landedOn = shadow.querySelector('[data-kf-page]')?.dataset.kfCurrentPage || '';
+    const inputCleared = shadow.querySelector('input[data-kf-settings-search]')?.value === '';
+    shadow.querySelector('[data-action="close-settings"]')?.click();
+
+    return {
+      ok: true,
+      matches: hits.length,
+      pages: pages.length,
+      smallest,
+      oneLetter: oneLetter.length,
+      nonsense: nonsense.length,
+      emptyShown,
+      bilingual,
+      wanted,
+      landedOn,
+      inputCleared,
+    };
+  })()`);
+  const found = search.value || {};
+  recordProbe('settings search spans every page, and a result goes where the setting lives', found,
+    found.ok === true
+      && found.matches > 1 && found.pages > 1
+      && found.smallest >= 24
+      && found.oneLetter === 0 && found.nonsense === 0 && found.emptyShown === true
+      && found.bilingual > 0
+      && Boolean(found.wanted) && found.landedOn === found.wanted && found.inputCleared === true,
+    found.ok
+      ? `"chat" matched ${found.matches} rows across ${found.pages} pages (smallest ${Math.round(found.smallest)}px); one letter ${found.oneLetter}, nonsense ${found.nonsense} with an empty state; an English key in Spanish matched ${found.bilingual}; a result went to ${found.landedOn} and cleared the box`
+      : found.why);
+
+
+  /**
    * Do the endpoints this build reads still exist?
    *
    * The drift gate covers Kick's DOM and says nothing about its API, and Kick

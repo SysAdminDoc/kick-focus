@@ -48,6 +48,43 @@ export function updateNotice(lastSeen, current = VERSION, notes = VERSION_NOTES)
   };
 }
 
+/**
+ * Rank settings against a search query.
+ *
+ * The shape is FrankerFaceZ's, which is the only implementation in this field
+ * that has solved cross-page settings search — no index and no fuzzy matching,
+ * just a lowercased term blob per row and a substring test. BetterTTV ships no
+ * search at all, so there is no second design to weigh it against.
+ *
+ * A title match outranks a description-only match, and a title that *starts*
+ * with the query outranks one that merely contains it — the same ordering the
+ * emote completion uses, and for the same reason: what someone typed the
+ * beginning of is what they meant.
+ */
+export function rankSettingsMatches(query, entries, limit = 40) {
+  const needle = String(query ?? '').trim().toLowerCase();
+  if (needle.length < 2) return [];
+  const scored = [];
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!isRecord(entry)) continue;
+    const title = String(entry.title || '').toLowerCase();
+    const terms = String(entry.terms || '').toLowerCase();
+    const inTitle = title.indexOf(needle);
+    const inTerms = terms.indexOf(needle);
+    if (inTitle === -1 && inTerms === -1) continue;
+    scored.push({
+      entry,
+      rank: inTitle === 0 ? 0 : inTitle > 0 ? 1 : 2,
+      at: inTitle === -1 ? inTerms : inTitle,
+    });
+  }
+  scored.sort((a, b) => a.rank - b.rank
+    || a.at - b.at
+    || String(a.entry.title).length - String(b.entry.title).length
+    || String(a.entry.title).localeCompare(String(b.entry.title)));
+  return scored.slice(0, Math.max(0, Math.floor(Number(limit)) || 0)).map((row) => row.entry);
+}
+
 export const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
   // Recorded rather than defaulted to VERSION: a fresh profile has seen nothing,

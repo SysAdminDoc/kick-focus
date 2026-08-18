@@ -96,6 +96,7 @@ import {
   parseClaimCountdown,
   updateNotice,
   normalizeVersion,
+  rankSettingsMatches,
 } from '../src/core.mjs';
 
 // The dialog is open and the reward is ready — the only state that clicks.
@@ -2319,4 +2320,52 @@ test('normalizeSettings carries the recorded version and refuses a junk one', { 
   assert.equal(normalizeSettings({ lastSeenVersion: '1.21.0' }).lastSeenVersion, '1.21.0');
   assert.equal(normalizeSettings({ lastSeenVersion: '../evil' }).lastSeenVersion, '');
   assert.equal(normalizeSettings({}).lastSeenVersion, '', 'a fresh profile has seen nothing');
+});
+
+/**
+ * Settings search. FrankerFaceZ is the only project in this field that has
+ * solved cross-page settings search, and its shape is a lowercased term blob per
+ * row plus a substring test — no index, no fuzzy matching. These pin the
+ * ordering, which is the part a substring test does not give you for free.
+ */
+const SEARCH_ROWS = [
+  { page: 'layout', pageTitle: 'Layout', title: 'Chat width', description: 'How wide the chat column is.', terms: 'Chat width\nHow wide the chat column is.' },
+  { page: 'content', pageTitle: 'Content & Ads', title: 'Organize chat stickers', description: 'Collect emotes seen in chat.', terms: 'Organize chat stickers\nCollect emotes seen in chat.' },
+  { page: 'appearance', pageTitle: 'Appearance', title: 'Theme', description: 'Choose the overall surface treatment for chat and the shell.', terms: 'Theme\nChoose the overall surface treatment for chat and the shell.' },
+];
+
+test('a title match outranks a description-only match, and a prefix outranks both', { tag: 'unit' }, () => {
+  const found = rankSettingsMatches('chat', SEARCH_ROWS);
+  assert.deepEqual(found.map((row) => row.title), ['Chat width', 'Organize chat stickers', 'Theme'],
+    'prefix of a title, then inside a title, then description only');
+});
+
+test('a one-letter query opens nothing, because it matches most of the panel', { tag: 'unit' }, () => {
+  assert.deepEqual(rankSettingsMatches('c', SEARCH_ROWS), []);
+  assert.deepEqual(rankSettingsMatches('', SEARCH_ROWS), []);
+  assert.deepEqual(rankSettingsMatches('   ', SEARCH_ROWS), []);
+  assert.equal(rankSettingsMatches('ch', SEARCH_ROWS).length > 0, true, 'two letters is the floor');
+});
+
+test('search matches a translated term as well as its English source', { tag: 'unit' }, () => {
+  // The interface is assembled in English and translated afterwards, so the
+  // index carries both — otherwise a Spanish reader could never find a row by
+  // the words actually on their screen.
+  const bilingual = [{
+    page: 'appearance', pageTitle: 'Appearance', title: 'Theme', description: 'Surface treatment.',
+    terms: 'Theme\nSurface treatment.\nTema\nTratamiento de la superficie.',
+  }];
+  assert.equal(rankSettingsMatches('tema', bilingual).length, 1, 'the translation finds it');
+  assert.equal(rankSettingsMatches('theme', bilingual).length, 1, 'the English key still finds it');
+  assert.equal(rankSettingsMatches('nothing', bilingual).length, 0);
+});
+
+test('search results are capped and deterministic', { tag: 'unit' }, () => {
+  const many = Array.from({ length: 60 }, (_, index) => ({
+    page: 'layout', pageTitle: 'Layout', title: `Chat setting ${String(index).padStart(2, '0')}`, description: '', terms: `Chat setting ${index}`,
+  }));
+  assert.equal(rankSettingsMatches('chat', many, 40).length, 40);
+  const once = rankSettingsMatches('chat', many, 5).map((row) => row.title);
+  const twice = rankSettingsMatches('chat', many, 5).map((row) => row.title);
+  assert.deepEqual(once, twice, 'two identical queries cannot return different orders');
 });
