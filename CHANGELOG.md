@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.25.0 — 2026-08-18
+
+### Added
+
+- **The multi-stream grid's chat can float above everything in its own window.** A "Pop out chat" control opens the focused channel's chat in an always-on-top window you can keep beside a game or another app. It follows the focused tile, and closing it puts chat straight back in the grid — the grid's own chat is hidden while the window has it rather than torn down, so nothing reloads on the way back and no messages are lost. The control only appears in browsers that can do this; everywhere else the grid behaves exactly as before. Read-only, like the in-grid chat, and it says so.
+
 ## 1.24.0 — 2026-08-18
 
 ### Added

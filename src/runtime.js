@@ -2135,7 +2135,11 @@ const multistreamSurface = createMultistream({
 const {
   addMultistream,
   addPresenceOffer,
+  canPopOutChat,
+  chatPoppedOut,
+  closeChatWindow,
   closeMultistream,
+  popOutChat,
   installMultistreamStorageSync,
   multistreamOpen,
   multistreamPresenceChannel,
@@ -5812,6 +5816,10 @@ const UI_CSS = `
   .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
   .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
+  /* The pop-out has it: hide the pane, do not empty it. The iframe stays
+     mounted and connected, so closing the window shows the chat that was
+     already there rather than loading a fresh one. */
+  .kf-ms-backdrop[data-kf-multistream-chat-popped-out="true"] .kf-ms-chat { display: none; }
   .kf-ms-chat iframe { width: 100%; height: 100%; border: 0; display: block; }
   .kf-ms-chat-notice {
     margin: 0;
@@ -6200,6 +6208,10 @@ const TRANSLATIONS = {
     'Show how long the stream has been live': 'Mostrar cuánto tiempo lleva en directo',
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
     'Show stream uptime': 'Mostrar tiempo en directo',
+    'Pop out chat': 'Chat en ventana flotante',
+    'Return chat': 'Devolver el chat',
+    'Kick Focus could not open the pop-out chat window.': 'Kick Focus no ha podido abrir la ventana flotante del chat.',
+    'Chat for {channel} opened in a floating window': 'El chat de {channel} se ha abierto en una ventana flotante',
     'Show VOD expiry': 'Mostrar caducidad del vídeo',
     'Show how long Kick keeps this recording': 'Mostrar cuánto tiempo conserva Kick esta grabación',
     'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'Kick borra las grabaciones a los 7 días, o a los 30 si el canal está verificado, y no muestra ese plazo en ninguna parte. En la página de un vídeo, esto lee la fecha de grabación de la propia lista de vídeos de Kick y cuenta atrás hasta ella. No dice nada cuando la grabación es más antigua que la lista que devuelve Kick, o cuando no se puede establecer el nivel: adivinar entre 7 y 30 días sería dar una fecha equivocada con total seguridad.',
@@ -6606,6 +6618,10 @@ const TRANSLATIONS = {
     'Show how long the stream has been live': 'Mostrar há quanto tempo a transmissão está ao vivo',
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
     'Show stream uptime': 'Mostrar tempo ao vivo',
+    'Pop out chat': 'Chat em janela flutuante',
+    'Return chat': 'Devolver o chat',
+    'Kick Focus could not open the pop-out chat window.': 'A Kick Focus não conseguiu abrir a janela flutuante do chat.',
+    'Chat for {channel} opened in a floating window': 'O chat de {channel} abriu numa janela flutuante',
     'Show VOD expiry': 'Mostrar validade do vídeo',
     'Show how long Kick keeps this recording': 'Mostrar por quanto tempo a Kick guarda esta gravação',
     'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'A Kick apaga as gravações ao fim de 7 dias, ou 30 num canal verificado, e não mostra esse prazo em lado nenhum. Na página de um vídeo, isto lê a data da gravação da própria lista de vídeos da Kick e faz a contagem decrescente até lá. Não diz nada quando a gravação é mais antiga do que a lista que a Kick devolve, ou quando o nível não pode ser estabelecido — adivinhar entre 7 e 30 dias seria dar uma data errada com toda a confiança.',
@@ -6971,6 +6987,7 @@ function buildInterface() {
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-mute" data-kf-multistream-mute aria-pressed="false">Mute all</button>
           <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" hidden>Pop out chat</button>
           <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
         </header>
         <div class="kf-ms-error" role="alert" data-kf-multistream-error hidden></div>
@@ -8110,7 +8127,7 @@ function onInterfaceClick(event) {
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
-  else if (action === 'close-multistream') closeMultistream();
+  else if (action === 'close-multistream') { closeChatWindow(); closeMultistream(); }
   else if (action === 'multistream-add-open-tabs') addPresenceOffer();
   else if (action === 'multistream-add') {
     const input = state.shadow.querySelector('[data-kf-multistream-input]');
@@ -8151,6 +8168,11 @@ function onInterfaceClick(event) {
     persistMultistream();
     renderMultistream();
     announce(muted ? 'All streams muted' : 'Audio restored to the focused stream');
+  }
+  else if (action === 'multistream-popout-chat') {
+    // Awaited nowhere: `requestWindow` needs the transient activation this
+    // click carries, and the surface re-renders itself when it resolves.
+    popOutChat();
   }
   else if (action === 'multistream-toggle-chat') {
     state.multistream = normalizeMultistream({ ...state.multistream, showChat: !state.multistream.showChat });

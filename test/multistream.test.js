@@ -114,6 +114,7 @@ function makeShadow() {
     layouts: withAttribute('data-kf-multistream-layouts'),
     input: withAttribute('data-kf-multistream-input', 'input'),
     presence: withAttribute('data-kf-presence-add', 'button'),
+    popout: withAttribute('data-kf-multistream-popout', 'button'),
   };
   const chatToggle = element('button');
   chatToggle.setAttribute('data-action', 'multistream-toggle-chat');
@@ -171,6 +172,7 @@ function makeHost(overrides = {}) {
 /** The globals the surface reaches for directly, as the page would provide them. */
 globalThis.document = {
   hidden: false,
+  documentElement: { lang: 'en' },
   activeElement: null,
   createElement: (tag) => element(tag),
   addEventListener(type, handler) { (this.__listeners[type] ||= []).push(handler); },
@@ -214,7 +216,7 @@ test('every function the surface hands back can be called against a stub host', 
   // but throws a ReferenceError here. Calling all fifteen is the check.
   const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha' } });
   const surface = createMultistream(host);
-  assert.equal(Object.keys(surface).length, 19);
+  assert.equal(Object.keys(surface).length, 23);
 
   dom.backdrop.hidden = false;
   for (const [name, fn] of Object.entries(surface)) {
@@ -506,4 +508,165 @@ test('only a plain record is treated as a message payload', { tag: 'unit' }, () 
   for (const value of [null, undefined, 'who', 42, [], ['who'], () => {}]) {
     assert.equal(isPlainRecord(value), false, `${String(value)} is not a record`);
   }
+});
+
+
+/** A Document Picture-in-Picture stub: a window with its own bare document. */
+function makePipWindow() {
+  const doc = {
+    title: '',
+    documentElement: { lang: '' },
+    head: element('head'),
+    body: element('body'),
+    createElement: (tag) => element(tag),
+  };
+  doc.querySelector = (selector) => doc.body.querySelector(selector);
+  const pip = {
+    document: doc,
+    closed: false,
+    __listeners: {},
+    addEventListener(type, handler) { (pip.__listeners[type] ||= []).push(handler); },
+    close() { pip.closed = true; },
+  };
+  return pip;
+}
+
+async function withPip(run, { deny = false } = {}) {
+  const opened = [];
+  globalThis.window.documentPictureInPicture = {
+    requestWindow: async () => {
+      if (deny) throw new Error('denied');
+      const pip = makePipWindow();
+      opened.push(pip);
+      return pip;
+    },
+  };
+  try {
+    return await run(opened);
+  } finally {
+    delete globalThis.window.documentPictureInPicture;
+  }
+}
+
+const pipFrame = (pip) => pip.document.body.children.find((node) => node.tagName === 'IFRAME');
+const gridFrame = (chat) => chat.children.find((node) => node.tagName === 'IFRAME');
+
+test('without a top-layer window API the control is never offered', { tag: 'unit' }, () => {
+  const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  assert.equal(surface.canPopOutChat(), false);
+  dom.backdrop.hidden = false;
+  surface.renderMultistream();
+  // Hidden rather than disabled: the grid must look exactly as it does today
+  // on an engine that cannot do this at all.
+  assert.equal(dom.popout.hidden, true);
+  assert.equal(surface.chatPoppedOut(), false);
+});
+
+test('popping chat out gives the window its own frame and never moves the grid one', { tag: 'unit' }, async () => {
+  const { host, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  await withPip(async (opened) => {
+    surface.renderMultistream();
+    assert.equal(dom.popout.hidden, false, 'the control is offered where the API exists');
+
+    const before = gridFrame(dom.chat);
+    assert.ok(before, 'the grid pane has its own chat frame');
+
+    assert.equal(await surface.popOutChat(), true);
+    assert.equal(opened.length, 1);
+    const pip = opened[0];
+
+    // The window builds a frame of its own...
+    const framed = pipFrame(pip);
+    assert.ok(framed, 'the window carries an iframe');
+    assert.equal(framed.getAttribute('src'), 'https://kick.com/popout/alpha/chat');
+    assert.equal(pip.document.title, 'alpha chat');
+    // ...and says the same read-only thing the in-grid pane says.
+    assert.ok(pip.document.body.children.some((node) => node.tagName === 'P' && /Read-only here/.test(node.textContent)));
+
+    // The measured trap this design exists to avoid: moving the existing frame
+    // destroys its browsing context, so the grid's frame must be untouched.
+    assert.equal(gridFrame(dom.chat), before, 'the grid keeps the exact frame it had');
+    assert.equal(before.parent, dom.chat, 'and it was never re-parented');
+    // Hidden, not emptied — that is what makes the return free.
+    assert.equal(dom.backdrop.getAttribute('data-kf-multistream-chat-popped-out'), 'true');
+    assert.equal(surface.chatPoppedOut(), true);
+    assert.equal(dom.popout.getAttribute('aria-pressed'), 'true');
+  });
+});
+
+test('the popped-out chat follows the focused tile, and only when it changed', { tag: 'unit' }, async () => {
+  const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  await withPip(async (opened) => {
+    await surface.popOutChat();
+    const pip = opened[0];
+    const frame = pipFrame(pip);
+
+    // A render that changes nothing must not re-point the frame: re-assigning
+    // the src it already has reloads the chat.
+    surface.renderMultistream();
+    assert.equal(pipFrame(pip), frame, 'the same element');
+    assert.equal(frame.getAttribute('src'), 'https://kick.com/popout/alpha/chat');
+
+    state.multistream = normalizeMultistream({ ...state.multistream, chat: 'beta' });
+    surface.renderMultistream();
+    assert.equal(pipFrame(pip), frame, 'still the same element, re-pointed rather than rebuilt');
+    assert.equal(frame.getAttribute('src'), 'https://kick.com/popout/beta/chat');
+    assert.equal(pip.document.title, 'beta chat');
+  });
+});
+
+test('closing the window returns chat to the grid without losing the tile', { tag: 'unit' }, async () => {
+  const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  await withPip(async (opened) => {
+    surface.renderMultistream();
+    const before = gridFrame(dom.chat);
+    await surface.popOutChat();
+    const pip = opened[0];
+
+    // The user closing the window is the ordinary path.
+    for (const handler of pip.__listeners.pagehide || []) handler();
+    assert.equal(surface.chatPoppedOut(), false);
+    assert.equal(dom.backdrop.getAttribute('data-kf-multistream-chat-popped-out'), 'false');
+    // The tile's chat is the one that was already there — no reload on return.
+    assert.equal(gridFrame(dom.chat), before);
+    assert.equal(dom.popout.getAttribute('aria-pressed'), 'false');
+
+    // And the control opens again rather than being one-way.
+    assert.equal(await surface.popOutChat(), true);
+    assert.equal(opened.length, 2);
+  });
+});
+
+test('a refused window changes nothing and says so', { tag: 'unit' }, async () => {
+  const { host, dom, calls } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  await withPip(async () => {
+    surface.renderMultistream();
+    const before = gridFrame(dom.chat);
+    assert.equal(await surface.popOutChat(), false);
+    assert.equal(surface.chatPoppedOut(), false);
+    assert.equal(gridFrame(dom.chat), before, 'the grid chat is untouched');
+    assert.ok(calls.toasts.some((entry) => /pop-out chat window/.test(entry.message)));
+  }, { deny: true });
+});
+
+test('the second press returns chat rather than opening another window', { tag: 'unit' }, async () => {
+  const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  await withPip(async (opened) => {
+    await surface.popOutChat();
+    assert.equal(await surface.popOutChat(), true);
+    assert.equal(opened.length, 1, 'no second window');
+    assert.equal(opened[0].closed, true);
+    assert.equal(surface.chatPoppedOut(), false);
+  });
 });

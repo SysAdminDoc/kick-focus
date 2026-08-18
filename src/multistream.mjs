@@ -440,6 +440,7 @@ export function createMultistream(host) {
     for (const tile of ordered) grid.append(tile);
 
     renderMultistreamChat(backdrop, chat, showChat);
+    syncChatWindow();
     renderMultistreamControls(backdrop);
     applyMultistreamAudio(grid);
     observeMultistreamVisibility(grid);
@@ -469,6 +470,141 @@ export function createMultistream(host) {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Chat in an always-on-top window
+  //
+  // Document Picture-in-Picture is the only way a page can put its own DOM in a
+  // window that floats above everything else, which is exactly what a chat you
+  // read while doing something else wants to be.
+  //
+  // The one design decision worth stating: the grid's own chat iframe is never
+  // moved. Measured in Chrome 151 on 2026-08-18 — appending an existing
+  // `<iframe>` into the PiP document destroys and recreates its browsing
+  // context, and moving it back does it again, so a move would cost two chat
+  // reloads per pop-out/pop-in cycle. Giving the window its own frame costs one
+  // load on the way out and *none* on the way back, and it is what makes
+  // "closing returns to the grid without losing the tile" true by construction
+  // rather than by repair.
+  // -------------------------------------------------------------------------
+
+  /** The open pop-out, or null. Never persisted: a window does not survive a reload. */
+  let chatWindow = null;
+
+  function canPopOutChat() {
+    return typeof window !== 'undefined'
+      && typeof window.documentPictureInPicture === 'object'
+      && window.documentPictureInPicture !== null
+      && typeof window.documentPictureInPicture.requestWindow === 'function';
+  }
+
+  function chatPoppedOut() {
+    return Boolean(chatWindow && !chatWindow.closed);
+  }
+
+  // The PiP document starts with no styles at all, and this build's own sheets
+  // are constructed for the page's document — adopting one into another
+  // document throws. So the window gets its own small sheet rather than a copy.
+  const POPOUT_CSS = `
+    :root { color-scheme: dark; }
+    body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: #0d100e; color: #f7f9fa;
+      font: 12px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    p { margin: 0; padding: 6px 8px; background: #151917; border-bottom: 1px solid #2a312c; color: #a5aea8; font-size: 11px; }
+    iframe { flex: 1 1 auto; width: 100%; border: 0; }
+  `;
+
+  function fillChatWindow(pip, slug) {
+    const doc = pip.document;
+    doc.title = `${slug} chat`;
+    doc.documentElement.lang = document.documentElement.lang || 'en';
+    const style = doc.createElement('style');
+    style.textContent = POPOUT_CSS;
+    doc.head.append(style);
+    const notice = doc.createElement('p');
+    // The same statement the in-grid pane makes, for the same reason: Kick
+    // refuses to send from an embedded chat by design, and a window that looks
+    // like a composer but is not one is worse than one that says so.
+    notice.textContent = tr('Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.');
+    doc.body.append(notice);
+    const frame = doc.createElement('iframe');
+    frame.src = chatEmbedUrl(slug);
+    frame.dataset.slug = slug;
+    frame.title = `${slug} chat`;
+    frame.referrerPolicy = 'origin';
+    doc.body.append(frame);
+  }
+
+  /**
+   * Follow the focused tile without rebuilding the window.
+   *
+   * Only the frame's `src` changes, and only when the channel actually did —
+   * re-pointing it at the URL it already has would reload the chat on every
+   * unrelated render.
+   */
+  function syncChatWindow() {
+    if (!chatPoppedOut()) return;
+    const slug = state.multistream.chat;
+    if (!slug) {
+      closeChatWindow();
+      return;
+    }
+    const frame = chatWindow.document.querySelector('iframe');
+    if (!frame) {
+      fillChatWindow(chatWindow, slug);
+      return;
+    }
+    if (frame.dataset.slug === slug) return;
+    frame.dataset.slug = slug;
+    frame.src = chatEmbedUrl(slug);
+    frame.title = `${slug} chat`;
+    chatWindow.document.title = `${slug} chat`;
+  }
+
+  function closeChatWindow() {
+    const pip = chatWindow;
+    chatWindow = null;
+    try {
+      if (pip && !pip.closed) pip.close();
+    } catch {
+      // Already gone.
+    }
+    renderMultistream();
+  }
+
+  /**
+   * `requestWindow` needs transient activation, so this only ever runs from a
+   * real click. It is deliberately not retried and not restored on open: a
+   * window that reappears without being asked for is a popup.
+   */
+  async function popOutChat() {
+    if (!canPopOutChat() || !multistreamOpen()) return false;
+    if (chatPoppedOut()) {
+      closeChatWindow();
+      return true;
+    }
+    const slug = state.multistream.chat;
+    if (!slug) return false;
+    let pip;
+    try {
+      pip = await window.documentPictureInPicture.requestWindow({ width: 420, height: 620 });
+    } catch {
+      // Denied, or no activation left. Nothing changes, and the grid keeps its
+      // own chat exactly where it was.
+      showToast(tr('Kick Focus could not open the pop-out chat window.'));
+      return false;
+    }
+    chatWindow = pip;
+    fillChatWindow(pip, slug);
+    // `pagehide` rather than `unload`: the latter is unreliable and deprecated,
+    // and the user closing the window is the ordinary path, not an edge case.
+    pip.addEventListener('pagehide', () => {
+      chatWindow = null;
+      renderMultistream();
+    }, { once: true });
+    renderMultistream();
+    announce(trf('Chat for {channel} opened in a floating window', { channel: slug }));
+    return true;
+  }
+
   function renderMultistreamChat(backdrop, chat, showChat) {
     const host_ = backdrop.querySelector('[data-kf-multistream-chat]');
     if (!host_) return;
@@ -476,6 +612,10 @@ export function createMultistream(host) {
       host_.replaceChildren();
       return;
     }
+    // While the pop-out has chat, this pane is hidden rather than emptied. Its
+    // iframe stays mounted and connected, so closing the window shows the same
+    // chat it was already showing instead of loading a fresh one.
+    backdrop.dataset.kfMultistreamChatPoppedOut = String(chatPoppedOut());
     const current = host_.querySelector('iframe');
     if (current?.dataset.slug === chat) return;
     host_.replaceChildren();
@@ -525,6 +665,17 @@ export function createMultistream(host) {
       muteToggle.setAttribute('aria-pressed', String(state.multistream.muted));
       muteToggle.textContent = state.multistream.muted ? 'Unmute' : 'Mute all';
       muteToggle.disabled = !streams.length || state.multistream.paused;
+    }
+    const popout = backdrop.querySelector('[data-kf-multistream-popout]');
+    if (popout) {
+      // Absent, not disabled, on an engine without a top-layer window: a
+      // control that can never do anything is noise, and the grid must look
+      // exactly as it does today where the API does not exist.
+      const offered = canPopOutChat() && Boolean(chat) && showChat;
+      popout.hidden = !offered;
+      const out = chatPoppedOut();
+      popout.setAttribute('aria-pressed', String(out));
+      popout.textContent = out ? tr('Return chat') : tr('Pop out chat');
     }
     const chatToggle = backdrop.querySelector('[data-action="multistream-toggle-chat"]');
     if (chatToggle) {
@@ -633,6 +784,10 @@ export function createMultistream(host) {
 
   return {
     addMultistream,
+    canPopOutChat,
+    chatPoppedOut,
+    closeChatWindow,
+    popOutChat,
     addPresenceOffer,
     applyRemoteMultistream,
     closeMultistream,

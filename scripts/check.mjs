@@ -502,6 +502,38 @@ const withControlBytes = (files) => files
   .filter(([, text]) => CONTROL_BYTE.test(text))
   .map(([name, text]) => `${name} at byte ${text.search(CONTROL_BYTE)}`);
 
+/**
+ * The chat pop-out builds its own frame and never moves the grid's.
+ *
+ * Measured in Chrome 151 on 2026-08-18: appending an existing `<iframe>` into a
+ * Document PiP document destroys and recreates its browsing context, and moving
+ * it back does it again — two chat reloads per cycle, and the grid's tile loses
+ * its connection and scrollback both ways. The whole design rests on the window
+ * getting a frame of its own while the grid's stays mounted and merely hidden,
+ * and nothing about that is obvious from reading the code, so it is gated.
+ */
+const popOutBuildsItsOwnFrame = (bundle) => {
+  const start = bundle.indexOf('function fillChatWindow');
+  if (start === -1) return false;
+  const region = bundle.slice(start, start + 1200);
+  // Its own element, created against the pop-out's document...
+  if (!/createElement\('iframe'\)/.test(region)) return false;
+  // ...and never the grid's, which is the only frame reachable through that
+  // attribute. Reaching for it here is the move this exists to forbid.
+  return !region.includes('data-kf-multistream-chat');
+};
+
+/**
+ * The window is closed, not merely forgotten, and the pane is hidden, not emptied.
+ *
+ * `replaceChildren()` on the chat pane while popped out would unmount the grid's
+ * frame, which is the same reload by another route.
+ */
+const popOutReturnsWithoutReload = (bundle) =>
+  /kfMultistreamChatPoppedOut = String\(chatPoppedOut\(\)\)/.test(bundle)
+  && /data-kf-multistream-chat-popped-out="true"\]/.test(bundle)
+  && /addEventListener\('pagehide'/.test(bundle);
+
 const SIZE_BUDGETS = [
   ['dist/kick-focus.user.js', source, 1_000_000, 'Violentmonkey MV3 Alternative page mode, ~1 MB of injected script'],
   ['dist/extension/content/kick-focus.js', content, 1_500_000, 'no injection ceiling; tracked so growth stays visible'],
@@ -848,6 +880,8 @@ const checks = [
     && /libraryStore\.clear\(\)/.test(source)],
   ['emote completion is accepted by click only and never sends', completionIsMouseOnly(source)],
   [`no source file carries a stray control byte${controlByteFiles.length ? `: ${controlByteFiles.join('; ')}` : ''}`, controlByteFiles.length === 0],
+  ['the chat pop-out builds its own frame instead of moving the grid one', popOutBuildsItsOwnFrame(source)],
+  ['the chat pane is hidden while popped out, and the window is closed on return', popOutReturnsWithoutReload(source)],
   ['every declared derived expectation has a deriver behind it', derivedExpectationsAreWired(source)],
   ['the compatibility verdict is published wherever the snapshot is taken', compatibilityVerdictIsPublished(source)],
   ['anchored surfaces resolve their anchor in the document tree, and declare their flips', anchoredSurfacesResolve(source)],
@@ -1247,6 +1281,16 @@ const redProbes = [
     withControlBytes([['fake.mjs', ['const a = 1;', String.fromCharCode(10), String.fromCharCode(9), 'const b = 2;', String.fromCharCode(13)].join('')]]).length === 0],
   ['derived gates accept the real bundle',
     derivedExpectationsAreWired(source) && compatibilityVerdictIsPublished(source)],
+  ['pop-out gate would catch the grid frame being moved into the window',
+    !popOutBuildsItsOwnFrame("function fillChatWindow(pip, slug) { const frame = host_.querySelector('[data-kf-multistream-chat] iframe'); pip.document.body.append(frame); }")],
+  ['pop-out gate would catch a window built with no frame at all',
+    !popOutBuildsItsOwnFrame("function fillChatWindow(pip, slug) { pip.document.body.append(notice); }")],
+  ['pop-out gate accepts a window that creates its own frame',
+    popOutBuildsItsOwnFrame("function fillChatWindow(pip, slug) { const frame = doc.createElement('iframe'); frame.src = chatEmbedUrl(slug); doc.body.append(frame); }")],
+  ['pop-out return gate would catch the pane being emptied instead of hidden',
+    !popOutReturnsWithoutReload("host_.replaceChildren();")],
+  ['pop-out gates accept the real bundle',
+    popOutBuildsItsOwnFrame(source) && popOutReturnsWithoutReload(source)],
   // The live gate itself must be the real thing on this machine, not a skip.
   ['anchor gates accept the real bundle',
     anchoredSurfacesResolve(source) && anchorPropertiesAreDetected(source) && anchoredSurfacesAreManual(source)],

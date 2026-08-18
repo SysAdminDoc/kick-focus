@@ -242,11 +242,15 @@ function cdp(wsUrl) {
   };
 }
 
-async function evaluate(client, expression) {
+async function evaluate(client, expression, options = {}) {
   const res = await client.send('Runtime.evaluate', {
     expression,
     awaitPromise: true,
     returnByValue: true,
+    // Transient activation, for the one API that refuses without it:
+    // `documentPictureInPicture.requestWindow()` throws unless the call is
+    // attributable to a user gesture.
+    userGesture: options.userGesture === true,
   });
   if (res.result?.exceptionDetails) return { error: res.result.exceptionDetails.text };
   return { value: res.result?.result?.value };
@@ -683,6 +687,71 @@ try {
     await c.send('Target.closeTarget', { targetId: secondTab });
     c.close();
   })();
+  // R-54: chat in an always-on-top window. The claim that only a browser can
+  // answer is that the grid's own chat frame is still the same element after
+  // the pop-out — moving it would silently reload Kick's chat, which is the
+  // measured trap this design exists to avoid.
+  const pipProbe = await evaluate(pageClient, `(async () => {
+    if (!('documentPictureInPicture' in window)) return { skip: 'this engine has no Document Picture-in-Picture, so the grid keeps its chat inline' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { skip: 'the mod did not mount, so the grid could not be opened' };
+    const settle = () => new Promise((done) => setTimeout(done, 900));
+    try {
+      shadow.querySelector('[data-action="open-multistream"]')?.click();
+      await settle();
+      const backdrop = shadow.querySelector('[data-kf-multistream-backdrop]');
+      if (!backdrop || backdrop.hidden !== false) return { skip: 'the multi-stream grid did not open on this route' };
+
+      const input = shadow.querySelector('[data-kf-multistream-input]');
+      if (input) { input.value = 'xqc'; shadow.querySelector('[data-action="multistream-add"]')?.click(); await settle(); }
+      const pane = shadow.querySelector('[data-kf-multistream-chat]');
+      const before = pane?.querySelector('iframe');
+      if (!before) return { skip: 'the grid rendered no chat frame to keep' };
+
+      const button = () => shadow.querySelector('[data-kf-multistream-popout]');
+      if (!button() || button().hidden) return { skip: 'the pop-out control was not offered on this run' };
+      button().click();
+      await settle();
+      await settle();
+
+      const opened = Boolean(documentPictureInPicture.window);
+      const framedSrc = opened ? String(documentPictureInPicture.window.document.querySelector('iframe')?.src || '') : '';
+      const after = pane.querySelector('iframe');
+      const hidden = backdrop.dataset.kfMultistreamChatPoppedOut;
+
+      // And back, which must cost nothing.
+      if (opened) documentPictureInPicture.window.close();
+      await settle();
+      const restored = pane.querySelector('iframe');
+
+      return {
+        ok: true,
+        opened,
+        framedSrc,
+        // The whole point: same element object, before and after, both ways.
+        gridFrameKept: after === before,
+        gridFrameRestored: restored === before,
+        paneHidden: hidden,
+        returned: backdrop.dataset.kfMultistreamChatPoppedOut,
+      };
+    } finally {
+      shadow.querySelector('[data-action="close-multistream"]')?.click();
+      await settle();
+    }
+  })()`, { userGesture: true });
+  const pip = pipProbe.value || {};
+  recordProbe('chat pops out into a top-layer window without disturbing the grid frame', pip,
+    pip.ok === true
+      && pip.opened === true
+      && /\/popout\/[^/]+\/chat/.test(pip.framedSrc)
+      && pip.gridFrameKept === true
+      && pip.gridFrameRestored === true
+      && pip.paneHidden === 'true'
+      && pip.returned === 'false',
+    pip.ok
+      ? `window carried ${JSON.stringify(pip.framedSrc)}; grid frame kept=${pip.gridFrameKept} restored=${pip.gridFrameRestored}; pane hidden=${pip.paneHidden} -> ${pip.returned}`
+      : pip.why);
+
   // Leave the grid as it was found.
   await evaluate(pageClient, `(() => { localStorage.removeItem('kick-focus:multistream'); return true; })()`);
 

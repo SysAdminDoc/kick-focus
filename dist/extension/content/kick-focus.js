@@ -5913,6 +5913,7 @@ function createMultistream(host) {
     for (const tile of ordered) grid.append(tile);
 
     renderMultistreamChat(backdrop, chat, showChat);
+    syncChatWindow();
     renderMultistreamControls(backdrop);
     applyMultistreamAudio(grid);
     observeMultistreamVisibility(grid);
@@ -5942,6 +5943,141 @@ function createMultistream(host) {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Chat in an always-on-top window
+  //
+  // Document Picture-in-Picture is the only way a page can put its own DOM in a
+  // window that floats above everything else, which is exactly what a chat you
+  // read while doing something else wants to be.
+  //
+  // The one design decision worth stating: the grid's own chat iframe is never
+  // moved. Measured in Chrome 151 on 2026-08-18 — appending an existing
+  // `<iframe>` into the PiP document destroys and recreates its browsing
+  // context, and moving it back does it again, so a move would cost two chat
+  // reloads per pop-out/pop-in cycle. Giving the window its own frame costs one
+  // load on the way out and *none* on the way back, and it is what makes
+  // "closing returns to the grid without losing the tile" true by construction
+  // rather than by repair.
+  // -------------------------------------------------------------------------
+
+  /** The open pop-out, or null. Never persisted: a window does not survive a reload. */
+  let chatWindow = null;
+
+  function canPopOutChat() {
+    return typeof window !== 'undefined'
+      && typeof window.documentPictureInPicture === 'object'
+      && window.documentPictureInPicture !== null
+      && typeof window.documentPictureInPicture.requestWindow === 'function';
+  }
+
+  function chatPoppedOut() {
+    return Boolean(chatWindow && !chatWindow.closed);
+  }
+
+  // The PiP document starts with no styles at all, and this build's own sheets
+  // are constructed for the page's document — adopting one into another
+  // document throws. So the window gets its own small sheet rather than a copy.
+  const POPOUT_CSS = `
+    :root { color-scheme: dark; }
+    body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: #0d100e; color: #f7f9fa;
+      font: 12px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    p { margin: 0; padding: 6px 8px; background: #151917; border-bottom: 1px solid #2a312c; color: #a5aea8; font-size: 11px; }
+    iframe { flex: 1 1 auto; width: 100%; border: 0; }
+  `;
+
+  function fillChatWindow(pip, slug) {
+    const doc = pip.document;
+    doc.title = `${slug} chat`;
+    doc.documentElement.lang = document.documentElement.lang || 'en';
+    const style = doc.createElement('style');
+    style.textContent = POPOUT_CSS;
+    doc.head.append(style);
+    const notice = doc.createElement('p');
+    // The same statement the in-grid pane makes, for the same reason: Kick
+    // refuses to send from an embedded chat by design, and a window that looks
+    // like a composer but is not one is worse than one that says so.
+    notice.textContent = tr('Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.');
+    doc.body.append(notice);
+    const frame = doc.createElement('iframe');
+    frame.src = chatEmbedUrl(slug);
+    frame.dataset.slug = slug;
+    frame.title = `${slug} chat`;
+    frame.referrerPolicy = 'origin';
+    doc.body.append(frame);
+  }
+
+  /**
+   * Follow the focused tile without rebuilding the window.
+   *
+   * Only the frame's `src` changes, and only when the channel actually did —
+   * re-pointing it at the URL it already has would reload the chat on every
+   * unrelated render.
+   */
+  function syncChatWindow() {
+    if (!chatPoppedOut()) return;
+    const slug = state.multistream.chat;
+    if (!slug) {
+      closeChatWindow();
+      return;
+    }
+    const frame = chatWindow.document.querySelector('iframe');
+    if (!frame) {
+      fillChatWindow(chatWindow, slug);
+      return;
+    }
+    if (frame.dataset.slug === slug) return;
+    frame.dataset.slug = slug;
+    frame.src = chatEmbedUrl(slug);
+    frame.title = `${slug} chat`;
+    chatWindow.document.title = `${slug} chat`;
+  }
+
+  function closeChatWindow() {
+    const pip = chatWindow;
+    chatWindow = null;
+    try {
+      if (pip && !pip.closed) pip.close();
+    } catch {
+      // Already gone.
+    }
+    renderMultistream();
+  }
+
+  /**
+   * `requestWindow` needs transient activation, so this only ever runs from a
+   * real click. It is deliberately not retried and not restored on open: a
+   * window that reappears without being asked for is a popup.
+   */
+  async function popOutChat() {
+    if (!canPopOutChat() || !multistreamOpen()) return false;
+    if (chatPoppedOut()) {
+      closeChatWindow();
+      return true;
+    }
+    const slug = state.multistream.chat;
+    if (!slug) return false;
+    let pip;
+    try {
+      pip = await window.documentPictureInPicture.requestWindow({ width: 420, height: 620 });
+    } catch {
+      // Denied, or no activation left. Nothing changes, and the grid keeps its
+      // own chat exactly where it was.
+      showToast(tr('Kick Focus could not open the pop-out chat window.'));
+      return false;
+    }
+    chatWindow = pip;
+    fillChatWindow(pip, slug);
+    // `pagehide` rather than `unload`: the latter is unreliable and deprecated,
+    // and the user closing the window is the ordinary path, not an edge case.
+    pip.addEventListener('pagehide', () => {
+      chatWindow = null;
+      renderMultistream();
+    }, { once: true });
+    renderMultistream();
+    announce(trf('Chat for {channel} opened in a floating window', { channel: slug }));
+    return true;
+  }
+
   function renderMultistreamChat(backdrop, chat, showChat) {
     const host_ = backdrop.querySelector('[data-kf-multistream-chat]');
     if (!host_) return;
@@ -5949,6 +6085,10 @@ function createMultistream(host) {
       host_.replaceChildren();
       return;
     }
+    // While the pop-out has chat, this pane is hidden rather than emptied. Its
+    // iframe stays mounted and connected, so closing the window shows the same
+    // chat it was already showing instead of loading a fresh one.
+    backdrop.dataset.kfMultistreamChatPoppedOut = String(chatPoppedOut());
     const current = host_.querySelector('iframe');
     if (current?.dataset.slug === chat) return;
     host_.replaceChildren();
@@ -5998,6 +6138,17 @@ function createMultistream(host) {
       muteToggle.setAttribute('aria-pressed', String(state.multistream.muted));
       muteToggle.textContent = state.multistream.muted ? 'Unmute' : 'Mute all';
       muteToggle.disabled = !streams.length || state.multistream.paused;
+    }
+    const popout = backdrop.querySelector('[data-kf-multistream-popout]');
+    if (popout) {
+      // Absent, not disabled, on an engine without a top-layer window: a
+      // control that can never do anything is noise, and the grid must look
+      // exactly as it does today where the API does not exist.
+      const offered = canPopOutChat() && Boolean(chat) && showChat;
+      popout.hidden = !offered;
+      const out = chatPoppedOut();
+      popout.setAttribute('aria-pressed', String(out));
+      popout.textContent = out ? tr('Return chat') : tr('Pop out chat');
     }
     const chatToggle = backdrop.querySelector('[data-action="multistream-toggle-chat"]');
     if (chatToggle) {
@@ -6106,6 +6257,10 @@ function createMultistream(host) {
 
   return {
     addMultistream,
+    canPopOutChat,
+    chatPoppedOut,
+    closeChatWindow,
+    popOutChat,
     addPresenceOffer,
     applyRemoteMultistream,
     closeMultistream,
@@ -8264,7 +8419,11 @@ const multistreamSurface = createMultistream({
 const {
   addMultistream,
   addPresenceOffer,
+  canPopOutChat,
+  chatPoppedOut,
+  closeChatWindow,
   closeMultistream,
+  popOutChat,
   installMultistreamStorageSync,
   multistreamOpen,
   multistreamPresenceChannel,
@@ -11941,6 +12100,10 @@ const UI_CSS = `
   .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
   .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
+  /* The pop-out has it: hide the pane, do not empty it. The iframe stays
+     mounted and connected, so closing the window shows the chat that was
+     already there rather than loading a fresh one. */
+  .kf-ms-backdrop[data-kf-multistream-chat-popped-out="true"] .kf-ms-chat { display: none; }
   .kf-ms-chat iframe { width: 100%; height: 100%; border: 0; display: block; }
   .kf-ms-chat-notice {
     margin: 0;
@@ -12329,6 +12492,10 @@ const TRANSLATIONS = {
     'Show how long the stream has been live': 'Mostrar cuánto tiempo lleva en directo',
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
     'Show stream uptime': 'Mostrar tiempo en directo',
+    'Pop out chat': 'Chat en ventana flotante',
+    'Return chat': 'Devolver el chat',
+    'Kick Focus could not open the pop-out chat window.': 'Kick Focus no ha podido abrir la ventana flotante del chat.',
+    'Chat for {channel} opened in a floating window': 'El chat de {channel} se ha abierto en una ventana flotante',
     'Show VOD expiry': 'Mostrar caducidad del vídeo',
     'Show how long Kick keeps this recording': 'Mostrar cuánto tiempo conserva Kick esta grabación',
     'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'Kick borra las grabaciones a los 7 días, o a los 30 si el canal está verificado, y no muestra ese plazo en ninguna parte. En la página de un vídeo, esto lee la fecha de grabación de la propia lista de vídeos de Kick y cuenta atrás hasta ella. No dice nada cuando la grabación es más antigua que la lista que devuelve Kick, o cuando no se puede establecer el nivel: adivinar entre 7 y 30 días sería dar una fecha equivocada con total seguridad.',
@@ -12735,6 +12902,10 @@ const TRANSLATIONS = {
     'Show how long the stream has been live': 'Mostrar há quanto tempo a transmissão está ao vivo',
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
     'Show stream uptime': 'Mostrar tempo ao vivo',
+    'Pop out chat': 'Chat em janela flutuante',
+    'Return chat': 'Devolver o chat',
+    'Kick Focus could not open the pop-out chat window.': 'A Kick Focus não conseguiu abrir a janela flutuante do chat.',
+    'Chat for {channel} opened in a floating window': 'O chat de {channel} abriu numa janela flutuante',
     'Show VOD expiry': 'Mostrar validade do vídeo',
     'Show how long Kick keeps this recording': 'Mostrar por quanto tempo a Kick guarda esta gravação',
     'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'A Kick apaga as gravações ao fim de 7 dias, ou 30 num canal verificado, e não mostra esse prazo em lado nenhum. Na página de um vídeo, isto lê a data da gravação da própria lista de vídeos da Kick e faz a contagem decrescente até lá. Não diz nada quando a gravação é mais antiga do que a lista que a Kick devolve, ou quando o nível não pode ser estabelecido — adivinhar entre 7 e 30 dias seria dar uma data errada com toda a confiança.',
@@ -13100,6 +13271,7 @@ function buildInterface() {
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-mute" data-kf-multistream-mute aria-pressed="false">Mute all</button>
           <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" hidden>Pop out chat</button>
           <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
         </header>
         <div class="kf-ms-error" role="alert" data-kf-multistream-error hidden></div>
@@ -14239,7 +14411,7 @@ function onInterfaceClick(event) {
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
-  else if (action === 'close-multistream') closeMultistream();
+  else if (action === 'close-multistream') { closeChatWindow(); closeMultistream(); }
   else if (action === 'multistream-add-open-tabs') addPresenceOffer();
   else if (action === 'multistream-add') {
     const input = state.shadow.querySelector('[data-kf-multistream-input]');
@@ -14280,6 +14452,11 @@ function onInterfaceClick(event) {
     persistMultistream();
     renderMultistream();
     announce(muted ? 'All streams muted' : 'Audio restored to the focused stream');
+  }
+  else if (action === 'multistream-popout-chat') {
+    // Awaited nowhere: `requestWindow` needs the transient activation this
+    // click carries, and the surface re-renders itself when it resolves.
+    popOutChat();
   }
   else if (action === 'multistream-toggle-chat') {
     state.multistream = normalizeMultistream({ ...state.multistream, showChat: !state.multistream.showChat });
