@@ -71,6 +71,35 @@ function makeHost(overrides = {}) {
   return { host, state, written, merged };
 }
 
+/**
+ * A stub `Image`, at module scope.
+ *
+ * The chat-emote harvest validates every observation by loading its image before
+ * it may take a cap slot, so any test that lets a chat message through schedules
+ * a real `new Image()` 120 ms later. In node that is a ReferenceError raised
+ * *after* the test ended, which node:test reports as an uncaught exception
+ * against the whole file rather than the test that caused it. Same class as the
+ * BroadcastChannel stub in multistream.test.js: assume nothing about which
+ * browser globals node lacks, and stub the ones the code under test reaches for.
+ *
+ * It resolves as a real image so the harvest path runs to completion instead of
+ * hanging with work in flight.
+ */
+globalThis.Image = class {
+  constructor() {
+    this.naturalWidth = 8;
+    this.onload = null;
+    this.onerror = null;
+  }
+
+  set src(value) {
+    this._src = value;
+    setTimeout(() => this.onload?.(), 0);
+  }
+
+  get src() { return this._src; }
+};
+
 globalThis.window = { setTimeout: (fn, ms) => setTimeout(fn, ms) };
 globalThis.document = {
   cookie: '',
@@ -267,4 +296,281 @@ test('a deletion is annotated once, bounded, and replayed onto a remounted node'
   void frame;
 
   globalThis.document.querySelector = () => null;
+});
+
+/**
+ * The realtime half, driven frame by frame.
+ *
+ * `live.mjs` was split out behind a `host` factory precisely so these paths
+ * could be exercised without a browser, and then the realtime half never was —
+ * measured 2026-08-18 at 48.72% function coverage, the lowest in the tree. These
+ * are the paths that touch a live socket and mutate somebody's chat.
+ */
+const frame = (event, data) => ({ data: JSON.stringify({ event, data: JSON.stringify(data) }) });
+
+test('an unreadable run of frames is counted, and one good frame clears it', { tag: 'unit' }, () => {
+  const { host, state } = makeHost();
+  const surface = createLive(host);
+
+  for (let i = 0; i < 3; i += 1) surface.onRealtimeFrame({ data: 'not json at all' });
+  assert.equal(state.live.unparsable, 3, 'a payload shape change must be visible, not silent');
+
+  surface.onRealtimeFrame({ data: JSON.stringify({ event: 'pusher:connection_established' }) });
+  assert.equal(state.live.unparsable, 0, 'a readable frame proves the shape is fine again');
+  assert.equal(state.live.socketState, 'live');
+  assert.ok(state.live.lastLiveAt > 0, 'a transport that reached established has proven itself');
+  assert.ok(state.live.lastFrameAt > 0);
+});
+
+test('a message from somebody else never lands in this user’s usage counts', { tag: 'unit' }, async () => {
+  const { host, state, merged } = makeHost();
+  state.settings.content.organizeChatStickers = true;
+  state.live.slug = 'alpha';
+  const surface = createLive(host);
+
+  // No composer in the DOM means there is no local user to compare against, so
+  // nothing may be counted as "mine". Counting everyone would measure the
+  // channel rather than the person, and the shelf exists to rank what this user
+  // actually reaches for.
+  //
+  // The harvest half of the same path is deliberately not asserted here: it
+  // buffers and then validates each emote by loading its image before it can
+  // take a cap slot, so nothing is observable in the same tick and faking an
+  // Image would prove only that the stub was written correctly.
+  globalThis.document.querySelector = () => null;
+  surface.onRealtimeFrame(frame('App\Events\ChatMessageEvent', {
+    id: 'm-other',
+    sender: { id: 9, username: 'someone-else', identity: { badges: [] } },
+    content: 'hello [emote:1:PogChamp]',
+  }));
+  assert.deepEqual(state.emoteUsage, {}, 'counting everyone would measure the channel, not the person');
+
+  // The harvest half of the same path *does* take it: everyone's emotes are
+  // collected, which is the point of harvesting from chat at all. It buffers for
+  // 120 ms and then validates each image, so this waits for both hops.
+  await new Promise((done) => setTimeout(done, 260));
+  assert.equal(merged.flat().some((observation) => observation.name === 'PogChamp'), true,
+    'an emote from somebody else is still collected into the library');
+});
+
+test('a deletion is annotated once per node, and a reconnect is scheduled with backoff', { tag: 'unit' }, () => {
+  const { host, state } = makeHost();
+  const surface = createLive(host);
+
+  // Deletions are bounded: this is a live annotation, not a log.
+  for (let i = 0; i < 320; i += 1) {
+    surface.onRealtimeFrame(frame('App\Events\MessageDeletedEvent', { message: { id: `m${i}` } }));
+  }
+  assert.ok(state.live.deletions.size <= 300, `deletions grew to ${state.live.deletions.size}`);
+  assert.equal(state.live.deletions.has('m0'), false, 'the oldest annotation is the one dropped');
+  assert.equal(state.live.deletions.has('m319'), true, 'the newest is always kept');
+});
+
+test('the surface refuses to act on chat events the user switched off', { tag: 'unit' }, () => {
+  const { host, state, merged } = makeHost();
+  state.settings.content.countEmoteUsage = false;
+  state.settings.content.showChatBadges = false;
+  state.settings.content.organizeChatStickers = false;
+  state.settings.content.showModerationReasons = false;
+  const surface = createLive(host);
+
+  surface.onRealtimeFrame(frame('App\Events\ChatMessageEvent', {
+    id: 'm1',
+    sender: { id: 1, username: 'me', identity: { badges: [] } },
+    content: 'hi [emote:5:Kappa]',
+  }));
+  surface.onRealtimeFrame(frame('App\Events\MessageDeletedEvent', { message: { id: 'm1' } }));
+
+  assert.deepEqual(state.emoteUsage, {}, 'usage counting is off');
+  assert.equal(merged.length, 0, 'harvest is off');
+  assert.equal(state.live.deletions.size, 0, 'moderation reasons are off');
+});
+
+test('badges are drawn once, survive a remount, and are dropped when the node never comes', { tag: 'unit' }, () => {
+  const { host, state } = makeHost();
+  state.settings.content.showChatBadges = true;
+  let node = null;
+  globalThis.document.querySelector = (selector) => (String(selector).includes('m-badge') ? node : null);
+  const surface = createLive(host);
+
+  // The message arrives before Kick has rendered its node — the ordinary case
+  // on a busy chat — so it has to be held rather than dropped.
+  surface.onRealtimeFrame(frame('App\Events\ChatMessageEvent', {
+    id: 'm-badge',
+    sender: { id: 3, username: 'someone', identity: { badges: [{ type: 'moderator', text: 'Moderator' }] } },
+    content: 'hello',
+  }));
+  assert.equal(state.live.pendingBadges.size, 1, 'a message with no node yet is queued, not discarded');
+
+  node = makeNode();
+  surface.replayPendingBadges();
+  assert.equal(node.dataset.kfBadgesDrawn, 'true', 'the badges land once the node exists');
+  const drawn = node.children.length;
+
+  surface.replayPendingBadges();
+  assert.equal(node.children.length, drawn, 'a node already drawn is left alone rather than duplicated');
+
+  globalThis.document.querySelector = () => null;
+});
+
+test('an unusable realtime answer degrades to the page instead of retrying blind', { tag: 'unit' }, async () => {
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42 };
+  host.pageFetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ provider: 'some-provider-we-do-not-speak' }),
+  });
+  const surface = createLive(host);
+
+  await surface.connectRealtime();
+
+  assert.equal(state.live.socket, null, 'nothing is opened against a transport we cannot speak');
+  assert.equal(state.live.socketState, 'unsupported');
+  assert.match(state.live.catalogError, /fall back to the page/);
+  assert.equal(state.live.apiDrift.length, 1, 'the drift is recorded so it is visible in diagnostics');
+  assert.equal(state.live.apiDrift[0].endpoint, 'realtime');
+});
+
+/**
+ * A stub `WebSocket`, so the socket lifecycle is assertable.
+ *
+ * Node ships a real WebSocket, and a feature-detected one would open a genuine
+ * connection to Kick's Pusher cluster from the test run — the same trap the
+ * BroadcastChannel stub in multistream.test.js exists for, except this one would
+ * also reach the network. Declared per test rather than at module scope so the
+ * tests that must *not* open a socket still see the real absence.
+ */
+class SocketStub {
+  constructor(url) {
+    SocketStub.opened.push(url);
+    this.url = url;
+    this.sent = [];
+    this.listeners = new Map();
+  }
+
+  addEventListener(type, fn) { this.listeners.set(type, fn); }
+
+  send(payload) { this.sent.push(payload); }
+
+  close() { this.fire('close'); }
+
+  fire(type, event = {}) { this.listeners.get(type)?.(event); }
+}
+SocketStub.opened = [];
+
+// `await run()`, not `return run()`: a non-async wrapper restores the global the
+// moment the callback hits its first await, so the code under test would build a
+// *real* WebSocket and open a connection to Kick's Pusher cluster from the suite.
+async function withSocketStub(run) {
+  const real = globalThis.WebSocket;
+  SocketStub.opened = [];
+  globalThis.WebSocket = SocketStub;
+  try { return await run(); } finally { globalThis.WebSocket = real; }
+}
+
+const PUSHER_ANSWER = {
+  data: { connections: [{ provider: 'pusher', credentials: { app_key: 'key-1', cluster: 'us2' } }] },
+};
+
+test('the socket subscribes to every channel it needs, and one close schedules one retry', { tag: 'unit' }, async () => {
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42, id: 7 };
+  host.pageFetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(PUSHER_ANSWER) });
+
+  const scheduled = [];
+  globalThis.window.setTimeout = (fn, ms) => { scheduled.push(ms); return scheduled.length; };
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    await surface.connectRealtime();
+    assert.equal(SocketStub.opened.length, 1, 'exactly one socket is opened');
+    assert.equal(state.live.socketState, 'connecting');
+
+    const socket = state.live.socket;
+    socket.fire('open');
+    assert.equal(state.live.socketState, 'open');
+    assert.ok(socket.sent.length >= 2, 'Kick names its chatroom and channel feeds differently; both must be subscribed');
+    assert.equal(state.live.subscribed.length, socket.sent.length);
+    assert.equal(state.live.reconnectAttempts, 0, 'a successful open clears the backoff');
+
+    // A verified transport that drops is a normal reconnect, with backoff.
+    socket.fire('close');
+    assert.equal(state.live.socket, null);
+    assert.equal(state.live.socketState, 'offline');
+    assert.equal(state.live.reconnectAttempts, 1, 'the retry is counted so the backoff can grow');
+    // Asserted on the stored timer rather than on how many timers were created:
+    // kickFetchJson arms a request deadline through the same window.setTimeout,
+    // so a raw count measures unrelated work.
+    assert.ok(state.live.reconnectAt, 'a retry timer is armed');
+  });
+
+  globalThis.window.setTimeout = (fn, ms) => setTimeout(fn, ms);
+});
+
+test('an unverified transport that never delivered a frame degrades instead of retrying forever', { tag: 'unit' }, async () => {
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42, id: 7 };
+  host.pageFetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ data: { connections: [{ provider: 'kick', credentials: { token: 't' } }] } }),
+  });
+  const scheduled = [];
+  globalThis.window.setTimeout = (fn, ms) => { scheduled.push(ms); return scheduled.length; };
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    await surface.connectRealtime();
+    assert.equal(state.live.providerVerified, false, 'this transport has never been reached from this project');
+
+    state.live.socket.fire('close');
+    assert.equal(state.live.socketState, 'unsupported');
+    assert.match(state.live.catalogError, /fall back to the page/);
+    assert.equal(state.live.reconnectAt, 0, 'a transport this build cannot speak is not retried in a loop');
+    assert.equal(state.live.reconnectAttempts, 0, 'and no attempt is counted against it');
+    assert.equal(state.live.apiDrift.at(-1)?.reason, 'unverified-transport-failed');
+  });
+
+  globalThis.window.setTimeout = (fn, ms) => setTimeout(fn, ms);
+});
+
+test('teardown drops the socket so a route change cannot leave two open', { tag: 'unit' }, async () => {
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42, id: 7 };
+  host.pageFetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(PUSHER_ANSWER) });
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    await surface.connectRealtime();
+    assert.ok(state.live.socket);
+    surface.teardownRealtime();
+    assert.equal(state.live.socket, null);
+
+    await surface.connectRealtime();
+    assert.equal(SocketStub.opened.length, 2, 'a fresh socket is opened after teardown');
+  });
+});
+
+test('a refused emote catalog says so and leaves the picker as the source', { tag: 'unit' }, async () => {
+  const calls = [];
+  const { host, state } = makeHost({
+    pageFetch: async (url) => {
+      calls.push(url);
+      // The channel read succeeds; the catalog read is the one Kick refuses.
+      if (url.includes('/emotes/')) return { ok: false, status: 503, text: async () => '' };
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 7, slug: 'alpha', chatroom: { id: 42 } }),
+      };
+    },
+  });
+  const surface = createLive(host);
+
+  await surface.refreshLiveChannel();
+
+  assert.ok(calls.some((url) => url.includes('/channels/alpha')), 'the channel is read first');
+  assert.equal(state.live.catalogSource, 'dom', 'a refused catalog must not claim to be the API');
+  assert.match(state.live.catalogError, /503/, 'the status Kick answered is reported, not hidden');
 });

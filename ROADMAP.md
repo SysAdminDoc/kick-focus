@@ -78,13 +78,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P1 — trust, accessibility, and two expired blockers
 
-- [ ] P1 — R-47, cover the realtime half of `live.mjs`
-  Why: The module was extracted behind a `host` factory precisely so it could be tested without a browser, and the realtime paths — the ones that touch a live socket and mutate chat — are the half never driven through it.
-  Evidence: `npm run coverage` 2026-08-17: `live.mjs` 57.34% lines / 67.90% branches / 48.72% functions, the lowest in the tree. Uncovered ranges are `connectRealtime` (:381-442), `onRealtimeFrame`/`onRealtimeChatMessage` (:453-496), badge queue, render and replay (:543-606), deletion annotation and replay (:620-650).
-  Touches: `test/live.test.js`, `src/live.mjs`
-  Acceptance: Tests drive a stub socket through connect, frame dispatch, reconnect scheduling, badge queue-and-replay across a chat remount, and deletion annotation applied exactly once; `live.mjs` function coverage clears 80%; each new test is mutation-verified by breaking the behaviour it claims to pin.
-  Complexity: M
-
 ### P2 — quick wins, then the 2026 platform
 
 - [ ] P2 — R-48, search the settings
