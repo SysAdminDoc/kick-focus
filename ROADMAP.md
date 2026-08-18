@@ -71,13 +71,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P2 — quick wins, then the 2026 platform
 
-- [ ] P2 — R-50, show an unresolved prediction against its 24-hour refund deadline
-  Why: A prediction that is never resolved auto-refunds after 24 hours and nothing in Kick's UI shows that clock, so points sit locked with no indication of when they return. It is a pure read over an endpoint the page already calls.
-  Evidence: help.kick.com/en/articles/11182854 (streamer guide: 24-hour auto-refund, exactly two outcomes, 10–250,000 point stakes); `GET api/v2/channels/{channel}/polls` in the community endpoint catalogue (fb-sean/kick-website-endpoints).
-  Touches: `src/api.mjs`, `src/live.mjs`, `src/runtime.js`, `src/core.mjs`, `test/api.test.js`
-  Acceptance: An open prediction on the current channel shows its age and time to auto-refund; the surface is read-only and never votes, resolves or refunds; it degrades silently when the endpoint is unavailable or the channel has predictions off; behind its own setting, on by default only if it costs no extra request.
-  Complexity: M
-
 ### P3 — differentiators and future-proofing
 
 - [ ] P3 — R-54, pop the grid's chat out into a real always-on-top window
@@ -100,13 +93,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
   Touches: `src/compatibility.mjs`, `scripts/verify-extension.mjs`, `test/compatibility.test.js`, and "Next" item 1's fixture reducer
   Acceptance: Each probe feeding a derived value declares an expectation for that value — a card yields a channel slug, a player container is not the video, a quality row yields a plausible height — and the live gate fails naming both the probe and the derived value when one resolves and the other does not. Landed with the fixture reducer so the same expectations are checkable offline.
   Complexity: M
-
-- [ ] P3 — R-57, write down the distribution and listing posture before it is needed
-  Why: The single-purpose rule is the live risk for a mod bundling layout, ad defence, an emote library and a grid, and the Chrome Web Store's tightened Limited Use and Disclosure rules took effect 2026-08-01 — decisions worth making while nothing is submitted rather than during a review.
-  Evidence: developer.chrome.com/blog/cws-policy-updates-2026 (published 2026-07-01, enforcement 2026-08-01); the CWS single-purpose policy; extensionworkshop.com add-on policies (updated 2026-04-30 — `userScripts` restricted to script managers, no remote code); greasyfork.org/en/help/code-rules (no obfuscation or minification, 2 MB cap, update checks capped at once a day, which the current `blocklistRefreshHours: 24` default already satisfies). `@connect *` in `src/metadata.txt:19` is the broadest permission the project asks for.
-  Touches: `README.md`, `src/metadata.txt`
-  Acceptance: A short section states the single purpose, what is collected and transmitted (nothing), why `@connect *` is requested and what uses it, why the project ships no remote code, and which of the three channels each artifact could be listed on. Narrow `@connect` to the shipped defaults if the blocklist feature tolerates it, and say so if it cannot.
-  Complexity: S
 
 ## Research-Driven Additions — 2026-08-18 (re-verification pass)
 
