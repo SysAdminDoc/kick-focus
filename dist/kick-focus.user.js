@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.24.0
+// @version      1.25.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -23,7 +23,7 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.24.0';
+const VERSION = '1.25.0';
 const SETTINGS_SCHEMA = 4;
 
 /**
@@ -50,6 +50,10 @@ const VERSION_NOTES = Object.freeze({
   }),
   '1.24.0': Object.freeze({
     summary: 'Drift detection now checks what a hook is for, not only that it matched — a stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
+    defaults: Object.freeze([]),
+  }),
+  '1.25.0': Object.freeze({
+    summary: 'The grid can merge every channel into one chat or float the focused one in an always-on-top window, and the emote suggestions stop offering emotes Kick would refuse.',
     defaults: Object.freeze([]),
   }),
 });

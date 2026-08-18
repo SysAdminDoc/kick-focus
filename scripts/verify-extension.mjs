@@ -2341,6 +2341,11 @@ try {
 
       // 1. Not ready: the dialog is opened and read, and nothing is clicked.
       let parts = mount(false);
+      // Wait for the countdown to be readable before letting the claim cycle
+      // look at it. Reading the dialog before its note is in the tree takes the
+      // "text but no countdown" branch, which schedules to the nightly reset --
+      // 108 minutes on one 2026-08-18 run against 55 on another, same build.
+      await __kfWait(() => (parts.dialog.textContent.includes('54 more minutes') ? true : null), { timeout: 5000 });
       await cycle();
       const notReady = { clicks, reached: parts.dialog.dataset.kfRewardDialog === 'true' || parts.trigger.dataset.kfSeen === 'true' };
       // Proof the mechanism actually ran rather than being skipped: the record
@@ -2350,6 +2355,13 @@ try {
       const afterNotReady = JSON.parse(localStorage.getItem('kick-focus:reward-claims') || '{}');
       notReady.attempted = Number(afterNotReady.nextCheckAt) > 0;
       notReady.waitMinutes = Math.round((Number(afterNotReady.nextCheckAt) - Date.now()) / 60000);
+      // The schedule is capped at the nightly rollover, so within an hour of it
+      // the countdown branch and the fallback branch produce the same number and
+      // this check cannot tell them apart. Reported so a run near 20:00 skips
+      // rather than passing for the wrong reason.
+      const reset = new Date();
+      reset.setHours(reset.getHours() >= 20 ? 44 : 20, 0, 0, 0);
+      notReady.minutesToReset = Math.round((reset.getTime() - Date.now()) / 60000);
       teardown(parts);
       localStorage.removeItem('kick-focus:reward-claims');
       await settle();
@@ -2393,14 +2405,20 @@ try {
     }
   })()`);
   const reward = rewardProbe.value || {};
-  record('a reward Kick has not unlocked is never clicked, and its countdown sets the next look',
-    // `attempted` is what makes this non-vacuous: it proves the claim really
-    // opened the dialog and then declined, rather than never running. The wait
-    // proves it scheduled from Kick's own "Watch 54 more minutes" rather than
-    // from the fallback interval.
-    reward.ok === true && reward.notReady?.clicks === 0 && reward.notReady?.attempted === true
-      && reward.notReady?.waitMinutes >= 50 && reward.notReady?.waitMinutes <= 56,
-    reward.ok ? `dialog opened=${reward.notReady?.attempted}, clicked ${reward.notReady?.clicks} times, next look in ${reward.notReady?.waitMinutes} min` : reward.why);
+  // Two separate claims. That nothing was clicked is about this build's own
+  // restraint and is answerable at any hour; that the *schedule* came from
+  // Kick's countdown is not, because the schedule is capped at the nightly
+  // rollover and within an hour of it both branches give the same answer.
+  record('a reward Kick has not unlocked is never clicked',
+    reward.ok === true && reward.notReady?.clicks === 0 && reward.notReady?.attempted === true,
+    reward.ok ? `dialog opened=${reward.notReady?.attempted}, clicked ${reward.notReady?.clicks} times` : reward.why);
+  const capped = Number(reward.notReady?.minutesToReset) <= 60;
+  recordProbe('the countdown Kick shows sets the next look, not the fallback interval',
+    capped
+      ? { skip: `the nightly rollover is ${reward.notReady?.minutesToReset} min away, so the cap makes the countdown branch and the fallback indistinguishable` }
+      : reward,
+    reward.ok === true && reward.notReady?.waitMinutes >= 50 && reward.notReady?.waitMinutes <= 56,
+    reward.ok ? `next look in ${reward.notReady?.waitMinutes} min, rollover in ${reward.notReady?.minutesToReset} min` : reward.why);
   record('a ready reward is claimed once and then sleeps to the nightly rollover',
     reward.ok === true && reward.ready?.clicks === 1 && Number(reward.ready?.stored?.lastClaimAt) > 0
       && reward.ready?.nextHour === 20,

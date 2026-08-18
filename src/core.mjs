@@ -1,4 +1,4 @@
-export const VERSION = '1.24.0';
+export const VERSION = '1.25.0';
 export const SETTINGS_SCHEMA = 4;
 
 /**
@@ -25,6 +25,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.24.0': Object.freeze({
     summary: 'Drift detection now checks what a hook is for, not only that it matched — a stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
+    defaults: Object.freeze([]),
+  }),
+  '1.25.0': Object.freeze({
+    summary: 'The grid can merge every channel into one chat or float the focused one in an always-on-top window, and the emote suggestions stop offering emotes Kick would refuse.',
     defaults: Object.freeze([]),
   }),
 });
