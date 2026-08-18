@@ -113,7 +113,7 @@ globalThis.document = {
 test('every function the surface hands back can be called against a stub host', { tag: 'unit' }, async () => {
   const { host } = makeHost();
   const surface = createLive(host);
-  assert.equal(Object.keys(surface).length, 11);
+  assert.equal(Object.keys(surface).length, 15);
   for (const [name, fn] of Object.entries(surface)) {
     assert.equal(typeof fn, 'function', `${name} is callable`);
   }

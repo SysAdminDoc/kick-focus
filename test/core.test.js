@@ -61,6 +61,8 @@ import {
   normalizeShortcut,
   emoteTooltipText,
   emoteReach,
+  appendMergedMessage,
+  dropMergedChannel,
   formatUptime,
   formatVodRetention,
   vodExpiry,
@@ -2425,4 +2427,49 @@ test('the retention label narrows its unit as the deadline approaches', { tag: '
   assert.equal(formatVodRetention(0), '');
   assert.equal(formatVodRetention(-1), '');
   assert.equal(formatVodRetention(NaN), '');
+});
+
+
+test('the merged buffer keeps arrival order and caps from the front', { tag: 'unit' }, () => {
+  let entries = [];
+  for (let i = 0; i < 5; i += 1) {
+    entries = appendMergedMessage(entries, { slug: i % 2 ? 'beta' : 'alpha', id: String(i), text: `m${i}`, sender: 'x', at: i }, 3);
+  }
+  // Ordered by arrival, not by any sender clock: nine channels have nine
+  // clocks, and the reader wants the order they would have seen.
+  assert.deepEqual(entries.map((entry) => entry.text), ['m2', 'm3', 'm4']);
+  assert.deepEqual(entries.map((entry) => entry.slug), ['alpha', 'beta', 'alpha']);
+});
+
+test('a replayed message is not shown twice, but two channels may share an id', { tag: 'unit' }, () => {
+  let entries = appendMergedMessage([], { slug: 'alpha', id: '7', text: 'hello', sender: 'a', at: 1 });
+  entries = appendMergedMessage(entries, { slug: 'alpha', id: '7', text: 'hello', sender: 'a', at: 2 });
+  assert.equal(entries.length, 1, 'Kick replays recent history on reconnect');
+  // Ids are only unique within a channel, so the same id from another channel
+  // is a different message and must not be swallowed.
+  entries = appendMergedMessage(entries, { slug: 'beta', id: '7', text: 'hello', sender: 'b', at: 3 });
+  assert.equal(entries.length, 2);
+});
+
+test('the merged buffer refuses junk rather than propagating it', { tag: 'unit' }, () => {
+  assert.deepEqual(appendMergedMessage([], null), []);
+  assert.deepEqual(appendMergedMessage([], { slug: '', text: 'x' }), []);
+  assert.deepEqual(appendMergedMessage([], { slug: 'alpha', text: '' }), []);
+  // Every field lands as a string, so a hostile payload cannot smuggle an
+  // object into markup.
+  const [entry] = appendMergedMessage([], { slug: 'alpha', id: 1, text: 'hi', sender: {}, color: 5, at: 'soon' });
+  assert.equal(entry.id, '');
+  assert.equal(entry.sender, '');
+  assert.equal(entry.color, '');
+  assert.equal(entry.at, 0);
+});
+
+test('dropping a channel removes only its messages', { tag: 'unit' }, () => {
+  let entries = [];
+  entries = appendMergedMessage(entries, { slug: 'alpha', id: '1', text: 'a', at: 1 });
+  entries = appendMergedMessage(entries, { slug: 'beta', id: '2', text: 'b', at: 2 });
+  entries = appendMergedMessage(entries, { slug: 'alpha', id: '3', text: 'c', at: 3 });
+  const left = dropMergedChannel(entries, 'alpha');
+  assert.deepEqual(left.map((entry) => entry.text), ['b']);
+  assert.deepEqual(dropMergedChannel(entries, 'gamma').length, 3, 'a channel that was never there changes nothing');
 });

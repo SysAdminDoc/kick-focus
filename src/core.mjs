@@ -495,6 +495,50 @@ export function formatVodRetention(remaining) {
 }
 
 /**
+ * The merged multi-channel chat buffer.
+ *
+ * Ordered by *arrival*, not by any timestamp the sender chose. Nine channels
+ * mean nine independent connections whose clocks and latencies differ, and
+ * Kick's own message timestamps are zone-less strings written by whichever
+ * server took the message — sorting by them would shuffle the reading order
+ * for no gain. What a reader wants is the order they would have seen if they
+ * were watching all nine, which is arrival order.
+ *
+ * Capped from the front, because a busy grid produces messages faster than
+ * anyone reads them and an uncapped array is a memory leak with a scrollbar.
+ */
+export const MERGED_CHAT_CAP = 300;
+
+export function appendMergedMessage(entries, entry, cap = MERGED_CHAT_CAP) {
+  const list = Array.isArray(entries) ? entries : [];
+  if (!entry || typeof entry !== 'object') return list;
+  const slug = typeof entry.slug === 'string' ? entry.slug : '';
+  const id = typeof entry.id === 'string' ? entry.id : '';
+  const text = typeof entry.text === 'string' ? entry.text : '';
+  if (!slug || !text) return list;
+  // Kick replays recent history on reconnect, so the same message can arrive
+  // twice on one channel. Keyed by channel *and* id: two channels can carry the
+  // same id and they are different messages.
+  if (id && list.some((seen) => seen.id === id && seen.slug === slug)) return list;
+  const next = list.concat({
+    slug,
+    id,
+    text,
+    sender: typeof entry.sender === 'string' ? entry.sender : '',
+    color: typeof entry.color === 'string' ? entry.color : '',
+    at: Number.isFinite(entry.at) ? entry.at : 0,
+  });
+  const limit = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : MERGED_CHAT_CAP;
+  return next.length > limit ? next.slice(next.length - limit) : next;
+}
+
+/** Drop everything from a channel that is no longer in the grid. */
+export function dropMergedChannel(entries, slug) {
+  if (!Array.isArray(entries) || typeof slug !== 'string' || !slug) return Array.isArray(entries) ? entries : [];
+  return entries.filter((entry) => entry.slug !== slug);
+}
+
+/**
  * Where an emote can be sent, which is a different question from whether the
  * account owns it — and the one Kick's interface never answers.
  *
@@ -2580,6 +2624,10 @@ export function normalizeMultistream(input) {
     // `focus`: silencing the grid must not also move the chat panel.
     paused: typeof source.paused === 'boolean' ? source.paused : false,
     muted: typeof source.muted === 'boolean' ? source.muted : false,
+    // Off by default: one channel's chat, with Kick's own emotes and badges, is
+    // the better read. This is for the case the grid exists for — watching
+    // several at once and not wanting to miss which one just reacted.
+    mergedChat: typeof source.mergedChat === 'boolean' ? source.mergedChat : false,
     layouts,
   };
 }

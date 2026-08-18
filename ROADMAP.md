@@ -73,10 +73,4 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P3 — differentiators and future-proofing
 
-- [ ] P3 — R-59, one read-only chat across every channel in the grid
-  Why: The grid shows nine streams and one chat — the focused tile's — and the two closest multi-stream competitors both went past that to unified cross-channel chat. It is the single named feature gap in the surface Kick Focus otherwise leads on, and it stays inside the read-only boundary.
-  Evidence: Kickplex (CWS v1.1.4, 2026-06-09) ships unified tabbed chat with an emote picker and recents alongside DVR rewind; streamgrids.tv keeps chat beside the active stream; viewgrid.tv runs up to 20 streams. Critically, **chat is the field's universal weak point** — there is no good Kick chat embed, so third parties fall back to an unofficial relay (`chat.kick.cx`), while Kick Focus already reads Kick's own realtime chat same-origin per channel through `src/live.mjs` (`connectRealtime` :381) and uses Kick's own popout chat on-origin. The capability is already in the building.
-  Touches: `src/live.mjs` (multiple concurrent realtime connections), `src/multistream.mjs`, `src/runtime.js`, `src/core.mjs` (merge and ordering), `test/live.test.js`, `test/multistream.test.js`
-  Acceptance: An opt-in merged view interleaves messages from every channel in the grid, each labelled with its source channel, ordered by arrival, capped so a busy grid cannot grow without bound; it is strictly read-only — no composer, no send path, consistent with `README.md:105`; connections are torn down with their tiles and a channel removed from the grid stops consuming one; the existing per-tile chat remains the default. Depends on R-47 (the realtime paths need coverage before they are asked to run nine at once).
-  Complexity: L
 

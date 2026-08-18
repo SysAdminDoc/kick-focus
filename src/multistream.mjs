@@ -62,6 +62,9 @@ export function createMultistream(host) {
     syncHeaderMultiState,
     kickFetchJson,
     recordApiDrift,
+    mergedChatEntries,
+    syncMergedChat,
+    closeMergedChat,
     syncCardMultiState = () => {},
   } = host;
 
@@ -301,6 +304,8 @@ export function createMultistream(host) {
     // actually stops the decoding rather than leaving nine streams running.
     const grid = backdrop.querySelector('[data-kf-multistream-grid]');
     if (grid) grid.replaceChildren();
+    stopMergedChatPaint();
+    closeMergedChat();
     const chat = backdrop.querySelector('[data-kf-multistream-chat]');
     if (chat) chat.replaceChildren();
     state.observers.multistream?.disconnect?.();
@@ -440,6 +445,7 @@ export function createMultistream(host) {
     for (const tile of ordered) grid.append(tile);
 
     renderMultistreamChat(backdrop, chat, showChat);
+    renderMergedChat(backdrop);
     syncChatWindow();
     renderMultistreamControls(backdrop);
     applyMultistreamAudio(grid);
@@ -605,6 +611,83 @@ export function createMultistream(host) {
     return true;
   }
 
+  // -------------------------------------------------------------------------
+  // The merged view
+  //
+  // Opt-in, and the per-tile chat stays the default: one channel's chat with
+  // Kick's own emotes and badges is a better reading experience than nine
+  // interleaved, and this is for the case the grid exists for — watching
+  // several at once and not wanting to miss which one just reacted.
+  //
+  // Repainted on a timer while open rather than per message. Nine busy channels
+  // can deliver faster than anyone reads, and a render per message would spend
+  // the whole frame budget on text nobody has seen yet.
+  // -------------------------------------------------------------------------
+
+  let mergedTimer = 0;
+  let mergedPainted = 0;
+
+  function mergedChatOn() {
+    return Boolean(state.multistream.mergedChat) && multistreamOpen();
+  }
+
+  function stopMergedChatPaint() {
+    if (!mergedTimer) return;
+    clearInterval(mergedTimer);
+    mergedTimer = 0;
+  }
+
+  function paintMergedChat(backdrop) {
+    const list = backdrop?.querySelector?.('[data-kf-multistream-merged-list]');
+    if (!list) return;
+    const entries = mergedChatEntries();
+    // Nothing changed since the last paint: a chat that rewrites identical
+    // markup four times a second breaks text selection and burns layout.
+    if (entries.length === mergedPainted) return;
+    mergedPainted = entries.length;
+    setMarkup(list, entries.map((entry) => `
+      <li class="kf-ms-merged-row">
+        <span class="kf-ms-merged-source">${escapeHtml(entry.slug)}</span>
+        <span class="kf-ms-merged-who"${entry.color ? ` style="color:${escapeHtml(entry.color)}"` : ''}>${escapeHtml(entry.sender)}</span>
+        <span class="kf-ms-merged-text">${escapeHtml(entry.text)}</span>
+      </li>`).join(''));
+    // Pinned to the newest, which is what a chat reader expects and what the
+    // arrival ordering is for.
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function renderMergedChat(backdrop) {
+    const pane = backdrop?.querySelector?.('[data-kf-multistream-merged]');
+    if (!pane) return;
+    const on = mergedChatOn();
+    // Deliberately not `kfMultistreamMerged`: that is the pane's own marker
+    // attribute, and giving the backdrop the same name made
+    // `querySelector('[data-kf-multistream-merged]')` return the backdrop —
+    // which the live gate caught by counting fifteen buttons inside what it
+    // thought was the chat pane.
+    backdrop.dataset.kfMultistreamMergedOn = String(on);
+    pane.hidden = !on;
+    if (!on) {
+      stopMergedChatPaint();
+      closeMergedChat();
+      mergedPainted = 0;
+      return;
+    }
+    syncMergedChat(state.multistream.streams);
+    mergedPainted = -1;
+    paintMergedChat(backdrop);
+    if (!mergedTimer) {
+      mergedTimer = setInterval(() => {
+        const open = backdrop.isConnected !== false && mergedChatOn();
+        if (!open) {
+          stopMergedChatPaint();
+          return;
+        }
+        paintMergedChat(backdrop);
+      }, 250);
+    }
+  }
+
   function renderMultistreamChat(backdrop, chat, showChat) {
     const host_ = backdrop.querySelector('[data-kf-multistream-chat]');
     if (!host_) return;
@@ -665,6 +748,13 @@ export function createMultistream(host) {
       muteToggle.setAttribute('aria-pressed', String(state.multistream.muted));
       muteToggle.textContent = state.multistream.muted ? 'Unmute' : 'Mute all';
       muteToggle.disabled = !streams.length || state.multistream.paused;
+    }
+    const merged = backdrop.querySelector('[data-action="multistream-toggle-merged"]');
+    if (merged) {
+      const on = Boolean(state.multistream.mergedChat);
+      merged.setAttribute('aria-pressed', String(on));
+      merged.textContent = on ? tr('One chat per tile') : tr('Merge all chats');
+      merged.disabled = streams.length < 2;
     }
     const popout = backdrop.querySelector('[data-kf-multistream-popout]');
     if (popout) {
@@ -785,6 +875,8 @@ export function createMultistream(host) {
   return {
     addMultistream,
     canPopOutChat,
+    mergedChatOn,
+    renderMergedChat,
     chatPoppedOut,
     closeChatWindow,
     popOutChat,

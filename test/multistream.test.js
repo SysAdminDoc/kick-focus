@@ -115,10 +115,14 @@ function makeShadow() {
     input: withAttribute('data-kf-multistream-input', 'input'),
     presence: withAttribute('data-kf-presence-add', 'button'),
     popout: withAttribute('data-kf-multistream-popout', 'button'),
+    merged: withAttribute('data-kf-multistream-merged'),
+    mergedList: withAttribute('data-kf-multistream-merged-list', 'ul'),
   };
   const chatToggle = element('button');
   chatToggle.setAttribute('data-action', 'multistream-toggle-chat');
-  backdrop.append(...Object.values(parts), chatToggle);
+  const mergedToggle = element('button');
+  mergedToggle.setAttribute('data-action', 'multistream-toggle-merged');
+  backdrop.append(...Object.values(parts), chatToggle, mergedToggle);
   const shadow = element('div');
   shadow.append(backdrop);
   return { shadow, backdrop, ...parts };
@@ -163,6 +167,14 @@ function makeHost(overrides = {}) {
     syncHeaderMultiState: () => { calls.headerSyncs += 1; },
     kickFetchJson: async (url) => { calls.fetched.push(url); return { ok: false, status: 0 }; },
     recordApiDrift: (endpoint, reason) => calls.drift.push({ endpoint, reason }),
+    // The merged-chat connection manager lives in live.mjs; the grid only ever
+    // asks it for the current list and reads back what arrived.
+    mergedChatEntries: () => host.__mergedEntries,
+    syncMergedChat: (slugs) => { host.__mergedSynced.push([...slugs]); },
+    closeMergedChat: () => { host.__mergedClosed += 1; },
+    __mergedEntries: [],
+    __mergedSynced: [],
+    __mergedClosed: 0,
     __slug: '',
   };
   Object.assign(host, overrides.host || {});
@@ -216,7 +228,7 @@ test('every function the surface hands back can be called against a stub host', 
   // but throws a ReferenceError here. Calling all fifteen is the check.
   const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha' } });
   const surface = createMultistream(host);
-  assert.equal(Object.keys(surface).length, 23);
+  assert.equal(Object.keys(surface).length, 25);
 
   dom.backdrop.hidden = false;
   for (const [name, fn] of Object.entries(surface)) {
@@ -669,4 +681,82 @@ test('the second press returns chat rather than opening another window', { tag: 
     assert.equal(opened[0].closed, true);
     assert.equal(surface.chatPoppedOut(), false);
   });
+});
+
+
+test('the merged view is opt-in, and off leaves the per-tile chat alone', { tag: 'unit' }, () => {
+  const { host, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  surface.renderMultistream();
+  assert.equal(surface.mergedChatOn(), false, 'off by default');
+  assert.equal(dom.merged.hidden, true);
+  assert.equal(dom.backdrop.getAttribute('data-kf-multistream-merged-on'), 'false');
+  assert.deepEqual(host.__mergedSynced, [], 'no connection is opened while it is off');
+  assert.ok(dom.chat.children.some((node) => node.tagName === 'IFRAME'), 'the per-tile chat is untouched');
+});
+
+test('switching it on opens one feed per channel and labels every line', { tag: 'unit' }, () => {
+  const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  host.__mergedEntries = [
+    { slug: 'alpha', id: '1', text: 'first', sender: 'ann', color: '#fff', at: 1 },
+    { slug: 'beta', id: '2', text: 'second', sender: 'bo', color: '', at: 2 },
+  ];
+  state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: true });
+  surface.renderMultistream();
+
+  assert.equal(surface.mergedChatOn(), true);
+  assert.equal(dom.merged.hidden, false);
+  // The connections asked for are exactly the grid's channels.
+  assert.deepEqual(host.__mergedSynced.at(-1), ['alpha', 'beta']);
+  const painted = dom.mergedList.innerHTML;
+  // Arrival order, and every line says where it came from.
+  assert.ok(painted.indexOf('first') < painted.indexOf('second'), 'arrival order is preserved');
+  assert.match(painted, /kf-ms-merged-source">alpha</);
+  assert.match(painted, /kf-ms-merged-source">beta</);
+  // Read-only: no composer, no form, nothing that could send.
+  assert.ok(!/<(input|textarea|form|button)/i.test(painted), 'the merged pane offers no way to send');
+  surface.closeMultistream();
+});
+
+test('the merged pane replaces the per-tile chat rather than competing with it', { tag: 'unit' }, () => {
+  const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: true });
+  surface.renderMultistream();
+  // The CSS hides the per-tile pane off this attribute; the frame stays mounted
+  // so switching back costs no reload, exactly as the pop-out does.
+  assert.equal(dom.backdrop.getAttribute('data-kf-multistream-merged-on'), 'true');
+  assert.ok(dom.chat.children.some((node) => node.tagName === 'IFRAME'), 'the per-tile frame is kept, not torn down');
+  surface.closeMultistream();
+});
+
+test('closing the grid tears down every merged connection', { tag: 'unit' }, () => {
+  const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: true });
+  surface.renderMultistream();
+  assert.equal(host.__mergedClosed, 0);
+  surface.closeMultistream();
+  assert.ok(host.__mergedClosed > 0, 'the sockets go with the grid');
+});
+
+test('a channel removed from the grid stops consuming a connection', { tag: 'unit' }, () => {
+  const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: true });
+  surface.renderMultistream();
+  assert.deepEqual(host.__mergedSynced.at(-1), ['alpha', 'beta']);
+
+  state.multistream = normalizeMultistream({ ...state.multistream, streams: ['alpha'] });
+  surface.renderMultistream();
+  // The sync is what closes it: the surface asks for exactly the grid's list
+  // and the connection manager drops the difference.
+  assert.deepEqual(host.__mergedSynced.at(-1), ['alpha']);
+  surface.closeMultistream();
 });

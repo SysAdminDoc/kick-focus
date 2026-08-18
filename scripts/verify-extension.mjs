@@ -752,6 +752,78 @@ try {
       ? `window carried ${JSON.stringify(pip.framedSrc)}; grid frame kept=${pip.gridFrameKept} restored=${pip.gridFrameRestored}; pane hidden=${pip.paneHidden} -> ${pip.returned}`
       : pip.why);
 
+  // R-59: the merged view. Asserted structurally rather than on traffic — how
+  // many messages two live channels happen to produce in a few seconds is not a
+  // property of this build, and a check that depends on strangers typing is the
+  // sampled-once defect in another costume.
+  const mergedProbe = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { skip: 'the mod did not mount, so the grid could not be opened' };
+    const settle = () => new Promise((done) => setTimeout(done, 900));
+    try {
+      shadow.querySelector('[data-action="open-multistream"]')?.click();
+      await settle();
+      const backdrop = shadow.querySelector('[data-kf-multistream-backdrop]');
+      if (!backdrop || backdrop.hidden !== false) return { skip: 'the multi-stream grid did not open on this route' };
+
+      const input = shadow.querySelector('[data-kf-multistream-input]');
+      for (const slug of ['xqc', 'trainwreckstv']) {
+        if (!input) break;
+        input.value = slug;
+        shadow.querySelector('[data-action="multistream-add"]')?.click();
+        await settle();
+      }
+      const toggle = () => shadow.querySelector('[data-action="multistream-toggle-merged"]');
+      if (!toggle()) return { skip: 'the merged-chat control is not in this build' };
+      const offDefault = toggle().getAttribute('aria-pressed');
+
+      toggle().click();
+      await settle();
+      const pane = shadow.querySelector('[data-kf-multistream-merged]');
+      const list = shadow.querySelector('[data-kf-multistream-merged-list]');
+      const on = {
+        paneShown: pane?.hidden === false,
+        attr: backdrop.dataset.kfMultistreamMergedOn,
+        // The read-only boundary, asserted against the rendered pane rather
+        // than the source: nothing here may take input or submit.
+        composer: pane ? pane.querySelectorAll('input, textarea, form, button').length : -1,
+        role: list?.getAttribute('role') || '',
+        // The per-tile frame must survive being hidden, exactly as it does for
+        // the pop-out, so switching back costs no reload.
+        tileFrameKept: Boolean(shadow.querySelector('[data-kf-multistream-chat] iframe')),
+      };
+
+      // Back to per-tile, which must restore the same frame.
+      toggle().click();
+      await settle();
+      const off = {
+        paneHidden: shadow.querySelector('[data-kf-multistream-merged]')?.hidden !== false,
+        attr: backdrop.dataset.kfMultistreamMergedOn,
+        tileFrameKept: Boolean(shadow.querySelector('[data-kf-multistream-chat] iframe')),
+      };
+      return { ok: true, offDefault, on, off };
+    } finally {
+      shadow.querySelector('[data-action="close-multistream"]')?.click();
+      await settle();
+      localStorage.removeItem('kick-focus:multistream');
+    }
+  })()`);
+  const mergedView = mergedProbe.value || {};
+  recordProbe('merged chat is opt-in, read-only, and gives the per-tile chat back', mergedView,
+    mergedView.ok === true
+      && mergedView.offDefault === 'false'
+      && mergedView.on?.paneShown === true
+      && mergedView.on?.attr === 'true'
+      && mergedView.on?.composer === 0
+      && mergedView.on?.role === 'log'
+      && mergedView.on?.tileFrameKept === true
+      && mergedView.off?.paneHidden === true
+      && mergedView.off?.attr === 'false'
+      && mergedView.off?.tileFrameKept === true,
+    mergedView.ok
+      ? `off by default=${mergedView.offDefault}; on: pane=${mergedView.on?.paneShown} sendable controls=${mergedView.on?.composer} tile frame kept=${mergedView.on?.tileFrameKept}; back off: pane hidden=${mergedView.off?.paneHidden} tile frame kept=${mergedView.off?.tileFrameKept}`
+      : mergedView.why);
+
   // Leave the grid as it was found.
   await evaluate(pageClient, `(() => { localStorage.removeItem('kick-focus:multistream'); return true; })()`);
 

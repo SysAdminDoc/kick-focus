@@ -2096,8 +2096,11 @@ const liveSurface = createLive({
   mergeStickerLibrary,
 });
 const {
+  closeMergedChat,
   kickFetchJson,
   liveStatusSummary,
+  mergedChatEntries,
+  syncMergedChat,
   mutateKickChannelFollow,
   recordApiDrift,
   refreshLiveChannel,
@@ -2131,6 +2134,9 @@ const multistreamSurface = createMultistream({
   syncCardMultiState,
   kickFetchJson,
   recordApiDrift,
+  mergedChatEntries,
+  syncMergedChat,
+  closeMergedChat,
 });
 const {
   addMultistream,
@@ -5815,6 +5821,18 @@ const UI_CSS = `
   }
   .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-merged { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
+  .kf-ms-merged-list { margin: 0; padding: 6px 8px; overflow-y: auto; list-style: none; font-size: 12px; line-height: 1.45; }
+  .kf-ms-merged-row { padding: 2px 0; overflow-wrap: anywhere; }
+  /* The source channel first and always visible: an interleaved feed is only
+     readable if every line says where it came from without hovering. */
+  .kf-ms-merged-source { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px;
+    background: var(--kf-panel-high, #202626); color: var(--kf-accent, #53fc18); font-size: 11px; font-weight: 700; }
+  .kf-ms-merged-who { margin-right: 4px; font-weight: 700; }
+  .kf-ms-merged-who::after { content: ':'; }
+  /* One chat at a time: the merged pane replaces the per-tile one rather than
+     competing with it for the same column. */
+  .kf-ms-backdrop[data-kf-multistream-merged-on="true"] .kf-ms-chat { display: none; }
   .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
   /* The pop-out has it: hide the pane, do not empty it. The iframe stays
      mounted and connected, so closing the window shows the chat that was
@@ -6209,6 +6227,12 @@ const TRANSLATIONS = {
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
     'Show stream uptime': 'Mostrar tiempo en directo',
     'Pop out chat': 'Chat en ventana flotante',
+    'Merge all chats': 'Unir todos los chats',
+    'Merged chat from every channel in the grid': 'Chat unificado de todos los canales de la cuadrícula',
+    'One chat per tile': 'Un chat por canal',
+    'Read-only. Every channel in the grid, in the order messages arrived.': 'Solo lectura. Todos los canales de la cuadrícula, en el orden en que llegaron los mensajes.',
+    'Showing one merged chat for every channel in the grid': 'Mostrando un chat unificado de todos los canales de la cuadrícula',
+    'Showing the focused channel chat': 'Mostrando el chat del canal enfocado',
     'Return chat': 'Devolver el chat',
     'Kick Focus could not open the pop-out chat window.': 'Kick Focus no ha podido abrir la ventana flotante del chat.',
     'Chat for {channel} opened in a floating window': 'El chat de {channel} se ha abierto en una ventana flotante',
@@ -6619,6 +6643,12 @@ const TRANSLATIONS = {
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
     'Show stream uptime': 'Mostrar tempo ao vivo',
     'Pop out chat': 'Chat em janela flutuante',
+    'Merge all chats': 'Juntar todos os chats',
+    'Merged chat from every channel in the grid': 'Chat unificado de todos os canais da grelha',
+    'One chat per tile': 'Um chat por canal',
+    'Read-only. Every channel in the grid, in the order messages arrived.': 'Apenas leitura. Todos os canais da grelha, na ordem em que as mensagens chegaram.',
+    'Showing one merged chat for every channel in the grid': 'A mostrar um chat unificado de todos os canais da grelha',
+    'Showing the focused channel chat': 'A mostrar o chat do canal em foco',
     'Return chat': 'Devolver o chat',
     'Kick Focus could not open the pop-out chat window.': 'A Kick Focus não conseguiu abrir a janela flutuante do chat.',
     'Chat for {channel} opened in a floating window': 'O chat de {channel} abriu numa janela flutuante',
@@ -6988,12 +7018,17 @@ function buildInterface() {
           <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" hidden>Pop out chat</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-merged" aria-pressed="false">Merge all chats</button>
           <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
         </header>
         <div class="kf-ms-error" role="alert" data-kf-multistream-error hidden></div>
         <div class="kf-ms-body">
           <div class="kf-ms-grid" data-kf-multistream-grid></div>
           <aside class="kf-ms-chat" data-kf-multistream-chat></aside>
+          <aside class="kf-ms-merged" data-kf-multistream-merged hidden>
+            <p class="kf-ms-chat-notice">Read-only. Every channel in the grid, in the order messages arrived.</p>
+            <ul class="kf-ms-merged-list" data-kf-multistream-merged-list role="log" aria-live="off" aria-label="Merged chat from every channel in the grid"></ul>
+          </aside>
         </div>
         <footer class="kf-ms-foot">
           <label class="kf-sr-only" for="kf-ms-layout-name">Layout name</label>
@@ -8127,7 +8162,7 @@ function onInterfaceClick(event) {
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
-  else if (action === 'close-multistream') { closeChatWindow(); closeMultistream(); }
+  else if (action === 'close-multistream') { closeChatWindow(); closeMergedChat(); closeMultistream(); }
   else if (action === 'multistream-add-open-tabs') addPresenceOffer();
   else if (action === 'multistream-add') {
     const input = state.shadow.querySelector('[data-kf-multistream-input]');
@@ -8168,6 +8203,12 @@ function onInterfaceClick(event) {
     persistMultistream();
     renderMultistream();
     announce(muted ? 'All streams muted' : 'Audio restored to the focused stream');
+  }
+  else if (action === 'multistream-toggle-merged') {
+    state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: !state.multistream.mergedChat });
+    persistMultistream();
+    renderMultistream();
+    announce(state.multistream.mergedChat ? 'Showing one merged chat for every channel in the grid' : 'Showing the focused channel chat');
   }
   else if (action === 'multistream-popout-chat') {
     // Awaited nowhere: `requestWindow` needs the transient activation this

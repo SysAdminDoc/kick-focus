@@ -500,6 +500,50 @@ function formatVodRetention(remaining) {
 }
 
 /**
+ * The merged multi-channel chat buffer.
+ *
+ * Ordered by *arrival*, not by any timestamp the sender chose. Nine channels
+ * mean nine independent connections whose clocks and latencies differ, and
+ * Kick's own message timestamps are zone-less strings written by whichever
+ * server took the message — sorting by them would shuffle the reading order
+ * for no gain. What a reader wants is the order they would have seen if they
+ * were watching all nine, which is arrival order.
+ *
+ * Capped from the front, because a busy grid produces messages faster than
+ * anyone reads them and an uncapped array is a memory leak with a scrollbar.
+ */
+const MERGED_CHAT_CAP = 300;
+
+function appendMergedMessage(entries, entry, cap = MERGED_CHAT_CAP) {
+  const list = Array.isArray(entries) ? entries : [];
+  if (!entry || typeof entry !== 'object') return list;
+  const slug = typeof entry.slug === 'string' ? entry.slug : '';
+  const id = typeof entry.id === 'string' ? entry.id : '';
+  const text = typeof entry.text === 'string' ? entry.text : '';
+  if (!slug || !text) return list;
+  // Kick replays recent history on reconnect, so the same message can arrive
+  // twice on one channel. Keyed by channel *and* id: two channels can carry the
+  // same id and they are different messages.
+  if (id && list.some((seen) => seen.id === id && seen.slug === slug)) return list;
+  const next = list.concat({
+    slug,
+    id,
+    text,
+    sender: typeof entry.sender === 'string' ? entry.sender : '',
+    color: typeof entry.color === 'string' ? entry.color : '',
+    at: Number.isFinite(entry.at) ? entry.at : 0,
+  });
+  const limit = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : MERGED_CHAT_CAP;
+  return next.length > limit ? next.slice(next.length - limit) : next;
+}
+
+/** Drop everything from a channel that is no longer in the grid. */
+function dropMergedChannel(entries, slug) {
+  if (!Array.isArray(entries) || typeof slug !== 'string' || !slug) return Array.isArray(entries) ? entries : [];
+  return entries.filter((entry) => entry.slug !== slug);
+}
+
+/**
  * Where an emote can be sent, which is a different question from whether the
  * account owns it — and the one Kick's interface never answers.
  *
@@ -2585,6 +2629,10 @@ function normalizeMultistream(input) {
     // `focus`: silencing the grid must not also move the chat panel.
     paused: typeof source.paused === 'boolean' ? source.paused : false,
     muted: typeof source.muted === 'boolean' ? source.muted : false,
+    // Off by default: one channel's chat, with Kick's own emotes and badges, is
+    // the better read. This is for the case the grid exists for — watching
+    // several at once and not wanting to miss which one just reacted.
+    mergedChat: typeof source.mergedChat === 'boolean' ? source.mergedChat : false,
     layouts,
   };
 }
@@ -5220,6 +5268,149 @@ function createLive(host) {
     state.live.reconnectAt = window.setTimeout(connectRealtime, delay);
   }
 
+  // -------------------------------------------------------------------------
+  // Merged chat across the grid
+  //
+  // One connection per channel, kept entirely apart from `state.live.socket`.
+  // That single connection belongs to the channel the tab is standing on and
+  // carries the emote harvest, badge queue and deletion handling; reusing it
+  // for nine channels would put all of that on messages from channels the user
+  // is not viewing. These sockets do one thing: read, label, append.
+  //
+  // Strictly read-only, like every other chat surface here — there is no send
+  // path, and Kick refuses sending from an embedded chat anyway.
+  // -------------------------------------------------------------------------
+
+  function mergedChatState() {
+    if (!state.mergedChat) state.mergedChat = { entries: [], connections: new Map(), errors: [] };
+    return state.mergedChat;
+  }
+
+  function closeMergedChannel(slug) {
+    const merged = mergedChatState();
+    const entry = merged.connections.get(slug);
+    merged.connections.delete(slug);
+    if (!entry) return;
+    try {
+      entry.socket?.close();
+    } catch {
+      // Already gone.
+    }
+    // The messages go with the connection: a channel removed from the grid must
+    // stop occupying the reader's attention as well as the network.
+    merged.entries = dropMergedChannel(merged.entries, slug);
+  }
+
+  function closeMergedChat() {
+    const merged = mergedChatState();
+    for (const slug of [...merged.connections.keys()]) closeMergedChannel(slug);
+    merged.entries = [];
+    merged.errors = [];
+  }
+
+  function onMergedFrame(slug, event) {
+    const frame = parseRealtimeFrame(event.data);
+    if (frame.kind !== 'chat-message') return;
+    const message = normalizeChatMessage(frame.payload);
+    if (!message) return;
+    const merged = mergedChatState();
+    merged.entries = appendMergedMessage(merged.entries, {
+      slug,
+      id: message.id,
+      text: message.content,
+      sender: message.sender?.username || '',
+      color: message.sender?.color || '',
+      at: Date.now(),
+    });
+  }
+
+  /**
+   * Open one channel's feed. Every failure is silent and local: a channel whose
+   * realtime credentials Kick will not issue simply contributes nothing, and the
+   * other eight carry on.
+   */
+  async function openMergedChannel(slug) {
+    const merged = mergedChatState();
+    if (merged.connections.has(slug)) return false;
+    // Claim the slot before the first await, so two syncs in the same tick
+    // cannot open two sockets for one channel.
+    merged.connections.set(slug, { socket: null });
+
+    const channelResponse = await kickFetchJson(endpoints.channel(slug));
+    if (!merged.connections.has(slug)) return false;
+    const channel = channelResponse.ok ? normalizeChannel(channelResponse.body) : null;
+    if (!channel?.chatroomId) {
+      closeMergedChannel(slug);
+      return false;
+    }
+
+    const clientId = crypto.randomUUID();
+    const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId));
+    if (!merged.connections.has(slug)) return false;
+    const connection = response.ok ? normalizeRealtimeConnection(response.body) : { ok: false };
+    if (!connection.ok) {
+      closeMergedChannel(slug);
+      return false;
+    }
+
+    let socket;
+    try {
+      socket = new WebSocket(connection.transport.socketUrl(connection));
+    } catch {
+      closeMergedChannel(slug);
+      return false;
+    }
+    const held = merged.connections.get(slug);
+    if (!held) {
+      try { socket.close(); } catch { /* already gone */ }
+      return false;
+    }
+    held.socket = socket;
+    held.chatroomId = channel.chatroomId;
+    socket.addEventListener('open', () => {
+      for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
+        socket.send(realtimeSubscribeFrame(name));
+      }
+    });
+    socket.addEventListener('message', (event) => onMergedFrame(slug, event));
+    // No reconnect ladder here on purpose. The single-channel path reconnects
+    // because losing it degrades features the user is relying on; a merged feed
+    // that quietly drops one of nine is better than nine timers competing.
+    socket.addEventListener('close', () => {
+      const current = mergedChatState().connections.get(slug);
+      if (current?.socket === socket) current.socket = null;
+    });
+    return true;
+  }
+
+  /**
+   * Match the open connections to the grid, opening and closing the difference.
+   *
+   * Called on every grid render, so it must be cheap and idempotent when
+   * nothing changed — which is why it diffs rather than tearing down and
+   * rebuilding.
+   */
+  function syncMergedChat(slugs) {
+    const merged = mergedChatState();
+    const wanted = Array.isArray(slugs) ? slugs.filter((slug) => typeof slug === 'string' && slug) : [];
+    const wantedSet = new Set(wanted);
+    for (const slug of [...merged.connections.keys()]) {
+      if (!wantedSet.has(slug)) closeMergedChannel(slug);
+    }
+    for (const slug of wanted) {
+      if (!merged.connections.has(slug)) openMergedChannel(slug);
+    }
+    return merged;
+  }
+
+  function mergedChatEntries() {
+    return mergedChatState().entries;
+  }
+
+  function mergedChatChannels() {
+    return [...mergedChatState().connections.keys()];
+  }
+
   function onRealtimeFrame(event) {
     state.live.lastFrameAt = Date.now();
     const frame = parseRealtimeFrame(event.data);
@@ -5477,6 +5668,10 @@ function createLive(host) {
   }
 
   return {
+    closeMergedChat,
+    mergedChatChannels,
+    mergedChatEntries,
+    syncMergedChat,
     connectRealtime,
     kickFetchJson,
     liveStatusSummary,
@@ -5535,6 +5730,9 @@ function createMultistream(host) {
     syncHeaderMultiState,
     kickFetchJson,
     recordApiDrift,
+    mergedChatEntries,
+    syncMergedChat,
+    closeMergedChat,
     syncCardMultiState = () => {},
   } = host;
 
@@ -5774,6 +5972,8 @@ function createMultistream(host) {
     // actually stops the decoding rather than leaving nine streams running.
     const grid = backdrop.querySelector('[data-kf-multistream-grid]');
     if (grid) grid.replaceChildren();
+    stopMergedChatPaint();
+    closeMergedChat();
     const chat = backdrop.querySelector('[data-kf-multistream-chat]');
     if (chat) chat.replaceChildren();
     state.observers.multistream?.disconnect?.();
@@ -5913,6 +6113,7 @@ function createMultistream(host) {
     for (const tile of ordered) grid.append(tile);
 
     renderMultistreamChat(backdrop, chat, showChat);
+    renderMergedChat(backdrop);
     syncChatWindow();
     renderMultistreamControls(backdrop);
     applyMultistreamAudio(grid);
@@ -6078,6 +6279,83 @@ function createMultistream(host) {
     return true;
   }
 
+  // -------------------------------------------------------------------------
+  // The merged view
+  //
+  // Opt-in, and the per-tile chat stays the default: one channel's chat with
+  // Kick's own emotes and badges is a better reading experience than nine
+  // interleaved, and this is for the case the grid exists for — watching
+  // several at once and not wanting to miss which one just reacted.
+  //
+  // Repainted on a timer while open rather than per message. Nine busy channels
+  // can deliver faster than anyone reads, and a render per message would spend
+  // the whole frame budget on text nobody has seen yet.
+  // -------------------------------------------------------------------------
+
+  let mergedTimer = 0;
+  let mergedPainted = 0;
+
+  function mergedChatOn() {
+    return Boolean(state.multistream.mergedChat) && multistreamOpen();
+  }
+
+  function stopMergedChatPaint() {
+    if (!mergedTimer) return;
+    clearInterval(mergedTimer);
+    mergedTimer = 0;
+  }
+
+  function paintMergedChat(backdrop) {
+    const list = backdrop?.querySelector?.('[data-kf-multistream-merged-list]');
+    if (!list) return;
+    const entries = mergedChatEntries();
+    // Nothing changed since the last paint: a chat that rewrites identical
+    // markup four times a second breaks text selection and burns layout.
+    if (entries.length === mergedPainted) return;
+    mergedPainted = entries.length;
+    setMarkup(list, entries.map((entry) => `
+      <li class="kf-ms-merged-row">
+        <span class="kf-ms-merged-source">${escapeHtml(entry.slug)}</span>
+        <span class="kf-ms-merged-who"${entry.color ? ` style="color:${escapeHtml(entry.color)}"` : ''}>${escapeHtml(entry.sender)}</span>
+        <span class="kf-ms-merged-text">${escapeHtml(entry.text)}</span>
+      </li>`).join(''));
+    // Pinned to the newest, which is what a chat reader expects and what the
+    // arrival ordering is for.
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function renderMergedChat(backdrop) {
+    const pane = backdrop?.querySelector?.('[data-kf-multistream-merged]');
+    if (!pane) return;
+    const on = mergedChatOn();
+    // Deliberately not `kfMultistreamMerged`: that is the pane's own marker
+    // attribute, and giving the backdrop the same name made
+    // `querySelector('[data-kf-multistream-merged]')` return the backdrop —
+    // which the live gate caught by counting fifteen buttons inside what it
+    // thought was the chat pane.
+    backdrop.dataset.kfMultistreamMergedOn = String(on);
+    pane.hidden = !on;
+    if (!on) {
+      stopMergedChatPaint();
+      closeMergedChat();
+      mergedPainted = 0;
+      return;
+    }
+    syncMergedChat(state.multistream.streams);
+    mergedPainted = -1;
+    paintMergedChat(backdrop);
+    if (!mergedTimer) {
+      mergedTimer = setInterval(() => {
+        const open = backdrop.isConnected !== false && mergedChatOn();
+        if (!open) {
+          stopMergedChatPaint();
+          return;
+        }
+        paintMergedChat(backdrop);
+      }, 250);
+    }
+  }
+
   function renderMultistreamChat(backdrop, chat, showChat) {
     const host_ = backdrop.querySelector('[data-kf-multistream-chat]');
     if (!host_) return;
@@ -6138,6 +6416,13 @@ function createMultistream(host) {
       muteToggle.setAttribute('aria-pressed', String(state.multistream.muted));
       muteToggle.textContent = state.multistream.muted ? 'Unmute' : 'Mute all';
       muteToggle.disabled = !streams.length || state.multistream.paused;
+    }
+    const merged = backdrop.querySelector('[data-action="multistream-toggle-merged"]');
+    if (merged) {
+      const on = Boolean(state.multistream.mergedChat);
+      merged.setAttribute('aria-pressed', String(on));
+      merged.textContent = on ? tr('One chat per tile') : tr('Merge all chats');
+      merged.disabled = streams.length < 2;
     }
     const popout = backdrop.querySelector('[data-kf-multistream-popout]');
     if (popout) {
@@ -6258,6 +6543,8 @@ function createMultistream(host) {
   return {
     addMultistream,
     canPopOutChat,
+    mergedChatOn,
+    renderMergedChat,
     chatPoppedOut,
     closeChatWindow,
     popOutChat,
@@ -8380,8 +8667,11 @@ const liveSurface = createLive({
   mergeStickerLibrary,
 });
 const {
+  closeMergedChat,
   kickFetchJson,
   liveStatusSummary,
+  mergedChatEntries,
+  syncMergedChat,
   mutateKickChannelFollow,
   recordApiDrift,
   refreshLiveChannel,
@@ -8415,6 +8705,9 @@ const multistreamSurface = createMultistream({
   syncCardMultiState,
   kickFetchJson,
   recordApiDrift,
+  mergedChatEntries,
+  syncMergedChat,
+  closeMergedChat,
 });
 const {
   addMultistream,
@@ -12099,6 +12392,18 @@ const UI_CSS = `
   }
   .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
+  .kf-ms-merged { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
+  .kf-ms-merged-list { margin: 0; padding: 6px 8px; overflow-y: auto; list-style: none; font-size: 12px; line-height: 1.45; }
+  .kf-ms-merged-row { padding: 2px 0; overflow-wrap: anywhere; }
+  /* The source channel first and always visible: an interleaved feed is only
+     readable if every line says where it came from without hovering. */
+  .kf-ms-merged-source { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px;
+    background: var(--kf-panel-high, #202626); color: var(--kf-accent, #53fc18); font-size: 11px; font-weight: 700; }
+  .kf-ms-merged-who { margin-right: 4px; font-weight: 700; }
+  .kf-ms-merged-who::after { content: ':'; }
+  /* One chat at a time: the merged pane replaces the per-tile one rather than
+     competing with it for the same column. */
+  .kf-ms-backdrop[data-kf-multistream-merged-on="true"] .kf-ms-chat { display: none; }
   .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
   /* The pop-out has it: hide the pane, do not empty it. The iframe stays
      mounted and connected, so closing the window shows the chat that was
@@ -12493,6 +12798,12 @@ const TRANSLATIONS = {
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
     'Show stream uptime': 'Mostrar tiempo en directo',
     'Pop out chat': 'Chat en ventana flotante',
+    'Merge all chats': 'Unir todos los chats',
+    'Merged chat from every channel in the grid': 'Chat unificado de todos los canales de la cuadrícula',
+    'One chat per tile': 'Un chat por canal',
+    'Read-only. Every channel in the grid, in the order messages arrived.': 'Solo lectura. Todos los canales de la cuadrícula, en el orden en que llegaron los mensajes.',
+    'Showing one merged chat for every channel in the grid': 'Mostrando un chat unificado de todos los canales de la cuadrícula',
+    'Showing the focused channel chat': 'Mostrando el chat del canal enfocado',
     'Return chat': 'Devolver el chat',
     'Kick Focus could not open the pop-out chat window.': 'Kick Focus no ha podido abrir la ventana flotante del chat.',
     'Chat for {channel} opened in a floating window': 'El chat de {channel} se ha abierto en una ventana flotante',
@@ -12903,6 +13214,12 @@ const TRANSLATIONS = {
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
     'Show stream uptime': 'Mostrar tempo ao vivo',
     'Pop out chat': 'Chat em janela flutuante',
+    'Merge all chats': 'Juntar todos os chats',
+    'Merged chat from every channel in the grid': 'Chat unificado de todos os canais da grelha',
+    'One chat per tile': 'Um chat por canal',
+    'Read-only. Every channel in the grid, in the order messages arrived.': 'Apenas leitura. Todos os canais da grelha, na ordem em que as mensagens chegaram.',
+    'Showing one merged chat for every channel in the grid': 'A mostrar um chat unificado de todos os canais da grelha',
+    'Showing the focused channel chat': 'A mostrar o chat do canal em foco',
     'Return chat': 'Devolver o chat',
     'Kick Focus could not open the pop-out chat window.': 'A Kick Focus não conseguiu abrir a janela flutuante do chat.',
     'Chat for {channel} opened in a floating window': 'O chat de {channel} abriu numa janela flutuante',
@@ -13272,12 +13589,17 @@ function buildInterface() {
           <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" hidden>Pop out chat</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-merged" aria-pressed="false">Merge all chats</button>
           <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
         </header>
         <div class="kf-ms-error" role="alert" data-kf-multistream-error hidden></div>
         <div class="kf-ms-body">
           <div class="kf-ms-grid" data-kf-multistream-grid></div>
           <aside class="kf-ms-chat" data-kf-multistream-chat></aside>
+          <aside class="kf-ms-merged" data-kf-multistream-merged hidden>
+            <p class="kf-ms-chat-notice">Read-only. Every channel in the grid, in the order messages arrived.</p>
+            <ul class="kf-ms-merged-list" data-kf-multistream-merged-list role="log" aria-live="off" aria-label="Merged chat from every channel in the grid"></ul>
+          </aside>
         </div>
         <footer class="kf-ms-foot">
           <label class="kf-sr-only" for="kf-ms-layout-name">Layout name</label>
@@ -14411,7 +14733,7 @@ function onInterfaceClick(event) {
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
-  else if (action === 'close-multistream') { closeChatWindow(); closeMultistream(); }
+  else if (action === 'close-multistream') { closeChatWindow(); closeMergedChat(); closeMultistream(); }
   else if (action === 'multistream-add-open-tabs') addPresenceOffer();
   else if (action === 'multistream-add') {
     const input = state.shadow.querySelector('[data-kf-multistream-input]');
@@ -14452,6 +14774,12 @@ function onInterfaceClick(event) {
     persistMultistream();
     renderMultistream();
     announce(muted ? 'All streams muted' : 'Audio restored to the focused stream');
+  }
+  else if (action === 'multistream-toggle-merged') {
+    state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: !state.multistream.mergedChat });
+    persistMultistream();
+    renderMultistream();
+    announce(state.multistream.mergedChat ? 'Showing one merged chat for every channel in the grid' : 'Showing the focused channel chat');
   }
   else if (action === 'multistream-popout-chat') {
     // Awaited nowhere: `requestWindow` needs the transient activation this

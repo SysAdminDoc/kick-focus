@@ -13,8 +13,10 @@
 // ---------------------------------------------------------------------------
 
 import {
+  appendMergedMessage,
   assessApiDrift,
   chatBadgesToRender,
+  dropMergedChannel,
   observationsFromChatEmotes,
   platformStickerKey,
   recordEmoteUse,
@@ -508,6 +510,149 @@ export function createLive(host) {
     state.live.reconnectAt = window.setTimeout(connectRealtime, delay);
   }
 
+  // -------------------------------------------------------------------------
+  // Merged chat across the grid
+  //
+  // One connection per channel, kept entirely apart from `state.live.socket`.
+  // That single connection belongs to the channel the tab is standing on and
+  // carries the emote harvest, badge queue and deletion handling; reusing it
+  // for nine channels would put all of that on messages from channels the user
+  // is not viewing. These sockets do one thing: read, label, append.
+  //
+  // Strictly read-only, like every other chat surface here — there is no send
+  // path, and Kick refuses sending from an embedded chat anyway.
+  // -------------------------------------------------------------------------
+
+  function mergedChatState() {
+    if (!state.mergedChat) state.mergedChat = { entries: [], connections: new Map(), errors: [] };
+    return state.mergedChat;
+  }
+
+  function closeMergedChannel(slug) {
+    const merged = mergedChatState();
+    const entry = merged.connections.get(slug);
+    merged.connections.delete(slug);
+    if (!entry) return;
+    try {
+      entry.socket?.close();
+    } catch {
+      // Already gone.
+    }
+    // The messages go with the connection: a channel removed from the grid must
+    // stop occupying the reader's attention as well as the network.
+    merged.entries = dropMergedChannel(merged.entries, slug);
+  }
+
+  function closeMergedChat() {
+    const merged = mergedChatState();
+    for (const slug of [...merged.connections.keys()]) closeMergedChannel(slug);
+    merged.entries = [];
+    merged.errors = [];
+  }
+
+  function onMergedFrame(slug, event) {
+    const frame = parseRealtimeFrame(event.data);
+    if (frame.kind !== 'chat-message') return;
+    const message = normalizeChatMessage(frame.payload);
+    if (!message) return;
+    const merged = mergedChatState();
+    merged.entries = appendMergedMessage(merged.entries, {
+      slug,
+      id: message.id,
+      text: message.content,
+      sender: message.sender?.username || '',
+      color: message.sender?.color || '',
+      at: Date.now(),
+    });
+  }
+
+  /**
+   * Open one channel's feed. Every failure is silent and local: a channel whose
+   * realtime credentials Kick will not issue simply contributes nothing, and the
+   * other eight carry on.
+   */
+  async function openMergedChannel(slug) {
+    const merged = mergedChatState();
+    if (merged.connections.has(slug)) return false;
+    // Claim the slot before the first await, so two syncs in the same tick
+    // cannot open two sockets for one channel.
+    merged.connections.set(slug, { socket: null });
+
+    const channelResponse = await kickFetchJson(endpoints.channel(slug));
+    if (!merged.connections.has(slug)) return false;
+    const channel = channelResponse.ok ? normalizeChannel(channelResponse.body) : null;
+    if (!channel?.chatroomId) {
+      closeMergedChannel(slug);
+      return false;
+    }
+
+    const clientId = crypto.randomUUID();
+    const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId));
+    if (!merged.connections.has(slug)) return false;
+    const connection = response.ok ? normalizeRealtimeConnection(response.body) : { ok: false };
+    if (!connection.ok) {
+      closeMergedChannel(slug);
+      return false;
+    }
+
+    let socket;
+    try {
+      socket = new WebSocket(connection.transport.socketUrl(connection));
+    } catch {
+      closeMergedChannel(slug);
+      return false;
+    }
+    const held = merged.connections.get(slug);
+    if (!held) {
+      try { socket.close(); } catch { /* already gone */ }
+      return false;
+    }
+    held.socket = socket;
+    held.chatroomId = channel.chatroomId;
+    socket.addEventListener('open', () => {
+      for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
+        socket.send(realtimeSubscribeFrame(name));
+      }
+    });
+    socket.addEventListener('message', (event) => onMergedFrame(slug, event));
+    // No reconnect ladder here on purpose. The single-channel path reconnects
+    // because losing it degrades features the user is relying on; a merged feed
+    // that quietly drops one of nine is better than nine timers competing.
+    socket.addEventListener('close', () => {
+      const current = mergedChatState().connections.get(slug);
+      if (current?.socket === socket) current.socket = null;
+    });
+    return true;
+  }
+
+  /**
+   * Match the open connections to the grid, opening and closing the difference.
+   *
+   * Called on every grid render, so it must be cheap and idempotent when
+   * nothing changed — which is why it diffs rather than tearing down and
+   * rebuilding.
+   */
+  function syncMergedChat(slugs) {
+    const merged = mergedChatState();
+    const wanted = Array.isArray(slugs) ? slugs.filter((slug) => typeof slug === 'string' && slug) : [];
+    const wantedSet = new Set(wanted);
+    for (const slug of [...merged.connections.keys()]) {
+      if (!wantedSet.has(slug)) closeMergedChannel(slug);
+    }
+    for (const slug of wanted) {
+      if (!merged.connections.has(slug)) openMergedChannel(slug);
+    }
+    return merged;
+  }
+
+  function mergedChatEntries() {
+    return mergedChatState().entries;
+  }
+
+  function mergedChatChannels() {
+    return [...mergedChatState().connections.keys()];
+  }
+
   function onRealtimeFrame(event) {
     state.live.lastFrameAt = Date.now();
     const frame = parseRealtimeFrame(event.data);
@@ -765,6 +910,10 @@ export function createLive(host) {
   }
 
   return {
+    closeMergedChat,
+    mergedChatChannels,
+    mergedChatEntries,
+    syncMergedChat,
     connectRealtime,
     kickFetchJson,
     liveStatusSummary,

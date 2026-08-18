@@ -534,6 +534,42 @@ const popOutReturnsWithoutReload = (bundle) =>
   && /data-kf-multistream-chat-popped-out="true"\]/.test(bundle)
   && /addEventListener\('pagehide'/.test(bundle);
 
+/**
+ * The merged chat is read-only, structurally.
+ *
+ * Every other chat surface in this project is read-only because Kick refuses
+ * sending from an embedded chat; this one is read-only because it is *built*
+ * from a WebSocket read and has nowhere to send to. That is easy to lose the
+ * day someone adds a composer to the pane, so the row template is checked for
+ * anything that could take input or submit, and the merged path is checked for
+ * a send.
+ */
+const mergedChatIsReadOnly = (bundle) => {
+  const start = bundle.indexOf('function paintMergedChat');
+  if (start === -1) return false;
+  const region = bundle.slice(start, start + 1400);
+  if (/<(input|textarea|form|button)\b/i.test(region)) return false;
+  // The sockets carry subscribe frames and nothing else. A send anywhere in the
+  // merged path is the failure this exists to catch.
+  const open = bundle.indexOf('async function openMergedChannel');
+  if (open === -1) return false;
+  const socketRegion = bundle.slice(open, open + 2000);
+  const sends = socketRegion.match(/\.send\(/g) || [];
+  return sends.length === 1 && /socket\.send\(realtimeSubscribeFrame\(name\)\)/.test(socketRegion);
+};
+
+/**
+ * A channel that leaves the grid stops costing a connection.
+ *
+ * Nine sockets are nine sockets; one left open for a tile nobody is watching is
+ * a leak the user cannot see. The sync diffs against the grid's own list, and
+ * closing a channel drops its messages with it.
+ */
+const mergedChatFollowsTheGrid = (bundle) =>
+  /function syncMergedChat\(slugs\)/.test(bundle)
+  && /if \(!wantedSet\.has\(slug\)\) closeMergedChannel\(slug\)/.test(bundle)
+  && /dropMergedChannel\(merged\.entries, slug\)/.test(bundle);
+
 const SIZE_BUDGETS = [
   ['dist/kick-focus.user.js', source, 1_000_000, 'Violentmonkey MV3 Alternative page mode, ~1 MB of injected script'],
   ['dist/extension/content/kick-focus.js', content, 1_500_000, 'no injection ceiling; tracked so growth stays visible'],
@@ -880,6 +916,8 @@ const checks = [
     && /libraryStore\.clear\(\)/.test(source)],
   ['emote completion is accepted by click only and never sends', completionIsMouseOnly(source)],
   [`no source file carries a stray control byte${controlByteFiles.length ? `: ${controlByteFiles.join('; ')}` : ''}`, controlByteFiles.length === 0],
+  ['the merged chat offers no way to send, and its sockets only subscribe', mergedChatIsReadOnly(source)],
+  ['a channel removed from the grid stops consuming a merged connection', mergedChatFollowsTheGrid(source)],
   ['the chat pop-out builds its own frame instead of moving the grid one', popOutBuildsItsOwnFrame(source)],
   ['the chat pane is hidden while popped out, and the window is closed on return', popOutReturnsWithoutReload(source)],
   ['every declared derived expectation has a deriver behind it', derivedExpectationsAreWired(source)],
@@ -1291,6 +1329,14 @@ const redProbes = [
     !popOutReturnsWithoutReload("host_.replaceChildren();")],
   ['pop-out gates accept the real bundle',
     popOutBuildsItsOwnFrame(source) && popOutReturnsWithoutReload(source)],
+  ['merged-chat gate would catch a composer added to the pane',
+    !mergedChatIsReadOnly("function paintMergedChat(b) { setMarkup(list, '<li><input class=\"say\"></li>'); }\nasync function openMergedChannel(s) { socket.send(realtimeSubscribeFrame(name)); }")],
+  ['merged-chat gate would catch a second send on the merged socket',
+    !mergedChatIsReadOnly("function paintMergedChat(b) { setMarkup(list, '<li>x</li>'); }\nasync function openMergedChannel(s) { socket.send(realtimeSubscribeFrame(name)); socket.send(chatFrame(text)); }")],
+  ['merged-chat gate accepts a subscribe-only reader',
+    mergedChatIsReadOnly("function paintMergedChat(b) { setMarkup(list, '<li>x</li>'); }\nasync function openMergedChannel(s) { socket.send(realtimeSubscribeFrame(name)); }")],
+  ['merged-chat gates accept the real bundle',
+    mergedChatIsReadOnly(source) && mergedChatFollowsTheGrid(source)],
   // The live gate itself must be the real thing on this machine, not a skip.
   ['anchor gates accept the real bundle',
     anchoredSurfacesResolve(source) && anchorPropertiesAreDetected(source) && anchoredSurfacesAreManual(source)],
