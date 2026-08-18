@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.21.0 — 2026-08-18
+
+### Fixed
+
+- **The interface now says which language it is written in.** Kick's page declares English, and that declaration reaches into this build's own panels, so with the interface set to Español or Português a screen reader was announcing every translated string with English phonemes. Each of the four surfaces this build owns — the settings shell, the emote suggestion list, the emote hover card, and the header control — now declares the language it is actually in, and follows the setting when it changes. The companion popup is unchanged and still declares English, because its copy is English.
+
 ## 1.20.0 — 2026-08-17
 
 ### Added

@@ -432,19 +432,37 @@ try {
       await settle();
       return String(shadow.querySelector('.kf-toast-text')?.textContent || '');
     };
+    // Every host this build owns, so a translated surface that forgot to say
+    // which language it is in shows up here rather than in a screen reader.
+    const hostLangs = () => ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean)
+      .map((host) => host.id + '=' + (host.getAttribute('lang') || ''));
     const sample = async (value) => {
       await setLanguage(value);
       const toast = await raiseToast();
       shadow.querySelector('[data-page="appearance"]').click();
       await settle();
-      return { count: readCount(), toast };
+      return { count: readCount(), toast, langs: hostLangs() };
     };
     const english = await sample('en');
     const spanish = await sample('es');
     await setLanguage('auto');
-    return { ok: true, english, spanish };
+    return { ok: true, english, spanish, pageLang: document.documentElement.lang || '' };
   })()`);
   const locale = localeProbe.value || {};
+  // Kick's document declares English and `lang` inherits through the flat tree
+  // into a shadow root, so a translated host that says nothing is announced
+  // with English phonemes — WCAG 2.2 SC 3.1.2 (AA).
+  record('every host this build owns declares the language it is written in',
+    locale.ok === true
+      && Array.isArray(locale.english?.langs) && locale.english.langs.length > 0
+      && locale.english.langs.every((entry) => entry.endsWith('=en'))
+      && Array.isArray(locale.spanish?.langs) && locale.spanish.langs.length > 0
+      && locale.spanish.langs.every((entry) => entry.endsWith('=es')),
+    locale.ok
+      ? `page is lang=${JSON.stringify(locale.pageLang)}; ours in English ${JSON.stringify(locale.english.langs)}, in Spanish ${JSON.stringify(locale.spanish.langs)}`
+      : locale.why);
   record('toasts and count phrases follow the language setting, not just settings markup',
     locale.ok === true
       && /commands? available/.test(locale.english?.count || '')

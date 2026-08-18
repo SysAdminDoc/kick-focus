@@ -315,7 +315,24 @@ const skipReasonsAreActionable = (source) => {
   return reasons.length > 0 && reasons.every((reason) => reason.length > 25);
 };
 
+/**
+ * Every top-level host this build creates must declare the interface language.
+ *
+ * Kick's document is `<html lang="en">` and `lang` inherits through the flat
+ * tree into a shadow root, so a translated surface that does not say otherwise
+ * is announced with English phonemes — WCAG 2.2 SC 3.1.2 (AA). There are four
+ * hosts and it is the *fifth* one, added later by someone who did not know
+ * this, that the gate exists to catch.
+ */
+const hostsDeclareLanguage = (bundle) => {
+  const declared = [...bundle.matchAll(/(\w+)\.id = '(kick-focus-[a-z-]+)';\n\s*\1\.lang = /g)].map((m) => m[2]);
+  const created = [...bundle.matchAll(/\w+\.id = '(kick-focus-[a-z-]+)';/g)].map((m) => m[1]);
+  return created.length >= 4 && created.every((id) => declared.includes(id));
+};
+
 const checks = [
+  ['every top-level host declares the interface language',
+    bundleTargets.every(([, bundleSource]) => hostsDeclareLanguage(bundleSource))],
   ['the live gate waits for the shadow host rather than sampling it',
     /const shadow = await __kfWait\(/.test(liveGate) && unwaitedShadowReads(liveGate) === 0],
   ['the live gate installs its page-world waiter before any probe reads painted state',
@@ -887,6 +904,9 @@ const checks = [
 // ever becomes vacuous (passes on empty/hostile input), its probe returns true
 // and this fails — the gate's proof that it can actually fire.
 const redProbes = [
+  ['host-language gate would catch a fifth host that declares no language',
+    !hostsDeclareLanguage("a.id = 'kick-focus-root';\n  a.lang = x;\nb.id = 'kick-focus-emote-complete';\n  b.lang = x;\nc.id = 'kick-focus-emote-tooltip';\n  c.lang = x;\nd.id = 'kick-focus-header-control';\n  d.lang = x;\ne.id = 'kick-focus-new-panel';\n  e.append(y);")],
+  ['host-language gate accepts the real bundle', hostsDeclareLanguage(source)],
   ['live-gate waiter gate would catch a probe that samples the shadow host once',
     unwaitedShadowReads("const shadow = document.getElementById('x')?.shadowRoot;\n    if (!shadow) return {};") === 1],
   ['live-gate waiter gate accepts the real gate', unwaitedShadowReads(liveGate) === 0],

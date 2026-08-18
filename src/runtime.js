@@ -3147,6 +3147,7 @@ function chatEmoteTooltipHost() {
   if (state.chatEmoteTooltip?.host?.isConnected) return state.chatEmoteTooltip;
   const host = document.createElement('div');
   host.id = 'kick-focus-emote-tooltip';
+  host.lang = activeLocale();
   host.setAttribute('aria-hidden', 'true');
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = trustedHTML('<div class="card" data-kf-tooltip-card></div>');
@@ -6469,7 +6470,34 @@ function trf(template, values) {
     Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : whole));
 }
 
+/**
+ * Say which language this build's own interface is written in.
+ *
+ * Kick's document is `<html lang="en">`, and `lang` inherits through the flat
+ * tree into a shadow root — so with the interface set to Español, a screen
+ * reader was announcing ~200 Spanish strings with English phonemes. That is
+ * WCAG 2.2 SC 3.1.2 (Language of Parts, AA), and it is a real failure on the
+ * one build in this space that ships an accessibility page.
+ *
+ * Stamped on the host rather than inside the shadow root, because the host is
+ * the element Kick's `lang` would otherwise reach through. The popup is not
+ * included on purpose: its copy is English and it correctly declares `en`.
+ */
+function applyInterfaceLanguage() {
+  const locale = activeLocale();
+  // The list is inline rather than a module const on purpose: the hover-card
+  // host is built during boot, and a `const` declared this far down the file
+  // would still be in its temporal dead zone when that runs. Function
+  // declarations hoist; `const` does not. See test/boot.test.js.
+  for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control']) {
+    const host = document.getElementById(id);
+    if (host && host.lang !== locale) host.lang = locale;
+  }
+  return locale;
+}
+
 function localizeInterface(root = state.shadow) {
+  applyInterfaceLanguage();
   if (!root) return;
   const walk = (node) => {
     if (node.nodeType === 3) {
@@ -6513,6 +6541,7 @@ function buildInterface() {
   if (document.getElementById('kick-focus-root')) return;
   const root = document.createElement('div');
   root.id = 'kick-focus-root';
+  root.lang = activeLocale();
   const shadow = root.attachShadow({ mode: 'open' });
   // Adopted after the markup lands: innerHTML replaces every child, which would
   // take the fallback <style> element with it if it were appended first.
@@ -8154,6 +8183,7 @@ function emoteCompletionHost() {
   if (host) return host;
   host = document.createElement('div');
   host.id = 'kick-focus-emote-complete';
+  host.lang = activeLocale();
   host.dataset.kfOpen = 'false';
   const shadow = host.attachShadow({ mode: 'open' });
   adoptStyles(shadow, EMOTE_COMPLETION_CSS);
@@ -9020,6 +9050,7 @@ function ensureHeaderQuickControl() {
   if (!state.headerControlHost) {
     const host = document.createElement('span');
     host.id = 'kick-focus-header-control';
+    host.lang = activeLocale();
     host.dataset.kfHeaderControl = 'true';
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = trustedHTML(`

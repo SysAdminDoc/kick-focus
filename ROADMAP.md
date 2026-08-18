@@ -78,13 +78,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P1 — trust, accessibility, and two expired blockers
 
-- [ ] P1 — R-41, declare the interface's language so assistive technology pronounces it
-  Why: Choosing Español or Português localizes the whole settings surface inside Kick's `<html lang="en">`, so a screen reader speaks Spanish and Portuguese with English phonemes — a WCAG 2.2 SC 3.1.2 *Language of Parts* (AA) failure on the one product in this space that ships an accessibility page and measured 326 controls for AA conformance.
-  Evidence: `grep -rn "lang=" src/` returns exactly one hit, `src/extension/popup.html:2`; `activeLocale()` (`src/runtime.js:6418`) and `localizeInterface()` (:6472) set no attribute anywhere. WCAG 2.2 SC 3.1.2, Level AA.
-  Touches: `src/runtime.js` (`activeLocale` :6418, `localizeInterface` :6472, the shadow host and any toast or announcement node created outside it), `scripts/check.mjs`, `test/i18n-coverage.test.js`
-  Acceptance: The Kick Focus root, the shadow host, the toast region and the live region all carry the active locale's tag, updated when the language setting changes; the popup document's `lang` follows the same setting; a live check asserts the attribute matches the selected language after a change, and an artifact gate fails if a new top-level surface is created without one.
-  Complexity: S
-
 - [ ] P1 — R-42, stop the Firefox package handing kick.com a per-install identifier
   Why: The MV2 bridge injects the page bundle by `src`, putting `moz-extension://<per-install-UUID>/…` into the DOM where any Kick script can read it; that UUID is randomised per install, stable for its life, and survives cookie clears — a supercookie shipped by a mod that sells privacy.
   Evidence: `src/extension/manifest.firefox.json` `web_accessible_resources: ["content/kick-focus.js"]`; `src/extension/bridge.firefox.js:19-21`. Removing the element on load (:22) does not help — the URL is already in the DOM and in `performance.getEntriesByType('resource')`. MV3's `use_dynamic_url` and Chromium's Aug-2024 resource-UUID randomisation have no MV2 equivalent; the MV3 package is unaffected because it uses `world: "MAIN"` and declares no web-accessible resources.
