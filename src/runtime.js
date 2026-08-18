@@ -173,6 +173,8 @@ const state = {
     total: 0,
   },
   compatibility: null,
+  // Set once at boot when the build changed under the user; the About page reads it.
+  updateNotice: null,
   observers: {
     document: null,
     body: null,
@@ -5769,6 +5771,9 @@ const TRANSLATIONS = {
     'Announce layout changes': 'Anunciar cambios de diseño',
     'Text size': 'Tamaño del texto',
     'Caption background opacity': 'Opacidad del fondo de subtítulos',
+    'Kick Focus updated to {version}.': 'Kick Focus se actualizó a {version}.',
+    'Changed defaults: {list}.': 'Valores predeterminados que cambiaron: {list}.',
+    'What changed': 'Qué cambió',
     'Keyboard shortcuts': 'Atajos de teclado',
     'Restore defaults': 'Restaurar valores predeterminados',
     'Action': 'Acción',
@@ -6162,6 +6167,9 @@ const TRANSLATIONS = {
     'Announce layout changes': 'Anunciar mudanças de layout',
     'Text size': 'Tamanho do texto',
     'Caption background opacity': 'Opacidade do fundo das legendas',
+    'Kick Focus updated to {version}.': 'O Kick Focus foi atualizado para {version}.',
+    'Changed defaults: {list}.': 'Padrões que mudaram: {list}.',
+    'What changed': 'O que mudou',
     'Keyboard shortcuts': 'Atalhos de teclado',
     'Restore defaults': 'Restaurar padrões',
     'Action': 'Ação',
@@ -7391,6 +7399,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
+      ${state.updateNotice ? `<div class="kf-action-row"><div><h3>What changed in ${escapeHtml(state.updateNotice.to)}</h3><p>${escapeHtml(state.updateNotice.summary || `Updated from ${state.updateNotice.from}.`)}${state.updateNotice.defaults.length ? ` Defaults that moved: ${escapeHtml(state.updateNotice.defaults.join(', '))}.` : ''}</p></div></div>` : ''}
       <div class="kf-action-row"><div><h3>Apply cycle cost</h3><p data-kf-apply-cost data-kf-no-translate>${escapeHtml(tr(applyCostSummary(state.diagnostics.apply)))}</p></div></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group">${gmGet(PRE_IMPORT_BACKUP_KEY, null) ? `<button type="button" class="kf-button" data-action="undo-import">Undo import</button>` : ''}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
@@ -9300,6 +9309,38 @@ function startWhenBodyExists() {
   // Both content scripts have certainly registered their listeners by now, so
   // this is the announcement the companion can rely on receiving.
   publishSettingsState();
+  announceUpdate();
+}
+
+/**
+ * Say so when the build changed under the user.
+ *
+ * An update that alters behaviour without a word is the pattern Kick itself was
+ * criticised for when ads appeared unannounced in May 2026; this build should
+ * not do the same to its own users. Deliberately quiet on a first install and on
+ * a profile that predates the recorded version — in neither case can this
+ * honestly claim to know what changed.
+ *
+ * Recorded before the toast is shown, not after, so a notice that is never
+ * clicked still counts as delivered and cannot repeat on every page load.
+ */
+function announceUpdate() {
+  const notice = updateNotice(state.settings.lastSeenVersion, VERSION);
+  if (state.settings.lastSeenVersion !== VERSION) {
+    state.settings.lastSeenVersion = VERSION;
+    saveSettings('Autosaved');
+  }
+  if (!notice) return;
+  state.updateNotice = notice;
+  const changed = notice.defaults.length
+    ? ` ${trf('Changed defaults: {list}.', { list: notice.defaults.join(', ') })}`
+    : '';
+  showToast(`${trf('Kick Focus updated to {version}.', { version: notice.to })}${changed}`, false, [
+    {
+      label: 'What changed',
+      onClick: () => openSettings('about'),
+    },
+  ]);
 }
 
 startWhenBodyExists();

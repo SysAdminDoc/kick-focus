@@ -1988,6 +1988,39 @@ try {
   record('popup raised no exceptions', popupErrors.length === 0, popupErrors.join('|') || 'clean');
 
   /**
+   * The update notice: silent on a fresh profile, spoken after a version change.
+   *
+   * The silent half is the one worth asserting. This gate always runs on a
+   * throwaway profile, so the notice must not fire here — a build that greets
+   * every first install with "updated to X" is worse than one that says nothing,
+   * and it is the easy way to get this wrong.
+   */
+  const updateNotice = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const toastText = () => String(shadow.querySelector('.kf-toast-text')?.textContent || '');
+    const onFirstRun = toastText();
+
+    // What the profile recorded, and what it would do if that were older.
+    const stored = JSON.parse(localStorage.getItem('kick-focus:settings') || '{}');
+    return {
+      ok: true,
+      quietOnFirstRun: !/updated to|actualiz|atualizado/i.test(onFirstRun),
+      firstRunToast: onFirstRun.slice(0, 80),
+      recorded: stored.lastSeenVersion || '',
+    };
+  })()`);
+  const notice = updateNotice.value || {};
+  recordProbe('a first install is not greeted as an update, and the version is recorded', notice,
+    notice.ok === true
+      && notice.quietOnFirstRun === true
+      && /^\d+\.\d+\.\d+$/.test(String(notice.recorded || '')),
+    notice.ok
+      ? `recorded ${JSON.stringify(notice.recorded)}; first-run toast ${JSON.stringify(notice.firstRunToast)}`
+      : notice.why);
+
+
+  /**
    * Do the endpoints this build reads still exist?
    *
    * The drift gate covers Kick's DOM and says nothing about its API, and Kick

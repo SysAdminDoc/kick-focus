@@ -2,6 +2,16 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.22.0 — 2026-08-18
+
+### Added
+
+- **Kick Focus tells you when it has changed under you.** After an update, one dismissible notice names the new version and offers a link to a short summary on the About page, and any setting whose default moved is called out by name. It stays quiet on a first install and on a profile that predates this feature — in neither case can it honestly claim to know what changed. Kick shipped ads to viewers with no notice in May 2026 and was rightly criticised for it; this build should not do the same thing to its own users.
+
+### Changed
+
+- **Markup now reaches the page through a single checked path.** Every panel this build draws goes through one function, and the build refuses to ship if any surface writes markup on its own. Nothing looks different; it means a future change to how markup is handled is one edit rather than seventeen.
+
 ## 1.21.0 — 2026-08-18
 
 ### Added

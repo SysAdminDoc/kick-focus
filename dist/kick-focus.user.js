@@ -26,8 +26,58 @@ window.__kickFocusBooted = true;
 const VERSION = '1.21.0';
 const SETTINGS_SCHEMA = 4;
 
+/**
+ * What changed, per version, for the notice shown after an update.
+ *
+ * Only versions worth telling somebody about need an entry; a version absent
+ * from here still records itself as seen and simply says nothing. `defaults`
+ * names any setting whose default moved, because that is the one kind of change
+ * that alters behaviour on a profile nobody touched — the rest a user can find
+ * in the changelog if they care.
+ */
+const VERSION_NOTES = Object.freeze({
+  '1.21.0': Object.freeze({
+    summary: 'The live gate waits for what it asserts, the Firefox package no longer leaks a per-install identifier to Kick, and the interface declares the language it is written in.',
+    defaults: Object.freeze([]),
+  }),
+  '1.22.0': Object.freeze({
+    summary: 'Markup reaches the page through one checked path, and this notice exists — an update no longer changes how Kick Focus behaves without saying so.',
+    defaults: Object.freeze([]),
+  }),
+});
+
+/** A version string this build is willing to store and compare. */
+function normalizeVersion(value) {
+  const raw = String(value ?? '').trim();
+  return /^\d{1,4}(\.\d{1,4}){0,3}$/.test(raw) ? raw : '';
+}
+
+/**
+ * Whether to tell the user the build changed under them, and what to say.
+ *
+ * Silent in both directions that are not an update: a profile with no recorded
+ * version is either a first install or one that predates this field, and in
+ * neither case can this build honestly claim to know what changed. A downgrade
+ * is reported too — running an older build than last time is worth knowing.
+ */
+function updateNotice(lastSeen, current = VERSION, notes = VERSION_NOTES) {
+  const from = normalizeVersion(lastSeen);
+  const to = normalizeVersion(current);
+  if (!from || !to || from === to) return null;
+  const note = notes?.[to] || null;
+  return {
+    from,
+    to,
+    summary: note?.summary || '',
+    defaults: Array.isArray(note?.defaults) ? [...note.defaults] : [],
+  };
+}
+
 const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
+  // Recorded rather than defaulted to VERSION: a fresh profile has seen nothing,
+  // and claiming otherwise would announce an update that never happened.
+  lastSeenVersion: '',
   layout: Object.freeze({
     sidebar: 'auto',
     chat: 'right',
@@ -872,6 +922,7 @@ function normalizeSettings(input) {
 
   return {
     schema: SETTINGS_SCHEMA,
+    lastSeenVersion: normalizeVersion(source.lastSeenVersion),
     layout: {
       sidebar,
       chat: enumValue(layout.chat, ['right', 'docked', 'hidden'], defaults.layout.chat),
@@ -5929,6 +5980,8 @@ const state = {
     total: 0,
   },
   compatibility: null,
+  // Set once at boot when the build changed under the user; the About page reads it.
+  updateNotice: null,
   observers: {
     document: null,
     body: null,
@@ -11525,6 +11578,9 @@ const TRANSLATIONS = {
     'Announce layout changes': 'Anunciar cambios de diseño',
     'Text size': 'Tamaño del texto',
     'Caption background opacity': 'Opacidad del fondo de subtítulos',
+    'Kick Focus updated to {version}.': 'Kick Focus se actualizó a {version}.',
+    'Changed defaults: {list}.': 'Valores predeterminados que cambiaron: {list}.',
+    'What changed': 'Qué cambió',
     'Keyboard shortcuts': 'Atajos de teclado',
     'Restore defaults': 'Restaurar valores predeterminados',
     'Action': 'Acción',
@@ -11918,6 +11974,9 @@ const TRANSLATIONS = {
     'Announce layout changes': 'Anunciar mudanças de layout',
     'Text size': 'Tamanho do texto',
     'Caption background opacity': 'Opacidade do fundo das legendas',
+    'Kick Focus updated to {version}.': 'O Kick Focus foi atualizado para {version}.',
+    'Changed defaults: {list}.': 'Padrões que mudaram: {list}.',
+    'What changed': 'O que mudou',
     'Keyboard shortcuts': 'Atalhos de teclado',
     'Restore defaults': 'Restaurar padrões',
     'Action': 'Ação',
@@ -13147,6 +13206,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
       <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
       <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
+      ${state.updateNotice ? `<div class="kf-action-row"><div><h3>What changed in ${escapeHtml(state.updateNotice.to)}</h3><p>${escapeHtml(state.updateNotice.summary || `Updated from ${state.updateNotice.from}.`)}${state.updateNotice.defaults.length ? ` Defaults that moved: ${escapeHtml(state.updateNotice.defaults.join(', '))}.` : ''}</p></div></div>` : ''}
       <div class="kf-action-row"><div><h3>Apply cycle cost</h3><p data-kf-apply-cost data-kf-no-translate>${escapeHtml(tr(applyCostSummary(state.diagnostics.apply)))}</p></div></div>
       <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group">${gmGet(PRE_IMPORT_BACKUP_KEY, null) ? `<button type="button" class="kf-button" data-action="undo-import">Undo import</button>` : ''}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
@@ -15056,6 +15116,38 @@ function startWhenBodyExists() {
   // Both content scripts have certainly registered their listeners by now, so
   // this is the announcement the companion can rely on receiving.
   publishSettingsState();
+  announceUpdate();
+}
+
+/**
+ * Say so when the build changed under the user.
+ *
+ * An update that alters behaviour without a word is the pattern Kick itself was
+ * criticised for when ads appeared unannounced in May 2026; this build should
+ * not do the same to its own users. Deliberately quiet on a first install and on
+ * a profile that predates the recorded version — in neither case can this
+ * honestly claim to know what changed.
+ *
+ * Recorded before the toast is shown, not after, so a notice that is never
+ * clicked still counts as delivered and cannot repeat on every page load.
+ */
+function announceUpdate() {
+  const notice = updateNotice(state.settings.lastSeenVersion, VERSION);
+  if (state.settings.lastSeenVersion !== VERSION) {
+    state.settings.lastSeenVersion = VERSION;
+    saveSettings('Autosaved');
+  }
+  if (!notice) return;
+  state.updateNotice = notice;
+  const changed = notice.defaults.length
+    ? ` ${trf('Changed defaults: {list}.', { list: notice.defaults.join(', ') })}`
+    : '';
+  showToast(`${trf('Kick Focus updated to {version}.', { version: notice.to })}${changed}`, false, [
+    {
+      label: 'What changed',
+      onClick: () => openSettings('about'),
+    },
+  ]);
 }
 
 startWhenBodyExists();

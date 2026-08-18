@@ -1,8 +1,58 @@
 export const VERSION = '1.21.0';
 export const SETTINGS_SCHEMA = 4;
 
+/**
+ * What changed, per version, for the notice shown after an update.
+ *
+ * Only versions worth telling somebody about need an entry; a version absent
+ * from here still records itself as seen and simply says nothing. `defaults`
+ * names any setting whose default moved, because that is the one kind of change
+ * that alters behaviour on a profile nobody touched — the rest a user can find
+ * in the changelog if they care.
+ */
+export const VERSION_NOTES = Object.freeze({
+  '1.21.0': Object.freeze({
+    summary: 'The live gate waits for what it asserts, the Firefox package no longer leaks a per-install identifier to Kick, and the interface declares the language it is written in.',
+    defaults: Object.freeze([]),
+  }),
+  '1.22.0': Object.freeze({
+    summary: 'Markup reaches the page through one checked path, and this notice exists — an update no longer changes how Kick Focus behaves without saying so.',
+    defaults: Object.freeze([]),
+  }),
+});
+
+/** A version string this build is willing to store and compare. */
+export function normalizeVersion(value) {
+  const raw = String(value ?? '').trim();
+  return /^\d{1,4}(\.\d{1,4}){0,3}$/.test(raw) ? raw : '';
+}
+
+/**
+ * Whether to tell the user the build changed under them, and what to say.
+ *
+ * Silent in both directions that are not an update: a profile with no recorded
+ * version is either a first install or one that predates this field, and in
+ * neither case can this build honestly claim to know what changed. A downgrade
+ * is reported too — running an older build than last time is worth knowing.
+ */
+export function updateNotice(lastSeen, current = VERSION, notes = VERSION_NOTES) {
+  const from = normalizeVersion(lastSeen);
+  const to = normalizeVersion(current);
+  if (!from || !to || from === to) return null;
+  const note = notes?.[to] || null;
+  return {
+    from,
+    to,
+    summary: note?.summary || '',
+    defaults: Array.isArray(note?.defaults) ? [...note.defaults] : [],
+  };
+}
+
 export const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
+  // Recorded rather than defaulted to VERSION: a fresh profile has seen nothing,
+  // and claiming otherwise would announce an update that never happened.
+  lastSeenVersion: '',
   layout: Object.freeze({
     sidebar: 'auto',
     chat: 'right',
@@ -847,6 +897,7 @@ export function normalizeSettings(input) {
 
   return {
     schema: SETTINGS_SCHEMA,
+    lastSeenVersion: normalizeVersion(source.lastSeenVersion),
     layout: {
       sidebar,
       chat: enumValue(layout.chat, ['right', 'docked', 'hidden'], defaults.layout.chat),

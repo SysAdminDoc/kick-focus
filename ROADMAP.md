@@ -92,13 +92,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
   Acceptance: An open prediction on the current channel shows its age and time to auto-refund; the surface is read-only and never votes, resolves or refunds; it degrades silently when the endpoint is unavailable or the channel has predictions off; behind its own setting, on by default only if it costs no extra request.
   Complexity: M
 
-- [ ] P2 — R-51, tell the user what changed after an update
-  Why: Once R-45 lands the userscript updates itself and behaviour changes with no signal at all — precisely the pattern Kick was criticised for in May 2026 when ads appeared unannounced. The mod should not do to its users what the platform did.
-  Evidence: `grep -n "firstRun\|whatsNew\|lastSeenVersion" src/runtime.js src/core.mjs` returns nothing — there is no version-change awareness anywhere. Depends on R-45.
-  Touches: `src/core.mjs` (settings schema: last-seen version), `src/runtime.js` (About page and a dismissible notice), `CHANGELOG.md`, `test/core.test.js`
-  Acceptance: After the version changes, one dismissible notice names the version and links to the About page's summary of what changed; it appears once, survives nothing being clicked, and never appears on a first install where it would be noise; any setting whose default changed is called out by name.
-  Complexity: S
-
 - [ ] P2 — R-52, move the hover card and completion list into the top layer
   Why: Both are positioned by hand inside a shadow tree over Kick's own stacking contexts, the classic source of clipping and z-index fights; `<dialog>` and popover render in the top layer where no host `overflow: hidden` can reach them, and anchor positioning replaces the manual rect maths.
   Evidence: No `<dialog>`, `popover`, `anchor-name` or `position-anchor` anywhere in `src/`. `<dialog>` is Baseline widely available since 2024-09-14; popover Baseline newly 2025-01-27; anchor positioning is cross-engine as of Chrome 125 / Firefox 147 / Safari 26 and reads "limited" only because of `position-anchor` initial-value churn — set it explicitly rather than relying on the initial value.

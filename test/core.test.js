@@ -94,6 +94,8 @@ import {
   nextClaimResetAt,
   nextRewardCheckAt,
   parseClaimCountdown,
+  updateNotice,
+  normalizeVersion,
 } from '../src/core.mjs';
 
 // The dialog is open and the reward is ready — the only state that clicks.
@@ -2270,4 +2272,51 @@ test('the session key gets the bare height Kick writes, never the menu label', {
   assert.equal(qualitySessionValue('mystery'), '');
   assert.equal(qualitySessionValue(''), '');
   assert.equal(qualitySessionValue(null), '');
+});
+
+/**
+ * An update that changes behaviour without a word is the pattern Kick itself was
+ * criticised for when ads appeared unannounced in May 2026. The interesting
+ * cases here are the two that must stay silent: this build cannot honestly say
+ * what changed for someone it has never seen before.
+ */
+test('an update is announced, a first install is not', { tag: 'unit' }, () => {
+  assert.equal(updateNotice('', '1.22.0'), null, 'a profile with no recorded version has seen nothing');
+  assert.equal(updateNotice(null, '1.22.0'), null, 'neither has one that predates the field');
+  assert.equal(updateNotice('1.22.0', '1.22.0'), null, 'the same build is not an update');
+
+  const upgrade = updateNotice('1.21.0', '1.22.0');
+  assert.equal(upgrade.from, '1.21.0');
+  assert.equal(upgrade.to, '1.22.0');
+  assert.ok(upgrade.summary.length > 20, 'the version being moved to is the one described');
+
+  // A downgrade is worth knowing about too — running an older build than last
+  // time is a surprise, not a non-event.
+  const downgrade = updateNotice('1.22.0', '1.21.0');
+  assert.equal(downgrade.from, '1.22.0');
+  assert.equal(downgrade.to, '1.21.0');
+});
+
+test('a stored version is validated before it is compared or shown', { tag: 'unit' }, () => {
+  // It is read back out of a settings file a user can hand-edit or import, and
+  // it reaches the interface, so it is treated as untrusted input.
+  for (const junk of ['../evil', '<img onerror=1>', 'v1.2.3', '1.2.3.4.5', 'x'.repeat(40), '99999.0']) {
+    assert.equal(normalizeVersion(junk), '', `${junk} was accepted`);
+    assert.equal(updateNotice(junk, '1.22.0'), null, `${junk} produced a notice`);
+  }
+  assert.equal(normalizeVersion('1.21.0'), '1.21.0');
+  assert.equal(normalizeVersion('  1.21.0  '), '1.21.0', 'surrounding whitespace is tolerated');
+});
+
+test('a version with no note still records itself rather than repeating', { tag: 'unit' }, () => {
+  const notice = updateNotice('1.20.0', '1.21.0', { });
+  assert.equal(notice.to, '1.21.0');
+  assert.equal(notice.summary, '', 'a version nobody wrote a note for says nothing');
+  assert.deepEqual(notice.defaults, []);
+});
+
+test('normalizeSettings carries the recorded version and refuses a junk one', { tag: 'unit' }, () => {
+  assert.equal(normalizeSettings({ lastSeenVersion: '1.21.0' }).lastSeenVersion, '1.21.0');
+  assert.equal(normalizeSettings({ lastSeenVersion: '../evil' }).lastSeenVersion, '');
+  assert.equal(normalizeSettings({}).lastSeenVersion, '', 'a fresh profile has seen nothing');
 });
