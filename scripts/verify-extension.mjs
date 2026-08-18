@@ -133,8 +133,27 @@ function unsupportedBinaryHint() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 const record = (label, ok, detail = '') => {
-  results.push({ label, ok, detail });
+  results.push({ label, ok, detail, outcome: ok ? 'pass' : 'fail' });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? ` — ${detail}` : ''}`);
+};
+
+/**
+ * Route a probe result to the right one of three outcomes.
+ *
+ * A probe can fail for two entirely different reasons, and collapsing them into
+ * one verdict is what made this gate cry wolf: `no video on this route` is the
+ * operator pointing it at the home page, while a real defect is the product
+ * being broken. A probe says which it means by returning a `skip` field naming
+ * what was missing, instead of `{ ok: false, why }`; everything else asserts
+ * exactly as before. A skip reason has to be actionable — `scripts/check.mjs`
+ * rejects a bare noun, because a skip nobody can act on is just silence.
+ */
+const recordProbe = (label, probe, ok, detail = '') => {
+  if (probe && typeof probe.skip === 'string' && probe.skip) {
+    skip(label, probe.skip);
+    return;
+  }
+  record(label, ok, detail);
 };
 
 /**
@@ -148,8 +167,43 @@ const record = (label, ok, detail = '') => {
  * turn these into real assertions.
  */
 const skip = (label, why) => {
+  results.push({ label, ok: true, detail: why, outcome: 'skip' });
   console.log(`SKIP  ${label} — ${why}`);
 };
+
+/**
+ * The page-world helper every probe uses before reading anything this mod paints.
+ *
+ * Installed once, into the page, because the probes are evaluated as page-world
+ * source. Two behaviours matter and both were learned the hard way:
+ *
+ * 1. It polls instead of sampling. A probe that reads `querySelector` once races
+ *    the apply cycle, which is a capped debounce (`APPLY_MAX_WAIT` = 500 ms in
+ *    core.mjs) driven by a MutationObserver — so on a quiet moment the thing
+ *    being asserted may simply not be painted yet. On 2026-08-17 exactly that
+ *    reported a shipped feature as dead and it was investigated as a P0.
+ * 2. It pokes the DOM between polls. `scheduleApply` only runs when something
+ *    mutates, so on a page that has gone still, waiting alone can wait forever;
+ *    a comment node appended and removed is the cheapest legal mutation.
+ *
+ * Returns the predicate's truthy value, or null once the budget is spent.
+ */
+const PAGE_WAIT_HELPER = `window.__kfWait = async function (predicate, options) {
+  const timeout = (options && options.timeout) || 8000;
+  const interval = (options && options.interval) || 150;
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    let value = null;
+    try { value = predicate(); } catch { value = null; }
+    if (value) return value;
+    if (Date.now() >= deadline) return null;
+    const poke = document.createComment('kf-wait');
+    document.body.appendChild(poke);
+    poke.remove();
+    await new Promise((done) => setTimeout(done, interval));
+  }
+};
+window.__kfWaitInstalled = true;`;
 
 async function json(path) {
   const res = await fetch(`http://127.0.0.1:${PORT}${path}`);
@@ -301,6 +355,12 @@ try {
   const mounted = await evaluate(pageClient, 'Boolean(document.querySelector("#kick-focus-root, [data-kf-root]")) || Boolean(window.__kickFocusNetworkDefenseV1)');
   record('kick focus runtime active on page', mounted.value === true);
 
+  // Every probe below reads state this mod paints on its own schedule, so the
+  // waiter has to exist before any of them run.
+  await evaluate(pageClient, PAGE_WAIT_HELPER);
+  const waiterReady = await evaluate(pageClient, 'window.__kfWaitInstalled === true');
+  record('the probe waiter is installed in the page', waiterReady.value === true);
+
   // The accessibility settings and the modal focus ladder are about this mod's
   // own chrome, not Kick's markup, so they are proven by driving the real UI
   // rather than by reading source. Both were defects a green offline build
@@ -309,7 +369,7 @@ try {
   // and Escape on the reset prompt tore down the whole Settings modal.
   const shadowProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
-    if (!host || !host.shadowRoot) return { ok: false, why: 'no shadow host' };
+    if (!await __kfWait(() => host && host.shadowRoot)) return { ok: false, why: 'the settings shadow host never appeared' };
     const shadow = host.shadowRoot;
     const q = (selector) => shadow.querySelector(selector);
     // The apply cycle is throttled, never synchronous — reading the host in the
@@ -345,8 +405,8 @@ try {
   // the tr()/plural() path, not just the presence of dictionary entries.
   const localeProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
-    const shadow = host && host.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => host && host.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 400));
     // The language control only exists once the Appearance page is rendered,
     // and every settings change replaces it — a reference captured once goes
@@ -397,8 +457,8 @@ try {
   // gives every live run a number to compare against the last one, so a
   // regression is visible in the log rather than only in someone's fan noise.
   const applyCost = await evaluate(pageClient, `(async () => {
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 400));
     // Let a few cycles land on top of the ones the page load already caused.
     for (let i = 0; i < 4; i += 1) { document.body.append(document.createComment('kf-poke')); await settle(); }
@@ -426,8 +486,8 @@ try {
   // amount of reading the stylesheet establishes.
   const a11ySizeProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
-    const shadow = host && host.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => host && host.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 400));
     shadow.querySelector('[data-kf-quick]').click();
     shadow.querySelector('[data-action="command:settings"]').click();
@@ -535,8 +595,8 @@ try {
   })();
   await sleep(9000);
   const presence = await evaluate(pageClient, `(async () => {
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 900));
     shadow.querySelector('[data-action="open-multistream"]')?.click();
     if (shadow.querySelector('[data-kf-multistream-backdrop]')?.hidden !== false) {
@@ -575,8 +635,8 @@ try {
   // which overwrites a seeded store before the new page can read it. An old
   // backup is also how a user actually arrives at this migration.
   const migrationProbe = await evaluate(pageClient, `(async () => {
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 700));
     const backup = {
       ...JSON.parse(localStorage.getItem('kick-focus:settings') || '{}'),
@@ -643,8 +703,8 @@ try {
   // registry holds the ranges and that the message markup is byte-identical to
   // what was inserted.
   const highlightProbe = await evaluate(pageClient, `(async () => {
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 700));
     history.pushState(null, '', '/kfprobechannel');
     await settle();
@@ -656,7 +716,7 @@ try {
     const highlightsOn = shadow.querySelector('[data-set="content.chatHighlights"]');
     if (highlightsOn && highlightsOn.getAttribute('aria-checked') !== 'true') { highlightsOn.click(); await settle(); }
     const input = shadow.querySelector('[data-kf-chat-keywords]');
-    if (!input) { history.pushState(null, '', '/'); return { ok: false, why: 'no keyword input on ' + route }; }
+    if (!input) { history.pushState(null, '', '/'); return { skip: 'the chat-keyword control is not rendered on route ' + route }; }
     input.value = 'giveaway';
     shadow.querySelector('[data-action="save-local-channel"]').click();
     await settle();
@@ -694,7 +754,7 @@ try {
     return result;
   })()`);
   const hl = highlightProbe.value || { why: highlightProbe.error || 'probe returned nothing' };
-  record('keyword matches are painted from the Highlight registry with zero nodes written into chat',
+  recordProbe('keyword matches are painted from the Highlight registry with zero nodes written into chat', hl,
     hl.ok === true && hl.route === 'channel' && hl.api === true
       && Array.isArray(hl.rows) && hl.rows[0] === 'true' && hl.rows[1] === 'false'
       && hl.ranges === 2 && hl.untouched === true
@@ -732,8 +792,8 @@ try {
   // nothing in the path submits: no Enter, no send click, no form submit.
   const insertProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
-    const shadow = host && host.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => host && host.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 400));
     const box = document.createElement('div');
     box.setAttribute('contenteditable', 'true');
@@ -757,7 +817,7 @@ try {
     // The library lives inside the bundle IIFE, so take a key from a rendered
     // card rather than reaching for a private binding.
     const seeded = shadow.querySelector('[data-action="insert-sticker-name"]');
-    if (!seeded) { box.remove(); return { ok: false, why: 'library is empty on this profile' }; }
+    if (!seeded) { box.remove(); return { skip: 'the library is empty on this throwaway profile; run the gate against a channel URL so chat fills it' }; }
     seeded.click();
     await settle();
     const typed = box.textContent;
@@ -766,7 +826,7 @@ try {
     return { ok: true, typed, toast, submits };
   })()`);
   const insert = insertProbe.value || {};
-  record('typing an emote name inserts the plain name at the caret and never sends',
+  recordProbe('typing an emote name inserts the plain name at the caret and never sends', insert,
     insert.ok === true
       && typeof insert.typed === 'string' && insert.typed.length > 0
       && /^[A-Za-z0-9_]+$/.test(insert.typed)
@@ -897,8 +957,8 @@ try {
   // not. The probe restores the previous value in a `finally` so a failure
   // here cannot leave the browse link hidden for the checks that follow.
   const hideProbe = await evaluate(pageClient, `(async () => {
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 700));
     const before = JSON.parse(localStorage.getItem('kick-focus:settings') || '{}');
     // Later probes read controls straight out of the shadow DOM without opening
@@ -1077,7 +1137,7 @@ try {
   const overlayProbe = await evaluate(pageClient, `(async () => {
     const settle = () => new Promise((done) => setTimeout(done, 700));
     const video = document.querySelector('video');
-    if (!video) return { ok: false, why: 'no video on this route' };
+    if (!video) return { skip: 'Kick rendered no video on this route; run the gate against a channel URL to assert it' };
     window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
     await settle();
     const tagged = document.querySelector('[data-kf-player]');
@@ -1093,7 +1153,7 @@ try {
     };
   })()`);
   const overlay = overlayProbe.value || {};
-  record('a player overlay anchors to a container, never to the video element itself',
+  recordProbe('a player overlay anchors to a container, never to the video element itself', overlay,
     overlay.ok === true
       && overlay.taggedIsVideo === false
       && overlay.taggedContainsVideo === true
@@ -1141,9 +1201,11 @@ try {
     if (!target?.webSocketDebuggerUrl) return { ok: false, why: 'the uptime tab did not attach' };
     const c = cdp(target.webSocketDebuggerUrl);
     await c.ready;
+    // The waiter lives in the page, so a second tab needs its own copy.
+    await evaluate(c, PAGE_WAIT_HELPER);
     try {
       const probe = await evaluate(c, `(async () => {
-        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+        const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
         if (!shadow) return { ok: false, why: 'the mod did not mount on the channel tab' };
         const settle = () => new Promise((done) => setTimeout(done, 900));
         const chip = () => document.querySelector('[data-kf-uptime]');
@@ -1233,8 +1295,8 @@ try {
   // whose whole text is a number, and the gift shop is a panel — so a tagger
   // that walks buttons and links cannot reach either.
   const poorProbe = await evaluate(pageClient, `(async () => {
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 800));
     const before = JSON.parse(localStorage.getItem('kick-focus:settings') || '{}');
     const seen = (id) => document.querySelector('[data-testid="' + id + '"]');
@@ -1293,8 +1355,8 @@ try {
   // most — that nothing about it is keyboard-driven or send-shaped.
   const completeProbe = await evaluate(pageClient, `(async () => {
     const settle = (ms = 400) => new Promise((done) => setTimeout(done, ms));
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     // The logged-out home page has no composer of Kick's own, so the probe
     // supplies one carrying the same contract the runtime looks for.
     const input = document.createElement('div');
@@ -1316,7 +1378,7 @@ try {
       const seeded = shadow.querySelector('[data-action="copy-sticker-name"], [data-action="insert-sticker-name"]');
       const label = seeded?.getAttribute('aria-label') || '';
       const name = (label.match(/name ([A-Za-z0-9_]+)/) || [])[1];
-      if (!name || name.length < 3) return { ok: false, why: 'library is empty on this profile' };
+      if (!name || name.length < 3) return { skip: 'the library is empty on this throwaway profile; run the gate against a channel URL so chat fills it' };
 
       input.focus();
       document.execCommand('insertText', false, 'hello :' + name.slice(0, 3));
@@ -1349,7 +1411,7 @@ try {
     }
   })()`);
   const complete = completeProbe.value || {};
-  record('a colon and two letters offer emotes from the library, accepted by click',
+  recordProbe('a colon and two letters offer emotes from the library, accepted by click', complete,
     complete.ok === true
       && complete.opened === true
       && complete.labels?.length > 0
@@ -1358,7 +1420,7 @@ try {
       && !complete.text.includes('[emote:')
       && complete.closed === true,
     complete.ok ? `":${String(complete.name).slice(0, 3)}" offered ${JSON.stringify(complete.labels)}; composer now ${JSON.stringify(complete.text)}` : complete.why);
-  record('accepting a suggestion raises no key or submit event on the composer',
+  recordProbe('accepting a suggestion raises no key or submit event on the composer', complete,
     complete.ok === true && Array.isArray(complete.submits) && complete.submits.length === 0
       && complete.smallest >= 24,
     complete.ok ? `events on the composer ${JSON.stringify(complete.submits)}; smallest row ${Math.round(complete.smallest)}px` : complete.why);
@@ -1372,8 +1434,17 @@ try {
     const settle = () => new Promise((done) => setTimeout(done, 400));
     const before = JSON.parse(localStorage.getItem('kick-focus:multistream') || '{}');
     try {
-      const chip = document.querySelector('[data-kf-card-action="multi"]');
-      if (!chip) return { ok: false, why: 'no card chip rendered on this page' };
+      const chip = await __kfWait(() => document.querySelector('[data-kf-card-action="multi"]'));
+      if (!chip) {
+        // Say which stage produced nothing, so the next reader does not have to
+        // guess between "Kick changed its cards" and "we never painted".
+        const main = document.querySelector('#main-container') || document;
+        const cards = [...main.querySelectorAll('[data-testid="livestream-results-card"], [data-testid="stream-card"]')];
+        const withAnchor = cards.filter((card) => card.matches('a[href]') || card.querySelector('a[href]')).length;
+        const withActions = cards.filter((card) => card.querySelector('[data-kf-card-actions]')).length;
+        if (!cards.length) return { skip: 'Kick rendered no discovery cards on this route' };
+        return { ok: false, why: 'no chip after waiting: ' + cards.length + ' cards in main, ' + withAnchor + ' carrying an anchor, ' + withActions + ' carrying our action row' };
+      }
       const slug = chip.dataset.kfCardSlug;
       const startedActive = chip.dataset.active === 'true';
       if (startedActive) chip.click();
@@ -1400,14 +1471,14 @@ try {
     }
   })()`);
   const chipResult = chipProbe.value || {};
-  record('a discovery card can be collected into the grid without opening it',
+  recordProbe('a discovery card can be collected into the grid without opening it', chipResult,
     chipResult.ok === true
       && chipResult.added?.active === 'true'
       && chipResult.added?.pressed === 'true'
       && Array.isArray(chipResult.added?.streams)
       && chipResult.added.streams.includes(chipResult.slug),
     chipResult.ok ? `chip for ${chipResult.slug} -> grid ${JSON.stringify(chipResult.added.streams)}` : chipResult.why);
-  record('another tab removing a channel repaints the chip without a reload',
+  recordProbe('another tab removing a channel repaints the chip without a reload', chipResult,
     chipResult.ok === true && chipResult.converged?.active === 'false' && chipResult.converged?.text === '⊞',
     chipResult.ok ? `after the broadcast the chip reads active=${chipResult.converged?.active}` : chipResult.why);
 
@@ -1502,8 +1573,8 @@ try {
   // input rather than trusting that the unit tests covered the wiring.
   const importProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
-    const shadow = host && host.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => host && host.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 600));
     const readSettings = () => localStorage.getItem('kick-focus:settings');
     const before = readSettings();
@@ -1549,10 +1620,10 @@ try {
       && /imported/i.test(round.toast),
     round.ok ? `accent ${round.original} -> ${round.applied} -> ${round.restored}` : round.why);
 
-  const escapeProbe = await evaluate(pageClient, `(() => {
+  const escapeProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
-    const shadow = host && host.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => host && host.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const q = (selector) => shadow.querySelector(selector);
     const press = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     const open = () => ({
@@ -1717,8 +1788,8 @@ try {
   // is that Kick's markup still matches the capture; only a signed-in run can.
   const rewardProbe = await evaluate(pageClient, `(async () => {
     const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
-    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    if (!shadow) return { ok: false, why: 'no shadow host' };
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     // This runs last, after other checks have moved the panel around, so put it
     // back on the page that owns the setting before reaching for it.
     document.dispatchEvent(new CustomEvent('kick-focus:open-settings'));
@@ -1903,8 +1974,13 @@ try {
   pageClient.close();
 
   console.log(`\nExtension id: ${extensionId}`);
-  const failures = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - failures.length}/${results.length} checks passed.`);
+  const failures = results.filter((r) => r.outcome === 'fail');
+  const skipped = results.filter((r) => r.outcome === 'skip');
+  const asserted = results.filter((r) => r.outcome !== 'skip');
+  // Skips are counted apart from the total on purpose: folding them into the
+  // numerator would let a run that asserted nothing report a perfect score.
+  console.log(`\n${asserted.length - failures.length}/${asserted.length} checks passed${skipped.length ? `, ${skipped.length} skipped` : ''}.`);
+  if (skipped.length) console.log(`Skipped: ${skipped.map((s) => s.label).join('; ')}`);
   if (failures.length) {
     console.log(`Failed: ${failures.map((f) => f.label).join('; ')}`);
     process.exitCode = 1;

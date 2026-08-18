@@ -67,21 +67,7 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.2
 
 Cross-references to existing work: R-56's derived-value assertions belong with "Next" item 1's fixture reducer and should land together, not beside each other. Nothing here covers autocomplete reach filtering — that is "Next" item 2 and stays there. R-45 and R-46 are the unblocks for two [Roadmap_Blocked.md](Roadmap_Blocked.md) items whose stated blockers have expired (the repo is public; Firefox 153 is installed); on completion, delete those entries from that file rather than leaving them recorded as blocked.
 
-### P0 — the gate cries wolf, and it cost a research pass
-
-- [ ] P0 — R-38, make every live probe wait for the thing it asserts
-  Why: The file has 42 `{ok:false, why}` bail-out sites, the great majority reached from a single unwaited `querySelector`; exactly one probe first forces the mod to paint. One of them reported a shipped feature as dead, which was investigated as a P0 and was a false positive — a gate that cries wolf is worse than no gate, and this one is release-blocking because `release-checklist.mjs:44-48` runs the live gate twice and exits on the first non-zero.
-  Evidence: **Premise corrected 2026-08-18 — the 2026-08-17 version of this item claimed card actions were dead on Kick's Home route. They are not.** On identical code: live gate 54/54 on `https://kick.com/`, `release:check` 55/55 at 1440×900 and 55/55 at 1920×1080, exit 0; direct DOM measurement on live Kick shows 42/42 Home cards carry an `<a href>` and yield a valid slug through the real `cardPath()`→`cardSlugFromPath()` path, with card nodes stable across 10s with injected children intact. Same check, same code: FAIL 2026-08-17 ("27 cards scored"), PASS 2026-08-18 ("627 cards scored"). The one probe that gets this right is the apply-cost probe (`scripts/verify-extension.mjs:404`), which loops `document.body.append(document.createComment('kf-poke'))` and settles before reading.
-  Touches: `scripts/verify-extension.mjs` (`record` :137, the chip probe :1376, the 14 `no shadow host` bail-outs, and the poke pattern at :404 to generalise)
-  Acceptance: A shared helper waits for a condition with a timeout and is used by every probe that reads mod-painted state; no probe reaches a verdict from a single unwaited sample. The chip probe, when it does fail, reports counts — cards found in `main`, how many carried an anchor, how many yielded a slug — rather than a bare "no chip". Ten consecutive `release:check` runs are green. Lands with R-39: they are one design change.
-  Complexity: M
-
-- [ ] P0 — R-39, give the live gate a real SKIP outcome instead of two conventions
-  Why: `record()` has only pass/fail, so route-shaped absence is hand-rolled as SKIP in some probes and returned as a failure in others; the gate is unusable against any target but the default, and `release:check`'s exit code cannot be trusted for a channel or browse URL.
-  Evidence: Live gate 2026-08-17 against `https://kick.com/browse` — 50/54, with four failures that are not defects (`library is empty on this profile` twice, `no video on this route`, and the emote-typing check) while the Poor-mode probe on the same run correctly emitted `SKIP … run the gate against a channel URL to assert it`.
-  Touches: `scripts/verify-extension.mjs` (`record` :137, every probe returning a `{ok:false, why}` for a missing precondition), `scripts/release-checklist.mjs`
-  Acceptance: `record()` takes a third `skip` outcome with a mandatory reason; every probe declares its precondition instead of encoding it in a `why` string; the summary counts pass/fail/skip separately; runs against a channel URL and against `/browse` both exit 0 when nothing is broken, and a real defect on either still exits 1.
-  Complexity: M
+### P0 — release
 
 - [ ] P0 — R-40, release v1.20.0 and make the README's verification claim true again
   Why: v1.20.0 is built, committed and has its zips in `dist/`, but is untagged and unreleased, and the README advertises a live-check result that no longer describes HEAD — the one number a reader uses to judge whether the gate means anything.

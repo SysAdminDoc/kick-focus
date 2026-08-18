@@ -294,7 +294,37 @@ const unroutedHTML = bundleTargets
   .filter(([, bundleSource]) => bareHTMLWrite.test(bundleSource) && (bareHTMLWrite.lastIndex = 0) === 0)
   .map(([name]) => name);
 
+/**
+ * The live gate's own outcome discipline, asserted offline.
+ *
+ * Two defects this guards, both measured 2026-08-17: a probe that samples the
+ * page once races the apply cycle and reported a shipped feature as dead, and a
+ * probe that treats "Kick put nothing here on this route" as a failure produced
+ * four red results on `/browse` that were not defects. Neither is visible to any
+ * other gate, because the live gate is the thing being checked.
+ */
+const liveGate = await read('scripts/verify-extension.mjs');
+/** A shadow-host read that reaches a verdict without waiting for the host. */
+const unwaitedShadowReads = (source) => {
+  const reads = source.match(/shadowRoot;?\n\s*if \(!shadow\)/g) || [];
+  return reads.filter((read) => !read.includes('__kfWait')).length;
+};
+const skipReasonsAreActionable = (source) => {
+  const reasons = [...source.matchAll(/\{\s*skip:\s*'([^']+)'/g)].map((m) => m[1]);
+  // A skip has to say what was missing; a bare noun trains people to ignore it.
+  return reasons.length > 0 && reasons.every((reason) => reason.length > 25);
+};
+
 const checks = [
+  ['the live gate waits for the shadow host rather than sampling it',
+    /const shadow = await __kfWait\(/.test(liveGate) && unwaitedShadowReads(liveGate) === 0],
+  ['the live gate installs its page-world waiter before any probe reads painted state',
+    liveGate.indexOf('PAGE_WAIT_HELPER)') > 0
+    && liveGate.indexOf('PAGE_WAIT_HELPER)') < liveGate.indexOf('await __kfWait(')],
+  ['the live gate can skip as well as pass and fail, and counts skips apart',
+    /outcome: 'skip'/.test(liveGate) && /r\.outcome === 'fail'/.test(liveGate)
+    && /checks passed\$\{skipped\.length/.test(liveGate)],
+  ['every live-gate skip reason names what was missing', skipReasonsAreActionable(liveGate)],
   // The detail goes in the label, not the value: this loop treats any truthy
   // value as a pass, so `gaps.length === 0 || gaps.join()` would report success
   // precisely when there were gaps.
@@ -857,6 +887,11 @@ const checks = [
 // ever becomes vacuous (passes on empty/hostile input), its probe returns true
 // and this fails — the gate's proof that it can actually fire.
 const redProbes = [
+  ['live-gate waiter gate would catch a probe that samples the shadow host once',
+    unwaitedShadowReads("const shadow = document.getElementById('x')?.shadowRoot;\n    if (!shadow) return {};") === 1],
+  ['live-gate waiter gate accepts the real gate', unwaitedShadowReads(liveGate) === 0],
+  ['skip-reason gate would reject a bare noun',
+    !skipReasonsAreActionable("return { skip: 'no video' };")],
   ['ad-ruleset gate would reject an empty ad list', !(0 > 0 && [].length === 0)],
   ['content-scripts gate would reject <all_urls>', !contentScriptsScoped([{ matches: ['<all_urls>'] }])],
   ['content-scripts gate would reject an off-kick host', !contentScriptsScoped([{ matches: ['*://*.evil.net/*'] }])],
