@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.23.0
+// @version      1.24.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -23,7 +23,7 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.23.0';
+const VERSION = '1.24.0';
 const SETTINGS_SCHEMA = 4;
 
 /**
@@ -47,6 +47,10 @@ const VERSION_NOTES = Object.freeze({
   '1.23.0': Object.freeze({
     summary: 'A recording now says how long Kick will keep it, and the emote card and completion list render above everything instead of competing with Kick for stacking order.',
     defaults: Object.freeze(['Show how long Kick keeps this recording']),
+  }),
+  '1.24.0': Object.freeze({
+    summary: 'Drift detection now checks what a hook is for, not only that it matched — a stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
+    defaults: Object.freeze([]),
   }),
 });
 
@@ -8828,9 +8832,16 @@ function publishCompatibility() {
   const broken = (state.compatibility.derived || []).filter((entry) => entry.outcome === 'broken');
   // Both halves of the sentence: which probe, and which derived value. "card"
   // alone is what made the last one take a research pass to find.
-  root.dataset.kfDerived = broken.length
+  const verdict = broken.length
     ? broken.map((entry) => `${entry.probe}:${entry.id}`).join(' ')
     : 'ok';
+  // Written only on change. This runs on every apply cycle, and setting an
+  // attribute to the value it already holds still emits a mutation record.
+  // The document observer watches `childList`/`subtree` and not attributes, so
+  // this is not currently a feedback loop — the guard is here so it cannot
+  // become one the day that observer gains `attributes: true`, and so the
+  // attribute only changes when the verdict does.
+  if (root.dataset.kfDerived !== verdict) root.dataset.kfDerived = verdict;
 }
 
 function compatibilityDerivers() {

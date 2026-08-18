@@ -2683,9 +2683,16 @@ function publishCompatibility() {
   const broken = (state.compatibility.derived || []).filter((entry) => entry.outcome === 'broken');
   // Both halves of the sentence: which probe, and which derived value. "card"
   // alone is what made the last one take a research pass to find.
-  root.dataset.kfDerived = broken.length
+  const verdict = broken.length
     ? broken.map((entry) => `${entry.probe}:${entry.id}`).join(' ')
     : 'ok';
+  // Written only on change. This runs on every apply cycle, and setting an
+  // attribute to the value it already holds still emits a mutation record.
+  // The document observer watches `childList`/`subtree` and not attributes, so
+  // this is not currently a feedback loop — the guard is here so it cannot
+  // become one the day that observer gains `attributes: true`, and so the
+  // attribute only changes when the verdict does.
+  if (root.dataset.kfDerived !== verdict) root.dataset.kfDerived = verdict;
 }
 
 function compatibilityDerivers() {

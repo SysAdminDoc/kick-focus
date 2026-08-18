@@ -73,6 +73,13 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P3 — differentiators and future-proofing
 
+- [ ] P3 — R-60, make the navigation check wait for the route instead of sampling it
+  Why: `history carries no wrapper of ours and a same-document navigation still re-routes through the Navigation API` failed once at 1920×1080 on 2026-08-18 and passed at 1440×900 in the same release run. The two invariants it exists for both held — `navigation api=true`, `history free of this build=true`; what differed is that the click produced no navigation at all (`route home -> home -> home` against `home -> browse -> home`). So the check reports a defect when Kick simply did not route in time, which is the same "sampled once instead of waited for" defect already fixed across the rest of the live gate by `__kfWait`.
+  Evidence: `/tmp` release log 2026-08-18, lines 466 (pass, 1440×900) and 547 (fail, 1920×1080), same build, same run. The organizer check showed the same shape the same day — a page that had not settled produced `spacer heights [45533]` against `[9101]` on a clean run.
+  Touches: `scripts/verify-extension.mjs`
+  Acceptance: The check waits for the route to actually change before judging, and distinguishes "Kick did not navigate" from "this build wrapped history" — the first is a skip naming what did not happen, the second is the failure it is there to catch. Neither invariant is weakened.
+  Complexity: S
+
 - [ ] P3 — R-54, pop the grid's chat out into a real always-on-top window
   Why: Document Picture-in-Picture became cross-engine in 2026, and an always-on-top window rendering arbitrary DOM is the first genuinely new capability available to a multi-stream mod since the Navigation API. The nearest rival moved multi-view past tiles to unified chat and PiP; this answers it on-origin, with Kick's own embeds, and with no new permission.
   Evidence: Document PiP — Chrome 116, Firefox 151 (2026-05-19 release notes: "allows web pages to place content in an always-on-top popup"), not in Safari. No `documentPictureInPicture` anywhere in `src/`. `src/multistream.mjs` already owns tile lifecycle and the single-audio-owner invariant behind a `host` factory.

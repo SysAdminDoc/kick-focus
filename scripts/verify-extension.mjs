@@ -1805,10 +1805,29 @@ try {
       const rendered = grid.querySelectorAll('[data-kf-sticker-item]').length;
       const spacers = [...grid.querySelectorAll('[data-kf-sticker-spacer]')]
         .map((node) => node.getBoundingClientRect().height);
+      // Wait for the window to stop rebuilding before capturing what should
+      // survive. The grid re-renders whenever its signature changes, and the
+      // signature carries the column count — which is measured from layout, so
+      // it legitimately changes once more after the first paint. Capturing the
+      // node before that settles compares the click against a grid that was
+      // already replaced for reasons that are not the click. Measured
+      // 2026-08-18: a run under release-gate load reported spacer heights
+      // [45533] where a settled run reports [9101], and the patch check failed.
+      let stableGrid = grid;
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const first = panel.querySelector('[data-kf-sticker-grid]');
+        await settle();
+        const second = panel.querySelector('[data-kf-sticker-grid]');
+        if (first && first === second) { stableGrid = second; break; }
+        stableGrid = second || stableGrid;
+      }
+      if (!stableGrid) return { skip: 'the organizer grid never stopped rebuilding, so there was no stable window to patch' };
+
       // Toggle a favorite on the first rendered tile and see what survives.
-      const tile = grid.querySelector('[data-kf-sticker-item]');
+      const tile = stableGrid.querySelector('[data-kf-sticker-item]');
+      if (!tile) return { skip: 'the settled window rendered no tile to favorite' };
       const key = tile.dataset.kfStickerKey;
-      const before = { tile, grid, state: tile.dataset.kfStickerState };
+      const before = { tile, grid: stableGrid, state: tile.dataset.kfStickerState };
       tile.querySelector('[data-kf-sticker-action="pin"]').click();
       await settle();
       const afterGrid = panel.querySelector('[data-kf-sticker-grid]');
@@ -1833,7 +1852,7 @@ try {
     }
   })()`);
   const organizerResult = organizerProbe.value || {};
-  record('the emote organizer renders a window of a large library and keeps the rest in spacers',
+  recordProbe('the emote organizer renders a window of a large library and keeps the rest in spacers', organizerResult,
     organizerResult.ok === true
       && organizerResult.total >= 800
       && organizerResult.rendered > 0
@@ -1843,7 +1862,7 @@ try {
     organizerResult.ok
       ? `${organizerResult.rendered} of ${organizerResult.total} tiles in the DOM; spacer heights ${JSON.stringify(organizerResult.spacers.map(Math.round))}`
       : organizerResult.why);
-  record('favoriting an emote patches its tile in place instead of rebuilding the window',
+  recordProbe('favoriting an emote patches its tile in place instead of rebuilding the window', organizerResult,
     organizerResult.ok === true
       && organizerResult.sameGrid === true
       && organizerResult.sameTile === true

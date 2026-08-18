@@ -1,4 +1,4 @@
-export const VERSION = '1.23.0';
+export const VERSION = '1.24.0';
 export const SETTINGS_SCHEMA = 4;
 
 /**
@@ -22,6 +22,10 @@ export const VERSION_NOTES = Object.freeze({
   '1.23.0': Object.freeze({
     summary: 'A recording now says how long Kick will keep it, and the emote card and completion list render above everything instead of competing with Kick for stacking order.',
     defaults: Object.freeze(['Show how long Kick keeps this recording']),
+  }),
+  '1.24.0': Object.freeze({
+    summary: 'Drift detection now checks what a hook is for, not only that it matched — a stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
+    defaults: Object.freeze([]),
   }),
 });
 

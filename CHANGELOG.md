@@ -10,6 +10,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Changed
 
+- **A live check no longer reports a defect when the page simply had not finished laying out.** The emote-organizer check captured the grid before its column count settled, so a later legitimate re-render looked like a failure to patch the tile in place. It now waits for the window to stop rebuilding, and says "nothing stable to test" rather than "broken" when it never does.
 - **The distribution and listing posture is written down.** A section in the README states the single purpose, that nothing is collected or transmitted, why no remote code ships, why the userscript asks for broad connect permission and what uses it, and which channel each of the three artifacts could be listed on. Nothing is submitted anywhere; this exists so the answers are decided calmly rather than during a review.
 
 ## 1.23.0 — 2026-08-18
