@@ -302,6 +302,16 @@ const rewardClaimIsOptIn = (bundle) => /autoClaimRewards: false/.test(bundle)
 
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
+/**
+ * Markup reaches the DOM through exactly one function.
+ *
+ * There must be exactly one `innerHTML =` left in a bundle — the write inside
+ * `setMarkup` — and every other surface must reach it through that helper. Counting rather than pattern-matching the call sites is
+ * deliberate: the fifteenth surface someone adds is the one that will assign
+ * directly, and a count catches that without naming every caller.
+ */
+const directHTMLWrites = (bundle) => (bundle.match(/\.innerHTML\s*=/g) || []).length;
+
 const unroutedHTML = bundleTargets
   .filter(([, bundleSource]) => bareHTMLWrite.test(bundleSource) && (bareHTMLWrite.lastIndex = 0) === 0)
   .map(([name]) => name);
@@ -485,6 +495,8 @@ const checks = [
   // innerHTML write throws and this build's interface stops rendering. Every
   // write must go through the policy, and the policy must never be 'default',
   // which would vouch for every other script on the page.
+  [`exactly one innerHTML write survives, inside setMarkup${bundleTargets.map(([name, bundleSource]) => `${name}=${directHTMLWrites(bundleSource)}`).filter((entry) => !entry.endsWith('=1')).join(', ')}`,
+    bundleTargets.every(([, bundleSource]) => directHTMLWrites(bundleSource) === 1)],
   [`every innerHTML write is policy-routed${unroutedHTML.length ? ` — ${unroutedHTML.length} bare in ${unroutedHTML[0]}` : ''}`,
     unroutedHTML.length === 0 && bundleTargets.every(([, bundleSource]) => bundleSource.includes("createPolicy('kick-focus'")
       && !/createPolicy\(\s*['"]default['"]/.test(bundleSource))],
@@ -994,6 +1006,9 @@ const redProbes = [
       "if (message?.type === 'd') {", '    doTheThing();',
     ].join('\n'))],
   ['sender gate accepts the real Chromium background', everyMessageChecksSender(background)],
+  ['markup gate would catch a surface that assigns innerHTML directly',
+    directHTMLWrites('node.innerHTML = trustedHTML(m);\npanel.innerHTML = x;') === 2],
+  ['markup gate accepts the real bundle', directHTMLWrites(source) === 1],
   ['host-language gate would catch a fifth host that declares no language',
     !hostsDeclareLanguage("a.id = 'kick-focus-root';\n  a.lang = x;\nb.id = 'kick-focus-emote-complete';\n  b.lang = x;\nc.id = 'kick-focus-emote-tooltip';\n  c.lang = x;\nd.id = 'kick-focus-header-control';\n  d.lang = x;\ne.id = 'kick-focus-new-panel';\n  e.append(y);")],
   ['host-language gate accepts the real bundle', hostsDeclareLanguage(source)],

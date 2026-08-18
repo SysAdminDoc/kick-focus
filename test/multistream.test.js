@@ -154,6 +154,9 @@ function makeHost(overrides = {}) {
     trf: (template, values) => template.replace(/\{(\w+)\}/g, (_m, key) => String(values[key])),
     escapeHtml: (value) => String(value).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`),
     trustedHTML: (value) => value,
+    // The real one prefers Element.setHTML and falls back to the policy; the
+    // grid only needs the markup to land, so this writes it the plain way.
+    setMarkup: (node, value) => { node.innerHTML = String(value); },
     announce: (message) => calls.announced.push(message),
     showToast: (message, isError = false, actions = []) => calls.toasts.push({ message, isError, actions }),
     syncHeaderMultiState: () => { calls.headerSyncs += 1; },

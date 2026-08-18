@@ -56,6 +56,7 @@ export function createMultistream(host) {
     trf,
     escapeHtml,
     trustedHTML,
+    setMarkup,
     announce,
     showToast,
     syncHeaderMultiState,
@@ -423,7 +424,7 @@ export function createMultistream(host) {
         tile.append(frame);
         const bar = document.createElement('div');
         bar.className = 'kf-ms-bar';
-        bar.innerHTML = trustedHTML(`
+        setMarkup(bar, `
         <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
         <span class="kf-ms-spacer"></span>
         <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
@@ -510,7 +511,7 @@ export function createMultistream(host) {
     }
     const chatSelect = backdrop.querySelector('[data-kf-multistream-chat-select]');
     if (chatSelect) {
-      chatSelect.innerHTML = trustedHTML(streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join(''));
+      setMarkup(chatSelect, streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join(''));
       chatSelect.disabled = !streams.length;
     }
     const pauseToggle = backdrop.querySelector('[data-kf-multistream-pause]');
@@ -532,7 +533,7 @@ export function createMultistream(host) {
     }
     const savedList = backdrop.querySelector('[data-kf-multistream-layouts]');
     if (savedList) {
-      savedList.innerHTML = trustedHTML(layouts.length
+      setMarkup(savedList, layouts.length
         ? layouts.map((layout) => {
           // Live counts come from one bulk request for every saved channel, so a
           // shelf of layouts costs the same as a single one.

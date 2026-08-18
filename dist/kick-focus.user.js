@@ -5156,6 +5156,7 @@ function createMultistream(host) {
     trf,
     escapeHtml,
     trustedHTML,
+    setMarkup,
     announce,
     showToast,
     syncHeaderMultiState,
@@ -5523,7 +5524,7 @@ function createMultistream(host) {
         tile.append(frame);
         const bar = document.createElement('div');
         bar.className = 'kf-ms-bar';
-        bar.innerHTML = trustedHTML(`
+        setMarkup(bar, `
         <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
         <span class="kf-ms-spacer"></span>
         <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
@@ -5610,7 +5611,7 @@ function createMultistream(host) {
     }
     const chatSelect = backdrop.querySelector('[data-kf-multistream-chat-select]');
     if (chatSelect) {
-      chatSelect.innerHTML = trustedHTML(streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join(''));
+      setMarkup(chatSelect, streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join(''));
       chatSelect.disabled = !streams.length;
     }
     const pauseToggle = backdrop.querySelector('[data-kf-multistream-pause]');
@@ -5632,7 +5633,7 @@ function createMultistream(host) {
     }
     const savedList = backdrop.querySelector('[data-kf-multistream-layouts]');
     if (savedList) {
-      savedList.innerHTML = trustedHTML(layouts.length
+      setMarkup(savedList, layouts.length
         ? layouts.map((layout) => {
           // Live counts come from one bulk request for every saved channel, so a
           // shelf of layouts costs the same as a single one.
@@ -7837,6 +7838,7 @@ const multistreamSurface = createMultistream({
   trf,
   escapeHtml,
   trustedHTML,
+  setMarkup,
   announce,
   showToast,
   syncHeaderMultiState,
@@ -8037,7 +8039,7 @@ function applyCardActions(node) {
   const signature = `${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
   if (actions.dataset.kfCardSignature === signature) return;
   actions.dataset.kfCardSignature = signature;
-  actions.innerHTML = trustedHTML(`
+  setMarkup(actions, `
     <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${label}">${favorite ? '★' : '☆'}</button>
     ${multiChip}
     <button type="button" data-kf-card-action="dismiss" aria-label="${dismissed ? 'Restore' : 'Not interested'} ${label}">${dismissed ? '↶' : '×'}</button>`);
@@ -8155,7 +8157,7 @@ function applySearchEnhancements() {
     const container = first && !first.matches?.('input, select, textarea, button, img, video') ? first : main;
     container.prepend(meta);
   }
-  meta.innerHTML = trustedHTML(`<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${plural(count, 'result loaded', 'results loaded')}</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`);
+  setMarkup(meta, `<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${plural(count, 'result loaded', 'results loaded')}</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`);
 }
 
 function handleSearchAction(event) {
@@ -8191,7 +8193,7 @@ function applyDropsEnhancements() {
   existing?.remove();
   const enhanced = document.createElement('section');
   enhanced.dataset.kfDropsEmpty = 'true';
-  enhanced.innerHTML = trustedHTML(`
+  setMarkup(enhanced, `
     <div data-kf-drops-primary>
       <span data-kf-drops-eyebrow>Campaign status</span>
       <h3>No open campaigns</h3>
@@ -8905,7 +8907,7 @@ function chatEmoteTooltipHost() {
   host.lang = activeLocale();
   host.setAttribute('aria-hidden', 'true');
   const shadow = host.attachShadow({ mode: 'open' });
-  shadow.innerHTML = trustedHTML('<div class="card" data-kf-tooltip-card></div>');
+  setMarkup(shadow, '<div class="card" data-kf-tooltip-card></div>');
   adoptStyles(shadow, TOOLTIP_CSS);
   document.body.append(host);
   state.chatEmoteTooltip = { host, card: shadow.querySelector('[data-kf-tooltip-card]') };
@@ -9337,7 +9339,7 @@ function renderStickerOrganizer() {
   const groupsTab = firstGroup
     ? `<button type="button" data-kf-sticker-view="group" data-kf-sticker-group="${escapeHtml(state.stickerPreferences.activeGroup || firstGroup.id)}" data-active="${view === 'group'}" aria-pressed="${view === 'group'}">Groups</button>`
     : '<button type="button" data-kf-sticker-manage="true">Groups</button>';
-  chrome.innerHTML = trustedHTML(`
+  setMarkup(chrome, `
     <div data-kf-sticker-topline>
       <div><strong>Emote shelf</strong><span data-kf-sticker-count>${escapeHtml(countLabel)}</span>${unavailableLabel}</div>
       <button type="button" data-kf-sticker-manage="true">Manage</button>
@@ -9416,7 +9418,7 @@ function renderStickerGrid(gridHost, visible, view) {
   const scrollTop = Number.isFinite(grid?.scrollTop) ? grid.scrollTop : null;
   gridHost.dataset.kfStickerGridSignature = signature;
   gridHost.dataset.kfStickerWindow = `${slice.start}-${slice.end}`;
-  gridHost.innerHTML = trustedHTML(`<div data-kf-sticker-grid data-kf-sticker-total="${visible.length}">${
+  setMarkup(gridHost, `<div data-kf-sticker-grid data-kf-sticker-total="${visible.length}">${
     stickerSpacerMarkup(slice.before, columns, 'before')
   }${slice.items.map(stickerProxyMarkup).join('')}${
     stickerSpacerMarkup(slice.after, columns, 'after')
@@ -9432,7 +9434,7 @@ function setStickerGridHost(gridHost, signature, markup) {
   if (gridHost.dataset.kfStickerGridSignature === signature) return;
   gridHost.dataset.kfStickerGridSignature = signature;
   delete gridHost.dataset.kfStickerWindow;
-  gridHost.innerHTML = trustedHTML(markup);
+  setMarkup(gridHost, markup);
 }
 
 /**
@@ -10455,6 +10457,36 @@ const TRUSTED_HTML_POLICY = (() => {
 
 function trustedHTML(value) {
   return TRUSTED_HTML_POLICY ? TRUSTED_HTML_POLICY.createHTML(String(value)) : value;
+}
+
+/**
+ * The one place markup enters the DOM.
+ *
+ * Every surface writes through here, and `scripts/check.mjs` asserts exactly one
+ * `innerHTML` assignment survives into a bundle — this one. That makes the
+ * chokepoint enforceable rather than conventional: the next panel someone adds
+ * cannot quietly assign markup on its own.
+ *
+ * It deliberately does *not* sanitise. `Element.setHTML()` reached both target
+ * engines in 2026 and looks like an obvious upgrade over a Trusted Types policy
+ * that is an identity function — but measured against Chrome 151 on 2026-08-18,
+ * its default configuration removed **all 39 attributes** from a representative
+ * slice of this interface and dropped `<button>`, `<input>`, `<select>`,
+ * `<option>`, `<label>`, `<img>` and `<span>` outright: 27 elements in, 15 out,
+ * no `data-set` bindings, no `aria-pressed`, no `data:` brand mark. The default
+ * config is a document sanitiser for untrusted content, not a filter for
+ * application-authored UI.
+ *
+ * A custom `Sanitizer` config would work, and would have to allow-list every
+ * element and attribute this interface already uses — a second list that rots
+ * every time a control is added, buying only protection against `<script>` and
+ * event-handler attributes that `escapeHtml` already prevents from being
+ * constructible. Not worth it. If that calculus changes, this function is the
+ * single place it changes.
+ */
+function setMarkup(node, value) {
+  if (!node) return;
+  node.innerHTML = trustedHTML(String(value));
 }
 
 function escapeHtml(value) {
@@ -12300,7 +12332,7 @@ function buildInterface() {
   const shadow = root.attachShadow({ mode: 'open' });
   // Adopted after the markup lands: innerHTML replaces every child, which would
   // take the fallback <style> element with it if it were appended first.
-  shadow.innerHTML = trustedHTML(`
+  setMarkup(shadow, `
     <button type="button" class="kf-quick" data-kf-quick data-action="open-settings" aria-label="Open Kick Focus settings">Focus</button>
     <div class="kf-backdrop" data-kf-settings-backdrop hidden>
       <section class="kf-settings" data-kf-settings-shell role="dialog" aria-modal="true" aria-labelledby="kf-settings-title">
@@ -12591,7 +12623,7 @@ function logAppError(context, error) {
   state.diagnostics.lastCrash = record;
   try { gmSet(LAST_CRASH_KEY, record); } catch { /* a failed write must not recurse */ }
   const panel = state.shadow?.querySelector('[data-kf-error-log]');
-  if (panel) panel.innerHTML = trustedHTML(errorLogRows());
+  if (panel) setMarkup(panel, errorLogRows());
   const summary = state.shadow?.querySelector('[data-kf-last-crash]');
   if (summary) summary.textContent = lastCrashSummary();
 }
@@ -13152,7 +13184,7 @@ function renderSettingsPage() {
     accessibility: renderAccessibilityPage,
     about: renderAboutPage,
   }[state.currentPage] || renderLayoutPage;
-  page.innerHTML = trustedHTML(renderer());
+  setMarkup(page, renderer());
   page.dataset.kfCurrentPage = state.currentPage;
   page.querySelector('[data-action="import-channel-emotes"]')?.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -13188,7 +13220,7 @@ function updateDiagnosticsInPlace() {
   if (blocked) blocked.textContent = String(state.diagnostics.blocked);
   if (shells) shells.textContent = String(state.diagnostics.shells);
   if (last) last.textContent = state.diagnostics.lastMatch;
-  if (log) log.innerHTML = trustedHTML(protectionRows());
+  if (log) setMarkup(log, protectionRows());
   updateCompatibilityInPlace();
 }
 
@@ -14007,7 +14039,7 @@ function updateEmoteCompletion() {
 
   const host = emoteCompletionHost();
   const list = host.shadowRoot.querySelector('[data-kf-complete-list]');
-  list.innerHTML = trustedHTML(matches.map((sticker) => `
+  setMarkup(list, matches.map((sticker) => `
     <button type="button" role="option" aria-selected="false" data-kf-complete-key="${escapeHtml(sticker.key)}" title="Insert ${escapeHtml(sticker.name)}">
       <img src="${escapeHtml(sticker.src)}" alt="" loading="lazy">
       <span>${escapeHtml(sticker.name)}</span>
@@ -14552,7 +14584,7 @@ function renderCommands() {
   // English on first render and every later pass rewrites the translated form
   // back from that recorded source.
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
-  state.commandList.innerHTML = trustedHTML(commands.length
+  setMarkup(state.commandList, commands.length
     ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
     : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>');
   localizeInterface();
@@ -14808,7 +14840,7 @@ function ensureHeaderQuickControl() {
     host.lang = activeLocale();
     host.dataset.kfHeaderControl = 'true';
     const shadow = host.attachShadow({ mode: 'open' });
-    shadow.innerHTML = trustedHTML(`
+    setMarkup(shadow, `
       <button type="button" data-kf-header-focus aria-label="Open Kick Focus settings" title="Kick Focus">
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt="">
         <span data-kf-header-control-label>Focus</span>

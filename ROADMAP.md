@@ -106,13 +106,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
   Acceptance: The hover card and completion list render in the top layer with an explicit `position-anchor`, keeping the existing hand-positioned path as a feature-detected fallback; the live gate asserts neither is clipped when its anchor sits near a viewport edge and inside a scrolling chat container; keyboard and focus behaviour are unchanged.
   Complexity: M
 
-- [ ] P2 — R-53, sanitize markup rather than only vouching for it
-  Why: v1.15.0 routes every `innerHTML` write through a Trusted Types policy, which makes the write legal under a future CSP but not safe — the policy's `createHTML` returns its input unchanged. `Element.setHTML()` sanitizes and is now available in both target engines.
-  Evidence: No `setHTML` in `src/`. Sanitizer `setHTML()` shipped Chrome 146 and Firefox 148; Trusted Types went Baseline newly on 2026-02-24 with Safari 26, which is what raises the odds Kick turns enforcement on. Known caveat: `<base>` is not removed from the config allowlist in Firefox 148 and pre-153 Chrome (whatwg/html#12664).
-  Touches: `src/runtime.js` (`trustedHTML` and its call sites), `scripts/check.mjs`
-  Acceptance: `trustedHTML` prefers `setHTML()` where available and falls back to the existing policy; a gate asserts no raw `innerHTML` write bypasses the helper; the settings shell, library, hover card and completion list render identically on an engine with and without the Sanitizer.
-  Complexity: M
-
 ### P3 — differentiators and future-proofing
 
 - [ ] P3 — R-54, pop the grid's chat out into a real always-on-top window
