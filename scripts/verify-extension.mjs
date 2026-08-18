@@ -2003,6 +2003,16 @@ try {
     console.log(`Failed: ${failures.map((f) => f.label).join('; ')}`);
     process.exitCode = 1;
   }
+  // Written so the release gate can compare the README's advertised figure
+  // against the run that actually happened. A number no gate owns drifts: the
+  // README claimed 51/51 for two days after the gate had grown past it.
+  if (process.env.KF_SUMMARY_PATH) {
+    await writeFile(process.env.KF_SUMMARY_PATH, JSON.stringify({
+      passed: asserted.length - failures.length,
+      asserted: asserted.length,
+      skipped: skipped.length,
+    }), 'utf8');
+  }
 } catch (error) {
   console.error('VERIFY ERROR:', error.message);
   console.error(stderr.split('\n').filter((l) => /extension|ERROR|WARN/i.test(l)).slice(0, 12).join('\n'));

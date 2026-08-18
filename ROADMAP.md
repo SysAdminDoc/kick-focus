@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-17**
+Updated: **2026-08-18**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 
@@ -66,15 +66,6 @@ Previously-blocked items now actionable: telemetry contradiction (R-08 — exter
 Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.20.0. Continues the R-NN scheme from R-37.
 
 Cross-references to existing work: R-56's derived-value assertions belong with "Next" item 1's fixture reducer and should land together, not beside each other. Nothing here covers autocomplete reach filtering — that is "Next" item 2 and stays there. R-45 and R-46 are the unblocks for two [Roadmap_Blocked.md](Roadmap_Blocked.md) items whose stated blockers have expired (the repo is public; Firefox 153 is installed); on completion, delete those entries from that file rather than leaving them recorded as blocked.
-
-### P0 — release
-
-- [ ] P0 — R-40, release v1.20.0 and make the README's verification claim true again
-  Why: v1.20.0 is built, committed and has its zips in `dist/`, but is untagged and unreleased, and the README advertises a live-check result that no longer describes HEAD — the one number a reader uses to judge whether the gate means anything.
-  Evidence: `gh release list` latest is v1.19.0 (2026-08-16T23:53:56Z); `git tag` stops at v1.19.0; `README.md:147` claims "51/51 live checks pass at 1440×900 (2026-08-16)" while HEAD runs 54 checks with 2 failing. `CLAUDE.md:9` says `runtime.js` is "~7,990 lines"; it is 9,243.
-  Touches: `README.md` (:147), `CLAUDE.md` (:9), `CHANGELOG.md`, tag and GitHub release with all three artifacts
-  Acceptance: R-38 and R-39 land first; the live gate is green at both verified viewports; the README's figure matches that run's total and date; v1.20.0 is tagged and released with the userscript and both companion zips attached.
-  Complexity: S
 
 ### P1 — trust, accessibility, and two expired blockers
 

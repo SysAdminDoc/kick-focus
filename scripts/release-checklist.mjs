@@ -6,7 +6,7 @@
  * screenshot for the visual comparison step in the release checklist.
  */
 
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -36,6 +36,7 @@ if (offline !== 0) process.exit(offline || 1);
 const tests = await run(process.execPath, ['--test']);
 if (tests !== 0) process.exit(tests || 1);
 
+const summaryPath = join(screenshotRoot, 'live-summary.json');
 for (const [label, size, file] of [
   ['primary', '1440,900', 'kick-focus-1440x900.png'],
   ['secondary', '1920,1080', 'kick-focus-1920x1080.png'],
@@ -44,10 +45,33 @@ for (const [label, size, file] of [
   const code = await run(process.execPath, ['scripts/verify-extension.mjs'], {
     KF_WINDOW_SIZE: size,
     KF_SCREENSHOT_PATH: join(screenshotRoot, file),
+    KF_SUMMARY_PATH: summaryPath,
     KF_HEADLESS: '',
   });
   if (code !== 0) process.exit(code || 1);
 }
+
+/**
+ * The README advertises the live-check result, and for two days it advertised a
+ * number the gate had already grown past — the one figure a reader uses to judge
+ * whether any of this means anything. Nothing owned it, so it drifted silently.
+ *
+ * A static count of `record(` call sites is not the answer either: some probes
+ * sit in route-dependent branches, so the source says 56 where a run says 57.
+ * This compares against the run that just happened.
+ */
+const summary = JSON.parse(await readFile(summaryPath, 'utf8'));
+const readme = await readFile(resolve(root, 'README.md'), 'utf8');
+const claimed = readme.match(/(\d+)\/(\d+) live checks pass/);
+if (!claimed) {
+  console.error('README no longer states a live-check result; the release gate cannot verify it.');
+  process.exit(1);
+}
+if (Number(claimed[1]) !== summary.passed || Number(claimed[2]) !== summary.asserted) {
+  console.error(`README claims ${claimed[1]}/${claimed[2]} live checks, but this run was ${summary.passed}/${summary.asserted}. Update README.md.`);
+  process.exit(1);
+}
+console.log(`\nREADME's live-check figure matches this run: ${summary.passed}/${summary.asserted}${summary.skipped ? `, ${summary.skipped} skipped` : ''}.`);
 
 // The Firefox package is a separate engine with its own network layer, and it
 // had never been executed anywhere until this gate existed. Skipped rather than

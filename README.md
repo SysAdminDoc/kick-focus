@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.20.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.21.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -146,7 +146,8 @@ One caveat worth stating plainly, because it is widely reported the other way ro
 - Primary verified viewport: 1440×900
 - Secondary verified viewport: 1920×1080
 - Authenticated recon routes: Home, Browse, Categories, Category, Following, Drops, Search, and Channel/chat, including the open native emote picker (2026-08-14)
-- Isolated companion proof: Chromium 151, logged out, headed and off-screen — 51/51 live checks pass at 1440×900, repeated at 1920×1080 by `release:check` (2026-08-16)
+- Isolated companion proof: Chromium 151, logged out, headed and off-screen — 57/57 live checks pass at 1440×900, repeated at 1920×1080 by `release:check` (2026-08-18). One check skips on the home route and says so; `release:check` fails if this figure and the run disagree, so it cannot drift.
+- Firefox companion proof: Firefox 153, logged out and headless — the Manifest V2 package is installed as a temporary add-on over WebDriver BiDi and asserted against live Kick by `npm run verify:firefox` (2026-08-18)
 - **The live gate runs logged out.** Anything Kick only renders for a signed-in account — the daily-reward dialog, the header control's anchor, Drops, the native emote picker — is exercised against a reproduction of that markup rather than the real thing. That proves the mechanism; it does not prove Kick's markup still matches. Only a signed-in run can, and this project does not have one.
 - The Kick site remains desktop-focused; the settings UI is also checked at 375×812 so narrow windows do not clip controls or hide the active section.
 
