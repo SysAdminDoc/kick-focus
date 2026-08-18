@@ -62,6 +62,9 @@ import {
   emoteTooltipText,
   emoteReach,
   formatUptime,
+  formatVodRetention,
+  vodExpiry,
+  VOD_RETENTION_DAYS,
   MAX_UPTIME_MS,
   insertionPlanFor,
   recordApplyCost,
@@ -2368,4 +2371,58 @@ test('search results are capped and deterministic', { tag: 'unit' }, () => {
   const once = rankSettingsMatches('chat', many, 5).map((row) => row.title);
   const twice = rankSettingsMatches('chat', many, 5).map((row) => row.title);
   assert.deepEqual(once, twice, 'two identical queries cannot return different orders');
+});
+
+
+test('a VOD expires 7 days out, or 30 when the channel is verified', { tag: 'unit' }, () => {
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.UTC(2026, 7, 18, 12, 0, 0);
+  const started = now - 2 * day;
+
+  const unverified = vodExpiry(started, false, now);
+  assert.equal(unverified.days, VOD_RETENTION_DAYS.unverified);
+  assert.equal(unverified.expiresAt, started + 7 * day);
+  assert.equal(unverified.remaining, 5 * day);
+  assert.equal(unverified.expired, false);
+
+  const verified = vodExpiry(started, true, now);
+  assert.equal(verified.days, VOD_RETENTION_DAYS.verified);
+  assert.equal(verified.remaining, 28 * day);
+});
+
+test('an unknown tier is a silence, never a default', { tag: 'unit' }, () => {
+  const now = Date.UTC(2026, 7, 18, 12, 0, 0);
+  const started = now - 2 * 24 * 60 * 60 * 1000;
+  // The whole point of the item: 7 and 30 are four-fold apart, so guessing is
+  // not a rounder answer, it is a confident wrong deadline.
+  for (const unknown of [undefined, null, 0, 1, '', 'verified', 'unverified', {}]) {
+    assert.equal(vodExpiry(started, unknown, now), null, `tier ${JSON.stringify(unknown)} must not resolve`);
+  }
+  assert.equal(vodExpiry(0, true, now), null);
+  assert.equal(vodExpiry(NaN, true, now), null);
+  // A recording dated in the future is two clocks disagreeing, not extra life.
+  assert.equal(vodExpiry(now + 3 * 24 * 60 * 60 * 1000, true, now), null);
+});
+
+test('an expired VOD reports as expired and formats as nothing', { tag: 'unit' }, () => {
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.UTC(2026, 7, 18, 12, 0, 0);
+  const expiry = vodExpiry(now - 9 * day, false, now);
+  assert.equal(expiry.expired, true);
+  assert.ok(expiry.remaining < 0);
+  assert.equal(formatVodRetention(expiry.remaining), '');
+});
+
+test('the retention label narrows its unit as the deadline approaches', { tag: 'unit' }, () => {
+  const hour = 3600_000;
+  assert.equal(formatVodRetention(6 * 24 * hour), '6d');
+  assert.equal(formatVodRetention(48 * hour), '2d');
+  // Below two days it is hours, so "1d" never stands for anything from 24 to 47.
+  assert.equal(formatVodRetention(47 * hour), '47h');
+  assert.equal(formatVodRetention(hour), '1h');
+  assert.equal(formatVodRetention(59 * 60_000), '59m');
+  assert.equal(formatVodRetention(30_000), '1m');
+  assert.equal(formatVodRetention(0), '');
+  assert.equal(formatVodRetention(-1), '');
+  assert.equal(formatVodRetention(NaN), '');
 });

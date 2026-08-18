@@ -298,7 +298,20 @@ try {
   // 2. Rulesets enabled in the running worker, before any page has loaded.
   const rulesets = await evaluate(swClient, 'chrome.declarativeNetRequest.getEnabledRulesets()');
   record('ads ruleset enabled at runtime', Array.isArray(rulesets.value) && rulesets.value.includes('ads'), JSON.stringify(rulesets.value));
-  record('telemetry ruleset ships off before any page reports settings', Array.isArray(rulesets.value) && !rulesets.value.includes('telemetry'), JSON.stringify(rulesets.value));
+  // The shipped default is asserted statically in `scripts/check.mjs`
+  // ("telemetry ruleset ships opt-in"), reading the manifest — the only place
+  // that claim can be checked without a race. It is deliberately not re-checked
+  // here: the target page loads while the worker is still starting, so by the
+  // time this runs the mod may already have booted and reported settings that
+  // legitimately enable telemetry blocking. A runtime read cannot tell that
+  // apart from a wrong default, and a gate that fails for a reason which is not
+  // a defect trains people to ignore it. What is honest to assert at runtime is
+  // that the worker enables nothing the manifest never declared.
+  const declaredRulesets = JSON.parse(await readFile(resolve('dist/extension/manifest.json'), 'utf8'))
+    .declarative_net_request.rule_resources.map((entry) => entry.id);
+  const undeclared = Array.isArray(rulesets.value) ? rulesets.value.filter((id) => !declaredRulesets.includes(id)) : ['unreadable'];
+  record('the worker enables no ruleset the manifest does not declare', undeclared.length === 0,
+    `enabled ${JSON.stringify(rulesets.value)} against declared ${JSON.stringify(declaredRulesets)}`);
 
   const ruleCount = await evaluate(swClient, 'chrome.declarativeNetRequest.getAvailableStaticRuleCount()');
   record('static rule budget available', typeof ruleCount.value === 'number', `remaining=${ruleCount.value}`);
@@ -1383,6 +1396,147 @@ try {
       ? `chip reads ${uptime.text} (${uptime.seconds}s) against ${uptime.expected}s from Kick's own page data; ${uptime.width}x${uptime.height}px; hides when switched off=${uptime.removed}, comes back=${uptime.restored}`
       : uptime.why);
 
+  // R-49: the VOD retention chip, on a real recording. This needs its own tab
+  // on a `/{slug}/videos/{uuid}` route, and the reference value is recomputed
+  // in the page from Kick's own list, so a wrong retention tier or a timezone
+  // misparse cannot pass — both are off by whole days.
+  const vodTab = await (async () => {
+    const found = await evaluate(pageClient, `(async () => {
+      try {
+        const res = await fetch('https://web.kick.com/api/v1/channels/668/videos', { credentials: 'include', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return '';
+        const body = await res.json();
+        const rows = Array.isArray(body) ? body : (body && body.data) || [];
+        return rows.length ? 'xqc/videos/' + rows[0].id : '';
+      } catch { return ''; }
+    })()`);
+    const path = found.value || '';
+    if (!path) return { id: '', why: "Kick did not answer the VOD list for this browser, so there is no recording to date" };
+    const c = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await c.ready;
+    const r = await c.send('Target.createTarget', { url: `https://kick.com/${path}` });
+    c.close();
+    return { id: r.result.targetId, path };
+  })();
+  if (vodTab.id) await sleep(10000);
+
+  const vod = vodTab.id ? await (async () => {
+    const target = (await json('/json/list')).find((t) => t.id === vodTab.id);
+    if (!target?.webSocketDebuggerUrl) return { ok: false, why: 'the VOD tab did not attach' };
+    const c = cdp(target.webSocketDebuggerUrl);
+    await c.ready;
+    await evaluate(c, PAGE_WAIT_HELPER);
+    try {
+      const probe = await evaluate(c, `(async () => {
+        const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+        if (!shadow) return { skip: 'the mod did not mount on the VOD tab, so there was nothing to ask' };
+        const uuid = location.pathname.split('/').filter(Boolean)[2] || '';
+
+        // Recompute the expected window from Kick's own two reads, so this
+        // asserts a derived value rather than merely that a chip exists.
+        let startedAt = 0;
+        let verified = null;
+        try {
+          const list = await fetch('https://web.kick.com/api/v1/channels/668/videos', { credentials: 'include', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) }).then((r) => r.json());
+          const rows = Array.isArray(list) ? list : (list && list.data) || [];
+          const entry = rows.find((row) => row && row.id === uuid);
+          if (entry) startedAt = Date.parse(entry.start_time);
+          const channel = await fetch('https://kick.com/api/v2/channels/xqc', { credentials: 'include', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) }).then((r) => r.json());
+          verified = Boolean(channel && channel.verified);
+        } catch { /* leave the reference unknown */ }
+        if (!startedAt || verified === null) return { skip: 'Kick rate-limited the reference reads on this run, so there is nothing to check the chip against' };
+
+        const days = verified ? 30 : 7;
+        const expectedMs = startedAt + days * 86400000 - Date.now();
+
+        // Establish the precondition rather than inherit it. Sixty probes run
+        // against this profile before this one, several of them importing and
+        // undoing whole settings payloads, so "the default is on" is not a
+        // safe assumption by the time the tab opens.
+        const settle = () => new Promise((done) => setTimeout(done, 900));
+        const toggle = () => shadow.querySelector('[data-set="content.showVodExpiry"]');
+        try {
+          shadow.querySelector('[data-action="open-settings"]')?.click();
+          await settle();
+          shadow.querySelector('[data-page="content"]')?.click();
+          await settle();
+          // A precondition that could not be established is a skip, not a
+          // defect in the feature: this runs after sixty probes against one
+          // profile, and a settings shell that will not open in a degraded tab
+          // says nothing about whether a recording gets dated.
+          if (!toggle()) return { skip: 'the settings shell did not offer the VOD expiry control in this tab, so the chip could not be put under test' };
+          if (toggle().getAttribute('aria-checked') !== 'true') { toggle().click(); await settle(); }
+        } finally {
+          shadow.querySelector('[data-action="close-settings"]')?.click();
+        }
+
+        const chip = await __kfWait(() => document.querySelector('[data-kf-vod-expiry]'), { timeout: 20000 });
+        if (!chip) {
+          // Say which precondition was missing rather than only that the chip
+          // was absent: the surface needs a player box to hang from, and a
+          // background tab that never started playback has none.
+          const video = document.querySelector('video');
+          const settings = (() => { try { return JSON.parse(localStorage.getItem('kick-focus:settings') || '{}').content || {}; } catch { return {}; } })();
+          // This reads the *stored* blob, which legitimately omits a key the
+          // profile has never written; the effective value is the normalised
+          // default. Reported anyway because a stored false is the one case
+          // that explains an absent chip.
+          return { ok: false, why: 'no retention chip: video=' + Boolean(video)
+            + ' storedSetting=' + JSON.stringify(settings.showVodExpiry)
+            + ' liveReads=' + settings.liveEmoteCatalog
+            + ' uptimeChip=' + Boolean(document.querySelector('[data-kf-uptime]'))
+            + ' entryInList=true verified=' + verified };
+        }
+        const box = chip.getBoundingClientRect();
+
+        // And the silence half, which is the part worth getting right: with the
+        // setting off the chip must be gone, not merely hidden.
+        let removed = false;
+        try {
+          shadow.querySelector('[data-action="open-settings"]')?.click();
+          await settle();
+          shadow.querySelector('[data-page="content"]')?.click();
+          await settle();
+          // Re-queried each time: changing a setting re-renders the page, so a
+          // held reference points at a detached node by the second click.
+          if (toggle()) { toggle().click(); await settle(); removed = !document.querySelector('[data-kf-vod-expiry]'); toggle()?.click(); }
+        } finally {
+          shadow.querySelector('[data-action="close-settings"]')?.click();
+        }
+        return {
+          ok: true,
+          text: chip.textContent,
+          label: chip.getAttribute('aria-label') || '',
+          expectedDays: Math.floor(expectedMs / 86400000),
+          verified,
+          days,
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+          removed,
+        };
+      })()`);
+      return probe.value || { ok: false, why: probe.error || 'the VOD probe returned nothing' };
+    } finally {
+      c.close();
+      const closer = cdp((await json('/json/version')).webSocketDebuggerUrl);
+      await closer.ready;
+      await closer.send('Target.closeTarget', { targetId: vodTab.id });
+      closer.close();
+    }
+  })() : { skip: vodTab.why };
+
+  recordProbe('a VOD says how long Kick will keep it, computed from Kick own date and tier', vod,
+    vod.ok === true
+      // The label must agree with the window recomputed from Kick's own two
+      // reads. A wrong tier is off by 23 days and a zone misparse by hours.
+      && vod.text === (vod.expectedDays >= 2 ? `${vod.expectedDays}d` : vod.text)
+      && vod.expectedDays >= 0
+      && vod.width > 0 && vod.height > 0
+      && vod.removed === true,
+    vod.ok
+      ? `chip reads ${JSON.stringify(vod.text)} against ${vod.expectedDays}d computed from Kick's own start time and verified=${vod.verified} (${vod.days}-day tier); ${vod.width}x${vod.height}px; hides when switched off=${vod.removed}`
+      : vod.why);
+
   // Poor mode against the two surfaces it used to miss. Both are identified by
   // test id alone and neither is a control — the KICKs balance is a <span>
   // whose whole text is a number, and the gift shop is a panel — so a tagger
@@ -2216,7 +2370,7 @@ try {
    * out and Kick rate-limits it, which is why the uptime chip has a page-data
    * fallback in the first place.
    */
-  const PROBED_ENDPOINTS = ['channel', 'emoteSets', 'chatSettings', 'collectibles', 'currentViewers'];
+  const PROBED_ENDPOINTS = ['channel', 'emoteSets', 'chatSettings', 'collectibles', 'currentViewers', 'channelVideos'];
   // Excluded on purpose, with the reason, so the coverage check below stays honest.
   const UNPROBED_ENDPOINTS = {
     followChannel: 'a write; probing it would follow a channel on the operator behalf',
@@ -2244,6 +2398,7 @@ try {
     if (channelId) {
       urls.push(['chatSettings', 'https://web.kick.com/api/v1/channels/' + channelId + '/chat/settings']);
       urls.push(['currentViewers', 'https://kick.com/current-viewers?ids[]=' + channelId]);
+      urls.push(['channelVideos', 'https://web.kick.com/api/v1/channels/' + channelId + '/videos']);
     }
     const seen = [];
     for (const [name, url] of urls) {

@@ -47,6 +47,7 @@ function makeHost(overrides = {}) {
         organizeChatStickers: false,
         warnShadowedEmotes: false,
         showEmoteRarity: false,
+        showVodExpiry: true,
       },
     },
     live: {
@@ -54,7 +55,7 @@ function makeHost(overrides = {}) {
       collisions: [], rarity: null, inventory: null, socket: null, socketState: 'offline',
       lastFrameAt: 0, unparsable: 0, subscribed: [], deletions: new Map(), pendingBadges: new Map(),
       reconnectAt: 0, reconnectAttempts: 0, provider: '', providerVerified: true, lastLiveAt: 0,
-      apiDrift: [],
+      apiDrift: [], vod: null,
     },
   };
   const host = {
@@ -63,9 +64,11 @@ function makeHost(overrides = {}) {
     EMOTE_USAGE_KEY: 'kick-focus:emote-usage',
     pageFetch: async () => ({ ok: false, status: 0, text: async () => '' }),
     currentChannelSlug: () => host.__slug,
+    currentVodId: () => host.__vodId,
     plural: (count, one, other) => (count === 1 ? one : other),
     mergeStickerLibrary: (observed) => merged.push(observed),
     __slug: 'alpha',
+    __vodId: '',
   };
   Object.assign(host, overrides);
   return { host, state, written, merged };
@@ -573,4 +576,94 @@ test('a refused emote catalog says so and leaves the picker as the source', { ta
   assert.ok(calls.some((url) => url.includes('/channels/alpha')), 'the channel is read first');
   assert.equal(state.live.catalogSource, 'dom', 'a refused catalog must not claim to be the API');
   assert.match(state.live.catalogError, /503/, 'the status Kick answered is reported, not hidden');
+});
+
+
+const VOD_ID = '01a01256-da48-7d57-8bf2-0ac2745d698d';
+const CHANNEL_BODY = JSON.stringify({ id: 668, slug: 'alpha', verified: true, chatroom: { id: 9 } });
+const VIDEOS_BODY = JSON.stringify({
+  message: 'ok',
+  data: [{ id: VOD_ID, start_time: '2026-08-18T00:47:57Z', end_time: '2026-08-18T08:24:10Z', duration: 27279, status: 'public', tier: 'unverified', title: 'a stream' }],
+});
+
+function vodHost(overrides = {}) {
+  const requests = [];
+  const made = makeHost({
+    pageFetch: async (url) => {
+      requests.push(String(url));
+      if (String(url).includes('/videos')) return { ok: true, status: 200, text: async () => VIDEOS_BODY };
+      return { ok: true, status: 200, text: async () => CHANNEL_BODY };
+    },
+    ...overrides,
+  });
+  // Neither live read is needed for retention, and switching them off proves it.
+  made.state.settings.content.liveEmoteCatalog = false;
+  made.state.settings.content.liveChatEvents = false;
+  return { ...made, requests };
+}
+
+test('a VOD opened from the channel list is dated, though the slug never changed', { tag: 'unit' }, async () => {
+  // The defect this pins: `refreshLiveChannel` returns early when the slug and
+  // channel are unchanged, and moving from /alpha/videos to a recording is an
+  // SPA navigation that changes only the last path segment. Reached through the
+  // early return or not at all.
+  const { host, state, requests } = vodHost();
+  host.__vodId = '';
+  await createLive(host).refreshLiveChannel();
+  assert.equal(state.live.vod, null, 'a channel page has no recording to date');
+  // With both live reads off and no recording on screen, nothing is fetched at
+  // all — the retention feature must not put a channel page back on the wire.
+  assert.deepEqual(requests, [], 'a channel page costs nothing when nothing wants it');
+
+  host.__vodId = VOD_ID;
+  await createLive(host).refreshLiveChannel();
+  assert.ok(requests.some((url) => url.includes('/videos')), 'the VOD list was read once a recording was on screen');
+  assert.equal(state.live.vod?.id, VOD_ID);
+  assert.equal(state.live.vod?.startedAt, Date.UTC(2026, 7, 18, 0, 47, 57));
+});
+
+test('a recording already dated is not re-read, and leaving one drops it', { tag: 'unit' }, async () => {
+  const { host, state, requests } = vodHost();
+  host.__vodId = VOD_ID;
+  await createLive(host).refreshLiveChannel();
+  assert.equal(state.live.vod?.id, VOD_ID);
+
+  const settled = requests.length;
+  await createLive(host).refreshLiveChannel();
+  assert.equal(requests.length, settled, 'the same recording costs no second request');
+
+  host.__vodId = '';
+  await createLive(host).refreshLiveChannel();
+  assert.equal(state.live.vod, null, 'leaving a VOD drops the deadline rather than stranding it');
+});
+
+test('with the retention setting off, no VOD list is ever requested', { tag: 'unit' }, async () => {
+  const { host, state, requests } = vodHost();
+  state.settings.content.showVodExpiry = false;
+  host.__vodId = VOD_ID;
+  await createLive(host).refreshLiveChannel();
+  assert.equal(state.live.vod, null);
+  assert.equal(requests.filter((url) => url.includes('/videos')).length, 0, 'a setting that is off costs no request');
+});
+
+test('a recording outside Kick returned window is a silence, not a drift report', { tag: 'unit' }, async () => {
+  const { host, state } = vodHost();
+  host.__vodId = '00000000-0000-7000-8000-000000000000';
+  await createLive(host).refreshLiveChannel();
+  assert.equal(state.live.vod, null, 'an unresolvable recording renders nothing');
+  // Kick returns a bounded list by design and there is no single-video read, so
+  // absence is expected and must not be reported as the API changing shape.
+  assert.deepEqual(state.live.apiDrift, []);
+});
+
+test('a VOD list whose shape changed is reported as drift', { tag: 'unit' }, async () => {
+  const { host, state } = vodHost({
+    pageFetch: async (url) => (String(url).includes('/videos')
+      ? { ok: true, status: 200, text: async () => '{"videos":[]}' }
+      : { ok: true, status: 200, text: async () => CHANNEL_BODY }),
+  });
+  host.__vodId = VOD_ID;
+  await createLive(host).refreshLiveChannel();
+  assert.equal(state.live.vod, null);
+  assert.deepEqual(state.live.apiDrift.map((entry) => [entry.endpoint, entry.reason]), [['channel-videos', 'shape-changed']]);
 });

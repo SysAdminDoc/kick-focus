@@ -6,6 +6,8 @@ import {
   findShadowedNames,
   joinCollectibleRarity,
   normalizeChannel,
+  normalizeChannelVideos,
+  findChannelVideo,
   parseKickTimestamp,
   streamStartFromLinkedData,
   normalizeChatMessage,
@@ -801,4 +803,60 @@ test('realtime frames are treated as untrusted input', { tag: 'unit' }, () => {
   const polluted = JSON.parse('{"id":"h","content":"hi","__proto__":{"pwned":true},"sender":{"id":1}}');
   assert.equal(normalizeChatMessage(polluted).content, 'hi');
   assert.equal(({}).pwned, undefined);
+});
+
+
+test('a VOD list is keyed by the id the page URL carries', { tag: 'unit' }, () => {
+  // Shape measured from web.kick.com/api/v1/channels/668/videos, 2026-08-18.
+  const payload = {
+    message: 'ok',
+    data: [
+      {
+        id: '01a01256-da48-7d57-8bf2-0ac2745d698d',
+        start_time: '2026-08-18T00:47:57Z',
+        end_time: '2026-08-18T08:24:10Z',
+        duration: 27279,
+        status: 'public',
+        tier: 'unverified',
+        title: 'a stream',
+        channel: { id: 668, slug: 'xqc' },
+      },
+    ],
+  };
+  const videos = normalizeChannelVideos(payload);
+  assert.equal(videos.length, 1);
+  assert.equal(videos[0].id, '01a01256-da48-7d57-8bf2-0ac2745d698d');
+  // Zone-declared, so the parse must leave it exactly where Kick put it.
+  assert.equal(videos[0].startedAt, Date.UTC(2026, 7, 18, 0, 47, 57));
+  assert.equal(videos[0].endedAt, Date.UTC(2026, 7, 18, 8, 24, 10));
+  assert.equal(videos[0].durationSeconds, 27279);
+  // `tier` is deliberately not carried: it read "unverified" for a channel
+  // whose own payload said verified:true, so it must not reach a caller.
+  assert.equal('tier' in videos[0], false);
+
+  assert.equal(findChannelVideo(videos, '01a01256-da48-7d57-8bf2-0ac2745d698d'), videos[0]);
+  // A recording outside Kick's returned window is absent, not an error, and
+  // there is no single-video read to fall back to.
+  assert.equal(findChannelVideo(videos, '00000000-0000-7000-8000-000000000000'), null);
+  assert.equal(findChannelVideo(videos, ''), null);
+  assert.equal(findChannelVideo(null, 'x'), null);
+});
+
+test('a changed VOD list shape is reported as null, not as an empty list', { tag: 'unit' }, () => {
+  // The difference matters: [] means "no recordings", null means "do not trust
+  // me", and only the second should raise a drift report.
+  assert.equal(normalizeChannelVideos(null), null);
+  assert.equal(normalizeChannelVideos({ videos: [] }), null);
+  assert.deepEqual(normalizeChannelVideos({ data: [] }), []);
+  assert.deepEqual(normalizeChannelVideos([]), []);
+  // Rows without a usable id are dropped rather than propagated.
+  assert.deepEqual(normalizeChannelVideos({ data: [{ start_time: '2026-08-18T00:00:00Z' }, null, 7] }), []);
+});
+
+test('a channel reports its verification, which is the only trustworthy tier', { tag: 'unit' }, () => {
+  assert.equal(normalizeChannel({ id: 5, verified: true }).verified, true);
+  assert.equal(normalizeChannel({ id: 5, verified: false }).verified, false);
+  assert.equal(normalizeChannel({ id: 5 }).verified, false);
+  // Kick has returned a record here as well as a boolean; both mean verified.
+  assert.equal(normalizeChannel({ id: 5, verified: { id: 12 } }).verified, true);
 });

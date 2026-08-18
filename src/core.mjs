@@ -1,4 +1,4 @@
-export const VERSION = '1.22.0';
+export const VERSION = '1.23.0';
 export const SETTINGS_SCHEMA = 4;
 
 /**
@@ -18,6 +18,10 @@ export const VERSION_NOTES = Object.freeze({
   '1.22.0': Object.freeze({
     summary: 'Markup reaches the page through one checked path, and this notice exists — an update no longer changes how Kick Focus behaves without saying so.',
     defaults: Object.freeze([]),
+  }),
+  '1.23.0': Object.freeze({
+    summary: 'A recording now says how long Kick will keep it, and the emote card and completion list render above everything instead of competing with Kick for stacking order.',
+    defaults: Object.freeze(['Show how long Kick keeps this recording']),
   }),
 });
 
@@ -140,6 +144,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // On: it reads a field Kick already sends with the channel payload and
     // shows it, which is the whole feature. No extra request, no polling.
     showUptime: true,
+    showVodExpiry: true,
     stickyChatPause: false,
     chatHighlights: false,
     organizeChatStickers: true,
@@ -440,6 +445,49 @@ export function formatUptime(startedAt, now = Date.now()) {
   const minutes = total >= 3600 ? String(Math.floor(total / 60) % 60).padStart(2, '0') : String(Math.floor(total / 60));
   const hours = Math.floor(total / 3600);
   return hours ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
+}
+
+/**
+ * How long Kick keeps a VOD before deleting it, by the channel's verification.
+ *
+ * Kick offers no download to anyone — including the broadcaster — and shows
+ * this countdown nowhere, which is what makes it worth surfacing at all.
+ *
+ * `verified` must be a real boolean. Defaulting it would be the whole defect
+ * this guards: 7 and 30 are four-fold apart, so a guess is not a smaller
+ * version of the right answer, it is a wrong deadline stated confidently. A
+ * caller that does not know returns null and the surface stays silent.
+ */
+export const VOD_RETENTION_DAYS = { verified: 30, unverified: 7 };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function vodExpiry(startedAt, verified, now = Date.now()) {
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return null;
+  if (typeof verified !== 'boolean') return null;
+  const days = verified ? VOD_RETENTION_DAYS.verified : VOD_RETENTION_DAYS.unverified;
+  const expiresAt = startedAt + days * DAY_MS;
+  // A recording dated in the future is Kick's clock disagreeing with the
+  // viewer's, not a VOD with extra life; refuse it rather than render it.
+  if (startedAt > now + DAY_MS) return null;
+  return { expiresAt, remaining: expiresAt - now, days, expired: expiresAt <= now };
+}
+
+/**
+ * The remaining window as a short label, in the largest unit that stays honest.
+ *
+ * Days above two, then hours, then minutes — a "7 days left" that silently
+ * means 7.9 is fine at that range and misleading at one hour, which is why the
+ * unit narrows as the deadline approaches. Returns '' once the window has
+ * closed, so the caller can use it as a presence test exactly like
+ * `formatUptime`.
+ */
+export function formatVodRetention(remaining) {
+  if (!Number.isFinite(remaining) || remaining <= 0) return '';
+  const minutes = Math.floor(remaining / 60000);
+  const hours = Math.floor(minutes / 60);
+  if (hours >= 48) return `${Math.floor(hours / 24)}d`;
+  if (hours >= 1) return `${hours}h`;
+  return `${Math.max(1, minutes)}m`;
 }
 
 /**
@@ -979,6 +1027,7 @@ export function normalizeSettings(input) {
       preferBestQuality: bool(content.preferBestQuality, defaults.content.preferBestQuality),
       rememberVodPosition: bool(content.rememberVodPosition, defaults.content.rememberVodPosition),
       showUptime: bool(content.showUptime, defaults.content.showUptime),
+      showVodExpiry: bool(content.showVodExpiry, defaults.content.showVodExpiry),
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),

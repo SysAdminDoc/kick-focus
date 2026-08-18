@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## 1.23.0 — 2026-08-18
 
+### Added
+
+- **A recording now says how long Kick will keep it.** Kick deletes VODs after 7 days, or 30 for a verified channel, offers no download to anyone including the broadcaster, and shows that deadline nowhere. On a VOD page a small countdown sits in the player corner. It is deliberately silent rather than approximate: if the recording is older than the list Kick returns, or the channel's tier cannot be established, it shows nothing at all — 7 and 30 days are four-fold apart, so a guess would be a confident wrong date rather than a rough one.
+
 ### Changed
 
 - **The emote hover card and the completion list now render above everything.** Both used to be placed by hand and rely on winning a stacking contest with Kick's own layers. They now use the browser's top layer, which no page styling can clip or cover, and they position themselves against the emote or the composer rather than by arithmetic this build does itself. On a browser without that capability the previous behaviour is used unchanged. Escape, focus and every keystroke behave exactly as before — the surfaces are opened in the mode that watches no keys and moves no focus, so nothing is taken away from Kick's own composer.

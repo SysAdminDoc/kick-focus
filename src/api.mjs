@@ -38,6 +38,22 @@ export const endpoints = {
   chatHistory: (chatroomId) => `${KICK_WEB_ORIGIN}/api/v1/chat/${encodeURIComponent(chatroomId)}/history`,
   collectibles: () => `${KICK_WEB_ORIGIN}/api/v1/gamification/collectibles`,
   /**
+   * One channel's recent VODs, and the only way to date one.
+   *
+   * Keyed by channel **id**, and on **web.kick.com v1** — not the
+   * `kick.com/api/v2/channels/{slug}/videos` that also answers. The difference
+   * matters and cost a whole pass to find: the v2 list's entries carry a v4
+   * `video.uuid` that matches nothing in the page URL, while this list's `id`
+   * *is* the v7 UUID at `/{slug}/videos/{uuid}`. Measured 2026-08-18.
+   *
+   * There is no single-video read to prefer over it: `web.kick.com/api/v1/`
+   * `{videos,video,streams}/{uuid}` and `kick.com/api/v1/videos/{uuid}` are all
+   * 404, and `stream/{uuid}/playback` is 404 once the VOD is not live. So a
+   * recording older than this list's window simply cannot be resolved, and the
+   * caller must say nothing rather than guess.
+   */
+  channelVideos: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/videos`,
+  /**
    * One request for the live state of many channels, instead of N per-channel
    * polls. Kick's own sidebar uses it.
    */
@@ -350,6 +366,12 @@ export function normalizeChannel(payload) {
     // an offline channel has no id here — which is itself the answer.
     livestreamId: Number(livestream?.id) || 0,
     followers: Number(payload.followers_count) || 0,
+    // The retention tier, and the only trustworthy statement of it. The VOD
+    // entries carry a `tier` field that reads "unverified" for a channel whose
+    // own payload says `verified: true` — measured on xQc, 2026-08-18 — so this
+    // is the source and that field is ignored. Kick has returned both a boolean
+    // and a record here, hence the coercion rather than a strict compare.
+    verified: Boolean(payload.verified),
     isLive: Boolean(livestream?.is_live),
     // Kick returns this and shows it nowhere: its own page has no uptime.
     startedAt: parseKickTimestamp(livestream?.start_time) || parseKickTimestamp(livestream?.created_at),
@@ -361,6 +383,44 @@ export function normalizeChannel(payload) {
       ? livestream.categories.map((entry) => String(entry?.slug || '')).filter(Boolean)
       : [],
   };
+}
+
+/**
+ * The recent VOD list, reduced to what dating one needs.
+ *
+ * `start_time` and `end_time` arrive here as zone-declared ISO
+ * (`2026-08-18T00:47:57Z`), unlike the zone-less form the livestream payload
+ * uses — `parseKickTimestamp` passes a declared zone through untouched, so both
+ * go through the same parse and neither is guessed at.
+ *
+ * The entry's own `tier` is deliberately not carried through. See
+ * `normalizeChannel`: it disagrees with the channel's `verified` flag, so
+ * reading it would put a wrong retention window on screen.
+ */
+export function normalizeChannelVideos(payload) {
+  const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
+  if (!rows) return null;
+  const videos = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const id = typeof row.id === 'string' ? row.id : '';
+    if (!id) continue;
+    videos.push({
+      id,
+      startedAt: parseKickTimestamp(row.start_time),
+      endedAt: parseKickTimestamp(row.end_time),
+      durationSeconds: Number(row.duration) || 0,
+      title: typeof row.title === 'string' ? row.title : '',
+      status: typeof row.status === 'string' ? row.status : '',
+    });
+  }
+  return videos;
+}
+
+/** The entry a VOD page URL names, or null when it is outside the list. */
+export function findChannelVideo(videos, id) {
+  if (!Array.isArray(videos) || typeof id !== 'string' || !id) return null;
+  return videos.find((video) => video.id === id) || null;
 }
 
 // ---------------------------------------------------------------------------

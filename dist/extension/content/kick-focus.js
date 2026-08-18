@@ -1,9 +1,9 @@
-/* Kick Focus 1.22.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.23.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.22.0';
+const VERSION = '1.23.0';
 const SETTINGS_SCHEMA = 4;
 
 /**
@@ -23,6 +23,10 @@ const VERSION_NOTES = Object.freeze({
   '1.22.0': Object.freeze({
     summary: 'Markup reaches the page through one checked path, and this notice exists — an update no longer changes how Kick Focus behaves without saying so.',
     defaults: Object.freeze([]),
+  }),
+  '1.23.0': Object.freeze({
+    summary: 'A recording now says how long Kick will keep it, and the emote card and completion list render above everything instead of competing with Kick for stacking order.',
+    defaults: Object.freeze(['Show how long Kick keeps this recording']),
   }),
 });
 
@@ -145,6 +149,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     // On: it reads a field Kick already sends with the channel payload and
     // shows it, which is the whole feature. No extra request, no polling.
     showUptime: true,
+    showVodExpiry: true,
     stickyChatPause: false,
     chatHighlights: false,
     organizeChatStickers: true,
@@ -445,6 +450,49 @@ function formatUptime(startedAt, now = Date.now()) {
   const minutes = total >= 3600 ? String(Math.floor(total / 60) % 60).padStart(2, '0') : String(Math.floor(total / 60));
   const hours = Math.floor(total / 3600);
   return hours ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
+}
+
+/**
+ * How long Kick keeps a VOD before deleting it, by the channel's verification.
+ *
+ * Kick offers no download to anyone — including the broadcaster — and shows
+ * this countdown nowhere, which is what makes it worth surfacing at all.
+ *
+ * `verified` must be a real boolean. Defaulting it would be the whole defect
+ * this guards: 7 and 30 are four-fold apart, so a guess is not a smaller
+ * version of the right answer, it is a wrong deadline stated confidently. A
+ * caller that does not know returns null and the surface stays silent.
+ */
+const VOD_RETENTION_DAYS = { verified: 30, unverified: 7 };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function vodExpiry(startedAt, verified, now = Date.now()) {
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return null;
+  if (typeof verified !== 'boolean') return null;
+  const days = verified ? VOD_RETENTION_DAYS.verified : VOD_RETENTION_DAYS.unverified;
+  const expiresAt = startedAt + days * DAY_MS;
+  // A recording dated in the future is Kick's clock disagreeing with the
+  // viewer's, not a VOD with extra life; refuse it rather than render it.
+  if (startedAt > now + DAY_MS) return null;
+  return { expiresAt, remaining: expiresAt - now, days, expired: expiresAt <= now };
+}
+
+/**
+ * The remaining window as a short label, in the largest unit that stays honest.
+ *
+ * Days above two, then hours, then minutes — a "7 days left" that silently
+ * means 7.9 is fine at that range and misleading at one hour, which is why the
+ * unit narrows as the deadline approaches. Returns '' once the window has
+ * closed, so the caller can use it as a presence test exactly like
+ * `formatUptime`.
+ */
+function formatVodRetention(remaining) {
+  if (!Number.isFinite(remaining) || remaining <= 0) return '';
+  const minutes = Math.floor(remaining / 60000);
+  const hours = Math.floor(minutes / 60);
+  if (hours >= 48) return `${Math.floor(hours / 24)}d`;
+  if (hours >= 1) return `${hours}h`;
+  return `${Math.max(1, minutes)}m`;
 }
 
 /**
@@ -984,6 +1032,7 @@ function normalizeSettings(input) {
       preferBestQuality: bool(content.preferBestQuality, defaults.content.preferBestQuality),
       rememberVodPosition: bool(content.rememberVodPosition, defaults.content.rememberVodPosition),
       showUptime: bool(content.showUptime, defaults.content.showUptime),
+      showVodExpiry: bool(content.showVodExpiry, defaults.content.showVodExpiry),
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
@@ -2922,6 +2971,22 @@ const endpoints = {
   chatHistory: (chatroomId) => `${KICK_WEB_ORIGIN}/api/v1/chat/${encodeURIComponent(chatroomId)}/history`,
   collectibles: () => `${KICK_WEB_ORIGIN}/api/v1/gamification/collectibles`,
   /**
+   * One channel's recent VODs, and the only way to date one.
+   *
+   * Keyed by channel **id**, and on **web.kick.com v1** — not the
+   * `kick.com/api/v2/channels/{slug}/videos` that also answers. The difference
+   * matters and cost a whole pass to find: the v2 list's entries carry a v4
+   * `video.uuid` that matches nothing in the page URL, while this list's `id`
+   * *is* the v7 UUID at `/{slug}/videos/{uuid}`. Measured 2026-08-18.
+   *
+   * There is no single-video read to prefer over it: `web.kick.com/api/v1/`
+   * `{videos,video,streams}/{uuid}` and `kick.com/api/v1/videos/{uuid}` are all
+   * 404, and `stream/{uuid}/playback` is 404 once the VOD is not live. So a
+   * recording older than this list's window simply cannot be resolved, and the
+   * caller must say nothing rather than guess.
+   */
+  channelVideos: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/videos`,
+  /**
    * One request for the live state of many channels, instead of N per-channel
    * polls. Kick's own sidebar uses it.
    */
@@ -3234,6 +3299,12 @@ function normalizeChannel(payload) {
     // an offline channel has no id here — which is itself the answer.
     livestreamId: Number(livestream?.id) || 0,
     followers: Number(payload.followers_count) || 0,
+    // The retention tier, and the only trustworthy statement of it. The VOD
+    // entries carry a `tier` field that reads "unverified" for a channel whose
+    // own payload says `verified: true` — measured on xQc, 2026-08-18 — so this
+    // is the source and that field is ignored. Kick has returned both a boolean
+    // and a record here, hence the coercion rather than a strict compare.
+    verified: Boolean(payload.verified),
     isLive: Boolean(livestream?.is_live),
     // Kick returns this and shows it nowhere: its own page has no uptime.
     startedAt: parseKickTimestamp(livestream?.start_time) || parseKickTimestamp(livestream?.created_at),
@@ -3245,6 +3316,44 @@ function normalizeChannel(payload) {
       ? livestream.categories.map((entry) => String(entry?.slug || '')).filter(Boolean)
       : [],
   };
+}
+
+/**
+ * The recent VOD list, reduced to what dating one needs.
+ *
+ * `start_time` and `end_time` arrive here as zone-declared ISO
+ * (`2026-08-18T00:47:57Z`), unlike the zone-less form the livestream payload
+ * uses — `parseKickTimestamp` passes a declared zone through untouched, so both
+ * go through the same parse and neither is guessed at.
+ *
+ * The entry's own `tier` is deliberately not carried through. See
+ * `normalizeChannel`: it disagrees with the channel's `verified` flag, so
+ * reading it would put a wrong retention window on screen.
+ */
+function normalizeChannelVideos(payload) {
+  const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
+  if (!rows) return null;
+  const videos = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const id = typeof row.id === 'string' ? row.id : '';
+    if (!id) continue;
+    videos.push({
+      id,
+      startedAt: parseKickTimestamp(row.start_time),
+      endedAt: parseKickTimestamp(row.end_time),
+      durationSeconds: Number(row.duration) || 0,
+      title: typeof row.title === 'string' ? row.title : '',
+      status: typeof row.status === 'string' ? row.status : '',
+    });
+  }
+  return videos;
+}
+
+/** The entry a VOD page URL names, or null when it is outside the list. */
+function findChannelVideo(videos, id) {
+  if (!Array.isArray(videos) || typeof id !== 'string' || !id) return null;
+  return videos.find((video) => video.id === id) || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -4555,6 +4664,7 @@ function createLive(host) {
     EMOTE_USAGE_KEY,
     pageFetch,
     currentChannelSlug,
+    currentVodId,
     plural,
     mergeStickerLibrary,
   } = host;
@@ -4684,7 +4794,14 @@ function createLive(host) {
       state.live.channel = null;
       return;
     }
-    if (state.live.slug === slug && state.live.channel) return;
+    if (state.live.slug === slug && state.live.channel) {
+      // Same channel, different recording. Opening a VOD from the channel's own
+      // list is an SPA navigation that changes only the last path segment, so
+      // nothing below re-runs and the retention read has to be reached here or
+      // it never happens at all.
+      await refreshVodRetention(slug);
+      return;
+    }
     teardownRealtime();
     state.live.slug = slug;
     state.live.channel = null;
@@ -4695,8 +4812,14 @@ function createLive(host) {
     state.live.rarity = null;
     state.live.inventory = null;
     state.live.standing = { known: false, subscribed: null, following: null, moderator: null };
+    state.live.vod = null;
 
-    if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
+    // The retention chip needs this read too — for the channel's id and its
+    // `verified` flag — so it has to be able to ask for it. Still free on a
+    // channel page, and free on a VOD when the setting is off: the guard is the
+    // route and the setting together, not the setting alone.
+    const wantsVodDate = state.settings.content.showVodExpiry && Boolean(currentVodId());
+    if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents && !wantsVodDate) return;
 
     const channelResponse = await kickFetchJson(endpoints.channel(slug));
     if (state.live.slug !== slug) return; // navigated away mid-flight
@@ -4713,9 +4836,51 @@ function createLive(host) {
       return;
     }
 
+    await refreshVodRetention(slug);
     if (state.settings.content.liveEmoteCatalog) await refreshEmoteCatalog(slug);
     if (state.settings.content.liveChatEvents) connectRealtime();
     refreshLiveDiagnostics();
+  }
+
+  /**
+   * Date the VOD this page is showing, if it is showing one.
+   *
+   * One read, on a route that has a VOD id, and only when the setting is on —
+   * a channel page pays nothing for this. Everything about it degrades to
+   * silence: no id, no channel id, a failed read, a changed shape, or an entry
+   * simply not in the returned window all leave `state.live.vod` null, and the
+   * surface renders nothing rather than guessing a deadline.
+   */
+  async function refreshVodRetention(slug) {
+    if (!state.settings.content.showVodExpiry) {
+      state.live.vod = null;
+      return;
+    }
+    const id = currentVodId();
+    if (!id) {
+      // Left a VOD for a channel page: drop the answer rather than let a stale
+      // deadline sit on a different recording.
+      state.live.vod = null;
+      return;
+    }
+    if (state.live.vod?.id === id) return;
+    state.live.vod = null;
+    const channelId = state.live.channel?.id;
+    if (!channelId) return;
+    const response = await kickFetchJson(endpoints.channelVideos(channelId));
+    if (state.live.slug !== slug) return; // navigated away mid-flight
+    if (!response.ok) return;
+    const videos = normalizeChannelVideos(response.body);
+    if (!videos) {
+      recordApiDrift('channel-videos', 'shape-changed');
+      return;
+    }
+    const entry = findChannelVideo(videos, id);
+    // Not a drift report: Kick returns a bounded window, so a recording older
+    // than it is absent by design and there is no single-video read to fall
+    // back to. Absent is an answer, and the answer is to say nothing.
+    if (!entry || !entry.startedAt) return;
+    state.live.vod = { id, startedAt: entry.startedAt, title: entry.title };
   }
 
   /**
@@ -6027,6 +6192,9 @@ const state = {
     // This account's standing in the current channel, from Kick's own /me read.
     // `subscribed: null` means Kick did not say, which is never "denied".
     standing: { known: false, subscribed: null, following: null, moderator: null },
+    // The VOD this page is showing, once dated. Null on a channel page, and
+    // null whenever the recording could not be dated — see refreshVodRetention.
+    vod: null,
     socket: null,
     socketState: 'offline',
     lastFrameAt: 0,
@@ -7153,7 +7321,7 @@ const SITE_CSS = `
       font-weight: 760 !important;
     }
 
-    [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-uptime] {
+    [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-uptime], [data-kf-vod-expiry] {
       position: absolute !important;
       z-index: 7 !important;
       border: 1px solid rgba(255,255,255,.18) !important;
@@ -7173,6 +7341,17 @@ const SITE_CSS = `
       font-variant-numeric: tabular-nums !important; letter-spacing: .02em !important;
       opacity: .92 !important;
     }
+
+    /* Directly under the uptime chip, in the same top-left column: the two are
+       mutually exclusive in practice (one dates a live stream, the other a
+       recording), so the offset only matters if Kick ever serves both. */
+    [data-kf-vod-expiry] {
+      top: 10px !important; left: 10px !important; padding: 4px 7px !important;
+      background: rgba(13,16,14,.82) !important; pointer-events: none !important;
+      font-variant-numeric: tabular-nums !important; letter-spacing: .02em !important;
+      opacity: .92 !important;
+    }
+    [data-kf-uptime] ~ [data-kf-vod-expiry] { top: 40px !important; }
 
     [data-kf-search-meta] {
       box-sizing: border-box !important;
@@ -7879,12 +8058,29 @@ function currentChannelSlug() {
   return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug) ? slug : '';
 }
 
+/**
+ * The VOD this tab is watching, or '' anywhere else.
+ *
+ * A VOD lives at `/{slug}/videos/{uuid}`, which `routeKind` also calls
+ * `channel`, so the path shape is the only thing that separates the two. The
+ * UUID is checked rather than trusted: it is pasted straight into a request
+ * path, and Kick's own ids are v7 UUIDs.
+ */
+function currentVodId() {
+  if (routeKind(location.href) !== 'channel') return '';
+  const parts = location.pathname.split('/').filter(Boolean);
+  if (parts.length !== 3 || parts[1] !== 'videos') return '';
+  const id = parts[2];
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : '';
+}
+
 const liveSurface = createLive({
   state,
   gmSet,
   EMOTE_USAGE_KEY,
   pageFetch,
   currentChannelSlug,
+  currentVodId,
   plural,
   mergeStickerLibrary,
 });
@@ -10018,9 +10214,12 @@ function collectKeywordRanges(root, keywords, ranges) {
  * absence is the liveness answer.
  *
  * The linked-data fallback is confined to a bare channel page. A VOD lives at
- * `/{slug}/videos/{id}`, which is also route `channel` and also carries a
- * `VideoObject` — one whose date is when the recording was made. Timing that
- * would report a "stream" that has been live for weeks.
+ * `/{slug}/videos/{id}`, which `routeKind` also calls `channel`, so without the
+ * path check an offline recording would be timed as a live stream. (Measured
+ * 2026-08-18: a VOD page carries no `VideoObject` at all — only `Organization`
+ * and `WebSite` — so the guard is belt and braces rather than the only thing
+ * standing between this and a wrong answer. It stays: the absence is Kick's
+ * current markup, not a contract.)
  */
 function streamStartedAt() {
   const channel = state.live.channel;
@@ -10071,6 +10270,51 @@ function applyStreamUptime() {
   };
   update();
   if (!state.uptimeTimer) state.uptimeTimer = window.setInterval(update, 1000);
+}
+
+/**
+ * How long Kick will keep this recording.
+ *
+ * Kick deletes VODs after 7 days, or 30 for a verified channel, offers no
+ * download to anyone including the broadcaster, and shows the deadline
+ * nowhere — the largest documented gap a read-only client can close.
+ *
+ * Everything here is conditional on knowing, and knowing is not assumed at any
+ * step: `state.live.vod` is null unless the recording was found in Kick's own
+ * list, and `verified` must be a real boolean before `vodExpiry` will answer.
+ * A missing answer renders nothing. Guessing between 7 and 30 would put a
+ * confident wrong date on screen, which is worse than the silence Kick already
+ * offers.
+ */
+function applyVodExpiry() {
+  const existing = document.querySelector('[data-kf-vod-expiry]');
+  const vod = state.live.vod;
+  const channel = state.live.channel;
+  const expiry = state.settings.content.showVodExpiry && state.route === 'channel' && vod && channel
+    ? vodExpiry(vod.startedAt, channel.verified)
+    : null;
+  const text = expiry ? formatVodRetention(expiry.remaining) : '';
+  if (!text) {
+    existing?.remove();
+    return;
+  }
+  const video = document.querySelector('video');
+  const owner = playerOverlayHost(video);
+  if (!owner) return;
+  let chip = owner.querySelector?.('[data-kf-vod-expiry]');
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.dataset.kfVodExpiry = 'true';
+    // Announced like the uptime chip: a screen reader user has no other way to
+    // learn this exists. It changes by the hour at most, so polite is enough.
+    chip.setAttribute('role', 'status');
+    chip.setAttribute('aria-live', 'off');
+    owner.append(chip);
+  }
+  chip.textContent = text;
+  const label = trf('{time} before Kick deletes this recording', { time: text });
+  chip.setAttribute('aria-label', label);
+  chip.title = label;
 }
 
 function applyPlaybackDiagnostics() {
@@ -10468,6 +10712,7 @@ async function runApplyCycle() {
     applyChatHighlights();
     applyPlaybackDiagnostics();
     applyStreamUptime();
+    applyVodExpiry();
     state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
     updateCompatibilityInPlace();
     syncQuickButton();
@@ -11896,6 +12141,10 @@ const TRANSLATIONS = {
     'Show how long the stream has been live': 'Mostrar cuánto tiempo lleva en directo',
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
     'Show stream uptime': 'Mostrar tiempo en directo',
+    'Show VOD expiry': 'Mostrar caducidad del vídeo',
+    'Show how long Kick keeps this recording': 'Mostrar cuánto tiempo conserva Kick esta grabación',
+    'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'Kick borra las grabaciones a los 7 días, o a los 30 si el canal está verificado, y no muestra ese plazo en ninguna parte. En la página de un vídeo, esto lee la fecha de grabación de la propia lista de vídeos de Kick y cuenta atrás hasta ella. No dice nada cuando la grabación es más antigua que la lista que devuelve Kick, o cuando no se puede establecer el nivel: adivinar entre 7 y 30 días sería dar una fecha equivocada con total seguridad.',
+    '{time} before Kick deletes this recording': '{time} antes de que Kick borre esta grabación',
     'Live for {duration}': 'En directo desde hace {duration}',
     '{count} emotes usable in any chat': '{count} emotes utilizables en cualquier chat',
     'subscribed channel': 'canal suscrito',
@@ -12298,6 +12547,10 @@ const TRANSLATIONS = {
     'Show how long the stream has been live': 'Mostrar há quanto tempo a transmissão está ao vivo',
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
     'Show stream uptime': 'Mostrar tempo ao vivo',
+    'Show VOD expiry': 'Mostrar validade do vídeo',
+    'Show how long Kick keeps this recording': 'Mostrar por quanto tempo a Kick guarda esta gravação',
+    'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'A Kick apaga as gravações ao fim de 7 dias, ou 30 num canal verificado, e não mostra esse prazo em lado nenhum. Na página de um vídeo, isto lê a data da gravação da própria lista de vídeos da Kick e faz a contagem decrescente até lá. Não diz nada quando a gravação é mais antiga do que a lista que a Kick devolve, ou quando o nível não pode ser estabelecido — adivinhar entre 7 e 30 dias seria dar uma data errada com toda a confiança.',
+    '{time} before Kick deletes this recording': '{time} antes de a Kick apagar esta gravação',
     'Live for {duration}': 'Ao vivo há {duration}',
     '{count} emotes usable in any chat': '{count} emotes utilizáveis em qualquer chat',
     'subscribed channel': 'canal assinado',
@@ -13327,6 +13580,7 @@ function renderContentPage() {
         ${row('Always start at the highest quality', 'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.', toggle('content.preferBestQuality', value.preferBestQuality, { label: 'Always start at the highest quality' }))}
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.', toggle('content.showUptime', value.showUptime, { label: 'Show stream uptime' }))}
+        ${row('Show how long Kick keeps this recording', 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.', toggle('content.showVodExpiry', value.showVodExpiry, { label: 'Show VOD expiry' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
         ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}

@@ -29,6 +29,8 @@ import {
   findShadowedNames,
   joinCollectibleRarity,
   normalizeChannel,
+  normalizeChannelVideos,
+  findChannelVideo,
   normalizeChatMessage,
   normalizeDeletion,
   normalizeEmoteSets,
@@ -90,6 +92,7 @@ export function createLive(host) {
     EMOTE_USAGE_KEY,
     pageFetch,
     currentChannelSlug,
+    currentVodId,
     plural,
     mergeStickerLibrary,
   } = host;
@@ -219,7 +222,14 @@ export function createLive(host) {
       state.live.channel = null;
       return;
     }
-    if (state.live.slug === slug && state.live.channel) return;
+    if (state.live.slug === slug && state.live.channel) {
+      // Same channel, different recording. Opening a VOD from the channel's own
+      // list is an SPA navigation that changes only the last path segment, so
+      // nothing below re-runs and the retention read has to be reached here or
+      // it never happens at all.
+      await refreshVodRetention(slug);
+      return;
+    }
     teardownRealtime();
     state.live.slug = slug;
     state.live.channel = null;
@@ -230,8 +240,14 @@ export function createLive(host) {
     state.live.rarity = null;
     state.live.inventory = null;
     state.live.standing = { known: false, subscribed: null, following: null, moderator: null };
+    state.live.vod = null;
 
-    if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
+    // The retention chip needs this read too — for the channel's id and its
+    // `verified` flag — so it has to be able to ask for it. Still free on a
+    // channel page, and free on a VOD when the setting is off: the guard is the
+    // route and the setting together, not the setting alone.
+    const wantsVodDate = state.settings.content.showVodExpiry && Boolean(currentVodId());
+    if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents && !wantsVodDate) return;
 
     const channelResponse = await kickFetchJson(endpoints.channel(slug));
     if (state.live.slug !== slug) return; // navigated away mid-flight
@@ -248,9 +264,51 @@ export function createLive(host) {
       return;
     }
 
+    await refreshVodRetention(slug);
     if (state.settings.content.liveEmoteCatalog) await refreshEmoteCatalog(slug);
     if (state.settings.content.liveChatEvents) connectRealtime();
     refreshLiveDiagnostics();
+  }
+
+  /**
+   * Date the VOD this page is showing, if it is showing one.
+   *
+   * One read, on a route that has a VOD id, and only when the setting is on —
+   * a channel page pays nothing for this. Everything about it degrades to
+   * silence: no id, no channel id, a failed read, a changed shape, or an entry
+   * simply not in the returned window all leave `state.live.vod` null, and the
+   * surface renders nothing rather than guessing a deadline.
+   */
+  async function refreshVodRetention(slug) {
+    if (!state.settings.content.showVodExpiry) {
+      state.live.vod = null;
+      return;
+    }
+    const id = currentVodId();
+    if (!id) {
+      // Left a VOD for a channel page: drop the answer rather than let a stale
+      // deadline sit on a different recording.
+      state.live.vod = null;
+      return;
+    }
+    if (state.live.vod?.id === id) return;
+    state.live.vod = null;
+    const channelId = state.live.channel?.id;
+    if (!channelId) return;
+    const response = await kickFetchJson(endpoints.channelVideos(channelId));
+    if (state.live.slug !== slug) return; // navigated away mid-flight
+    if (!response.ok) return;
+    const videos = normalizeChannelVideos(response.body);
+    if (!videos) {
+      recordApiDrift('channel-videos', 'shape-changed');
+      return;
+    }
+    const entry = findChannelVideo(videos, id);
+    // Not a drift report: Kick returns a bounded window, so a recording older
+    // than it is absent by design and there is no single-video read to fall
+    // back to. Absent is an answer, and the answer is to say nothing.
+    if (!entry || !entry.startedAt) return;
+    state.live.vod = { id, startedAt: entry.startedAt, title: entry.title };
   }
 
   /**
