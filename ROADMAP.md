@@ -87,13 +87,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
   Acceptance: One panel shows daily watch progress toward the reward, whether it is unclaimed, global level progress, and per-channel points for the current channel, each reading only endpoints the page already calls and each degrading to nothing when its source is unavailable; nothing claims, spends or votes beyond the existing opt-in reward claim. The Drops half stays out until the authenticated-session blocker clears.
   Complexity: L
 
-- [ ] P3 — R-56, assert derived values, not just probe hooks, when Kick drifts
-  Why: Two whole feature classes died silently this month with every gate green, both the same shape — a probe resolved and something computed from it did not. Detection currently stops at "the hook matched".
-  Evidence: R-38 (a card resolves, `cardSlugFromPath` yields nothing, three chips vanish); `CLAUDE.md` 2026-08-17 (`closest()` returned the `<video>`, three features vanished). `compatibilitySnapshot()` (`src/compatibility.mjs:242`) reports probe ids and fall-throughs only.
-  Touches: `src/compatibility.mjs`, `scripts/verify-extension.mjs`, `test/compatibility.test.js`, and "Next" item 1's fixture reducer
-  Acceptance: Each probe feeding a derived value declares an expectation for that value — a card yields a channel slug, a player container is not the video, a quality row yields a plausible height — and the live gate fails naming both the probe and the derived value when one resolves and the other does not. Landed with the fixture reducer so the same expectations are checkable offline.
-  Complexity: M
-
 ## Research-Driven Additions — 2026-08-18 (re-verification pass)
 
 Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against an unchanged v1.20.0. Continues the R-NN scheme from R-57.

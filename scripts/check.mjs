@@ -454,6 +454,54 @@ const anchoredSurfacesAreManual = (bundle) =>
   && /host\.style\.left = /.test(bundle)
   && /host\.style\.top = /.test(bundle);
 
+/**
+ * Every declared derived expectation actually has a deriver behind it.
+ *
+ * The rot this guards is quiet by construction: `derivedSnapshot` reports an
+ * expectation with no deriver as `unchecked`, which is neither a pass nor a
+ * failure, so adding an expectation and forgetting to wire it produces a check
+ * that never checks anything and never says so.
+ */
+const derivedExpectationsAreWired = (bundle) => {
+  const start = bundle.indexOf('DERIVED_EXPECTATIONS = Object.freeze([');
+  const end = bundle.indexOf('function describeDerived', start === -1 ? 0 : start);
+  if (start === -1 || end === -1) return false;
+  const declared = [...bundle.slice(start, end).matchAll(/id: '([A-Za-z][\w]*)'/g)].map((match) => match[1]);
+  if (declared.length < 3) return false;
+  const derivers = bundle.indexOf('function compatibilityDerivers');
+  if (derivers === -1) return false;
+  const region = bundle.slice(derivers, derivers + 1000);
+  return declared.every((id) => region.includes(`${id}:`));
+};
+
+/**
+ * The verdict is published everywhere the snapshot is taken.
+ *
+ * The live gate reads `html[data-kf-derived]` rather than reaching into the
+ * bundle, so a snapshot taken without publishing it is a snapshot no gate can
+ * see. Counted rather than pattern-matched: the third call site someone adds is
+ * the one that will forget.
+ */
+const compatibilityVerdictIsPublished = (bundle) => {
+  const taken = (bundle.match(/state\.compatibility = compatibilitySnapshot\(/g) || []).length;
+  const published = (bundle.match(/publishCompatibility\(\);/g) || []).length;
+  return taken > 0 && published === taken;
+};
+
+/**
+ * No source file carries a stray control byte.
+ *
+ * Written after one cost an afternoon on 2026-08-18: a scripted edit collapsed
+ * `\b` into a literal U+0008 inside a gate's own regex, so the gate silently
+ * matched nothing. It is invisible in a diff, in a terminal, and in most
+ * editors — the only thing that catches it is looking for it. Tabs, newlines
+ * and carriage returns are the only ones allowed.
+ */
+const CONTROL_BYTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+const withControlBytes = (files) => files
+  .filter(([, text]) => CONTROL_BYTE.test(text))
+  .map(([name, text]) => `${name} at byte ${text.search(CONTROL_BYTE)}`);
+
 const SIZE_BUDGETS = [
   ['dist/kick-focus.user.js', source, 1_000_000, 'Violentmonkey MV3 Alternative page mode, ~1 MB of injected script'],
   ['dist/extension/content/kick-focus.js', content, 1_500_000, 'no injection ceiling; tracked so growth stays visible'],
@@ -469,6 +517,12 @@ for (const [name, text, budget] of SIZE_BUDGETS) {
     console.log(`WARN ${name} is at ${Math.round(used * 100)}% of its ${budget} B budget`);
   }
 }
+
+const sourceFiles = await Promise.all(
+  [...moduleFiles, 'src/runtime.js', 'scripts/check.mjs', 'scripts/build.mjs', 'scripts/verify-extension.mjs', 'scripts/verify-firefox.mjs']
+    .map(async (name) => [name, await read(name)]),
+);
+const controlByteFiles = withControlBytes(sourceFiles);
 
 const checks = [
   [`every artifact is inside its size budget${overBudget.length ? `: ${overBudget.join('; ')}` : ''}`, overBudget.length === 0],
@@ -793,6 +847,9 @@ const checks = [
     && /libraryStore\.write\(result\.stickers\)/.test(source)
     && /libraryStore\.clear\(\)/.test(source)],
   ['emote completion is accepted by click only and never sends', completionIsMouseOnly(source)],
+  [`no source file carries a stray control byte${controlByteFiles.length ? `: ${controlByteFiles.join('; ')}` : ''}`, controlByteFiles.length === 0],
+  ['every declared derived expectation has a deriver behind it', derivedExpectationsAreWired(source)],
+  ['the compatibility verdict is published wherever the snapshot is taken', compatibilityVerdictIsPublished(source)],
   ['anchored surfaces resolve their anchor in the document tree, and declare their flips', anchoredSurfacesResolve(source)],
   ['every anchor-positioning property is feature-detected under its current name', anchorPropertiesAreDetected(source)],
   ['anchored surfaces are manual popovers and keep a hand-positioned fallback', anchoredSurfacesAreManual(source)],
@@ -1176,6 +1233,20 @@ const redProbes = [
     !anchoredSurfacesAreManual("host.setAttribute('popover', 'auto');\nhost.style.left = x;\nhost.style.top = y;")],
   ['popover gate would catch the hand-positioned fallback being dropped',
     !anchoredSurfacesAreManual("host.setAttribute('popover', 'manual');")],
+  ['derived gate would catch an expectation declared with no deriver',
+    !derivedExpectationsAreWired("DERIVED_EXPECTATIONS = Object.freeze([{ id: 'cardSlug' },{ id: 'playerContainer' },{ id: 'qualityHeight' },{ id: 'newThing' }]); function describeDerived(){} function compatibilityDerivers() { return { cardSlug: 1, playerContainer: 2, qualityHeight: 3 }; }")],
+  ['derived gate accepts a fully wired set',
+    derivedExpectationsAreWired("DERIVED_EXPECTATIONS = Object.freeze([{ id: 'cardSlug' },{ id: 'playerContainer' },{ id: 'qualityHeight' }]); function describeDerived(){} function compatibilityDerivers() { return { cardSlug: 1, playerContainer: 2, qualityHeight: 3 }; }")],
+  ['publish gate would catch a snapshot taken without publishing it',
+    !compatibilityVerdictIsPublished('state.compatibility = compatibilitySnapshot(a); state.compatibility = compatibilitySnapshot(b); publishCompatibility();')],
+  ['publish gate accepts every snapshot being published',
+    compatibilityVerdictIsPublished('state.compatibility = compatibilitySnapshot(a); publishCompatibility(); state.compatibility = compatibilitySnapshot(b); publishCompatibility();')],
+  ['control-byte gate would catch a backspace hidden in a regex',
+    withControlBytes([['fake.mjs', ['const re = /', String.fromCharCode(8), 'name/g;'].join('')]]).length === 1],
+  ['control-byte gate accepts tabs and newlines',
+    withControlBytes([['fake.mjs', ['const a = 1;', String.fromCharCode(10), String.fromCharCode(9), 'const b = 2;', String.fromCharCode(13)].join('')]]).length === 0],
+  ['derived gates accept the real bundle',
+    derivedExpectationsAreWired(source) && compatibilityVerdictIsPublished(source)],
   // The live gate itself must be the real thing on this machine, not a skip.
   ['anchor gates accept the real bundle',
     anchoredSurfacesResolve(source) && anchorPropertiesAreDetected(source) && anchoredSurfacesAreManual(source)],

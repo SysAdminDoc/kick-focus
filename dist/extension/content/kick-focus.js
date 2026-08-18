@@ -4300,14 +4300,150 @@ function compatibilitySnapshot(root, options = {}) {
       card: cards.probe,
     },
     missing: required.filter(([, present]) => !present).map(([name]) => name),
+    // Reported beside `healthy` rather than folded into it. `healthy` has always
+    // meant "the shell hooks this build hangs off are present", and other code
+    // and the user-facing message key off that; a derived value breaking is a
+    // different and narrower statement, so it gets its own field instead of
+    // changing what an existing one means.
+    derived: derivedSnapshot(owner, options.derive),
   };
 }
 
-function compatibilitySummary(snapshot) {
-  if (!snapshot || snapshot.healthy) {
-    return `Shell hooks matched${snapshot?.cards ? `; ${snapshot.cards} stream cards found` : ''}.`;
+/**
+ * Probes whose real product is not the element but something computed from it.
+ *
+ * Two whole feature classes died silently in one month, both this exact shape:
+ * a probe resolved, the value derived from it did not, and every gate stayed
+ * green because every gate stopped at "the hook matched". A card resolved while
+ * `cardSlugFromPath` yielded nothing and three chips vanished; `closest()`
+ * returned the `<video>` itself, so a container that was supposed to be an
+ * ancestor was the element, and three more features vanished.
+ *
+ * Each entry pairs a probe with the claim the runtime actually depends on. The
+ * deriver is supplied by the caller rather than imported, because these helpers
+ * live in `runtime.js` — which is concatenated *after* this module — and that
+ * keeps the expectations checkable offline against a fixture with stubs.
+ */
+const DERIVED_EXPECTATIONS = Object.freeze([
+  Object.freeze({
+    id: 'cardSlug',
+    probe: 'card',
+    claim: 'a card yields a channel slug',
+    sample: (owner) => findAllProbe(owner, 'card').elements,
+    judge: (value) => typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value),
+    // Only a clean sweep counts. A discovery page mixes channel cards with
+    // category cards, and `cardSlugFromPath` returns '' for a category on
+    // purpose — so "some cards yield nothing" is the normal state of the home
+    // page, not drift. The defect this exists for was total: every card on the
+    // page resolved and not one produced a slug, and three chips vanished.
+    requireAll: false,
+  }),
+  Object.freeze({
+    id: 'playerContainer',
+    probe: 'video',
+    claim: 'a player container is an ancestor, never the video element itself',
+    sample: (owner) => {
+      try {
+        return [...owner.querySelectorAll('video')].slice(0, 1);
+      } catch {
+        return [];
+      }
+    },
+    // The precise defect: `closest()` matches the element it starts from, so a
+    // container that is the video is not a near miss, it is the bug.
+    judge: (value, source) => Boolean(value)
+      && value !== source
+      && typeof value.contains === 'function'
+      && value.contains(source),
+  }),
+  Object.freeze({
+    id: 'qualityHeight',
+    probe: 'qualityOption',
+    claim: 'a quality row yields a plausible height',
+    sample: (owner) => findAllProbe(owner, 'qualityOption').elements,
+    // 0 is Auto and is a real answer. Anything outside the range of a rung a
+    // player could actually offer means the label was read wrong — which is how
+    // a menu badge once got glued to the rung and written to Kick's own key.
+    judge: (value) => value === 0 || (Number.isFinite(value) && value >= 144 && value <= 4320),
+  }),
+]);
+
+function describeDerived(value) {
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  if (typeof value === 'string') return value === '' ? 'an empty string' : JSON.stringify(value.slice(0, 40));
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'object') return value.tagName ? `<${String(value.tagName).toLowerCase()}>` : 'an object';
+  return typeof value;
+}
+
+/**
+ * Check every derived value whose deriver the caller supplied.
+ *
+ * Three outcomes, deliberately, and for the same reason the live gate has
+ * three: `absent` means Kick rendered nothing to derive from on this route,
+ * which is not a defect — only `broken` is. `unchecked` means no deriver was
+ * passed, so this says nothing either way rather than quietly passing.
+ */
+function derivedSnapshot(root, derive = {}) {
+  const owner = asRoot(root);
+  const results = [];
+  for (const expectation of DERIVED_EXPECTATIONS) {
+    const base = { id: expectation.id, probe: expectation.probe, claim: expectation.claim };
+    const compute = derive[expectation.id];
+    if (typeof compute !== 'function') {
+      results.push({ ...base, outcome: 'unchecked', checked: 0, failed: 0, detail: 'no deriver supplied' });
+      continue;
+    }
+    let sources = [];
+    try {
+      sources = owner ? expectation.sample(owner) : [];
+    } catch {
+      sources = [];
+    }
+    if (!sources.length) {
+      results.push({ ...base, outcome: 'absent', checked: 0, failed: 0, detail: 'nothing to derive from on this route' });
+      continue;
+    }
+    let failed = 0;
+    let firstBad = '';
+    for (const source of sources) {
+      let value;
+      try {
+        value = compute(source);
+      } catch {
+        value = undefined;
+      }
+      if (expectation.judge(value, source)) continue;
+      failed += 1;
+      if (!firstBad) firstBad = describeDerived(value);
+    }
+    const requireAll = expectation.requireAll !== false;
+    const broken = requireAll ? failed > 0 : failed === sources.length;
+    results.push({
+      ...base,
+      outcome: broken ? 'broken' : 'ok',
+      checked: sources.length,
+      failed,
+      detail: broken
+        ? `${failed} of ${sources.length} resolved but derived ${firstBad}`
+        : `${sources.length} checked${failed ? `, ${failed} legitimately yielded nothing` : ''}`,
+    });
   }
-  return `Compatibility needs attention: missing ${snapshot.missing.join(', ')}.`;
+  return results;
+}
+
+function compatibilitySummary(snapshot) {
+  const broken = (snapshot?.derived || []).filter((entry) => entry.outcome === 'broken');
+  // Named by probe *and* by derived value: "card resolved, slug did not" is the
+  // sentence that would have saved a research pass, and "card" alone is not.
+  const derivedNote = broken.length
+    ? ` ${broken.map((entry) => `${entry.probe} resolved but ${entry.claim} failed (${entry.detail})`).join('; ')}.`
+    : '';
+  if (!snapshot || snapshot.healthy) {
+    return `Shell hooks matched${snapshot?.cards ? `; ${snapshot.cards} stream cards found` : ''}.${derivedNote}`;
+  }
+  return `Compatibility needs attention: missing ${snapshot.missing.join(', ')}.${derivedNote}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -8650,6 +8786,46 @@ function qualityOptionGated(control) {
 }
 
 /** The best option this build has seen Kick offer, or '' if it has seen none. */
+/**
+ * The derivers the compatibility snapshot checks its expectations against.
+ *
+ * Passed in rather than imported: these live here, `compatibility.mjs` is
+ * concatenated before this file, and handing them over keeps the same
+ * expectations checkable offline against a fixture with stubs.
+ */
+/**
+ * Publish the compatibility verdict where anything can read it.
+ *
+ * `html[data-kf-derived]` names every derived value that broke, so a drift that
+ * a probe report cannot see — hook matched, computed value did not — is visible
+ * without opening a panel or reaching inside the bundle. The live gate asserts
+ * on this, and it is the fastest way to answer "is the mod actually deriving
+ * anything here" while debugging.
+ */
+function publishCompatibility() {
+  const root = document.documentElement;
+  if (!root || !state.compatibility) return;
+  const broken = (state.compatibility.derived || []).filter((entry) => entry.outcome === 'broken');
+  // Both halves of the sentence: which probe, and which derived value. "card"
+  // alone is what made the last one take a research pass to find.
+  root.dataset.kfDerived = broken.length
+    ? broken.map((entry) => `${entry.probe}:${entry.id}`).join(' ')
+    : 'ok';
+}
+
+function compatibilityDerivers() {
+  return {
+    cardSlug: (card) => cardSlugFromPath(cardPath(card)),
+    playerContainer: (video) => playerContainerFor(video),
+    // A gated rung is one this session cannot pick — Kick offers it and refuses
+    // it — so it has no height to yield and 0 is the honest answer rather than
+    // a failure. Auto is 0 too, and the judge accepts it.
+    qualityHeight: (control) => (qualityOptionGated(control)
+      ? 0
+      : Number(qualitySessionValue(qualityControlLabel(control)))),
+  };
+}
+
 function bestKnownQuality() {
   const raw = state.mediaPreferences[QUALITY_LADDER_KEY];
   return typeof raw === 'string' ? bestQualityOption(raw.split('|')) : '';
@@ -9820,7 +9996,7 @@ function renderStickerGrid(gridHost, visible, view) {
   const columns = stickerGridColumns(grid);
   const slice = visibleWindow(visible, state.runtime.stickerGridAnchor);
   const signature = [view, String(visible.length), String(columns), String(slice.start), String(slice.end),
-    slice.items.map((descriptor) => descriptor.key).join(',')].join('');
+    slice.items.map((descriptor) => descriptor.key).join(',')].join('\u0001');
   if (gridHost.dataset.kfStickerGridSignature === signature) {
     // Same tiles, possibly different state on one of them.
     patchStickerTileStates(gridHost);
@@ -10713,7 +10889,8 @@ async function runApplyCycle() {
     applyPlaybackDiagnostics();
     applyStreamUptime();
     applyVodExpiry();
-    state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
+    state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel', derive: compatibilityDerivers() });
+  publishCompatibility();
     updateCompatibilityInPlace();
     syncQuickButton();
   } catch (error) {
@@ -15064,7 +15241,8 @@ async function copyDiagnostics() {
 }
 
 function runSelfCheck() {
-  state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
+  state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel', derive: compatibilityDerivers() });
+    publishCompatibility();
   const checks = [
     ['document-start marker', Boolean(pageWindow.__kickFocusNetworkDefenseV1)],
     ['SPA lifecycle hook', Boolean(pageWindow.__kickFocusSpaHooksV1)],

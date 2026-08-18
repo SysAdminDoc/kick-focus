@@ -2661,6 +2661,46 @@ function qualityOptionGated(control) {
 }
 
 /** The best option this build has seen Kick offer, or '' if it has seen none. */
+/**
+ * The derivers the compatibility snapshot checks its expectations against.
+ *
+ * Passed in rather than imported: these live here, `compatibility.mjs` is
+ * concatenated before this file, and handing them over keeps the same
+ * expectations checkable offline against a fixture with stubs.
+ */
+/**
+ * Publish the compatibility verdict where anything can read it.
+ *
+ * `html[data-kf-derived]` names every derived value that broke, so a drift that
+ * a probe report cannot see — hook matched, computed value did not — is visible
+ * without opening a panel or reaching inside the bundle. The live gate asserts
+ * on this, and it is the fastest way to answer "is the mod actually deriving
+ * anything here" while debugging.
+ */
+function publishCompatibility() {
+  const root = document.documentElement;
+  if (!root || !state.compatibility) return;
+  const broken = (state.compatibility.derived || []).filter((entry) => entry.outcome === 'broken');
+  // Both halves of the sentence: which probe, and which derived value. "card"
+  // alone is what made the last one take a research pass to find.
+  root.dataset.kfDerived = broken.length
+    ? broken.map((entry) => `${entry.probe}:${entry.id}`).join(' ')
+    : 'ok';
+}
+
+function compatibilityDerivers() {
+  return {
+    cardSlug: (card) => cardSlugFromPath(cardPath(card)),
+    playerContainer: (video) => playerContainerFor(video),
+    // A gated rung is one this session cannot pick — Kick offers it and refuses
+    // it — so it has no height to yield and 0 is the honest answer rather than
+    // a failure. Auto is 0 too, and the judge accepts it.
+    qualityHeight: (control) => (qualityOptionGated(control)
+      ? 0
+      : Number(qualitySessionValue(qualityControlLabel(control)))),
+  };
+}
+
 function bestKnownQuality() {
   const raw = state.mediaPreferences[QUALITY_LADDER_KEY];
   return typeof raw === 'string' ? bestQualityOption(raw.split('|')) : '';
@@ -3831,7 +3871,7 @@ function renderStickerGrid(gridHost, visible, view) {
   const columns = stickerGridColumns(grid);
   const slice = visibleWindow(visible, state.runtime.stickerGridAnchor);
   const signature = [view, String(visible.length), String(columns), String(slice.start), String(slice.end),
-    slice.items.map((descriptor) => descriptor.key).join(',')].join('');
+    slice.items.map((descriptor) => descriptor.key).join(',')].join('\u0001');
   if (gridHost.dataset.kfStickerGridSignature === signature) {
     // Same tiles, possibly different state on one of them.
     patchStickerTileStates(gridHost);
@@ -4724,7 +4764,8 @@ async function runApplyCycle() {
     applyPlaybackDiagnostics();
     applyStreamUptime();
     applyVodExpiry();
-    state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
+    state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel', derive: compatibilityDerivers() });
+  publishCompatibility();
     updateCompatibilityInPlace();
     syncQuickButton();
   } catch (error) {
@@ -9075,7 +9116,8 @@ async function copyDiagnostics() {
 }
 
 function runSelfCheck() {
-  state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel' });
+  state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel', derive: compatibilityDerivers() });
+    publishCompatibility();
   const checks = [
     ['document-start marker', Boolean(pageWindow.__kickFocusNetworkDefenseV1)],
     ['SPA lifecycle hook', Boolean(pageWindow.__kickFocusSpaHooksV1)],

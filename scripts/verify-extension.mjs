@@ -1187,6 +1187,28 @@ try {
     Object.values(probes).every((list) => list.some((probe) => probe.count >= 0)),
     'a -1 here is a selector Kick made invalid, not merely absent');
 
+  // R-56: the half a probe report cannot answer. A hook matching says nothing
+  // about whether the value computed from it survived, and twice this month a
+  // whole feature class died with every probe green. The mod publishes its own
+  // verdict on `html[data-kf-derived]`, built from the same derivers the apply
+  // cycle uses, so this reads that rather than recomputing anything — and reads
+  // it off the document rather than out of a settings panel, so it cannot be
+  // knocked out by whatever the preceding probes left in the profile.
+  const derivedProbe = await evaluate(pageClient, `(async () => {
+    const verdict = await __kfWait(() => document.documentElement.dataset.kfDerived || null, { timeout: 12000 });
+    if (!verdict) return { skip: 'the mod published no compatibility verdict on this route' };
+    const cards = document.querySelectorAll('[data-testid="livestream-results-card"], [data-testid="stream-card"]').length;
+    return { ok: true, verdict, cards };
+  })()`);
+  const derivedState = derivedProbe.value || {};
+  recordProbe('every probe that feeds a derived value still produces one', derivedState,
+    derivedState.ok === true && derivedState.verdict === 'ok',
+    derivedState.ok
+      ? (derivedState.verdict === 'ok'
+        ? `nothing broken; ${derivedState.cards} cards on this route`
+        : `resolved but derived nothing: ${derivedState.verdict} (probe:derivedValue)`)
+      : derivedState.why);
+
   // The library provider against Chromium's real IndexedDB. The pure split and
   // merge are covered by node:test with a stub; what only a browser can answer
   // is whether the database this build opens actually holds the whole record

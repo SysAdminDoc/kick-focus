@@ -2,6 +2,16 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.24.0 — 2026-08-18
+
+### Added
+
+- **Drift detection now checks what a hook is *for*, not just that it matched.** Twice this month a feature stopped working while every check stayed green, both the same shape: the element was found and the value computed from it was not — a stream card that yields no channel name, a player container that turns out to be the video itself. Each of those now declares what it is supposed to produce, and the page records which ones failed, so a break shows up as "the card was found but the channel name was not" instead of silence. A route that simply does not render something is reported as such rather than as a failure.
+
+### Changed
+
+- **The distribution and listing posture is written down.** A section in the README states the single purpose, that nothing is collected or transmitted, why no remote code ships, why the userscript asks for broad connect permission and what uses it, and which channel each of the three artifacts could be listed on. Nothing is submitted anywhere; this exists so the answers are decided calmly rather than during a review.
+
 ## 1.23.0 — 2026-08-18
 
 ### Added
