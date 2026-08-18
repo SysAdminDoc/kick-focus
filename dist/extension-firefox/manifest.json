@@ -55,9 +55,6 @@
       "all_frames": false
     }
   ],
-  "web_accessible_resources": [
-    "content/kick-focus.js"
-  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "kick-focus@sysadmindoc",

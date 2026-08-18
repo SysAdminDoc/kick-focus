@@ -63,6 +63,8 @@ The companion is unsigned and installs unpacked. It is not published to any stor
 
 The build also emits `dist/extension-firefox/` and `dist/kick-focus-firefox-v<version>.zip`. Firefox users can open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/extension-firefox/manifest.json`. This unsigned Manifest V2 package injects the same page bundle through a local web-accessible bridge and blocks the same Kick-initiated hosts.
 
+The Firefox package injects its page bundle as inline source rather than loading it from a `moz-extension://` URL. That URL contains a per-install UUID which is stable for the life of the install, so putting it in the page would hand kick.com an identifier that survives clearing cookies. The trade is that inline injection depends on kick.com continuing to ship no Content Security Policy — verified absent 2026-08-18. If Kick ever sends `script-src` without `'unsafe-inline'`, the Firefox companion's page layer stops loading and the userscript remains the working path on that browser.
+
 **Firefox channel limitations:** Temporary add-ons loaded through `about:debugging` are removed on restart. Firefox Release and Beta cannot install unsigned XPIs persistently at all. For a persistent unsigned install, use Firefox Developer Edition, Nightly, or ESR with `xpinstall.signatures.required` set to `false` in `about:config`. This is a Mozilla policy, not a limitation of this project.
 
 ![Kick Focus companion popup](design/screenshots/extension-popup.png)

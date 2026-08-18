@@ -78,13 +78,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P1 — trust, accessibility, and two expired blockers
 
-- [ ] P1 — R-42, stop the Firefox package handing kick.com a per-install identifier
-  Why: The MV2 bridge injects the page bundle by `src`, putting `moz-extension://<per-install-UUID>/…` into the DOM where any Kick script can read it; that UUID is randomised per install, stable for its life, and survives cookie clears — a supercookie shipped by a mod that sells privacy.
-  Evidence: `src/extension/manifest.firefox.json` `web_accessible_resources: ["content/kick-focus.js"]`; `src/extension/bridge.firefox.js:19-21`. Removing the element on load (:22) does not help — the URL is already in the DOM and in `performance.getEntriesByType('resource')`. MV3's `use_dynamic_url` and Chromium's Aug-2024 resource-UUID randomisation have no MV2 equivalent; the MV3 package is unaffected because it uses `world: "MAIN"` and declares no web-accessible resources.
-  Touches: `src/extension/bridge.firefox.js`, `src/extension/manifest.firefox.json`, `scripts/check.mjs`, `README.md`
-  Acceptance: The extension URL never enters the page — the bridge reads the bundle text from the extension and injects it inline, `web_accessible_resources` is dropped, and a gate asserts the Firefox manifest declares none. The CSP dependency this creates (Kick ships no CSP today, confirmed 2026-08-17) is stated in the README beside the Firefox install instructions, with the fallback behaviour if that changes.
-  Complexity: M
-
 - [ ] P1 — R-43, validate the sender on every runtime message
   Why: Both background scripts act on `fetch-blocklist`, `telemetry-preference` and `reset-count` without checking who sent them; the bridge already fixed its half of this class and the service worker did not.
   Evidence: `src/extension/background.js:33` onwards, `src/extension/background.firefox.js`. GitHub Security Lab names missing `onMessage`/`onMessageExternal` sender validation as one of three canonical extension vulnerability classes. Documented ceiling: a compromised renderer can spoof `MessageSender.id`/`.url`, so this hardens against other extensions, not against a compromised renderer — say so in the comment rather than overclaiming.

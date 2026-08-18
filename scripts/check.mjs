@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, VERSION } from '../src/core.mjs';
 
@@ -19,8 +19,19 @@ const adRules = await readJson('dist/extension/rules/ads.json');
 const telemetryRules = await readJson('dist/extension/rules/telemetry.json');
 const devManifest = await readJson('dist/extension/manifest.dev.json');
 const firefoxManifest = await readJson('dist/extension-firefox/manifest.json');
-const firefoxContent = await read('dist/extension-firefox/content/kick-focus.js');
 const firefoxBridge = await read('dist/extension-firefox/content/bridge.js');
+/**
+ * The Firefox page bundle, recovered from the string the bridge carries.
+ *
+ * It is no longer a file — shipping it as one meant injecting it from a
+ * moz-extension:// URL, which leaked a per-install UUID into the page. Parsing
+ * it back out keeps every bundle gate below covering the Firefox artifact, and
+ * proves the embedded copy is a complete, valid bundle rather than a truncated
+ * or mis-escaped one.
+ */
+const firefoxBundleLiteral = firefoxBridge.match(/^const PAGE_BUNDLE = (".*");$/m)?.[1] || '';
+const firefoxContent = firefoxBundleLiteral ? JSON.parse(firefoxBundleLiteral) : '';
+const firefoxHasSeparateBundle = await stat(resolve('dist/extension-firefox/content/kick-focus.js')).then(() => true, () => false);
 const firefoxBackground = await read('dist/extension-firefox/background.js');
 const popup = await read('dist/extension/popup.js');
 const extensionZip = await readFile(resolve(`dist/kick-focus-extension-v${VERSION}.zip`));
@@ -877,9 +888,17 @@ const checks = [
     && firefoxManifest.background?.persistent === false],
   ['Firefox requests the blocking permission', firefoxManifest.permissions?.includes('webRequestBlocking')],
   ['Firefox content bridge runs at document_start', firefoxManifest.content_scripts?.[0]?.run_at === 'document_start'],
-  ['Firefox page bundle is web-accessible', firefoxManifest.web_accessible_resources?.includes('content/kick-focus.js')],
-  ['Firefox page bundle contains the settings UI', firefoxContent.includes('data-kf-settings-shell')],
-  ['Firefox bridge injects the local page bundle', firefoxBridge.includes("runtime.getURL('content/kick-focus.js')")],
+  // The Firefox package used to inject its page bundle from a moz-extension://
+  // URL, which put a per-install UUID into kick.com's DOM — a supercookie any
+  // script on the page could read, on a build that sells privacy. The bundle is
+  // now carried inside the bridge, so these three assert the leak stays closed.
+  ['Firefox manifest exposes no web-accessible resource',
+    !('web_accessible_resources' in firefoxManifest)],
+  ['Firefox bridge carries the page bundle rather than fetching it',
+    firefoxBridge.includes('data-kf-settings-shell') && firefoxBridge.includes('script.textContent = PAGE_BUNDLE')],
+  ['Firefox bridge never puts an extension URL in the page',
+    !/getURL\(\s*['"]content\//.test(firefoxBridge) && !/script\.src\s*=/.test(firefoxBridge)],
+  ['Firefox package ships no separate page bundle to leak', !firefoxHasSeparateBundle],
   ['Firefox network layer uses blocking listeners', firefoxBackground.includes('onBeforeRequest')
     && firefoxBackground.includes("['blocking']")
     && firefoxBackground.includes('return { cancel: true }')],

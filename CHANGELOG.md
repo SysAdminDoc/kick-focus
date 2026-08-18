@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- **The Firefox package no longer hands kick.com a permanent identifier.** It used to inject its page bundle from a `moz-extension://` address, and that address contains a UUID which Firefox generates per install and never changes — so any script on the page could read it as a tracking identifier that survives clearing cookies. The bundle is now carried inside the extension's own bridge and injected as source, the address never reaches the page, and the package no longer marks anything web-accessible. This depends on Kick shipping no Content Security Policy, which it does not; the README says what happens if that changes.
 - **The interface now says which language it is written in.** Kick's page declares English, and that declaration reaches into this build's own panels, so with the interface set to Español or Português a screen reader was announcing every translated string with English phonemes. Each of the four surfaces this build owns — the settings shell, the emote suggestion list, the emote hover card, and the header control — now declares the language it is actually in, and follows the setting when it changes. The companion popup is unchanged and still declares English, because its copy is English.
 
 ## 1.20.0 — 2026-08-17

@@ -172,13 +172,38 @@ const firefoxManifest = `${JSON.stringify(firefoxManifestObj, null, 2)}\n`;
 const firefoxBackground = (await read('src/extension/background.firefox.js'))
   .replace('__AD_HOSTS__', JSON.stringify(AD_HOSTS))
   .replace('__TELEMETRY_HOSTS__', JSON.stringify(cancellableTelemetryHosts()));
+/**
+ * The Firefox bridge carries the page bundle as a string rather than fetching it.
+ *
+ * MV2 content scripts are isolated, so the page bundle has to be injected — and
+ * the obvious way, a `<script src=runtime.getURL(...)>`, puts
+ * `moz-extension://<uuid>/…` into the page. Firefox's extension UUID is
+ * randomised per install and stable for its life, so any script on kick.com
+ * could read it as a tracking identifier that survives clearing cookies. That is
+ * a supercookie shipped by a build whose whole posture is privacy.
+ *
+ * Embedding the source and assigning it to `textContent` means the extension's
+ * URL never enters the page, and it lets `web_accessible_resources` be dropped
+ * altogether. `JSON.stringify` does the escaping, so nothing in the bundle —
+ * backslashes, backticks, `${`, or a literal `</script>` — can break out.
+ * Assigning to `textContent` rather than `innerHTML` also means the browser
+ * never re-parses the text as markup.
+ */
+const firefoxBridge = (await read('src/extension/bridge.firefox.js'))
+  // A replacer *function*, not a string: the bundle contains `$&`, `` $` `` and
+  // `$'` sequences, and String.replace would interpret those in a replacement
+  // string and splice pieces of the file into itself.
+  .replace('"__PAGE_BUNDLE__"', () => JSON.stringify(`/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`));
+if (firefoxBridge.includes('__PAGE_BUNDLE__')) {
+  throw new Error('Firefox bridge still carries the __PAGE_BUNDLE__ placeholder — the page script would be empty.');
+}
+
 const firefoxFiles = [
   ['manifest.json', firefoxManifest],
   ['background.js', firefoxBackground],
   ['popup.html', await read('src/extension/popup.html')],
   ['popup.js', await read('src/extension/popup.js')],
-  ['content/bridge.js', await read('src/extension/bridge.firefox.js')],
-  ['content/kick-focus.js', `/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`],
+  ['content/bridge.js', firefoxBridge],
 ];
 
 for (const [name, contents] of firefoxFiles) {

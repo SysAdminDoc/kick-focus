@@ -1,6 +1,10 @@
 /**
- * Firefox MV2 bridge. The page bundle is injected into the page world through
- * a local web-accessible script because MV2 content scripts are isolated.
+ * Firefox MV2 bridge. MV2 content scripts are isolated, so the page bundle has
+ * to be injected — and it is carried here as source rather than loaded from a
+ * `moz-extension://` URL. That URL contains a per-install UUID which is stable
+ * for the life of the install, so putting it in the page hands kick.com a
+ * tracking identifier that survives clearing cookies. The build replaces the
+ * placeholder below and refuses to emit a bridge that still contains it.
  */
 
 const api = globalThis.browser || globalThis.chrome;
@@ -14,12 +18,20 @@ function markCompanion() {
   return true;
 }
 
+/** Replaced at build time with the page bundle, as a JSON string literal. */
+const PAGE_BUNDLE = "__PAGE_BUNDLE__";
+
 function injectPageScript() {
   const script = document.createElement('script');
-  script.src = api.runtime.getURL('content/kick-focus.js');
+  // textContent, never src: no extension URL reaches the page, and the browser
+  // does not re-parse the text as markup on the way in.
+  script.textContent = PAGE_BUNDLE;
   script.dataset.kickFocusFirefox = 'true';
   (document.head || document.documentElement).append(script);
-  script.addEventListener('load', () => script.remove(), { once: true });
+  // An inline script has already run by the time append() returns, so the
+  // element can go immediately rather than waiting for a load event that will
+  // never fire.
+  script.remove();
 }
 
 if (!markCompanion()) {
