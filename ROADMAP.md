@@ -78,13 +78,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P1 — trust, accessibility, and two expired blockers
 
-- [ ] P1 — R-44, put the artifact under a size budget before it crosses the injection ceiling
-  Why: The userscript grows about 25 KB per release and Violentmonkey's MV3 Alternative page mode — the only mode giving real `document-start` on Chromium — is advisory-limited to roughly 1 MB. Crossing it degrades injection timing silently, which is the hardest class of failure this project has to find.
-  Evidence: `dist/kick-focus.user.js` by tag — v1.14.0 612,899 B, v1.16.0 637,041 B, v1.17.0 695,234 B, v1.18.0 710,582 B, v1.19.0 738,834 B, HEAD 763,775 B. `README.md:101` records the ~1 MB advisory limit. None of the 159 checks in `scripts/check.mjs` measures a byte count. Greasy Fork's 2 MB cap is the second ceiling.
-  Touches: `scripts/check.mjs`, `scripts/build.mjs`, `README.md`
-  Acceptance: A gate fails when any artifact exceeds a declared budget and warns within 15% of it; the budget and its source are named in a comment; the build prints each artifact's size so growth is visible per release. Confirm the real Violentmonkey limit when the manager-install blocker clears and adjust the number rather than guessing again.
-  Complexity: S
-
 - [ ] P1 — R-45, wire the userscript update channel; the repo is public now
   Why: `Roadmap_Blocked.md` blocks R-24 on "a private raw URL 404s for every installed script, so this cannot be wired until the repo is public". It is public. Without `@updateURL` the userscript — the only artifact that reaches Windows and macOS users unassisted — can never ship a fix to anyone who already installed it.
   Evidence: `gh repo view SysAdminDoc/kick-focus` reports `"visibility":"PUBLIC"` (2026-08-17); `origin` is `https://github.com/SysAdminDoc/kick-focus.git`. Counter-evidence to weigh rather than ignore: every high-confidence 2025–2026 extension compromise was distribution-channel takeover, including the Feb 2025 Greasy Fork inactive-account incident that injected payment-scraping code into two live scripts.

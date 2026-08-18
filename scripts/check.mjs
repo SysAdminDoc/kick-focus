@@ -362,7 +362,42 @@ const everyMessageChecksSender = (background) => {
     && opens.every(({ index }) => /^\s*if \(!from\w+\(sender\)\)/.test(lines[index + 1] || ''));
 };
 
+/**
+ * How large each shipped artifact may get, and why that number.
+ *
+ * The userscript is the one with a real ceiling. Violentmonkey 2.47.0+ is the
+ * first MV3 release, and it only gives true `document-start` injection in
+ * "Alternative page mode", which its own release notes describe as limited to
+ * roughly 1 MB of injected script. Crossing that does not error — injection
+ * silently lands late, which is the hardest class of failure this project has.
+ * Greasy Fork's 2 MB cap is the second, looser ceiling.
+ *
+ * Growth is real: the userscript went 612,899 B at v1.14.0 to 765,227 B here,
+ * about 25 KB a release. The budget exists so that trend fails a gate before it
+ * fails a user, and the warning band makes it visible a few releases out.
+ *
+ * The Firefox bridge is deliberately larger — it carries the page bundle as a
+ * string so no extension URL reaches the page — and is not injected by a
+ * userscript manager, so the 1 MB rule does not apply to it.
+ */
+const SIZE_BUDGETS = [
+  ['dist/kick-focus.user.js', source, 1_000_000, 'Violentmonkey MV3 Alternative page mode, ~1 MB of injected script'],
+  ['dist/extension/content/kick-focus.js', content, 1_500_000, 'no injection ceiling; tracked so growth stays visible'],
+  ['dist/extension-firefox/content/bridge.js', firefoxBridge, 1_500_000, 'carries the page bundle inline; no injection ceiling'],
+];
+const overBudgetIn = (budgets) => budgets
+  .filter(([, text, budget]) => text.length > budget)
+  .map(([name, text, budget, why]) => `${name} is ${text.length} B, over its ${budget} B budget (${why})`);
+const overBudget = overBudgetIn(SIZE_BUDGETS);
+for (const [name, text, budget] of SIZE_BUDGETS) {
+  const used = text.length / budget;
+  if (used > 0.85 && used <= 1) {
+    console.log(`WARN ${name} is at ${Math.round(used * 100)}% of its ${budget} B budget`);
+  }
+}
+
 const checks = [
+  [`every artifact is inside its size budget${overBudget.length ? `: ${overBudget.join('; ')}` : ''}`, overBudget.length === 0],
   ['every privileged Chromium message type checks its sender', everyMessageChecksSender(background)],
   ['every privileged Firefox message type checks its sender', everyMessageChecksSender(firefoxBackground)],
   ['every top-level host declares the interface language',
@@ -946,6 +981,11 @@ const checks = [
 // ever becomes vacuous (passes on empty/hostile input), its probe returns true
 // and this fails — the gate's proof that it can actually fire.
 const redProbes = [
+  ['size budget would reject an artifact one byte over',
+    overBudgetIn([['a.js', 'x'.repeat(11), 10, 'test']]).length === 1],
+  ['size budget accepts an artifact exactly at its budget',
+    overBudgetIn([['a.js', 'x'.repeat(10), 10, 'test']]).length === 0],
+  ['size budget accepts the real artifacts', overBudgetIn(SIZE_BUDGETS).length === 0],
   ['sender gate would catch a handler that acts before checking',
     !everyMessageChecksSender([
       "if (message?.type === 'a') {", '    if (!fromKickPage(sender)) { return; }',

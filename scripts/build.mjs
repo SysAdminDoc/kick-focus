@@ -56,7 +56,10 @@ const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${
 await mkdir(resolve(root, 'dist'), { recursive: true });
 const userscript = `${metadata.replaceAll('__VERSION__', VERSION)}${body}`;
 await writeFile(resolve(root, 'dist/kick-focus.user.js'), userscript, 'utf8');
-console.log('Built dist/kick-focus.user.js');
+// Printed every build so the growth trend is visible in the log rather than
+// only when the budget gate in check.mjs finally trips. The userscript is the
+// one with a real ceiling — see SIZE_BUDGETS there for the number and why.
+console.log(`Built dist/kick-focus.user.js (${userscript.length.toLocaleString('en-US')} bytes)`);
 
 // ---------------------------------------------------------------------------
 // Companion extension
