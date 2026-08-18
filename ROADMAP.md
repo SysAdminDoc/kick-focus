@@ -78,13 +78,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P1 — trust, accessibility, and two expired blockers
 
-- [ ] P1 — R-45, wire the userscript update channel; the repo is public now
-  Why: `Roadmap_Blocked.md` blocks R-24 on "a private raw URL 404s for every installed script, so this cannot be wired until the repo is public". It is public. Without `@updateURL` the userscript — the only artifact that reaches Windows and macOS users unassisted — can never ship a fix to anyone who already installed it.
-  Evidence: `gh repo view SysAdminDoc/kick-focus` reports `"visibility":"PUBLIC"` (2026-08-17); `origin` is `https://github.com/SysAdminDoc/kick-focus.git`. Counter-evidence to weigh rather than ignore: every high-confidence 2025–2026 extension compromise was distribution-channel takeover, including the Feb 2025 Greasy Fork inactive-account incident that injected payment-scraping code into two live scripts.
-  Touches: `src/metadata.txt`, `scripts/build.mjs`, the Firefox `updates.json`, `README.md`, `Roadmap_Blocked.md` (delete the entry)
-  Acceptance: `@downloadURL`/`@updateURL` point at a raw HTTPS URL on a tag, not a moving branch; the Firefox update manifest carries a sha256 `update_hash`; the README states the update channel and how to turn it off; hardware-key 2FA on the GitHub account is confirmed before the URL ships, and the repo is never transferred.
-  Complexity: S
-
 - [ ] P1 — R-46, prove the Firefox companion against a real Firefox
   Why: `Roadmap_Blocked.md` blocks the Firefox live proof on "no Firefox installation or profile exists in this checkout". Firefox 153.0 is installed. The MV2 package's blocking listener, the bridge handshake, the popup, and R-42's inline-injection change are all currently unproven anywhere.
   Evidence: `C:\Program Files\Mozilla Firefox\firefox.exe` reports "Mozilla Firefox 153.0" (2026-08-17); Playwright's `firefox-1538` is also present. Firefox 128+ supports WebDriver BiDi `webExtension.install` for temporary unsigned add-ons — the zero-dependency equivalent of the Chromium gate's CDP `Extensions.loadUnpacked`.
