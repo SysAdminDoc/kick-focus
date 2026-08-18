@@ -871,10 +871,15 @@ try {
       const host = document.getElementById('kick-focus-emote-tooltip');
       if (!host || host.dataset.kfOpen !== 'true') return null;
       const style = getComputedStyle(host);
+      const rect = host.getBoundingClientRect();
       return {
         lines: [...host.shadowRoot.querySelectorAll('[data-kf-tooltip-card] div')].map((n) => n.textContent),
         pointerEvents: style.pointerEvents,
-        left: parseFloat(style.left),
+        // The rect, not the computed \`left\`: on the top-layer path nothing sets
+        // an inset at all, so \`left\` reads \`auto\` and the old numeric read
+        // would have gone NaN the moment the anchored path engaged.
+        left: rect.left,
+        onScreen: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
       };
     };
     // Read synchronously: showChatEmoteTooltip renders in the same tick, and
@@ -894,9 +899,79 @@ try {
     tip.ok === true
       && Array.isArray(tip.shown?.lines) && tip.shown.lines.length >= 2
       && tip.shown.pointerEvents === 'none'
-      && tip.shown.left >= 8
+      && tip.shown.onScreen === true
       && tip.afterUnrelated === null,
     tip.ok ? `lines ${JSON.stringify(tip.shown?.lines)}; unrelated image opened nothing` : 'probe failed');
+
+  // R-52: the hover card in the top layer, measured under the two conditions
+  // that break a hand-positioned surface — an anchor hard against a viewport
+  // edge, and an anchor inside a container that clips its overflow. The card
+  // must escape the container and still land wholly on screen.
+  const topLayerProbe = await evaluate(pageClient, `(async () => {
+    const settle = () => new Promise((done) => setTimeout(done, 300));
+    const supported = typeof HTMLElement.prototype.showPopover === 'function'
+      && CSS.supports('position-area: block-start')
+      && CSS.supports('position-try-fallbacks: flip-block');
+    if (!supported) return { skip: 'this engine has no anchored top layer, so the hand-positioned path is the one under test' };
+
+    // A chat-shaped container: scrolls, clips, and sits near the bottom-right.
+    const scroller = document.createElement('div');
+    scroller.style.cssText = 'position:fixed;right:8px;bottom:8px;width:280px;height:180px;overflow:auto;contain:paint';
+    const filler = document.createElement('div');
+    filler.style.cssText = 'height:400px;padding-top:12px';
+    const image = document.createElement('img');
+    image.src = 'https://files.kick.com/emotes/000/fullsize';
+    image.dataset.kfChatEmoteSave = 'kf-probe-top-layer';
+    image.style.cssText = 'display:block;width:28px;height:28px;margin-left:8px';
+    filler.append(image);
+    scroller.append(filler);
+    document.body.append(scroller);
+    try {
+      image.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      const host = document.getElementById('kick-focus-emote-tooltip');
+      if (!host || host.dataset.kfOpen !== 'true') return { ok: false, why: 'the hover card did not open on the probe emote' };
+      const card = host.getBoundingClientRect();
+      const box = scroller.getBoundingClientRect();
+      const anchor = image.getBoundingClientRect();
+      return {
+        ok: true,
+        // In the top layer at all: this is what makes clipping impossible,
+        // rather than a z-index this build merely expects to win.
+        topLayer: host.matches(':popover-open'),
+        anchored: host.dataset.kfAnchored === 'true',
+        // Resolved through the anchor, not left parked in a corner — the exact
+        // shape the tree-scope trap produces.
+        positionAnchor: host.style.getPropertyValue('position-anchor'),
+        anchorName: image.style.getPropertyValue('anchor-name'),
+        // Escapes the clipping container...
+        escapesContainer: card.top < box.top - 1 || card.left < box.left - 1,
+        // ...and is still wholly on screen at the far corner of the viewport.
+        onScreen: card.left >= 0 && card.top >= 0 && card.right <= innerWidth && card.bottom <= innerHeight,
+        // Placed against its own anchor rather than the viewport's corner.
+        tracksAnchor: Math.abs(card.left - anchor.left) < 40,
+        card: { top: Math.round(card.top), left: Math.round(card.left), right: Math.round(card.right), bottom: Math.round(card.bottom) },
+        container: { top: Math.round(box.top), left: Math.round(box.left) },
+        viewport: { w: innerWidth, h: innerHeight },
+      };
+    } finally {
+      scroller.remove();
+      await settle();
+    }
+  })()`);
+  const layer = topLayerProbe.value || {};
+  recordProbe('the hover card renders in the top layer, escaping a clipping container at a viewport edge', layer,
+    layer.ok === true
+      && layer.topLayer === true
+      && layer.anchored === true
+      && layer.escapesContainer === true
+      && layer.onScreen === true,
+    layer.ok ? `card ${JSON.stringify(layer.card)} vs container ${JSON.stringify(layer.container)} in ${layer.viewport?.w}x${layer.viewport?.h}` : layer.why);
+  recordProbe('the hover card resolves its anchor rather than silently parking in a corner', layer,
+    layer.ok === true
+      && layer.positionAnchor === '--kf-emote-card'
+      && layer.anchorName === '--kf-emote-card'
+      && layer.tracksAnchor === true,
+    layer.ok ? `position-anchor ${JSON.stringify(layer.positionAnchor)} on the host, anchor-name ${JSON.stringify(layer.anchorName)} on the emote` : layer.why);
 
   // The Focus button is the one control most people ever press, and nothing
   // asserted that pressing it did anything at all — the settings panel was only
@@ -1405,6 +1480,12 @@ try {
       const host = document.getElementById('kick-focus-emote-complete');
       const rows = [...(host?.shadowRoot?.querySelectorAll('[data-kf-complete-key]') || [])];
       const opened = host?.dataset.kfOpen === 'true' && rows.length > 0;
+      // Read before the accepting click, which closes the list.
+      const anchoredList = host?.dataset.kfAnchored === 'true';
+      const topLayer = anchoredList ? host.matches(':popover-open') : null;
+      const listRect = host?.getBoundingClientRect();
+      const listOnScreen = Boolean(listRect) && listRect.left >= 0 && listRect.top >= 0
+        && listRect.right <= innerWidth && listRect.bottom <= innerHeight;
       // Every row must clear the pointer-target floor the rest of the UI holds.
       const smallest = rows.length ? Math.min(...rows.map((row) => row.getBoundingClientRect().height)) : 0;
       const chosen = rows[0]?.textContent.trim();
@@ -1415,6 +1496,9 @@ try {
         name,
         opened,
         chosen,
+        anchoredList,
+        topLayer,
+        listOnScreen,
         labels: rows.map((row) => row.textContent.trim()),
         smallest,
         text: input.textContent || '',
@@ -1442,6 +1526,13 @@ try {
     complete.ok === true && Array.isArray(complete.submits) && complete.submits.length === 0
       && complete.smallest >= 24,
     complete.ok ? `events on the composer ${JSON.stringify(complete.submits)}; smallest row ${Math.round(complete.smallest)}px` : complete.why);
+  // R-52 again, for the other surface: on an engine with a top layer the list
+  // is in it, and either way it lands wholly on screen.
+  recordProbe('the completion list opens in the top layer, wholly on screen', complete,
+    complete.ok === true
+      && complete.listOnScreen === true
+      && (complete.anchoredList === true ? complete.topLayer === true : complete.topLayer === null),
+    complete.ok ? `anchored ${complete.anchoredList}, in the top layer ${complete.topLayer}, on screen ${complete.listOnScreen}` : complete.why);
 
   // The chip on a discovery card, and the convergence behind it. Kick's own
   // cards are on screen already, so this uses a real one; the "other tab" is a

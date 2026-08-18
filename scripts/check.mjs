@@ -390,6 +390,70 @@ const everyMessageChecksSender = (background) => {
  * string so no extension URL reaches the page — and is not injected by a
  * userscript manager, so the 1 MB rule does not apply to it.
  */
+/**
+ * The two anchored surfaces resolve their anchor, and keep the path that does
+ * not need one.
+ *
+ * Anchor names are tree-scoped, and this build's surfaces live in shadow roots
+ * whose hosts sit in the document tree. A `position-anchor` written into one of
+ * those shadow stylesheets resolves against the shadow tree, where a name set
+ * on a page element does not exist. Measured in Chrome 151 on 2026-08-18: that
+ * spelling does not throw and does not warn — it simply does not anchor, and
+ * the surface lands in the corner of the viewport. The only correct place for
+ * it is an inline style on the host, which shares the document tree with the
+ * anchor, so a colon-form `position-anchor` surviving into a bundle is the
+ * defect. `CSS.supports()` arguments are stripped first, since the feature
+ * detect legitimately names the property in that form.
+ */
+const anchoredSurfacesResolve = (bundle) => {
+  const withoutDetects = bundle.replace(/CSS\.supports\('[^']*'\)/g, '');
+  if (/position-anchor\s*:/.test(withoutDetects)) return false;
+  if (!/setProperty\('position-anchor', name\)/.test(bundle)) return false;
+  // Counted without the detects for the same reason they are stripped above:
+  // `canAnchorPopover` names the property legitimately, and it is not a rule.
+  const flips = (withoutDetects.match(/position-try-fallbacks:/g) || []).length;
+  const anchoredHosts = (bundle.match(/:host\(\[data-kf-anchored="true"\]\)/g) || []).length;
+  // Every anchored host declares its own flips: a surface that opts into the
+  // top layer without them cannot come back on screen at a viewport edge.
+  return flips >= 2 && flips === anchoredHosts;
+};
+
+/**
+ * Every anchor-positioning property this build leans on is feature-detected.
+ *
+ * The names churned during standardisation — `inset-area` became
+ * `position-area`, `position-try-options` became `position-try-fallbacks` — and
+ * Chrome 151 answers false for both older spellings. An undetected property
+ * does not fail loudly; it drops out of the cascade, and the surface is placed
+ * by whatever is left.
+ */
+const anchorPropertiesAreDetected = (bundle) => {
+  const start = bundle.indexOf('function canAnchorPopover');
+  if (start === -1) return false;
+  const region = bundle.slice(start, start + 1200);
+  return ['anchor-name', 'position-anchor', 'position-area', 'position-try-fallbacks']
+    .every((property) => region.includes(`CSS.supports('${property}:`))
+    && /showPopover/.test(region)
+    && !region.includes('inset-area')
+    && !region.includes('position-try-options');
+};
+
+/**
+ * A surface in the top layer is `manual`, and still knows how to place itself.
+ *
+ * An `auto` popover installs a close watcher: Escape would be consumed here
+ * instead of reaching Kick's composer, and any outside click would light-dismiss
+ * — which for a card sitting under the cursor means fighting the click that was
+ * meant for chat. R-52's acceptance is that keyboard and focus behaviour are
+ * unchanged, and `manual` is what delivers it. The hand-positioned path stays
+ * for engines without a top layer, so both surfaces must still compute one.
+ */
+const anchoredSurfacesAreManual = (bundle) =>
+  /setAttribute\('popover', 'manual'\)/.test(bundle)
+  && !/'popover', 'auto'|popover="auto"/.test(bundle)
+  && /host\.style\.left = /.test(bundle)
+  && /host\.style\.top = /.test(bundle);
+
 const SIZE_BUDGETS = [
   ['dist/kick-focus.user.js', source, 1_000_000, 'Violentmonkey MV3 Alternative page mode, ~1 MB of injected script'],
   ['dist/extension/content/kick-focus.js', content, 1_500_000, 'no injection ceiling; tracked so growth stays visible'],
@@ -729,6 +793,9 @@ const checks = [
     && /libraryStore\.write\(result\.stickers\)/.test(source)
     && /libraryStore\.clear\(\)/.test(source)],
   ['emote completion is accepted by click only and never sends', completionIsMouseOnly(source)],
+  ['anchored surfaces resolve their anchor in the document tree, and declare their flips', anchoredSurfacesResolve(source)],
+  ['every anchor-positioning property is feature-detected under its current name', anchorPropertiesAreDetected(source)],
+  ['anchored surfaces are manual popovers and keep a hand-positioned fallback', anchoredSurfacesAreManual(source)],
   ['emote completion is off until it is turned on', source.includes('emoteAutocomplete: false')],
   ['discovery cards carry a multi chip, only where the card is a channel',
     source.includes('data-kf-card-action="multi"') && source.includes('cardSlugFromPath(path)')
@@ -1095,7 +1162,23 @@ const redProbes = [
   // boundary, which is the entire defect this gate exists to catch.
   ['shadow-a11y gate would reject the site-level rules alone',
     !shadowAccessibilityWired('html[data-kf-large-targets="true"] button{} html[data-kf-reduce-motion="true"] *{}')],
+  // The tree-scope trap is invisible at runtime — no throw, no warning, the
+  // surface simply parks in the corner — so the gate for it has to be proven.
+  ['anchor gate would catch a position-anchor declared in a shadow stylesheet',
+    !anchoredSurfacesResolve("const CSS_TEXT = ':host { position-anchor: --kf-emote-card; }';\nhost.style.setProperty('position-anchor', name);")],
+  ['anchor gate would catch an anchored host with no flip fallbacks',
+    !anchoredSurfacesResolve("host.style.setProperty('position-anchor', name);\n':host([data-kf-anchored=\"true\"]) { position-area: block-start; }'")],
+  ['anchor gate would catch an anchor set on the host by any means but an inline style',
+    !anchoredSurfacesResolve('host.dataset.positionAnchor = name;\nposition-try-fallbacks: flip-block;\nposition-try-fallbacks: flip-block;')],
+  ['feature-detect gate would catch the pre-standardisation property names',
+    !anchorPropertiesAreDetected("function canAnchorPopover() { return CSS.supports('inset-area: block-start') && CSS.supports('position-try-options: flip-block') && HTMLElement.prototype.showPopover; }")],
+  ['popover gate would catch an auto popover, which would eat Escape',
+    !anchoredSurfacesAreManual("host.setAttribute('popover', 'auto');\nhost.style.left = x;\nhost.style.top = y;")],
+  ['popover gate would catch the hand-positioned fallback being dropped',
+    !anchoredSurfacesAreManual("host.setAttribute('popover', 'manual');")],
   // The live gate itself must be the real thing on this machine, not a skip.
+  ['anchor gates accept the real bundle',
+    anchoredSurfacesResolve(source) && anchorPropertiesAreDetected(source) && anchoredSurfacesAreManual(source)],
   ['content-scripts gate accepts the real manifest', contentScriptsScoped(manifest.content_scripts)],
   ['shadow-a11y gate accepts the real bundle', shadowAccessibilityWired(source)],
 ];

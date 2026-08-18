@@ -85,13 +85,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
   Acceptance: An open prediction on the current channel shows its age and time to auto-refund; the surface is read-only and never votes, resolves or refunds; it degrades silently when the endpoint is unavailable or the channel has predictions off; behind its own setting, on by default only if it costs no extra request.
   Complexity: M
 
-- [ ] P2 — R-52, move the hover card and completion list into the top layer
-  Why: Both are positioned by hand inside a shadow tree over Kick's own stacking contexts, the classic source of clipping and z-index fights; `<dialog>` and popover render in the top layer where no host `overflow: hidden` can reach them, and anchor positioning replaces the manual rect maths.
-  Evidence: No `<dialog>`, `popover`, `anchor-name` or `position-anchor` anywhere in `src/`. `<dialog>` is Baseline widely available since 2024-09-14; popover Baseline newly 2025-01-27; anchor positioning is cross-engine as of Chrome 125 / Firefox 147 / Safari 26 and reads "limited" only because of `position-anchor` initial-value churn — set it explicitly rather than relying on the initial value.
-  Touches: `src/runtime.js` (emote hover card, completion list, settings modal, command menu), `scripts/check.mjs`, `scripts/verify-extension.mjs`
-  Acceptance: The hover card and completion list render in the top layer with an explicit `position-anchor`, keeping the existing hand-positioned path as a feature-detected fallback; the live gate asserts neither is clipped when its anchor sits near a viewport edge and inside a scrolling chat container; keyboard and focus behaviour are unchanged.
-  Complexity: M
-
 ### P3 — differentiators and future-proofing
 
 - [ ] P3 — R-54, pop the grid's chat out into a real always-on-top window

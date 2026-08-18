@@ -2,6 +2,13 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.23.0 — 2026-08-18
+
+### Changed
+
+- **The emote hover card and the completion list now render above everything.** Both used to be placed by hand and rely on winning a stacking contest with Kick's own layers. They now use the browser's top layer, which no page styling can clip or cover, and they position themselves against the emote or the composer rather than by arithmetic this build does itself. On a browser without that capability the previous behaviour is used unchanged. Escape, focus and every keystroke behave exactly as before — the surfaces are opened in the mode that watches no keys and moves no focus, so nothing is taken away from Kick's own composer.
+- **The completion list is pinned above the composer instead of following the caret.** It no longer slides sideways as you type, which is where Twitch and FrankerFaceZ both put theirs.
+
 ## 1.22.0 — 2026-08-18
 
 ### Added

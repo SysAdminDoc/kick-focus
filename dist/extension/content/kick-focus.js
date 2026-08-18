@@ -8945,6 +8945,120 @@ function flushChatStickerScan() {
   if (observed.size) mergeStickerLibrary(observed.values());
 }
 
+// ---------------------------------------------------------------------------
+// Transient surfaces in the top layer
+//
+// Two surfaces below — the emote hover card and the emote completion list —
+// are body children that place themselves by hand. That is correct only for as
+// long as nothing between them and the viewport establishes a containing block
+// for fixed descendants, and only for as long as this build wins every z-index
+// it is entered into. The top layer is subject to neither.
+// ---------------------------------------------------------------------------
+
+/** The element currently lending its name to each anchored surface. */
+const ANCHORED_ELEMENTS = new Map();
+const EMOTE_CARD_ANCHOR = '--kf-emote-card';
+const EMOTE_COMPLETION_ANCHOR = '--kf-emote-completion';
+
+/**
+ * Whether this engine can put an anchored surface in the top layer.
+ *
+ * Measured in Chrome 151 on 2026-08-18, which is why this path exists at all:
+ * giving an ancestor `filter: brightness(1)` moved a `position: fixed` child by
+ * exactly that ancestor's offset — (100,100) became (400,300) — while the same
+ * element in the top layer did not move. Kick sets no such filter today, so
+ * this is insurance against a page change rather than a fix for a live defect.
+ *
+ * Every property the path uses is detected, never assumed. The names churned
+ * during standardisation: `inset-area` became `position-area`, and
+ * `position-try-options` became `position-try-fallbacks`. Chrome 151 answers
+ * false for both older spellings, so a build that asked for the wrong name
+ * would take the fallback forever and look like it simply did not work.
+ */
+let anchoredPopoverSupport = null;
+function canAnchorPopover() {
+  if (anchoredPopoverSupport !== null) return anchoredPopoverSupport;
+  anchoredPopoverSupport = Boolean(
+    typeof HTMLElement !== 'undefined'
+    && typeof HTMLElement.prototype.showPopover === 'function'
+    && typeof CSS !== 'undefined'
+    && typeof CSS.supports === 'function'
+    && CSS.supports('anchor-name: --kf-probe')
+    && CSS.supports('position-anchor: --kf-probe')
+    && CSS.supports('position-area: block-start')
+    && CSS.supports('position-try-fallbacks: flip-block'),
+  );
+  return anchoredPopoverSupport;
+}
+
+/**
+ * Mark a host as belonging in the top layer, if this engine has one.
+ *
+ * `manual` rather than `auto` is what keeps the keyboard promise: an auto
+ * popover installs a close watcher, so Escape would be consumed here instead of
+ * reaching Kick's composer, and a click anywhere would light-dismiss — which
+ * for the hover card means the card fighting the click that was meant for chat.
+ * Manual popovers move no focus and watch no keys.
+ */
+function markAnchoredSurface(host) {
+  if (!canAnchorPopover()) return false;
+  host.setAttribute('popover', 'manual');
+  host.dataset.kfAnchored = 'true';
+  return true;
+}
+
+/**
+ * Point an open surface at the element it describes.
+ *
+ * Both properties are set inline, and that is the whole trick. Anchor names are
+ * tree-scoped, so a `position-anchor` declared inside the host's own shadow
+ * stylesheet resolves against the shadow tree — where a name set on a page
+ * element does not exist. Measured in Chrome 151 on 2026-08-18: the
+ * shadow-scoped spelling does not throw and does not warn, it simply does not
+ * anchor, leaving the card parked in the corner of the viewport. An inline
+ * style is in the document tree, where the anchor's name actually lives.
+ * `scripts/check.mjs` gates against the shadow-scoped spelling coming back.
+ */
+function anchorSurfaceTo(host, anchor, name) {
+  if (host?.dataset?.kfAnchored !== 'true' || !anchor?.style) return false;
+  const previous = ANCHORED_ELEMENTS.get(name);
+  // One name, one element: leaving it behind on a chat node that scrolls away
+  // would make every card after it resolve against a stale anchor.
+  if (previous && previous !== anchor) previous.style.removeProperty('anchor-name');
+  ANCHORED_ELEMENTS.set(name, anchor);
+  anchor.style.setProperty('anchor-name', name);
+  host.style.setProperty('position-anchor', name);
+  return true;
+}
+
+function releaseSurfaceAnchor(host, name) {
+  const previous = ANCHORED_ELEMENTS.get(name);
+  if (previous) previous.style.removeProperty('anchor-name');
+  ANCHORED_ELEMENTS.delete(name);
+  if (host?.style) host.style.removeProperty('position-anchor');
+}
+
+function openAnchoredSurface(host) {
+  if (!host?.isConnected || host.dataset.kfAnchored !== 'true') return false;
+  try {
+    if (!host.matches(':popover-open')) host.showPopover();
+    return true;
+  } catch {
+    // A disconnected host, or an engine that took the attribute and not the
+    // method. Either way the hand-positioned path below is still correct.
+    return false;
+  }
+}
+
+function closeAnchoredSurface(host) {
+  if (!host || typeof host.hidePopover !== 'function') return;
+  try {
+    if (host.matches(':popover-open')) host.hidePopover();
+  } catch {
+    // Already closed.
+  }
+}
+
 /**
  * One hover card for the whole chat, reused.
  *
@@ -8964,6 +9078,21 @@ const TOOLTIP_CSS = `
     max-width: 280px;
   }
   :host([data-kf-open="true"]) { display: block; }
+  /* The top-layer path. Everything before position-area undoes the UA's own
+     popover styling — border, padding, background, and the inset/margin pair
+     that would otherwise centre it — while position-area and its flips replace
+     the measure-then-clamp pass below. */
+  :host([data-kf-anchored="true"]) {
+    inset: auto;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    overflow: visible;
+    color: inherit;
+    position-area: block-start span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
   .card {
     padding: 8px 10px;
     border: 1px solid #59645c;
@@ -8988,6 +9117,7 @@ function chatEmoteTooltipHost() {
   const shadow = host.attachShadow({ mode: 'open' });
   setMarkup(shadow, '<div class="card" data-kf-tooltip-card></div>');
   adoptStyles(shadow, TOOLTIP_CSS);
+  markAnchoredSurface(host);
   document.body.append(host);
   state.chatEmoteTooltip = { host, card: shadow.querySelector('[data-kf-tooltip-card]') };
   return state.chatEmoteTooltip;
@@ -8995,7 +9125,10 @@ function chatEmoteTooltipHost() {
 
 function hideChatEmoteTooltip() {
   const tooltip = state.chatEmoteTooltip;
-  if (tooltip?.host) tooltip.host.dataset.kfOpen = 'false';
+  if (!tooltip?.host) return;
+  tooltip.host.dataset.kfOpen = 'false';
+  closeAnchoredSurface(tooltip.host);
+  releaseSurfaceAnchor(tooltip.host, EMOTE_CARD_ANCHOR);
 }
 
 function showChatEmoteTooltip(image) {
@@ -9017,8 +9150,11 @@ function showChatEmoteTooltip(image) {
     return row;
   }));
   host.dataset.kfOpen = 'true';
-  // Clamped after the card is measurable, so a wide entry near an edge is
-  // pulled back on screen instead of being cut off by the viewport.
+  // The top layer places it against the emote itself: no measure, no clamp, no
+  // second pass, and nothing Kick can clip it with.
+  if (anchorSurfaceTo(host, image, EMOTE_CARD_ANCHOR) && openAnchoredSurface(host)) return;
+  // Otherwise, clamped after the card is measurable, so a wide entry near an
+  // edge is pulled back on screen instead of being cut off by the viewport.
   const anchor = image.getBoundingClientRect();
   const box = host.getBoundingClientRect();
   const left = Math.min(Math.max(8, anchor.left), Math.max(8, window.innerWidth - box.width - 8));
@@ -14177,6 +14313,19 @@ const EMOTE_COMPLETION_CSS = `
     width: 240px;
   }
   :host([data-kf-open="true"]) { display: block; }
+  /* See TOOLTIP_CSS: undo the UA popover styling, then let the top layer and
+     the flip fallbacks do the placing. */
+  :host([data-kf-anchored="true"]) {
+    inset: auto;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    overflow: visible;
+    color: inherit;
+    position-area: block-start span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
   [data-kf-complete-list] {
     display: flex;
     flex-direction: column;
@@ -14236,6 +14385,7 @@ function emoteCompletionHost() {
     acceptEmoteCompletion(button.dataset.kfCompleteKey);
   });
   shadow.append(list);
+  markAnchoredSurface(host);
   document.body.append(host);
   return host;
 }
@@ -14245,6 +14395,8 @@ function hideEmoteCompletion() {
   if (!host || host.dataset.kfOpen !== 'true') return;
   host.dataset.kfOpen = 'false';
   host.style.visibility = 'hidden';
+  closeAnchoredSurface(host);
+  releaseSurfaceAnchor(host, EMOTE_COMPLETION_ANCHOR);
 }
 
 /** The text between the start of the caret's own text node and the caret. */
@@ -14294,6 +14446,18 @@ function updateEmoteCompletion() {
       <span>${escapeHtml(sticker.name)}</span>
     </button>`).join(''));
   state.runtime.emoteCompletion = { length: trigger.length, keys: matches.map((sticker) => sticker.key) };
+
+  // Anchored to the composer rather than the caret, deliberately. Anchor
+  // positioning needs a real element, and the only element at the caret would
+  // be one written into Kick's own contenteditable — which could end up in the
+  // sent message. Pinning to the composer is also steadier: the list stops
+  // sliding sideways on every keystroke, which is where FrankerFaceZ and
+  // Twitch both put theirs.
+  if (anchorSurfaceTo(host, input, EMOTE_COMPLETION_ANCHOR) && openAnchoredSurface(host)) {
+    host.dataset.kfOpen = 'true';
+    host.style.visibility = 'visible';
+    return undefined;
+  }
 
   const anchor = caretRect(input) || input.getBoundingClientRect();
   host.dataset.kfOpen = 'true';
