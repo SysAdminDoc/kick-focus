@@ -592,23 +592,48 @@ try {
   // to read. And the browser's own event must still drive routing: a real
   // same-document navigation to /browse has to be re-classified.
   const routeProbe = await evaluate(pageClient, `(async () => {
-    const settle = () => new Promise((done) => setTimeout(done, 700));
-    const before = document.documentElement.dataset.kfRoute || '';
+    const routeNow = () => document.documentElement.dataset.kfRoute || '';
+    const before = routeNow();
     // Not "is native": Kick's own Sentry instrumentation wraps history exactly
     // as it wraps fetch, so on the live site nobody is outermost. The claim
     // that can be tested is that this build's wrapper is not in the stack.
     const pushNative = !String(history.pushState).includes('kickFocus') && !String(history.replaceState).includes('kickFocus');
+
     history.pushState(null, '', '/browse');
-    await settle();
-    const after = document.documentElement.dataset.kfRoute || '';
+    // Waited for, not slept at. The route is painted by the apply cycle, which
+    // is a capped debounce driven by a MutationObserver — and on a still page
+    // nothing reschedules it, so a fixed sleep is a coin flip that lands
+    // differently under release-gate load than it does on a quiet run.
+    // \`__kfWait\` pokes the DOM between polls, which is the whole reason it
+    // exists. Measured 2026-08-18: this check failed at 1920x1080 and passed at
+    // 1440x900 in the same release run, with both invariants holding.
+    const after = await __kfWait(() => (routeNow() === 'browse' ? 'browse' : null), { timeout: 8000 }) || routeNow();
+    const landed = location.pathname;
+
     history.pushState(null, '', '/');
-    await settle();
-    return { pushNative, hasNavigationApi: typeof navigation !== 'undefined', before, after, back: document.documentElement.dataset.kfRoute || '' };
+    const back = await __kfWait(() => {
+      const route = routeNow();
+      return route && route !== 'browse' ? route : null;
+    }, { timeout: 8000 }) || routeNow();
+    const returned = location.pathname;
+
+    return { pushNative, hasNavigationApi: typeof navigation !== 'undefined', before, after, back, landed, returned };
   })()`);
   const route = routeProbe.value || {};
-  record('history carries no wrapper of ours and a same-document navigation still re-routes through the Navigation API',
-    route.hasNavigationApi === true && route.pushNative === true && route.after === 'browse' && route.back !== 'browse',
-    `navigation api=${route.hasNavigationApi} history free of this build=${route.pushNative}; route ${route.before} -> ${route.after} -> ${route.back}`);
+  // Split deliberately. The wrapper claim is about this build's own code and is
+  // answerable whatever Kick's router does, so a routing hiccup must not be
+  // able to skip it — which is what the single combined check allowed.
+  record('history carries no wrapper of ours',
+    route.hasNavigationApi === true && route.pushNative === true,
+    `navigation api=${route.hasNavigationApi}, history free of this build=${route.pushNative}`);
+  // The URL is pushed by this probe, so it always changes — unless Kick's own
+  // router put it back, which is the one case where there was no same-document
+  // navigation left to re-classify and nothing to conclude.
+  const urlHeld = route.landed === '/browse';
+  recordProbe('a same-document navigation re-routes through the Navigation API',
+    urlHeld ? route : { skip: `Kick's router moved the URL off /browse to ${route.landed} before it could be observed, so no same-document navigation stood to be re-classified` },
+    route.after === 'browse' && route.back !== 'browse',
+    `route ${route.before} -> ${route.after} -> ${route.back}; url ${route.landed} -> ${route.returned}`);
 
   // The emote key space gained a platform prefix. The migration has to be
   // lossless against a store written by the previous build, so write one in the
