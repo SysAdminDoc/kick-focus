@@ -25,7 +25,7 @@
  *   KF_HEADLESS=1 node scripts/verify-extension.mjs               # network checks only
  */
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCATOR_PROBES } from '../src/compatibility.mjs';
@@ -1986,6 +1986,87 @@ try {
     .filter((e) => e.method === 'Runtime.exceptionThrown')
     .map((e) => e.params?.exceptionDetails?.text);
   record('popup raised no exceptions', popupErrors.length === 0, popupErrors.join('|') || 'clean');
+
+  /**
+   * Do the endpoints this build reads still exist?
+   *
+   * The drift gate covers Kick's DOM and says nothing about its API, and Kick
+   * removes endpoints without notice — it deleted `/api/v1/video/:livestream_id`
+   * outright in July 2026, which broke a competitor's VOD pages on the spot. A
+   * gone endpoint currently degrades quietly into a diagnostics counter nobody
+   * reads.
+   *
+   * Read from the page so each request carries the session and origin the mod's
+   * own reads do. 404 and 410 fail: that is Kick saying the route no longer
+   * exists. 401, 403 and 429 are reported and not failed — this gate runs logged
+   * out and Kick rate-limits it, which is why the uptime chip has a page-data
+   * fallback in the first place.
+   */
+  const PROBED_ENDPOINTS = ['channel', 'emoteSets', 'chatSettings', 'collectibles', 'currentViewers'];
+  // Excluded on purpose, with the reason, so the coverage check below stays honest.
+  const UNPROBED_ENDPOINTS = {
+    followChannel: 'a write; probing it would follow a channel on the operator behalf',
+    chatHistory: 'needs a chatroom id this gate does not always have',
+    realtimeChat: 'the realtime broker; exercised by the socket path instead',
+    channelMe: 'answers only for a signed-in session, and this gate runs logged out',
+  };
+  const liveness = await evaluate(pageClient, `(async () => {
+    const slug = 'xqc';
+    let channelId = 0;
+    let channelStatus = 0;
+    try {
+      const response = await fetch('https://kick.com/api/v2/channels/' + slug, { credentials: 'include', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+      channelStatus = response.status;
+      if (response.ok) {
+        const body = await response.json();
+        channelId = body?.id || 0;
+      }
+    } catch { channelStatus = 'network'; }
+    const urls = [
+      ['channel', 'https://kick.com/api/v2/channels/' + slug],
+      ['emoteSets', 'https://kick.com/emotes/' + slug],
+      ['collectibles', 'https://web.kick.com/api/v1/gamification/collectibles'],
+    ];
+    if (channelId) {
+      urls.push(['chatSettings', 'https://web.kick.com/api/v1/channels/' + channelId + '/chat/settings']);
+      urls.push(['currentViewers', 'https://kick.com/current-viewers?ids[]=' + channelId]);
+    }
+    const seen = [];
+    for (const [name, url] of urls) {
+      try {
+        const response = await fetch(url, { credentials: 'include', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+        seen.push({ name, status: response.status });
+      } catch { seen.push({ name, status: 'network' }); }
+    }
+    return JSON.stringify({ channelStatus, channelId, seen });
+  })()`);
+  const endpointState = JSON.parse(liveness.value || '{}');
+  const seenEndpoints = endpointState.seen || [];
+  const goneEndpoints = seenEndpoints.filter((entry) => entry.status === 404 || entry.status === 410);
+  const gatedEndpoints = seenEndpoints.filter((entry) => [401, 403, 429].includes(entry.status));
+  if (!seenEndpoints.length) {
+    skip('every endpoint this build reads still answers',
+      `Kick answered ${endpointState.channelStatus} to the channel read, so no endpoint could be probed; re-run when the tab is not rate-limited`);
+  } else {
+    record('every endpoint this build reads still answers',
+      goneEndpoints.length === 0,
+      goneEndpoints.length
+        ? `gone: ${goneEndpoints.map((entry) => `${entry.name}=${entry.status}`).join(', ')}`
+        : `${seenEndpoints.map((entry) => `${entry.name}=${entry.status}`).join(' ')}${gatedEndpoints.length ? ` | auth or rate-limited, not a failure: ${gatedEndpoints.map((entry) => entry.name).join(', ')}` : ''}`);
+  }
+
+  // Derived from the module that owns the endpoints, not hand-listed beside it:
+  // a second list would rot silently, which is the same reason the drift probes
+  // read LOCATOR_PROBES rather than a copy.
+  const apiSource = await readFile(resolve('src/api.mjs'), 'utf8');
+  const declaredEndpoints = [...apiSource.matchAll(/^ {2}(\w+): \(/gm)].map((match) => match[1]);
+  const unaccounted = declaredEndpoints.filter((name) => !PROBED_ENDPOINTS.includes(name) && !(name in UNPROBED_ENDPOINTS));
+  record('the endpoint liveness list still accounts for everything api.mjs declares',
+    declaredEndpoints.length > 0 && unaccounted.length === 0,
+    unaccounted.length
+      ? `api.mjs declares ${unaccounted.join(', ')} with neither a probe nor a stated reason`
+      : `${PROBED_ENDPOINTS.length} probed, ${Object.keys(UNPROBED_ENDPOINTS).length} excluded with reasons, ${declaredEndpoints.length} declared`);
+
 
   popupClient.close();
   swClient.close();

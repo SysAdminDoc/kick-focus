@@ -151,15 +151,6 @@ Two existing items were **edited in place rather than duplicated**: R-38's premi
 
 ### P1 — the drift gate has an API-shaped hole
 
-- [ ] P1 — R-58, assert that the endpoints the mod reads still answer
-  Why: Kick deletes endpoints without notice, and the drift gate covers DOM probes only — so the first report of a removed endpoint would come from a user, not the gate.
-  Evidence: Kick removed `/api/v1/video/:livestream_id` entirely in July 2026 and broke NipahTV's VOD pages outright; its latest commit (2026-07-29) is the firefight — "Kick deleted the entire `/api/v1/video/:livestream_id` endpoint making NTV no longer load on VOD pages" (github.com/Xzensi/NipahTV). Kick Focus degrades correctly — `kickFetchJson` (`src/live.mjs:143`) returns `{ok:false, status}` preserving the status, and `recordApiDrift` (`:202`) records into a bounded diagnostics list — but nothing distinguishes a permanent 404/410 from a transient 429, and `compatibilitySnapshot()` (`src/compatibility.mjs:242`) asserts only that DOM probes resolve.
-  Touches: `scripts/verify-extension.mjs`, `src/live.mjs` (`recordApiDrift`), `src/compatibility.mjs`, `src/api.mjs`, `test/api.test.js`
-  Acceptance: The live gate reads each endpoint the mod depends on and fails when one answers 404 or 410, naming the endpoint; a rate-limited (429) or auth-gated (401/403) answer is reported, not failed, because the gate runs logged out and Kick rate-limits it (the uptime chip's own fallback exists for exactly that). The endpoint list is derived from `src/api.mjs` rather than hand-written beside it, following the `missingExports()` precedent in `scripts/check.mjs` — a second hand-maintained list would rot silently.
-  Complexity: M
-
-### P3 — the one multi-stream gap two competitors both fill
-
 - [ ] P3 — R-59, one read-only chat across every channel in the grid
   Why: The grid shows nine streams and one chat — the focused tile's — and the two closest multi-stream competitors both went past that to unified cross-channel chat. It is the single named feature gap in the surface Kick Focus otherwise leads on, and it stays inside the read-only boundary.
   Evidence: Kickplex (CWS v1.1.4, 2026-06-09) ships unified tabbed chat with an emote picker and recents alongside DVR rewind; streamgrids.tv keeps chat beside the active stream; viewgrid.tv runs up to 20 streams. Critically, **chat is the field's universal weak point** — there is no good Kick chat embed, so third parties fall back to an unofficial relay (`chat.kick.cx`), while Kick Focus already reads Kick's own realtime chat same-origin per channel through `src/live.mjs` (`connectRealtime` :381) and uses Kick's own popout chat on-origin. The capability is already in the building.
