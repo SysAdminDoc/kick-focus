@@ -32,8 +32,38 @@ function paintBadge(tabId) {
   chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR }).catch(() => {});
 }
 
+const KICK_ORIGINS = new Set(['https://kick.com', 'https://www.kick.com']);
+
+/**
+ * Who is allowed to ask for this.
+ *
+ * Two privileged primitives sit behind this listener — a cross-origin fetch and
+ * a global, persistent ruleset toggle — so every message is checked against the
+ * sender the browser reports rather than trusted for having the right shape.
+ *
+ * The ceiling is worth stating: a compromised renderer can spoof `id` and
+ * `origin`, so this defends against *other extensions* and against a message
+ * arriving from a frame this extension never injected, not against a browser
+ * that is already compromised.
+ */
+const fromThisExtension = (sender) => sender?.id === chrome.runtime.id;
+const senderOrigin = (sender) => {
+  if (sender?.origin) return sender.origin;
+  try { return sender?.url ? new URL(sender.url).origin : ''; } catch { return ''; }
+};
+/** The content script on a Kick page. */
+const fromKickPage = (sender) => fromThisExtension(sender) && KICK_ORIGINS.has(senderOrigin(sender));
+/** The content script, or one of this extension's own pages (the popup). */
+// An extension page (the popup). Matched on the URL's scheme rather than its
+// origin: `new URL('chrome-extension://…').origin` is not reliable across
+// engines — Node returns the string 'null' for non-special schemes — and this
+// file is exercised under node:test.
+const fromOwnPage = (sender) => fromThisExtension(sender) && /^chrome-extension:\/\//.test(String(sender?.url || ''));
+const fromKickPageOrOwnUi = (sender) => fromKickPage(sender) || fromOwnPage(sender);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'kick-focus:telemetry-preference') {
+    if (!fromKickPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     setTelemetryRuleset(Boolean(message.enabled))
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: String(error) }));
@@ -41,6 +71,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'kick-focus:status') {
+    if (!fromKickPageOrOwnUi(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     (async () => {
       const rulesets = await chrome.declarativeNetRequest.getEnabledRulesets();
       const stored = await chrome.storage.local.get('settings');
@@ -58,6 +89,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'kick-focus:fetch-blocklist') {
+    if (!fromKickPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     const url = String(message.url || '');
     if (!url.startsWith('https://')) {
       sendResponse({ ok: false, error: 'HTTPS required' });
@@ -77,6 +109,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'kick-focus:reset-count') {
+    if (!fromKickPageOrOwnUi(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     blockedByTab.delete(message.tabId);
     paintBadge(message.tabId);
     sendResponse({ ok: true });

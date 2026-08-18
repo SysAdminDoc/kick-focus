@@ -110,6 +110,7 @@ async function runBridge(file, pageFirst) {
 async function loadFirefoxBackground() {
   const source = await readFile(resolve(root, 'dist/extension-firefox/background.js'), 'utf8');
   let listener = null;
+  let messageListener = null;
   const badges = [];
   const browser = {
     webRequest: { onBeforeRequest: { addListener: (fn) => { listener = fn; } } },
@@ -117,14 +118,18 @@ async function loadFirefoxBackground() {
       setBadgeText: (value) => badges.push(value),
       setBadgeBackgroundColor: () => {},
     },
-    runtime: { onMessage: { addListener: () => {} }, getManifest: () => ({ version: 'test' }) },
+    runtime: {
+      id: 'kick-focus@sysadmindoc',
+      onMessage: { addListener: (fn) => { messageListener = fn; } },
+      getManifest: () => ({ version: 'test' }),
+    },
     storage: { local: { get: async () => ({}) } },
     tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
   };
-  const context = { browser, console, URL, Map, setTimeout, clearTimeout };
+  const context = { browser, console, URL, Map, setTimeout, clearTimeout, fetch: async () => { throw new Error('no network in tests'); } };
   context.globalThis = context;
   vm.runInNewContext(source, context);
-  return { listener, badges };
+  return { listener, badges, messageListener };
 }
 
 test('the Firefox background cancels ad requests from Firefox-shaped details', { tag: 'artifact' }, async () => {
@@ -228,3 +233,47 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     assert.equal(detail.version, 'test');
   });
 }
+
+/**
+ * A privileged message handler that trusts its message's shape and not its
+ * sender will act for anything that can reach it. The ceiling is documented in
+ * the background itself: a compromised renderer can forge both fields, so this
+ * proves the guard rejects other extensions and uninjected frames, not that it
+ * survives a compromised browser.
+ */
+test('the Firefox background refuses privileged messages from a sender it does not know', { tag: 'artifact' }, async () => {
+  const { messageListener } = await loadFirefoxBackground();
+  assert.ok(messageListener, 'no onMessage listener was registered');
+
+  const ask = (message, sender) => {
+    let answer = null;
+    messageListener(message, sender, (value) => { answer = value; });
+    return answer;
+  };
+  const own = 'kick-focus@sysadmindoc';
+
+  // The page this extension actually injects into is the only origin allowed to
+  // drive the cross-origin fetch or the telemetry toggle.
+  // Field-wise, not deepEqual: these objects are built inside the vm realm, so
+  // their prototype is not this realm's Object.prototype and a strict deep
+  // compare fails on values that are otherwise identical.
+  const refused = (answer) => answer?.ok === false && answer?.error === 'refused';
+  assert.equal(ask({ type: 'kick-focus:telemetry-preference', enabled: false }, { id: own, url: 'https://kick.com/xqc' })?.ok, true,
+    'the content script on a real Kick page must still be served');
+  assert.equal(ask({ type: 'kick-focus:telemetry-preference', enabled: false }, { id: own, url: 'https://www.kick.com/' })?.ok, true,
+    'the www host is the same site and must still be served');
+
+  for (const [label, sender] of [
+    ['another extension', { id: 'evil@example', url: 'https://kick.com/xqc' }],
+    ['an off-Kick page', { id: own, url: 'https://evil.example/' }],
+    ['a lookalike host', { id: own, url: 'https://kick.com.evil.net/' }],
+    ['no sender at all', undefined],
+  ]) {
+    assert.ok(refused(ask({ type: 'kick-focus:telemetry-preference', enabled: true }, sender)), `telemetry toggle accepted ${label}`);
+    assert.ok(refused(ask({ type: 'kick-focus:fetch-blocklist', url: 'https://evil.example/list.txt' }, sender)), `blocklist fetch accepted ${label}`);
+  }
+
+  // The popup is one of this extension's own pages and must still work.
+  assert.ok(!refused(ask({ type: 'kick-focus:reset-count', tabId: 3 }, { id: own, url: 'moz-extension://abc/popup.html' })),
+    'the popup is one of this extension pages and must still be served');
+});

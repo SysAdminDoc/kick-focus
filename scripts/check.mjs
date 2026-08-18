@@ -33,6 +33,7 @@ const firefoxBundleLiteral = firefoxBridge.match(/^const PAGE_BUNDLE = (".*");$/
 const firefoxContent = firefoxBundleLiteral ? JSON.parse(firefoxBundleLiteral) : '';
 const firefoxHasSeparateBundle = await stat(resolve('dist/extension-firefox/content/kick-focus.js')).then(() => true, () => false);
 const firefoxBackground = await read('dist/extension-firefox/background.js');
+const background = await read('dist/extension/background.js');
 const popup = await read('dist/extension/popup.js');
 const extensionZip = await readFile(resolve(`dist/kick-focus-extension-v${VERSION}.zip`));
 
@@ -341,7 +342,29 @@ const hostsDeclareLanguage = (bundle) => {
   return created.length >= 4 && created.every((id) => declared.includes(id));
 };
 
+/**
+ * Every privileged message type checks its sender before acting.
+ *
+ * The listener owns a cross-origin fetch and a persistent ruleset toggle, so a
+ * handler that trusts the message's shape and not its sender will act for
+ * anything that can reach it. The gate is written against the *next* message
+ * type somebody adds, which is the one that will forget.
+ */
+const everyMessageChecksSender = (background) => {
+  // Line-based rather than one multiline regex: the thing being asserted is
+  // "the line after the handler opens is the guard", and saying that directly
+  // is easier to read than escaping newlines into a pattern.
+  const lines = background.split('\n');
+  const opens = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /if \(message\?\.type === '[^']+'\) \{/.test(line));
+  return opens.length >= 4
+    && opens.every(({ index }) => /^\s*if \(!from\w+\(sender\)\)/.test(lines[index + 1] || ''));
+};
+
 const checks = [
+  ['every privileged Chromium message type checks its sender', everyMessageChecksSender(background)],
+  ['every privileged Firefox message type checks its sender', everyMessageChecksSender(firefoxBackground)],
   ['every top-level host declares the interface language',
     bundleTargets.every(([, bundleSource]) => hostsDeclareLanguage(bundleSource))],
   ['the live gate waits for the shadow host rather than sampling it',
@@ -923,6 +946,14 @@ const checks = [
 // ever becomes vacuous (passes on empty/hostile input), its probe returns true
 // and this fails — the gate's proof that it can actually fire.
 const redProbes = [
+  ['sender gate would catch a handler that acts before checking',
+    !everyMessageChecksSender([
+      "if (message?.type === 'a') {", '    if (!fromKickPage(sender)) { return; }',
+      "if (message?.type === 'b') {", '    if (!fromKickPage(sender)) { return; }',
+      "if (message?.type === 'c') {", '    if (!fromKickPage(sender)) { return; }',
+      "if (message?.type === 'd') {", '    doTheThing();',
+    ].join('\n'))],
+  ['sender gate accepts the real Chromium background', everyMessageChecksSender(background)],
   ['host-language gate would catch a fifth host that declares no language',
     !hostsDeclareLanguage("a.id = 'kick-focus-root';\n  a.lang = x;\nb.id = 'kick-focus-emote-complete';\n  b.lang = x;\nc.id = 'kick-focus-emote-tooltip';\n  c.lang = x;\nd.id = 'kick-focus-header-control';\n  d.lang = x;\ne.id = 'kick-focus-new-panel';\n  e.append(y);")],
   ['host-language gate accepts the real bundle', hostsDeclareLanguage(source)],

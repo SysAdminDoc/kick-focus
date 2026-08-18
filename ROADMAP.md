@@ -78,13 +78,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P1 — trust, accessibility, and two expired blockers
 
-- [ ] P1 — R-43, validate the sender on every runtime message
-  Why: Both background scripts act on `fetch-blocklist`, `telemetry-preference` and `reset-count` without checking who sent them; the bridge already fixed its half of this class and the service worker did not.
-  Evidence: `src/extension/background.js:33` onwards, `src/extension/background.firefox.js`. GitHub Security Lab names missing `onMessage`/`onMessageExternal` sender validation as one of three canonical extension vulnerability classes. Documented ceiling: a compromised renderer can spoof `MessageSender.id`/`.url`, so this hardens against other extensions, not against a compromised renderer — say so in the comment rather than overclaiming.
-  Touches: `src/extension/background.js`, `src/extension/background.firefox.js`, `scripts/check.mjs`, `test/companion.test.js`
-  Acceptance: Every handler refuses a message whose `sender.id` is not this extension or whose `sender.origin`/`sender.url` is not a Kick origin; a test drives a forged sender through the built background and asserts refusal; an artifact gate fails if a new message type is handled without passing the guard.
-  Complexity: S
-
 - [ ] P1 — R-44, put the artifact under a size budget before it crosses the injection ceiling
   Why: The userscript grows about 25 KB per release and Violentmonkey's MV3 Alternative page mode — the only mode giving real `document-start` on Chromium — is advisory-limited to roughly 1 MB. Crossing it degrades injection timing silently, which is the hardest class of failure this project has to find.
   Evidence: `dist/kick-focus.user.js` by tag — v1.14.0 612,899 B, v1.16.0 637,041 B, v1.17.0 695,234 B, v1.18.0 710,582 B, v1.19.0 738,834 B, HEAD 763,775 B. `README.md:101` records the ~1 MB advisory limit. None of the 159 checks in `scripts/check.mjs` measures a byte count. Greasy Fork's 2 MB cap is the second ceiling.

@@ -65,13 +65,41 @@ api.webRequest.onBeforeRequest.addListener(
   ['blocking'],
 );
 
+const KICK_ORIGINS = new Set(['https://kick.com', 'https://www.kick.com']);
+
+/**
+ * Who is allowed to ask for this.
+ *
+ * A cross-origin fetch and the telemetry toggle sit behind this listener, so
+ * every message is checked against the sender the browser reports rather than
+ * trusted for having the right shape. Firefox does not always populate
+ * `sender.origin`, so `sender.url` is the fallback.
+ *
+ * The ceiling: a compromised renderer can spoof both fields, so this defends
+ * against other extensions and against frames this extension never injected,
+ * not against a browser that is already compromised.
+ */
+const fromThisExtension = (sender) => sender?.id === api.runtime.id;
+const senderOrigin = (sender) => {
+  if (sender?.origin) return sender.origin;
+  try { return sender?.url ? new URL(sender.url).origin : ''; } catch { return ''; }
+};
+const fromKickPage = (sender) => fromThisExtension(sender) && KICK_ORIGINS.has(senderOrigin(sender));
+// An extension page (the popup). Matched on the URL's scheme rather than its
+// origin: `new URL('moz-extension://…').origin` is the string 'null' in Node,
+// which is where this file's guard is tested.
+const fromOwnPage = (sender) => fromThisExtension(sender) && /^moz-extension:\/\//.test(String(sender?.url || ''));
+const fromKickPageOrOwnUi = (sender) => fromKickPage(sender) || fromOwnPage(sender);
+
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'kick-focus:telemetry-preference') {
+    if (!fromKickPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     telemetryEnabled = Boolean(message.enabled);
     sendResponse({ ok: true });
     return true;
   }
   if (message?.type === 'kick-focus:status') {
+    if (!fromKickPageOrOwnUi(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     api.storage.local.get('settings').then((stored) => sendResponse({
       version: api.runtime.getManifest().version,
       rulesets: ['ads', ...(telemetryEnabled ? ['telemetry'] : [])],
@@ -82,6 +110,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === 'kick-focus:fetch-blocklist') {
+    if (!fromKickPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     const url = String(message.url || '');
     if (!url.startsWith('https://')) {
       sendResponse({ ok: false, error: 'HTTPS required' });
@@ -99,6 +128,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'kick-focus:reset-count') {
+    if (!fromKickPageOrOwnUi(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     blockedByTab.delete(message.tabId);
     paintBadge(message.tabId);
     sendResponse({ ok: true });
