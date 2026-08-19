@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_SETTINGS,
+  DISCOVERY_LAYOUT_KEYS,
+  DISCOVERY_LAYOUT_MAX,
+  applyDiscoveryLayout,
+  buildDiscoveryLayout,
+  layoutForRoute,
+  layoutMatchesSettings,
+  normalizeDiscoveryLayouts,
+  CHAT_HISTORY_LIMITS,
+  CHAT_HISTORY_MAX_TEXT,
+  MENTION_SOUND_GAP_MS,
+  appendChatEntry,
+  buildChatHistoryExport,
+  dropChatMessage,
+  formatChatTime,
+  isPriorityPerson,
+  parsePeopleList,
+  pruneChatHistory,
+  searchChatHistory,
+  shouldPlayMentionSound,
   VIEWER_HUB_CARDS,
   earnedState,
   VIEWER_HUB_STALE_MS,
@@ -2766,4 +2785,206 @@ test('nothing but the reward is ever marked as earned', { tag: 'unit' }, () => {
   }, at);
   assert.equal(earnedState(cards), null);
   assert.equal(earnedState(null), null);
+});
+
+test('chat history is bounded by age, rows, and bytes at once', { tag: 'unit' }, () => {
+  const now = 10_000_000;
+  const limits = { rows: 5, bytes: 100_000, ageMs: 60_000 };
+  const rows = [
+    { id: 'old', author: 'a', text: 'an hour ago', at: now - 3_600_000 },
+    ...Array.from({ length: 8 }, (whole, index) => ({ id: `m${index}`, author: 'a', text: `line ${index}`, at: now - index })),
+  ];
+  const pruned = pruneChatHistory(rows, limits, now);
+  assert.equal(pruned.length, 5);
+  assert.ok(!pruned.some((row) => row.id === 'old'), 'an expired message survived the row cap');
+
+  // Bytes, on a list well inside the row cap: one wall of text is enough.
+  const heavy = Array.from({ length: 4 }, (whole, index) => ({ id: `h${index}`, author: 'a', text: 'x'.repeat(500), at: now }));
+  const byBytes = pruneChatHistory(heavy, { rows: 100, bytes: 1200, ageMs: 60_000 }, now);
+  assert.ok(byBytes.length < heavy.length, 'the byte cap dropped nothing');
+  assert.ok(byBytes.length >= 1, 'the byte cap emptied the store instead of trimming it');
+  // The newest survives, which is the half of "trim" that matters.
+  assert.equal(byBytes[byBytes.length - 1].id, 'h3');
+});
+
+test('a whisper, an unidentifiable message, and a repeat are all refused', { tag: 'unit' }, () => {
+  const now = 1000;
+  let rows = [];
+  rows = appendChatEntry(rows, { id: 'a', author: 'someone', text: 'hello', at: now }, CHAT_HISTORY_LIMITS, now);
+  assert.equal(rows.length, 1);
+
+  // A private message has no business in a searchable log.
+  rows = appendChatEntry(rows, { id: 'w', author: 'someone', text: 'private', whisper: true, at: now }, CHAT_HISTORY_LIMITS, now);
+  // No id means no deletion can ever reach it again.
+  rows = appendChatEntry(rows, { id: '', author: 'someone', text: 'anonymous', at: now }, CHAT_HISTORY_LIMITS, now);
+  rows = appendChatEntry(rows, { id: 'a', author: 'someone', text: 'hello', at: now }, CHAT_HISTORY_LIMITS, now);
+  assert.equal(rows.length, 1, 'a whisper, an id-less message, or a repeat was stored');
+
+  // Text is normalized and bounded rather than refused.
+  rows = appendChatEntry(rows, { id: 'b', author: 'x'.repeat(200), text: `  spaced\n\ttext  ${'y'.repeat(900)}`, at: now }, CHAT_HISTORY_LIMITS, now);
+  const stored = rows.find((row) => row.id === 'b');
+  assert.equal(stored.text.length, CHAT_HISTORY_MAX_TEXT);
+  assert.ok(stored.text.startsWith('spaced text'));
+  assert.equal(stored.author.length, 40);
+});
+
+test('a message Kick deleted leaves the history immediately', { tag: 'unit' }, () => {
+  // The one rule this feature cannot bend: a local record must not outlive a
+  // moderator's decision.
+  const now = 2000;
+  let rows = [];
+  for (const id of ['a', 'b', 'c']) rows = appendChatEntry(rows, { id, author: id, text: `msg ${id}`, at: now }, CHAT_HISTORY_LIMITS, now);
+  rows = dropChatMessage(rows, 'b');
+  assert.deepEqual(rows.map((row) => row.id), ['a', 'c']);
+  // An unknown or empty id changes nothing rather than clearing the store.
+  assert.equal(dropChatMessage(rows, 'nope').length, 2);
+  assert.equal(dropChatMessage(rows, '').length, 2);
+});
+
+test('history search answers newest first, over text and author', { tag: 'unit' }, () => {
+  const now = 3000;
+  let rows = [];
+  rows = appendChatEntry(rows, { id: '1', author: 'ana', text: 'good morning', at: now - 300 }, CHAT_HISTORY_LIMITS, now);
+  rows = appendChatEntry(rows, { id: '2', author: 'bo', text: 'morning all', at: now - 200 }, CHAT_HISTORY_LIMITS, now);
+  rows = appendChatEntry(rows, { id: '3', author: 'cy', text: 'goodbye', at: now - 100 }, CHAT_HISTORY_LIMITS, now);
+
+  assert.deepEqual(searchChatHistory(rows, 'morning').map((row) => row.id), ['2', '1']);
+  assert.deepEqual(searchChatHistory(rows, 'ANA').map((row) => row.id), ['1']);
+  assert.deepEqual(searchChatHistory(rows, '').map((row) => row.id), ['3', '2', '1']);
+  assert.deepEqual(searchChatHistory(rows, 'nothing here'), []);
+  assert.equal(searchChatHistory(rows, '', 2).length, 2);
+});
+
+test('the people list takes names and refuses everything else', { tag: 'unit' }, () => {
+  assert.deepEqual(parsePeopleList('@Ana, bo\ncy_1'), ['ana', 'bo', 'cy_1']);
+  assert.deepEqual(parsePeopleList('ana, ANA, @ana'), ['ana'], 'the same person was listed three times');
+  assert.deepEqual(parsePeopleList('has space, <script>, , -leading'), []);
+  assert.deepEqual(parsePeopleList(null), []);
+  assert.equal(parsePeopleList(Array.from({ length: 60 }, (whole, i) => `n${i}`).join(',')).length, 40);
+
+  assert.equal(isPriorityPerson(['ana'], '@Ana'), true);
+  assert.equal(isPriorityPerson(['ana'], 'anaconda'), false);
+  assert.equal(isPriorityPerson([], 'ana'), false);
+  assert.equal(isPriorityPerson(['ana'], ''), false);
+});
+
+test('the sound stays quiet unless every condition is met', { tag: 'unit' }, () => {
+  const base = { enabled: true, matched: true, own: false, hidden: false, now: 100_000, lastPlayedAt: 0 };
+  assert.equal(shouldPlayMentionSound(base), true);
+  assert.equal(shouldPlayMentionSound({ ...base, enabled: false }), false);
+  assert.equal(shouldPlayMentionSound({ ...base, matched: false }), false);
+  // Your own message matching your own highlight is not a mention.
+  assert.equal(shouldPlayMentionSound({ ...base, own: true }), false);
+  // A backgrounded tab would queue a pile of them for the moment it is focused.
+  assert.equal(shouldPlayMentionSound({ ...base, hidden: true }), false);
+  // Rate limited: a busy channel must not become a smoke alarm.
+  assert.equal(shouldPlayMentionSound({ ...base, lastPlayedAt: base.now - 1000 }), false);
+  assert.equal(shouldPlayMentionSound({ ...base, lastPlayedAt: base.now - MENTION_SOUND_GAP_MS }), true);
+  assert.equal(shouldPlayMentionSound({}), false);
+});
+
+test('the export is readable, names the channel, and carries only what was stored', { tag: 'unit' }, () => {
+  const now = Date.UTC(2026, 7, 19, 12, 0, 0);
+  const rows = [{ id: '1', author: 'ana', text: 'hello', at: now }];
+  const text = buildChatHistoryExport(rows, 'somechannel');
+  assert.match(text, /somechannel/);
+  assert.match(text, /1 messages/);
+  assert.match(text, /ana: hello/);
+  assert.equal(text.split('\n').length, 2);
+  assert.match(buildChatHistoryExport([], ''), /this session — 0 messages/);
+});
+
+test('a chat time is a local clock, and nothing at all for a time that is not one', { tag: 'unit' }, () => {
+  assert.match(formatChatTime(Date.UTC(2026, 7, 19, 12, 34), 'en-GB'), /^\d{2}:\d{2}$/);
+  assert.equal(formatChatTime(null), '');
+  assert.equal(formatChatTime(NaN), '');
+  assert.equal(formatChatTime('nope'), '');
+});
+
+test('every default setting survives normalization, in every group', { tag: 'unit' }, () => {
+  // The trap this exists for, hit 2026-08-19: `normalizeSettings` rebuilds the
+  // settings object key by key, so a setting added to DEFAULT_SETTINGS and not
+  // added here is simply dropped. Every reader then sees `undefined`, which
+  // reads as "off" for a switch and throws for a list — and the throw landed
+  // inside the apply cycle, taking every later step of that cycle with it.
+  const normalized = normalizeSettings({});
+  for (const [group, values] of Object.entries(DEFAULT_SETTINGS)) {
+    if (typeof values !== 'object' || values === null) continue;
+    for (const key of Object.keys(values)) {
+      assert.ok(key in normalized[group], `${group}.${key} is a default that normalizeSettings drops`);
+      assert.notEqual(normalized[group][key], undefined, `${group}.${key} normalizes to undefined`);
+    }
+  }
+});
+
+test('a saved layout carries the discovery settings and nothing else', { tag: 'unit' }, () => {
+  const settings = normalizeSettings({});
+  settings.layout.density = 'compact';
+  settings.content.hideCasino = true;
+  // Something a layout must never carry: a layout is restored into live
+  // settings, so an unbounded key set is a path from an imported file to any
+  // setting in the build.
+  settings.content.blocklistUrl = 'https://example.com/list.json';
+
+  const layout = buildDiscoveryLayout('  Dense   browse ', settings, ['browse', 'not-a-route']);
+  assert.equal(layout.name, 'Dense browse');
+  assert.deepEqual(layout.routes, ['browse']);
+  assert.equal(layout.values['layout.density'], 'compact');
+  assert.equal(layout.values['content.hideCasino'], true);
+  assert.ok(!('content.blocklistUrl' in layout.values));
+  assert.deepEqual(Object.keys(layout.values).sort(), [...DISCOVERY_LAYOUT_KEYS].sort());
+  assert.equal(buildDiscoveryLayout('', settings, []).name, 'Saved view');
+});
+
+test('stored layouts are cleaned by type, de-duplicated, and capped', { tag: 'unit' }, () => {
+  const settings = normalizeSettings({});
+  const cleaned = normalizeDiscoveryLayouts([
+    // A string where a boolean belongs: dropped at that key rather than pushed
+    // into live settings.
+    { name: 'mixed', values: { 'layout.density': 'compact', 'layout.wideGrid': 'yes' } },
+    { name: 'MIXED', values: { 'layout.density': 'compact' } },
+    { name: '   ', values: { 'layout.density': 'compact' } },
+    { name: 'unknown keys only', values: { 'content.blocklistUrl': 'https://example.com' } },
+    'not an object',
+    { name: 'routes', routes: ['browse', 'nope', 'home'], values: { 'layout.density': 'compact' } },
+  ], settings);
+
+  assert.deepEqual(cleaned.map((entry) => entry.name), ['mixed', 'routes']);
+  assert.deepEqual(cleaned[0].values, { 'layout.density': 'compact' });
+  assert.deepEqual(cleaned[1].routes, ['browse', 'home']);
+
+  const many = Array.from({ length: DISCOVERY_LAYOUT_MAX + 6 }, (whole, index) => ({
+    name: `layout ${index}`, values: { 'layout.density': 'compact' },
+  }));
+  assert.equal(normalizeDiscoveryLayouts(many, settings).length, DISCOVERY_LAYOUT_MAX);
+  assert.deepEqual(normalizeDiscoveryLayouts(null, settings), []);
+});
+
+test('applying a layout moves only what differs, and says what it moved', { tag: 'unit' }, () => {
+  const settings = normalizeSettings({});
+  const layout = { name: 'dense', routes: ['browse'], values: { 'layout.density': 'compact', 'content.hideCasino': true } };
+
+  const changed = applyDiscoveryLayout(settings, layout);
+  assert.deepEqual(changed.sort(), ['content.hideCasino', 'layout.density']);
+  assert.equal(settings.layout.density, 'compact');
+  assert.equal(settings.content.hideCasino, true);
+
+  // Applying it again moves nothing, so the interface can say so rather than
+  // claiming a change that did not happen.
+  assert.deepEqual(applyDiscoveryLayout(settings, layout), []);
+  assert.deepEqual(applyDiscoveryLayout(settings, null), []);
+  assert.equal(layoutMatchesSettings(layout, settings), true);
+  settings.layout.density = 'cozy';
+  assert.equal(layoutMatchesSettings(layout, settings), false);
+  assert.equal(layoutMatchesSettings({ name: 'empty', values: {} }, settings), false);
+});
+
+test('a route gets the first layout that claims it, and no other route does', { tag: 'unit' }, () => {
+  const first = { name: 'a', routes: ['browse'], values: { 'layout.density': 'compact' } };
+  const second = { name: 'b', routes: ['browse', 'home'], values: { 'layout.density': 'cozy' } };
+  assert.equal(layoutForRoute([first, second], 'browse').name, 'a');
+  assert.equal(layoutForRoute([first, second], 'home').name, 'b');
+  assert.equal(layoutForRoute([first, second], 'channel'), null);
+  assert.equal(layoutForRoute([first, second], ''), null);
+  assert.equal(layoutForRoute([{ name: 'c', routes: [], values: {} }], 'browse'), null);
 });

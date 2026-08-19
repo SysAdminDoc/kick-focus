@@ -868,6 +868,9 @@ export function createLive(host) {
   }
 
   function annotateDeletedMessage(deletion) {
+    // Before anything is drawn: a session log must not outlive the deletion it
+    // just heard about, and the annotation below can return early.
+    host.forgetChatMessage?.(deletion.id);
     const node = document.querySelector(chatMessageSelector(deletion.id));
     if (!node || node.dataset.kfDeletionNoted === 'true') return;
     node.dataset.kfDeletionNoted = 'true';
@@ -951,6 +954,7 @@ export function createLive(host) {
     connectRealtime,
     kickFetchJson,
     liveStatusSummary,
+    localUsername,
     mutateKickChannelFollow,
     onRealtimeFrame,
     readCollectibleInventory,

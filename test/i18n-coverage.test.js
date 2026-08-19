@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
+import { DISCOVERY_ROUTE_LABELS, EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -97,6 +97,8 @@ async function collect() {
     // The earned marker's status, which reaches the accessible name through a
     // lookup and never appears as a literal in runtime.js.
     'Daily reward ready',
+    // Route names on a saved view, reached through a lookup keyed by route.
+    ...Object.values(DISCOVERY_ROUTE_LABELS),
     'Click to save',
     'Saved — click to open in the library',
     'Name shadowed by another set',

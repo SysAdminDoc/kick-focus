@@ -40,7 +40,7 @@ export const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.29.0': Object.freeze({
-    summary: 'A read-only Viewer page gathers the daily reward, channel points, collectibles, Drops, level and streak, says where each number came from rather than showing a zero for one it could not read, and marks the Focus button when a reward is actually waiting.',
+    summary: 'A read-only Viewer page, five chat comfort switches, and saved discovery views: the daily reward and channel points in one place, message times and a bounded session chat search, and a named layout applied to the pages you choose.',
     defaults: Object.freeze([]),
   }),
 });
@@ -168,6 +168,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
     showVodExpiry: true,
     stickyChatPause: false,
     chatHighlights: false,
+    // Five chat comfort switches, each independent and each off until asked
+    // for. The history one is off for a stronger reason than the rest: it is
+    // the only one that keeps anything, and what it would keep is other
+    // people's messages.
+    chatTimestamps: false,
+    chatPriorityPeople: [],
+    chatMentionSound: false,
+    chatHideMessages: false,
+    chatHistory: false,
     organizeChatStickers: true,
     clickChatEmotes: true,
     // Off by default: this one types into Kick's chat input. Copying a name to
@@ -1171,6 +1180,348 @@ export function viewerHubSummary(cards = []) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Chat comfort
+//
+// Five small things a chat reader wants, each independent of the others and
+// each off until asked for: a time beside a message, people worth noticing,
+// a sound when something matches, a way to hide one message locally, and a
+// search over what this session has seen.
+//
+// The last one is the one with teeth, and everything below is shaped by it.
+// A searchable chat history is one careless decision away from being a
+// transcript archive of other people's messages sitting in someone's browser
+// forever, so it is bounded three ways at once — rows, bytes, and age — it
+// holds only the main chatroom, it never leaves the machine without a
+// deliberate action, and a message deleted by a moderator is dropped from it
+// the moment that deletion is seen. A record of something Kick removed is
+// exactly the thing not to keep.
+// ---------------------------------------------------------------------------
+
+/**
+ * Three caps, applied together, because each catches what the others miss.
+ *
+ * Rows bound a quiet channel, bytes bound a channel where every message is a
+ * wall of text, and age bounds a session left open overnight — a tab open for
+ * eight hours should not still hold what was said in the first hour.
+ */
+export const CHAT_HISTORY_LIMITS = Object.freeze({
+  rows: 400,
+  bytes: 200_000,
+  ageMs: 60 * 60 * 1000,
+});
+
+/** The longest single message worth keeping. Beyond this it is truncated, not dropped. */
+export const CHAT_HISTORY_MAX_TEXT = 400;
+
+function historyBytes(rows) {
+  let total = 0;
+  for (const row of rows) total += (row.text?.length || 0) + (row.author?.length || 0) + 24;
+  return total;
+}
+
+/**
+ * Drop what no longer belongs: too old first, then oldest-first until the row
+ * and byte caps are met.
+ *
+ * Age is applied before the other two on purpose. Trimming by count first can
+ * leave an hour-old message in place because the list happened to be short,
+ * and "we keep the last 400" is not the promise this makes.
+ */
+export function pruneChatHistory(rows = [], limits = CHAT_HISTORY_LIMITS, now = 0) {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const fresh = list.filter((row) => Number.isFinite(row.at) && now - row.at <= limits.ageMs);
+  const capped = fresh.slice(Math.max(0, fresh.length - limits.rows));
+  while (capped.length > 1 && historyBytes(capped) > limits.bytes) capped.shift();
+  return capped;
+}
+
+/**
+ * Record one message, or refuse it.
+ *
+ * Refusals are the interesting part: no id means nothing can ever delete it
+ * again, and a whisper is a private message that has no business in a searchable
+ * log at all. Both return the store unchanged rather than storing something
+ * this module cannot later honour a deletion for.
+ */
+export function appendChatEntry(rows = [], entry = {}, limits = CHAT_HISTORY_LIMITS, now = 0) {
+  const list = Array.isArray(rows) ? rows : [];
+  const id = String(entry.id ?? '').trim();
+  const text = String(entry.text ?? '').replace(/\s+/g, ' ').trim();
+  if (!id || !text) return list;
+  if (entry.whisper === true) return list;
+  const at = Number.isFinite(entry.at) ? entry.at : now;
+  // Kick recycles message nodes as chat scrolls, so the same id can be offered
+  // more than once. The first sighting is the true one.
+  if (list.some((row) => row.id === id)) return list;
+  const row = {
+    id,
+    author: String(entry.author ?? '').slice(0, 40),
+    text: text.slice(0, CHAT_HISTORY_MAX_TEXT),
+    at,
+    channel: String(entry.channel ?? '').slice(0, 64),
+  };
+  return pruneChatHistory([...list, row], limits, Math.max(now, at));
+}
+
+/**
+ * Forget a message, because Kick did.
+ *
+ * Called from the same deletion path that already annotates a removed message
+ * in the DOM. A history that outlives a moderator's decision is the one thing
+ * this feature must never become.
+ */
+export function dropChatMessage(rows = [], id = '') {
+  const wanted = String(id ?? '').trim();
+  if (!wanted) return Array.isArray(rows) ? rows : [];
+  return (Array.isArray(rows) ? rows : []).filter((row) => row.id !== wanted);
+}
+
+/** Newest first, so a search answers with what was just said before what was said an hour ago. */
+export function searchChatHistory(rows = [], query = '', limit = 50) {
+  const needle = String(query ?? '').trim().toLowerCase();
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const matched = needle
+    ? list.filter((row) => String(row.text).toLowerCase().includes(needle)
+      || String(row.author).toLowerCase().includes(needle))
+    : list;
+  return matched.slice(-limit).reverse();
+}
+
+/** A comma or newline separated list of names, cleaned up and de-duplicated. */
+export function parsePeopleList(value, max = 40) {
+  const seen = new Set();
+  for (const raw of String(value ?? '').split(/[\n,]/)) {
+    const name = raw.trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9_][a-z0-9_-]{0,63}$/.test(name)) continue;
+    seen.add(name);
+    if (seen.size >= max) break;
+  }
+  return [...seen];
+}
+
+/** Is this message from somebody the reader asked to notice? */
+export function isPriorityPerson(people = [], author = '') {
+  const name = String(author ?? '').trim().replace(/^@/, '').toLowerCase();
+  if (!name) return false;
+  return (Array.isArray(people) ? people : []).some((entry) => String(entry).toLowerCase() === name);
+}
+
+/** The shortest gap between two sounds. A busy channel must not become a smoke alarm. */
+export const MENTION_SOUND_GAP_MS = 4000;
+
+/**
+ * Should a sound play for this message?
+ *
+ * Every condition is a reason somebody would be annoyed if it were missing.
+ * Off by default, only for a message that actually matched, never for the
+ * reader's own message, silent while the tab is in the background (the browser
+ * would queue a pile of them for the moment it is focused), and rate limited.
+ */
+export function shouldPlayMentionSound(facts = {}) {
+  const {
+    enabled = false,
+    matched = false,
+    own = false,
+    hidden = false,
+    now = 0,
+    lastPlayedAt = 0,
+  } = facts;
+  if (!enabled || !matched || own || hidden) return false;
+  return now - lastPlayedAt >= MENTION_SOUND_GAP_MS;
+}
+
+/** Local clock, 24-hour, because a chat line has no room for anything longer. */
+export function formatChatTime(at, locale = undefined) {
+  if (!Number.isFinite(at)) return '';
+  try {
+    return new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The history as a file the reader asked for, and nothing they did not.
+ *
+ * Plain text rather than JSON: this is somebody looking for what was said, not
+ * a data interchange, and a format nobody can read by accident is a format
+ * nobody checks before sharing.
+ */
+export function buildChatHistoryExport(rows = [], channel = '') {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const header = `Kick Focus chat log — ${channel || 'this session'} — ${list.length} messages`;
+  const lines = list.map((row) => `[${formatChatTime(row.at)}] ${row.author || 'unknown'}: ${row.text}`);
+  return [header, ...lines].join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Discovery layouts
+//
+// A layout is a named snapshot of the settings that decide how a discovery page
+// looks and what it leaves out, plus the routes it belongs to. Browse can be
+// dense and unfiltered while Home stays calm, without either being re-tuned by
+// hand every time.
+//
+// It is worth saying plainly what this is not, because the shape invites the
+// confusion: it changes nothing about what Kick recommends. Every value here is
+// already a setting in this build, applied to markup Kick has already sent. No
+// layout reorders a rail, asks Kick for different cards, or knows anything
+// about why a card is on the page.
+// ---------------------------------------------------------------------------
+
+/**
+ * The settings a layout may carry, and nothing else.
+ *
+ * An explicit list rather than "whatever was in the object": a layout is
+ * restored into live settings, so an unbounded key set would be a path from a
+ * file somebody imported to any setting in the build.
+ */
+export const DISCOVERY_LAYOUT_KEYS = Object.freeze([
+  'layout.density',
+  'layout.wideGrid',
+  'layout.showFollowingRail',
+  'layout.showRecommendedRail',
+  'appearance.thumbnail',
+  'appearance.dimWatched',
+  'content.hideCasino',
+  'content.blurMature',
+  'content.hideDropsPromotions',
+  'content.suppressPromoted',
+]);
+
+/** The discovery routes a layout can belong to. */
+export const DISCOVERY_LAYOUT_ROUTES = Object.freeze(['home', 'browse', 'category', 'following', 'search']);
+
+/**
+ * What each route is called in the interface.
+ *
+ * Here rather than beside the markup for the same reason the viewer hub's copy
+ * is: these reach the DOM through a lookup keyed by route, so no literal of any
+ * of them exists in runtime.js for the translation gate's scanners to find.
+ */
+export const DISCOVERY_ROUTE_LABELS = Object.freeze({
+  home: 'Home',
+  browse: 'Browse',
+  category: 'Category pages',
+  following: 'Following',
+  search: 'Search results',
+});
+
+/** How many layouts are worth keeping. Past this it is a list nobody reads. */
+export const DISCOVERY_LAYOUT_MAX = 12;
+export const DISCOVERY_LAYOUT_NAME_MAX = 40;
+
+function settingAt(settings, path) {
+  const [group, key] = String(path).split('.');
+  const owner = settings && typeof settings === 'object' ? settings[group] : null;
+  return owner && typeof owner === 'object' ? owner[key] : undefined;
+}
+
+/** A layout's name, cleaned to something that can sit in a list and in a label. */
+export function cleanLayoutName(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, DISCOVERY_LAYOUT_NAME_MAX);
+}
+
+/**
+ * Capture the current view as a layout.
+ *
+ * Only the keys above, only from the settings handed in, and only the routes
+ * asked for. A layout with no routes is legal and simply never applies itself —
+ * it is a saved view somebody switches to by hand.
+ */
+export function buildDiscoveryLayout(name, settings, routes = []) {
+  const values = {};
+  for (const path of DISCOVERY_LAYOUT_KEYS) {
+    const value = settingAt(settings, path);
+    if (value !== undefined) values[path] = value;
+  }
+  return {
+    name: cleanLayoutName(name) || 'Saved view',
+    routes: (Array.isArray(routes) ? routes : []).filter((route) => DISCOVERY_LAYOUT_ROUTES.includes(route)),
+    values,
+  };
+}
+
+/**
+ * Clean a stored or imported list of layouts.
+ *
+ * Every value is checked against the type of the current setting rather than
+ * taken as written, so a layout carrying a string where a number belongs is
+ * dropped at that key instead of being pushed into live settings — a saved view
+ * is a file that round-trips through export and import like everything else
+ * here, and it arrives from wherever that file has been.
+ */
+export function normalizeDiscoveryLayouts(input, settings) {
+  const list = Array.isArray(input) ? input : [];
+  const seen = new Set();
+  const out = [];
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue;
+    const name = cleanLayoutName(entry.name);
+    if (!name || seen.has(name.toLowerCase())) continue;
+    const values = {};
+    const source = entry.values && typeof entry.values === 'object' ? entry.values : {};
+    for (const path of DISCOVERY_LAYOUT_KEYS) {
+      const value = source[path];
+      const current = settingAt(settings, path);
+      if (value === undefined || current === undefined) continue;
+      if (typeof value !== typeof current) continue;
+      values[path] = value;
+    }
+    if (!Object.keys(values).length) continue;
+    seen.add(name.toLowerCase());
+    out.push({
+      name,
+      routes: (Array.isArray(entry.routes) ? entry.routes : []).filter((route) => DISCOVERY_LAYOUT_ROUTES.includes(route)),
+      values,
+    });
+    if (out.length >= DISCOVERY_LAYOUT_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * The layout to apply on a route, or null.
+ *
+ * First match wins, and the order is the order the user put them in, so
+ * "the one nearer the top" is the answer to two layouts claiming Browse rather
+ * than something the reader has to work out.
+ */
+export function layoutForRoute(layouts = [], route = '') {
+  if (!DISCOVERY_LAYOUT_ROUTES.includes(route)) return null;
+  return (Array.isArray(layouts) ? layouts : []).find((entry) => entry?.routes?.includes(route)) || null;
+}
+
+/**
+ * Merge a layout into settings, returning what changed.
+ *
+ * Returns the paths it actually moved rather than a boolean, because the
+ * interface says what happened and "applied Calm" is a weaker sentence than
+ * naming the two things that are now different.
+ */
+export function applyDiscoveryLayout(settings, layout) {
+  const changed = [];
+  if (!layout || typeof layout !== 'object') return changed;
+  for (const path of DISCOVERY_LAYOUT_KEYS) {
+    const value = layout.values?.[path];
+    if (value === undefined) continue;
+    const [group, key] = path.split('.');
+    if (!settings?.[group] || settings[group][key] === value) continue;
+    settings[group][key] = value;
+    changed.push(path);
+  }
+  return changed;
+}
+
+/** Is this layout what the settings currently say? Used to mark the active one. */
+export function layoutMatchesSettings(layout, settings) {
+  if (!layout || typeof layout !== 'object') return false;
+  const entries = Object.entries(layout.values || {});
+  if (!entries.length) return false;
+  return entries.every(([path, value]) => settingAt(settings, path) === value);
+}
+
 /** Shortest query worth opening a list for. One letter matches most of a library. */
 export const EMOTE_TRIGGER_MIN = 2;
 
@@ -1494,6 +1845,14 @@ export function normalizeSettings(input) {
       showVodExpiry: bool(content.showVodExpiry, defaults.content.showVodExpiry),
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
+      chatTimestamps: bool(content.chatTimestamps, defaults.content.chatTimestamps),
+      // Parsed rather than trusted: this is the one chat setting a person types
+      // into, and the same cleaning runs whether it arrives from the field, an
+      // imported file, or a record written by an older build.
+      chatPriorityPeople: parsePeopleList(content.chatPriorityPeople),
+      chatMentionSound: bool(content.chatMentionSound, defaults.content.chatMentionSound),
+      chatHideMessages: bool(content.chatHideMessages, defaults.content.chatHideMessages),
+      chatHistory: bool(content.chatHistory, defaults.content.chatHistory),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),

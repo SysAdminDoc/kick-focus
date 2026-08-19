@@ -69,10 +69,3 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 ## Research-Driven Additions — 2026-08-19 signed-in viewer pass
 
 Added from the authenticated journey, competitor, accessibility, and platform research recorded in [RESEARCH.md](RESEARCH.md), run against v1.26.0. Continues the R-NN scheme from R-62. The existing “My emotes” Next item remains authoritative and is not duplicated below.
-
-### P2 — chat comfort, delight, and player utility
-
-- **R-68 — Bounded Chat Comfort module.** Add opt-in timestamps, priority people, mention sound, local per-message hide, and searchable session history. History defaults off, excludes private/whisper content, has row/byte/age caps, exports only through an explicit action, and never retains a remote-deleted message longer than the configured session window. Acceptance: high-volume observer benchmark stays within the apply-cost budget; storage and expiry tests cover cap boundaries; each feature can be enabled independently. Complexity: L.
-### P3 — discovery and advanced organization
-
-- **R-71 — Local discovery layouts.** Investigate saved, route-aware discovery views that combine existing density, hidden-channel, category, language, and watched-state controls without creating a second recommendation system. Acceptance: layouts are local, editable through existing settings patterns, and never claim to change Kick's algorithm. Complexity: L.

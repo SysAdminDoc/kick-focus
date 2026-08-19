@@ -65,7 +65,7 @@ const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.29.0': Object.freeze({
-    summary: 'A read-only Viewer page gathers the daily reward, channel points, collectibles, Drops, level and streak, says where each number came from rather than showing a zero for one it could not read, and marks the Focus button when a reward is actually waiting.',
+    summary: 'A read-only Viewer page, five chat comfort switches, and saved discovery views: the daily reward and channel points in one place, message times and a bounded session chat search, and a named layout applied to the pages you choose.',
     defaults: Object.freeze([]),
   }),
 });
@@ -193,6 +193,15 @@ const DEFAULT_SETTINGS = Object.freeze({
     showVodExpiry: true,
     stickyChatPause: false,
     chatHighlights: false,
+    // Five chat comfort switches, each independent and each off until asked
+    // for. The history one is off for a stronger reason than the rest: it is
+    // the only one that keeps anything, and what it would keep is other
+    // people's messages.
+    chatTimestamps: false,
+    chatPriorityPeople: [],
+    chatMentionSound: false,
+    chatHideMessages: false,
+    chatHistory: false,
     organizeChatStickers: true,
     clickChatEmotes: true,
     // Off by default: this one types into Kick's chat input. Copying a name to
@@ -1196,6 +1205,348 @@ function viewerHubSummary(cards = []) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Chat comfort
+//
+// Five small things a chat reader wants, each independent of the others and
+// each off until asked for: a time beside a message, people worth noticing,
+// a sound when something matches, a way to hide one message locally, and a
+// search over what this session has seen.
+//
+// The last one is the one with teeth, and everything below is shaped by it.
+// A searchable chat history is one careless decision away from being a
+// transcript archive of other people's messages sitting in someone's browser
+// forever, so it is bounded three ways at once — rows, bytes, and age — it
+// holds only the main chatroom, it never leaves the machine without a
+// deliberate action, and a message deleted by a moderator is dropped from it
+// the moment that deletion is seen. A record of something Kick removed is
+// exactly the thing not to keep.
+// ---------------------------------------------------------------------------
+
+/**
+ * Three caps, applied together, because each catches what the others miss.
+ *
+ * Rows bound a quiet channel, bytes bound a channel where every message is a
+ * wall of text, and age bounds a session left open overnight — a tab open for
+ * eight hours should not still hold what was said in the first hour.
+ */
+const CHAT_HISTORY_LIMITS = Object.freeze({
+  rows: 400,
+  bytes: 200_000,
+  ageMs: 60 * 60 * 1000,
+});
+
+/** The longest single message worth keeping. Beyond this it is truncated, not dropped. */
+const CHAT_HISTORY_MAX_TEXT = 400;
+
+function historyBytes(rows) {
+  let total = 0;
+  for (const row of rows) total += (row.text?.length || 0) + (row.author?.length || 0) + 24;
+  return total;
+}
+
+/**
+ * Drop what no longer belongs: too old first, then oldest-first until the row
+ * and byte caps are met.
+ *
+ * Age is applied before the other two on purpose. Trimming by count first can
+ * leave an hour-old message in place because the list happened to be short,
+ * and "we keep the last 400" is not the promise this makes.
+ */
+function pruneChatHistory(rows = [], limits = CHAT_HISTORY_LIMITS, now = 0) {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const fresh = list.filter((row) => Number.isFinite(row.at) && now - row.at <= limits.ageMs);
+  const capped = fresh.slice(Math.max(0, fresh.length - limits.rows));
+  while (capped.length > 1 && historyBytes(capped) > limits.bytes) capped.shift();
+  return capped;
+}
+
+/**
+ * Record one message, or refuse it.
+ *
+ * Refusals are the interesting part: no id means nothing can ever delete it
+ * again, and a whisper is a private message that has no business in a searchable
+ * log at all. Both return the store unchanged rather than storing something
+ * this module cannot later honour a deletion for.
+ */
+function appendChatEntry(rows = [], entry = {}, limits = CHAT_HISTORY_LIMITS, now = 0) {
+  const list = Array.isArray(rows) ? rows : [];
+  const id = String(entry.id ?? '').trim();
+  const text = String(entry.text ?? '').replace(/\s+/g, ' ').trim();
+  if (!id || !text) return list;
+  if (entry.whisper === true) return list;
+  const at = Number.isFinite(entry.at) ? entry.at : now;
+  // Kick recycles message nodes as chat scrolls, so the same id can be offered
+  // more than once. The first sighting is the true one.
+  if (list.some((row) => row.id === id)) return list;
+  const row = {
+    id,
+    author: String(entry.author ?? '').slice(0, 40),
+    text: text.slice(0, CHAT_HISTORY_MAX_TEXT),
+    at,
+    channel: String(entry.channel ?? '').slice(0, 64),
+  };
+  return pruneChatHistory([...list, row], limits, Math.max(now, at));
+}
+
+/**
+ * Forget a message, because Kick did.
+ *
+ * Called from the same deletion path that already annotates a removed message
+ * in the DOM. A history that outlives a moderator's decision is the one thing
+ * this feature must never become.
+ */
+function dropChatMessage(rows = [], id = '') {
+  const wanted = String(id ?? '').trim();
+  if (!wanted) return Array.isArray(rows) ? rows : [];
+  return (Array.isArray(rows) ? rows : []).filter((row) => row.id !== wanted);
+}
+
+/** Newest first, so a search answers with what was just said before what was said an hour ago. */
+function searchChatHistory(rows = [], query = '', limit = 50) {
+  const needle = String(query ?? '').trim().toLowerCase();
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const matched = needle
+    ? list.filter((row) => String(row.text).toLowerCase().includes(needle)
+      || String(row.author).toLowerCase().includes(needle))
+    : list;
+  return matched.slice(-limit).reverse();
+}
+
+/** A comma or newline separated list of names, cleaned up and de-duplicated. */
+function parsePeopleList(value, max = 40) {
+  const seen = new Set();
+  for (const raw of String(value ?? '').split(/[\n,]/)) {
+    const name = raw.trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9_][a-z0-9_-]{0,63}$/.test(name)) continue;
+    seen.add(name);
+    if (seen.size >= max) break;
+  }
+  return [...seen];
+}
+
+/** Is this message from somebody the reader asked to notice? */
+function isPriorityPerson(people = [], author = '') {
+  const name = String(author ?? '').trim().replace(/^@/, '').toLowerCase();
+  if (!name) return false;
+  return (Array.isArray(people) ? people : []).some((entry) => String(entry).toLowerCase() === name);
+}
+
+/** The shortest gap between two sounds. A busy channel must not become a smoke alarm. */
+const MENTION_SOUND_GAP_MS = 4000;
+
+/**
+ * Should a sound play for this message?
+ *
+ * Every condition is a reason somebody would be annoyed if it were missing.
+ * Off by default, only for a message that actually matched, never for the
+ * reader's own message, silent while the tab is in the background (the browser
+ * would queue a pile of them for the moment it is focused), and rate limited.
+ */
+function shouldPlayMentionSound(facts = {}) {
+  const {
+    enabled = false,
+    matched = false,
+    own = false,
+    hidden = false,
+    now = 0,
+    lastPlayedAt = 0,
+  } = facts;
+  if (!enabled || !matched || own || hidden) return false;
+  return now - lastPlayedAt >= MENTION_SOUND_GAP_MS;
+}
+
+/** Local clock, 24-hour, because a chat line has no room for anything longer. */
+function formatChatTime(at, locale = undefined) {
+  if (!Number.isFinite(at)) return '';
+  try {
+    return new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The history as a file the reader asked for, and nothing they did not.
+ *
+ * Plain text rather than JSON: this is somebody looking for what was said, not
+ * a data interchange, and a format nobody can read by accident is a format
+ * nobody checks before sharing.
+ */
+function buildChatHistoryExport(rows = [], channel = '') {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const header = `Kick Focus chat log — ${channel || 'this session'} — ${list.length} messages`;
+  const lines = list.map((row) => `[${formatChatTime(row.at)}] ${row.author || 'unknown'}: ${row.text}`);
+  return [header, ...lines].join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Discovery layouts
+//
+// A layout is a named snapshot of the settings that decide how a discovery page
+// looks and what it leaves out, plus the routes it belongs to. Browse can be
+// dense and unfiltered while Home stays calm, without either being re-tuned by
+// hand every time.
+//
+// It is worth saying plainly what this is not, because the shape invites the
+// confusion: it changes nothing about what Kick recommends. Every value here is
+// already a setting in this build, applied to markup Kick has already sent. No
+// layout reorders a rail, asks Kick for different cards, or knows anything
+// about why a card is on the page.
+// ---------------------------------------------------------------------------
+
+/**
+ * The settings a layout may carry, and nothing else.
+ *
+ * An explicit list rather than "whatever was in the object": a layout is
+ * restored into live settings, so an unbounded key set would be a path from a
+ * file somebody imported to any setting in the build.
+ */
+const DISCOVERY_LAYOUT_KEYS = Object.freeze([
+  'layout.density',
+  'layout.wideGrid',
+  'layout.showFollowingRail',
+  'layout.showRecommendedRail',
+  'appearance.thumbnail',
+  'appearance.dimWatched',
+  'content.hideCasino',
+  'content.blurMature',
+  'content.hideDropsPromotions',
+  'content.suppressPromoted',
+]);
+
+/** The discovery routes a layout can belong to. */
+const DISCOVERY_LAYOUT_ROUTES = Object.freeze(['home', 'browse', 'category', 'following', 'search']);
+
+/**
+ * What each route is called in the interface.
+ *
+ * Here rather than beside the markup for the same reason the viewer hub's copy
+ * is: these reach the DOM through a lookup keyed by route, so no literal of any
+ * of them exists in runtime.js for the translation gate's scanners to find.
+ */
+const DISCOVERY_ROUTE_LABELS = Object.freeze({
+  home: 'Home',
+  browse: 'Browse',
+  category: 'Category pages',
+  following: 'Following',
+  search: 'Search results',
+});
+
+/** How many layouts are worth keeping. Past this it is a list nobody reads. */
+const DISCOVERY_LAYOUT_MAX = 12;
+const DISCOVERY_LAYOUT_NAME_MAX = 40;
+
+function settingAt(settings, path) {
+  const [group, key] = String(path).split('.');
+  const owner = settings && typeof settings === 'object' ? settings[group] : null;
+  return owner && typeof owner === 'object' ? owner[key] : undefined;
+}
+
+/** A layout's name, cleaned to something that can sit in a list and in a label. */
+function cleanLayoutName(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, DISCOVERY_LAYOUT_NAME_MAX);
+}
+
+/**
+ * Capture the current view as a layout.
+ *
+ * Only the keys above, only from the settings handed in, and only the routes
+ * asked for. A layout with no routes is legal and simply never applies itself —
+ * it is a saved view somebody switches to by hand.
+ */
+function buildDiscoveryLayout(name, settings, routes = []) {
+  const values = {};
+  for (const path of DISCOVERY_LAYOUT_KEYS) {
+    const value = settingAt(settings, path);
+    if (value !== undefined) values[path] = value;
+  }
+  return {
+    name: cleanLayoutName(name) || 'Saved view',
+    routes: (Array.isArray(routes) ? routes : []).filter((route) => DISCOVERY_LAYOUT_ROUTES.includes(route)),
+    values,
+  };
+}
+
+/**
+ * Clean a stored or imported list of layouts.
+ *
+ * Every value is checked against the type of the current setting rather than
+ * taken as written, so a layout carrying a string where a number belongs is
+ * dropped at that key instead of being pushed into live settings — a saved view
+ * is a file that round-trips through export and import like everything else
+ * here, and it arrives from wherever that file has been.
+ */
+function normalizeDiscoveryLayouts(input, settings) {
+  const list = Array.isArray(input) ? input : [];
+  const seen = new Set();
+  const out = [];
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue;
+    const name = cleanLayoutName(entry.name);
+    if (!name || seen.has(name.toLowerCase())) continue;
+    const values = {};
+    const source = entry.values && typeof entry.values === 'object' ? entry.values : {};
+    for (const path of DISCOVERY_LAYOUT_KEYS) {
+      const value = source[path];
+      const current = settingAt(settings, path);
+      if (value === undefined || current === undefined) continue;
+      if (typeof value !== typeof current) continue;
+      values[path] = value;
+    }
+    if (!Object.keys(values).length) continue;
+    seen.add(name.toLowerCase());
+    out.push({
+      name,
+      routes: (Array.isArray(entry.routes) ? entry.routes : []).filter((route) => DISCOVERY_LAYOUT_ROUTES.includes(route)),
+      values,
+    });
+    if (out.length >= DISCOVERY_LAYOUT_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * The layout to apply on a route, or null.
+ *
+ * First match wins, and the order is the order the user put them in, so
+ * "the one nearer the top" is the answer to two layouts claiming Browse rather
+ * than something the reader has to work out.
+ */
+function layoutForRoute(layouts = [], route = '') {
+  if (!DISCOVERY_LAYOUT_ROUTES.includes(route)) return null;
+  return (Array.isArray(layouts) ? layouts : []).find((entry) => entry?.routes?.includes(route)) || null;
+}
+
+/**
+ * Merge a layout into settings, returning what changed.
+ *
+ * Returns the paths it actually moved rather than a boolean, because the
+ * interface says what happened and "applied Calm" is a weaker sentence than
+ * naming the two things that are now different.
+ */
+function applyDiscoveryLayout(settings, layout) {
+  const changed = [];
+  if (!layout || typeof layout !== 'object') return changed;
+  for (const path of DISCOVERY_LAYOUT_KEYS) {
+    const value = layout.values?.[path];
+    if (value === undefined) continue;
+    const [group, key] = path.split('.');
+    if (!settings?.[group] || settings[group][key] === value) continue;
+    settings[group][key] = value;
+    changed.push(path);
+  }
+  return changed;
+}
+
+/** Is this layout what the settings currently say? Used to mark the active one. */
+function layoutMatchesSettings(layout, settings) {
+  if (!layout || typeof layout !== 'object') return false;
+  const entries = Object.entries(layout.values || {});
+  if (!entries.length) return false;
+  return entries.every(([path, value]) => settingAt(settings, path) === value);
+}
+
 /** Shortest query worth opening a list for. One letter matches most of a library. */
 const EMOTE_TRIGGER_MIN = 2;
 
@@ -1519,6 +1870,14 @@ function normalizeSettings(input) {
       showVodExpiry: bool(content.showVodExpiry, defaults.content.showVodExpiry),
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
+      chatTimestamps: bool(content.chatTimestamps, defaults.content.chatTimestamps),
+      // Parsed rather than trusted: this is the one chat setting a person types
+      // into, and the same cleaning runs whether it arrives from the field, an
+      // imported file, or a record written by an older build.
+      chatPriorityPeople: parsePeopleList(content.chatPriorityPeople),
+      chatMentionSound: bool(content.chatMentionSound, defaults.content.chatMentionSound),
+      chatHideMessages: bool(content.chatHideMessages, defaults.content.chatHideMessages),
+      chatHistory: bool(content.chatHistory, defaults.content.chatHistory),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
@@ -6089,6 +6448,9 @@ function createLive(host) {
   }
 
   function annotateDeletedMessage(deletion) {
+    // Before anything is drawn: a session log must not outlive the deletion it
+    // just heard about, and the annotation below can return early.
+    host.forgetChatMessage?.(deletion.id);
     const node = document.querySelector(chatMessageSelector(deletion.id));
     if (!node || node.dataset.kfDeletionNoted === 'true') return;
     node.dataset.kfDeletionNoted = 'true';
@@ -6172,6 +6534,7 @@ function createLive(host) {
     connectRealtime,
     kickFetchJson,
     liveStatusSummary,
+    localUsername,
     mutateKickChannelFollow,
     onRealtimeFrame,
     readCollectibleInventory,
@@ -7169,6 +7532,13 @@ const state = {
   // is the only card that is not read straight off the page. Null means nobody
   // has opened the hub yet, which is why nothing has been requested.
   viewerHub: { collectibles: null },
+  // Chat comfort, and none of it persisted. The log is other people's
+  // messages: it lives for the session, in memory, and a reload is the same as
+  // clearing it.
+  // Saved discovery views, loaded once. Local, and only ever this build's own
+  // settings.
+  discoveryLayouts: [],
+  chatComfort: { rows: [], hidden: new Set(), seen: new Set(), sounded: new Set(), lastSoundAt: 0, query: '' },
   modal: null,
   command: null,
   commandInput: null,
@@ -7193,6 +7563,9 @@ const state = {
     chatPaused: false,
     suspended: false,
     routeSource: '',
+    // The route a saved view was last applied for, so it is applied on entering
+    // a page and not on every cycle spent there.
+    layoutRoute: '',
     applyRunning: false,
     presenceRequested: false,
     stickerGridScrollTop: null,
@@ -8486,6 +8859,22 @@ const SITE_CSS = `
 
     html[data-kf-poor-mode="true"] [data-kf-monetization] { display: none !important; }
 
+    /* Chat comfort, on Kick's own rows. A priority message gets a rule down its
+       left edge rather than a background wash: the row still reads as chat, and
+       the marker survives every theme Kick ships. */
+    [data-kf-chat-priority="true"] { border-left: 2px solid var(--kf-accent); padding-left: 6px; }
+    [data-kf-chat-hidden="true"] > * { display: none !important; }
+    [data-kf-chat-hidden="true"]::after {
+      content: attr(data-kf-hidden-note);
+      display: block; padding: 4px 8px; color: #9aa4a0; font-size: 12px; font-style: italic;
+    }
+    [data-kf-chat-hide] {
+      float: right; margin-left: 6px; padding: 0 5px; color: #9aa4a0;
+      border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: transparent;
+      font-size: 12px; line-height: 1.5; cursor: pointer;
+    }
+    [data-kf-chat-hide]:hover, [data-kf-chat-hide]:focus-visible { color: #fff; border-color: var(--kf-accent); }
+
     [data-kf-card-actions] {
       position: absolute !important;
       top: 8px !important;
@@ -9404,11 +9793,13 @@ const liveSurface = createLive({
   currentVodId,
   plural,
   mergeStickerLibrary,
+  forgetChatMessage,
 });
 const {
   closeMergedChat,
   kickFetchJson,
   liveStatusSummary,
+  localUsername: liveLocalUsername,
   mergedChatEntries,
   syncMergedChat,
   mutateKickChannelFollow,
@@ -9689,6 +10080,16 @@ function syncCardMultiState() {
 }
 
 function handleCardAction(event) {
+  // The per-message dismiss shares this capture listener rather than adding a
+  // second one over the same document. It has to run before Kick's own
+  // handlers, which is what the capture phase is for.
+  const hide = event.target.closest?.('[data-kf-chat-hide]');
+  if (hide) {
+    event.preventDefault();
+    event.stopPropagation();
+    hideChatMessage(hide.dataset.kfChatHide || '');
+    return;
+  }
   const button = event.target.closest?.('[data-kf-card-action]');
   if (!button) return;
   const card = button.closest?.('[data-testid="livestream-results-card"], [data-testid="stream-card"], [class*="group/card"], article');
@@ -11543,11 +11944,23 @@ function applyChatHighlights() {
   }
   const keywords = state.settings.content.chatHighlights ? chatKeywordsForChannel() : [];
   const ranges = [];
+  // Everything the comfort switches need that is the same for every row, worked
+  // out once. Inside the loop these are reads of a local, not of settings, a
+  // username out of the header, or a channel slug off the URL.
+  const comfort = {
+    settings: state.settings.content,
+    people: state.settings.content.chatPriorityPeople || [],
+    own: liveLocalUsername(),
+    channel: currentChannelSlug(),
+    now: Date.now(),
+  };
+  syncChatComfortShell(messages);
   for (const node of messages.querySelectorAll?.('[data-index], [data-message-id], .group') || []) {
     const text = node.textContent || '';
     const hit = keywords.length > 0 && findKeywordSpans(text, keywords, 1).length > 0;
     node.dataset.kfHighlighted = String(hit);
     if (hit && registry && ranges.length < KEYWORD_RANGE_LIMIT) collectKeywordRanges(node, keywords, ranges);
+    applyChatComfortToMessage(node, { ...comfort, keywordHit: hit });
   }
   if (!registry) return;
   try {
@@ -11556,6 +11969,262 @@ function applyChatHighlights() {
   } catch (error) {
     logAppError('keyword highlight', error);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Chat comfort
+//
+// Five switches, each independent, each off until asked for, and all of them
+// carried by the pass that already walks chat once per apply cycle rather than
+// by a second walk of the same nodes.
+// ---------------------------------------------------------------------------
+
+/**
+ * Kick renders a timestamp on every message already and hides it behind its own
+ * custom property, measured in a capture of the live chatroom:
+ * `<span style="display: var(--chatroom-timestamps-display)">06:43 PM</span>`.
+ *
+ * So the switch reveals Kick's timestamp rather than writing one. That matters
+ * for more than tidiness: Kick's span holds the time the message was *sent*,
+ * and anything this build wrote would hold the time it was first *seen*, which
+ * is a different number and a wrong one for anybody scrolling back.
+ */
+const CHAT_TIMESTAMP_VAR = '--chatroom-timestamps-display';
+
+/** The author button, by what it is rather than by a class that will change. */
+const CHAT_AUTHOR_PROBES = ['button[data-prevent-expand="true"]', 'button.font-bold', 'button'];
+
+function chatMessageAuthor(node) {
+  for (const selector of CHAT_AUTHOR_PROBES) {
+    const found = node.querySelector?.(selector);
+    const name = String(found?.textContent || '').trim();
+    if (name && name.length < 40) return name;
+  }
+  return '';
+}
+
+/** The message itself: the row's text with the author's own name taken back off. */
+function chatMessageText(node, author) {
+  const raw = String(node.textContent || '').replace(/\s+/g, ' ').trim();
+  if (!author) return raw;
+  const at = raw.indexOf(author);
+  return at === -1 ? raw : raw.slice(at + author.length).replace(/^\s*:\s*/, '').trim();
+}
+
+/** The id a deletion would later arrive with, or '' when the row carries none. */
+function chatMessageId(node) {
+  return String(node.dataset?.messageId || node.dataset?.chatEntry || node.dataset?.index || '').trim();
+}
+
+/**
+ * A short tone, synthesised rather than shipped.
+ *
+ * No audio file means no asset to fetch, nothing to cache, and nothing that can
+ * be pointed at a remote host later. Built on the click, torn down after it, and
+ * quiet if the engine refuses an AudioContext without a gesture — a browser
+ * declining to make noise is not an error worth logging.
+ */
+function playMentionTone() {
+  try {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    const context = new Ctor();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(660, context.currentTime);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.2);
+    oscillator.onended = () => { context.close?.(); };
+  } catch {
+    // An engine that will not make a sound without a gesture is not a failure.
+  }
+}
+
+/** The names that count as a mention: your own, and anyone you asked to notice. */
+function mentionNames() {
+  const people = state.settings.content.chatPriorityPeople || [];
+  const own = liveLocalUsername();
+  return own ? [...people, own] : [...people];
+}
+
+/**
+ * One message, given everything the caller already worked out about it.
+ *
+ * Called from inside the highlight walk rather than from a walk of its own:
+ * this runs over every rendered message on every apply cycle, and a second
+ * `querySelectorAll` over the same rows is the kind of cost that turns a busy
+ * channel into a slow one.
+ */
+function applyChatComfortToMessage(node, { keywordHit, settings, people, own, channel, now }) {
+  const id = chatMessageId(node);
+  // `people` rather than the setting: a settings record written by an older
+  // build, or one arriving through the import path, can be missing a key this
+  // version added, and reading `.length` off that undefined threw inside the
+  // apply cycle — which took keyword highlighting and the header control down
+  // with it, because everything after the throw in that cycle never ran.
+  const author = (people.length > 0 || settings.chatHistory || settings.chatMentionSound)
+    ? chatMessageAuthor(node)
+    : '';
+  const priority = people.length > 0 && isPriorityPerson(people, author);
+  // Written only when the feature is on. Marking every row "false" for a reader
+  // who listed nobody is an attribute write per message per cycle on a tree
+  // React owns, and it breaks the promise the rest of this build keeps: chat
+  // markup is left exactly as Kick sent it unless something asked otherwise.
+  if (people.length > 0) {
+    if (node.dataset.kfChatPriority !== String(priority)) node.dataset.kfChatPriority = String(priority);
+  } else if (node.dataset.kfChatPriority) {
+    delete node.dataset.kfChatPriority;
+  }
+
+  if (settings.chatHideMessages) {
+    const hidden = id !== '' && state.chatComfort.hidden.has(id);
+    if (node.dataset.kfChatHidden !== String(hidden)) {
+      node.dataset.kfChatHidden = String(hidden);
+      // The replacement line is written as an attribute the stylesheet reads,
+      // so the row keeps its shape and the words still translate.
+      if (hidden) node.dataset.kfHiddenNote = tr('Hidden by you');
+      else delete node.dataset.kfHiddenNote;
+    }
+    if (id && !node.querySelector('[data-kf-chat-hide]')) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.kfChatHide = id;
+      button.setAttribute('aria-label', tr('Hide this message for me'));
+      button.title = tr('Hide this message for me');
+      button.textContent = '×';
+      node.append(button);
+    }
+  } else if (node.dataset.kfChatHidden) {
+    delete node.dataset.kfChatHidden;
+    node.querySelector('[data-kf-chat-hide]')?.remove();
+  }
+
+  const isOwn = Boolean(own) && author.toLowerCase() === own;
+  if (!id) return;
+  const text = settings.chatHistory || settings.chatMentionSound ? chatMessageText(node, author) : '';
+
+  if (settings.chatHistory && !state.chatComfort.seen.has(id)) {
+    state.chatComfort.seen.add(id);
+    state.chatComfort.rows = appendChatEntry(
+      state.chatComfort.rows,
+      { id, author, text, at: now, channel },
+      CHAT_HISTORY_LIMITS,
+      now,
+    );
+  }
+
+  if (!settings.chatMentionSound || state.chatComfort.sounded.has(id)) return;
+  state.chatComfort.sounded.add(id);
+  const mentioned = keywordHit || priority
+    || mentionNames().some((name) => text.toLowerCase().includes(String(name).toLowerCase()));
+  if (!shouldPlayMentionSound({
+    enabled: true,
+    matched: mentioned,
+    own: isOwn,
+    hidden: document.visibilityState === 'hidden',
+    now,
+    lastPlayedAt: state.chatComfort.lastSoundAt,
+  })) return;
+  state.chatComfort.lastSoundAt = now;
+  playMentionTone();
+}
+
+/**
+ * Reveal or re-hide Kick's own timestamps, and keep the seen-message sets from
+ * growing without bound.
+ *
+ * The two sets exist to make the per-message work idempotent — a message must
+ * be recorded once and may only ring once — and Kick recycles rows as chat
+ * scrolls, so without a ceiling they would be the one part of this feature that
+ * grows all session. Cleared wholesale rather than trimmed: they are an
+ * optimisation, and re-recording a handful of messages after a clear is
+ * cheaper than tracking their ages.
+ */
+function syncChatComfortShell(messages) {
+  const settings = state.settings.content;
+  if (messages) {
+    if (settings.chatTimestamps) messages.style.setProperty(CHAT_TIMESTAMP_VAR, 'inline');
+    else messages.style.removeProperty(CHAT_TIMESTAMP_VAR);
+  }
+  if (state.chatComfort.seen.size > 4000) state.chatComfort.seen.clear();
+  if (state.chatComfort.sounded.size > 4000) state.chatComfort.sounded.clear();
+  if (state.chatComfort.rows.length) {
+    state.chatComfort.rows = pruneChatHistory(state.chatComfort.rows, CHAT_HISTORY_LIMITS, Date.now());
+  }
+}
+
+/** Hide one message locally, for this session and this reader only. */
+function hideChatMessage(id) {
+  if (!id) return;
+  state.chatComfort.hidden.add(id);
+  document.querySelector(chatMessageSelector(id))?.setAttribute('data-kf-chat-hidden', 'true');
+  showToast('Message hidden for you. It is still there for everyone else.', false, [{
+    label: 'Undo',
+    onClick: () => {
+      state.chatComfort.hidden.delete(id);
+      const node = document.querySelector(chatMessageSelector(id));
+      if (node) node.dataset.kfChatHidden = 'false';
+    },
+  }]);
+}
+
+/** Forget a message this session recorded, because Kick removed it. */
+function forgetChatMessage(id) {
+  if (!state.chatComfort.rows.length) return;
+  state.chatComfort.rows = dropChatMessage(state.chatComfort.rows, id);
+  renderChatHistoryResults();
+}
+
+function renderChatHistoryResults() {
+  const host = state.shadow?.querySelector('[data-kf-chat-history-results]');
+  if (!host) return;
+  const rows = searchChatHistory(state.chatComfort.rows, state.chatComfort.query, 40);
+  if (!rows.length) {
+    setMarkup(host, `<p class="kf-status-note">${escapeHtml(state.chatComfort.rows.length
+      ? tr('Nothing in this session matches that.')
+      : tr('Nothing recorded yet. Open a chat with the switch on.'))}</p>`);
+    localizeInterface();
+    return;
+  }
+  setMarkup(host, rows.map((row) => `<div class="kf-chat-log-row"><span data-kf-no-translate>${escapeHtml(formatChatTime(row.at))}</span><strong data-kf-no-translate>${escapeHtml(row.author || '')}</strong><span data-kf-no-translate>${escapeHtml(row.text)}</span></div>`).join(''));
+  localizeInterface();
+}
+
+/**
+ * Hand the log over, once, because somebody pressed the button.
+ *
+ * A download rather than a clipboard write or an upload: it stays on the
+ * machine, it is a file the reader can look at before doing anything with it,
+ * and there is no path here that sends chat anywhere.
+ */
+function exportChatHistory() {
+  const rows = state.chatComfort.rows;
+  if (!rows.length) {
+    showToast('Nothing recorded yet. Open a chat with the switch on.', true);
+    return;
+  }
+  const text = buildChatHistoryExport(rows, currentChannelSlug());
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `kick-focus-chat-${currentChannelSlug() || 'session'}.txt`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  showToast(trf('Saved {n} messages from this session.', { n: rows.length }), false);
+}
+
+/** Drop everything this session recorded, without waiting for the caps. */
+function clearChatHistory() {
+  state.chatComfort.rows = [];
+  state.chatComfort.seen.clear();
+  renderChatHistoryResults();
+  showToast('Session chat log cleared.', false);
 }
 
 /** Ranges over the text nodes of one message where a keyword occurs. */
@@ -12112,6 +12781,7 @@ async function runApplyCycle() {
     state.compatibility = compatibilitySnapshot(document, { expectedChat: state.route === 'channel', derive: compatibilityDerivers() });
   publishCompatibility();
     updateCompatibilityInPlace();
+    applyRouteLayout();
     syncQuickButton();
   } catch (error) {
     logAppError('apply cycle', error);
@@ -12859,6 +13529,24 @@ const UI_CSS = `
     [data-kf-earned="reward-ready"]::after { animation: none; }
   }
 
+  .kf-layout-save { display: grid; gap: 8px; justify-items: stretch; min-width: 240px; }
+  .kf-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .kf-chip { padding: 5px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; background: transparent; font-size: 11px; cursor: pointer; }
+  .kf-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+  /* The pressed chip is named as well as coloured, so the state does not depend
+     on seeing the colour: the button carries aria-pressed and the entry below
+     spells out which pages a view claims. */
+  .kf-layout-list { display: grid; gap: 6px; padding: 10px 0 2px; }
+  .kf-layout-entry { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
+  .kf-layout-entry[data-active="true"] { border-color: var(--accent); }
+  .kf-layout-entry span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+
+  .kf-chat-log { display: grid; gap: 8px; min-width: 0; }
+  .kf-chat-log-row { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border-subtle); font-size: 12px; }
+  .kf-chat-log-row span:first-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .kf-chat-log-row strong { color: var(--accent); }
+  .kf-chat-log-row span:last-child { overflow-wrap: anywhere; }
+
   .kf-hub-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 18px 0; }
   .kf-hub-card em { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; font-style: normal; line-height: 1.45; }
   /* A card with no reading is quieter than one with a number, and says so in
@@ -13381,6 +14069,52 @@ function uiIcon(name) {
 
 const TRANSLATIONS = {
   es: {
+    'Home': 'Inicio',
+    'Browse': 'Explorar',
+    'Following': 'Siguiendo',
+    'Saved views': 'Vistas guardadas',
+    'Keep the density, thumbnail size, rails, and content filters you like as a named view, and have it applied when you open the pages you chose. It is your own settings, applied to what Kick already sent. It changes nothing about what Kick recommends or the order anything appears in.': 'Guarda la densidad, el tamaño de miniatura, los raíles y los filtros de contenido que te gustan como una vista con nombre, y aplícala al abrir las páginas que elijas. Son tus propios ajustes aplicados a lo que Kick ya envió. No cambia nada de lo que Kick recomienda ni el orden en que aparece.',
+    'Save this page as a view': 'Guardar esta página como vista',
+    'Pick the pages it should apply to, or none to keep it manual.': 'Elige las páginas donde debe aplicarse, o ninguna para dejarla manual.',
+    'Save this view': 'Guardar esta vista',
+    'No saved views yet. Set the page up the way you want it, name it, and save.': 'Todavía no hay vistas guardadas. Deja la página como la quieres, ponle nombre y guárdala.',
+    'Applied only when you press it': 'Se aplica solo cuando la pulsas',
+    'Currently applied': 'Aplicada ahora',
+    'Applied {name} for this page.': 'Se aplicó {name} en esta página.',
+    '{n} saved views is the limit. Delete one first.': 'El límite es {n} vistas guardadas. Borra una primero.',
+    'Saved {name}.': 'Se guardó {name}.',
+    'Applied {name}. {n} settings changed.': 'Se aplicó {name}. Cambiaron {n} ajustes.',
+    '{name} is already what you are looking at.': '{name} es justo lo que estás viendo.',
+    'Deleted {name}.': 'Se borró {name}.',
+    'Name the view before saving it.': 'Ponle nombre a la vista antes de guardarla.',
+    'Delete this saved view': 'Borrar esta vista guardada',
+    'Name this view': 'Nombre de la vista',
+    'Category pages': 'Páginas de categoría',
+    'Search results': 'Resultados de búsqueda',
+    'Show message times': 'Mostrar la hora de los mensajes',
+    'Reveals the timestamp Kick already renders on every message and keeps hidden. It is Kick’s own value, so scrolling back shows when a message was sent rather than when this build first saw it.': 'Muestra la marca de hora que Kick ya dibuja en cada mensaje y mantiene oculta. Es el valor de Kick, así que al subir por el chat verás cuándo se envió el mensaje y no cuándo lo vio esta extensión.',
+    'People worth noticing': 'Personas que quieres notar',
+    'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.': 'Nombres que quieres captar en un chat rápido. Sus mensajes reciben una marca propia, distinta de los resaltados por palabra clave. Separados por comas y guardados solo en tus ajustes.',
+    'Sound on a mention': 'Sonido al mencionarte',
+    'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.': 'Un tono corto cuando un mensaje coincide con tus resaltados, viene de alguien de tu lista o dice tu nombre. Se genera en el navegador, así que no se descarga nada. Callado con la pestaña en segundo plano, callado con tus propios mensajes y nunca más de una vez cada pocos segundos.',
+    'Hide a message for yourself': 'Ocultar un mensaje solo para ti',
+    'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.': 'Añade un pequeño control de descarte a cada mensaje. Oculta ese mensaje en tu navegador solo durante esta sesión, no cambia nada para los demás y ofrece deshacer.',
+    'Search this session’s chat': 'Buscar en el chat de esta sesión',
+    'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.': 'Guarda lo que esta pestaña ha visto para que puedas encontrarlo otra vez. Queda en memoria, nunca llega al almacenamiento y desaparece al recargar. Los susurros no se guardan nunca, y un mensaje que un moderador elimine sale del registro en cuanto llega el borrado.',
+    'Session chat log': 'Registro del chat de esta sesión',
+    'Hidden by you': 'Ocultado por ti',
+    'Hide this message for me': 'Ocultar este mensaje para mí',
+    'Nothing in this session matches that.': 'Nada de esta sesión coincide con eso.',
+    'Nothing recorded yet. Open a chat with the switch on.': 'Todavía no hay nada guardado. Abre un chat con la opción activada.',
+    'Saved {n} messages from this session.': 'Se guardaron {n} mensajes de esta sesión.',
+    'Message hidden for you. It is still there for everyone else.': 'Mensaje oculto para ti. Sigue ahí para todos los demás.',
+    'Session chat log cleared.': 'Registro del chat de la sesión borrado.',
+    'message held. Capped at 400 messages, 200 KB, and one hour.': 'mensaje guardado. Con un tope de 400 mensajes, 200 KB y una hora.',
+    'messages held. Capped at 400 messages, 200 KB, and one hour.': 'mensajes guardados. Con un tope de 400 mensajes, 200 KB y una hora.',
+    'name, name': 'nombre, nombre',
+    'Search what you have seen': 'Busca lo que has visto',
+    'Save as a file': 'Guardar como archivo',
+    'Clear the log': 'Borrar el registro',
     'Daily reward ready': 'Recompensa diaria lista',
     'Viewer': 'Cuenta',
     'What Kick tells this account': 'Lo que Kick indica de esta cuenta',
@@ -13859,6 +14593,52 @@ const TRANSLATIONS = {
     '{count} of {max} streams': '{count} de {max} transmisiones',
   },
   pt: {
+    'Home': 'Início',
+    'Browse': 'Explorar',
+    'Following': 'A seguir',
+    'Saved views': 'Vistas guardadas',
+    'Keep the density, thumbnail size, rails, and content filters you like as a named view, and have it applied when you open the pages you chose. It is your own settings, applied to what Kick already sent. It changes nothing about what Kick recommends or the order anything appears in.': 'Guarda a densidade, o tamanho das miniaturas, as barras e os filtros de conteúdo que preferes como uma vista com nome, e aplica-a ao abrir as páginas que escolheres. São as tuas próprias definições aplicadas ao que a Kick já enviou. Não muda nada do que a Kick recomenda nem a ordem em que aparece.',
+    'Save this page as a view': 'Guardar esta página como vista',
+    'Pick the pages it should apply to, or none to keep it manual.': 'Escolhe as páginas onde deve aplicar-se, ou nenhuma para a deixar manual.',
+    'Save this view': 'Guardar esta vista',
+    'No saved views yet. Set the page up the way you want it, name it, and save.': 'Ainda não há vistas guardadas. Deixa a página como a queres, dá-lhe um nome e guarda.',
+    'Applied only when you press it': 'Aplica-se apenas quando a carregas',
+    'Currently applied': 'Aplicada agora',
+    'Applied {name} for this page.': 'Foi aplicada {name} nesta página.',
+    '{n} saved views is the limit. Delete one first.': 'O limite é {n} vistas guardadas. Apaga uma primeiro.',
+    'Saved {name}.': 'Foi guardada {name}.',
+    'Applied {name}. {n} settings changed.': 'Foi aplicada {name}. Mudaram {n} definições.',
+    '{name} is already what you are looking at.': '{name} é exatamente o que estás a ver.',
+    'Deleted {name}.': 'Foi apagada {name}.',
+    'Name the view before saving it.': 'Dá um nome à vista antes de a guardares.',
+    'Delete this saved view': 'Apagar esta vista guardada',
+    'Name this view': 'Nome da vista',
+    'Category pages': 'Páginas de categoria',
+    'Search results': 'Resultados da procura',
+    'Show message times': 'Mostrar a hora das mensagens',
+    'Reveals the timestamp Kick already renders on every message and keeps hidden. It is Kick’s own value, so scrolling back shows when a message was sent rather than when this build first saw it.': 'Mostra a marca de hora que a Kick já desenha em cada mensagem e mantém escondida. É o valor da própria Kick, por isso ao subir no chat vês quando a mensagem foi enviada e não quando esta extensão a viu.',
+    'People worth noticing': 'Pessoas que queres notar',
+    'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.': 'Nomes que queres apanhar num chat rápido. As mensagens deles recebem uma marca própria, diferente dos destaques por palavra-chave. Separados por vírgulas e guardados apenas nas tuas definições.',
+    'Sound on a mention': 'Som quando te mencionam',
+    'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.': 'Um tom curto quando uma mensagem corresponde aos teus destaques, vem de alguém da tua lista ou diz o teu nome. É gerado no navegador, por isso nada é transferido. Silencioso com o separador em segundo plano, silencioso nas tuas próprias mensagens e nunca mais do que uma vez a cada poucos segundos.',
+    'Hide a message for yourself': 'Esconder uma mensagem só para ti',
+    'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.': 'Adiciona um pequeno controlo de dispensa a cada mensagem. Esconde essa mensagem no teu navegador apenas nesta sessão, não muda nada para os outros e oferece anular.',
+    'Search this session’s chat': 'Procurar no chat desta sessão',
+    'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.': 'Guarda o que este separador viu para que o possas encontrar outra vez. Fica em memória, nunca chega ao armazenamento e desaparece ao recarregar. Os sussurros nunca são guardados, e uma mensagem que um moderador apague sai do registo assim que a eliminação chega.',
+    'Session chat log': 'Registo do chat desta sessão',
+    'Hidden by you': 'Escondido por ti',
+    'Hide this message for me': 'Esconder esta mensagem para mim',
+    'Nothing in this session matches that.': 'Nada nesta sessão corresponde a isso.',
+    'Nothing recorded yet. Open a chat with the switch on.': 'Ainda não há nada guardado. Abre um chat com a opção ligada.',
+    'Saved {n} messages from this session.': 'Foram guardadas {n} mensagens desta sessão.',
+    'Message hidden for you. It is still there for everyone else.': 'Mensagem escondida para ti. Continua lá para toda a gente.',
+    'Session chat log cleared.': 'Registo do chat da sessão apagado.',
+    'message held. Capped at 400 messages, 200 KB, and one hour.': 'mensagem guardada. Com um limite de 400 mensagens, 200 KB e uma hora.',
+    'messages held. Capped at 400 messages, 200 KB, and one hour.': 'mensagens guardadas. Com um limite de 400 mensagens, 200 KB e uma hora.',
+    'name, name': 'nome, nome',
+    'Search what you have seen': 'Procura o que já viste',
+    'Save as a file': 'Guardar como ficheiro',
+    'Clear the log': 'Apagar o registo',
     'Daily reward ready': 'Recompensa diária pronta',
     'Viewer': 'Conta',
     'What Kick tells this account': 'O que a Kick informa desta conta',
@@ -14690,6 +15470,131 @@ function pageHeader(title, description, metaLabel, metaValue) {
   return `<div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><div class="kf-page-meta"><span>${escapeHtml(metaLabel)}</span><strong>${escapeHtml(metaValue)}</strong></div></div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Discovery layouts
+//
+// Named snapshots of the settings that decide how a discovery page looks, each
+// optionally tied to the routes it belongs to. Browse can be dense and
+// unfiltered while Home stays calm.
+//
+// Local, and only ever this build's own settings applied to markup Kick has
+// already sent. Nothing here asks Kick for different cards or reorders a rail,
+// and no copy in the interface suggests otherwise.
+// ---------------------------------------------------------------------------
+
+const DISCOVERY_LAYOUTS_KEY = 'kick-focus:discovery-layouts';
+
+function loadDiscoveryLayouts() {
+  return normalizeDiscoveryLayouts(gmGet(DISCOVERY_LAYOUTS_KEY, []), state.settings);
+}
+
+function saveDiscoveryLayouts() {
+  gmSet(DISCOVERY_LAYOUTS_KEY, state.discoveryLayouts);
+  state.settingsIndex = null;
+}
+
+/**
+ * Apply the layout this route belongs to, if the route changed into one.
+ *
+ * Guarded on the route actually being different, because the apply cycle runs
+ * constantly and re-applying a layout on every pass would fight anybody
+ * adjusting a slider while they are on that page.
+ */
+function applyRouteLayout() {
+  const route = state.route;
+  if (state.runtime.layoutRoute === route) return;
+  state.runtime.layoutRoute = route;
+  const layout = layoutForRoute(state.discoveryLayouts, route);
+  if (!layout) return;
+  const changed = applyDiscoveryLayout(state.settings, layout);
+  if (!changed.length) return;
+  saveSettings();
+  applySettingsAttributes();
+  renderSettingsPage();
+  // Said out loud: a view that changes under somebody without a word is the
+  // thing that makes a feature like this feel broken rather than helpful.
+  showToast(trf('Applied {name} for this page.', { name: layout.name }), false);
+  announce(trf('Applied {name} for this page.', { name: layout.name }));
+}
+
+function saveCurrentDiscoveryLayout() {
+  const nameInput = state.shadow?.querySelector('[data-kf-layout-name]');
+  const name = cleanLayoutName(nameInput?.value || '');
+  if (!name) {
+    showToast('Name the view before saving it.', true);
+    return;
+  }
+  const routes = [...(state.shadow?.querySelectorAll('[data-kf-layout-route][aria-pressed="true"]') || [])]
+    .map((button) => button.dataset.kfLayoutRoute);
+  const layout = buildDiscoveryLayout(name, state.settings, routes);
+  const rest = state.discoveryLayouts.filter((entry) => entry.name.toLowerCase() !== layout.name.toLowerCase());
+  if (rest.length >= DISCOVERY_LAYOUT_MAX) {
+    showToast(trf('{n} saved views is the limit. Delete one first.', { n: DISCOVERY_LAYOUT_MAX }), true);
+    return;
+  }
+  state.discoveryLayouts = normalizeDiscoveryLayouts([...rest, layout], state.settings);
+  saveDiscoveryLayouts();
+  if (nameInput) nameInput.value = '';
+  renderSettingsPage();
+  showToast(trf('Saved {name}.', { name: layout.name }), false);
+}
+
+function applyNamedDiscoveryLayout(name) {
+  const layout = state.discoveryLayouts.find((entry) => entry.name === name);
+  if (!layout) return;
+  const changed = applyDiscoveryLayout(state.settings, layout);
+  saveSettings();
+  applySettingsAttributes();
+  renderSettingsPage();
+  showToast(changed.length
+    ? trf('Applied {name}. {n} settings changed.', { name: layout.name, n: changed.length })
+    : trf('{name} is already what you are looking at.', { name: layout.name }), false);
+}
+
+function deleteDiscoveryLayout(name) {
+  const before = state.discoveryLayouts.length;
+  state.discoveryLayouts = state.discoveryLayouts.filter((entry) => entry.name !== name);
+  if (state.discoveryLayouts.length === before) return;
+  saveDiscoveryLayouts();
+  renderSettingsPage();
+  showToast(trf('Deleted {name}.', { name }), false);
+}
+
+/** The saved-view panel on the Layout page. */
+function renderDiscoveryLayouts() {
+  const layouts = state.discoveryLayouts;
+  const routeChips = DISCOVERY_LAYOUT_ROUTES.map((route) => `<button type="button" class="kf-chip" data-kf-layout-route="${route}" aria-pressed="false">${escapeHtml(tr(DISCOVERY_ROUTE_LABELS[route]))}</button>`).join('');
+  const saved = layouts.length
+    ? layouts.map((layout) => {
+      const active = layoutMatchesSettings(layout, state.settings);
+      return `<div class="kf-layout-entry" data-active="${active}">
+        <div><strong data-kf-no-translate>${escapeHtml(layout.name)}</strong><span>${layout.routes.length
+          ? escapeHtml(layout.routes.map((route) => tr(DISCOVERY_ROUTE_LABELS[route])).join(' · '))
+          : escapeHtml(tr('Applied only when you press it'))}${active ? ` · ${escapeHtml(tr('Currently applied'))}` : ''}</span></div>
+        <div class="kf-button-group">
+          <button type="button" class="kf-button kf-button-small" data-action="apply-layout" data-kf-layout="${escapeHtml(layout.name)}">Apply</button>
+          <button type="button" class="kf-button kf-button-small kf-danger" data-action="delete-layout" data-kf-layout="${escapeHtml(layout.name)}" aria-label="Delete this saved view">✕</button>
+        </div>
+      </div>`;
+    }).join('')
+    : `<p class="kf-status-note">No saved views yet. Set the page up the way you want it, name it, and save.</p>`;
+
+  return `<section class="kf-subsection">
+    <div class="kf-panel">
+      <div class="kf-action-row"><div><h3>Saved views</h3><p>Keep the density, thumbnail size, rails, and content filters you like as a named view, and have it applied when you open the pages you chose. It is your own settings, applied to what Kick already sent. It changes nothing about what Kick recommends or the order anything appears in.</p></div></div>
+      <div class="kf-row kf-row-wide">
+        <div><h3>Save this page as a view</h3><p>Pick the pages it should apply to, or none to keep it manual.</p></div>
+        <div class="kf-layout-save">
+          <input class="kf-text" type="text" data-kf-layout-name maxlength="40" placeholder="Name this view" aria-label="Name this view">
+          <div class="kf-chip-row">${routeChips}</div>
+          <button type="button" class="kf-button" data-action="save-layout">Save this view</button>
+        </div>
+      </div>
+      <div class="kf-layout-list">${saved}</div>
+    </div>
+  </section>`;
+}
+
 function renderLayoutPage() {
   const value = state.settings.layout;
   return `
@@ -14710,7 +15615,8 @@ function renderLayoutPage() {
       ${row('Move mini-player clear of controls', 'Raise Kick’s embedded mini-player only when the Focus control has to use its floating fallback.', toggle('layout.miniPlayerCollision', value.miniPlayerCollision, { label: 'Move mini-player clear of controls' }))}
       ${row('Recover player after resize', 'Re-apply player geometry after a window or monitor change.', toggle('layout.playerResizeRecovery', value.playerResizeRecovery, { label: 'Recover player after resize' }))}
       ${row('Keep ultrawide video uncropped', 'Prefer contained video geometry on wide or moved displays.', toggle('layout.playerContainVideo', value.playerContainVideo, { label: 'Keep ultrawide video uncropped' }))}
-    </section>`;
+    </section>
+    ${renderDiscoveryLayouts()}`;
 }
 
 function renderAppearancePage() {
@@ -15226,6 +16132,19 @@ function renderContentPage() {
         ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.', toggle('content.showUptime', value.showUptime, { label: 'Show stream uptime' }))}
         ${row('Show how long Kick keeps this recording', 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.', toggle('content.showVodExpiry', value.showVodExpiry, { label: 'Show VOD expiry' }))}
         ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
+        ${row('Show message times', 'Reveals the timestamp Kick already renders on every message and keeps hidden. It is Kick’s own value, so scrolling back shows when a message was sent rather than when this build first saw it.', toggle('content.chatTimestamps', value.chatTimestamps, { label: 'Show message times' }))}
+        ${row('People worth noticing', 'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.', `<input class="kf-text" type="text" data-set="content.chatPriorityPeople" value="${escapeHtml((value.chatPriorityPeople || []).join(', '))}" placeholder="name, name" aria-label="People worth noticing">`)}
+        ${row('Sound on a mention', 'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.', toggle('content.chatMentionSound', value.chatMentionSound, { label: 'Sound on a mention' }))}
+        ${row('Hide a message for yourself', 'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.', toggle('content.chatHideMessages', value.chatHideMessages, { label: 'Hide a message for yourself' }))}
+        ${row('Search this session’s chat', 'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.', toggle('content.chatHistory', value.chatHistory, { label: 'Search this session’s chat' }))}
+        ${value.chatHistory ? `<div class="kf-row kf-row-wide" data-kf-chat-history>
+          <div><h3>Session chat log</h3><p>${state.chatComfort.rows.length} ${plural(state.chatComfort.rows.length, 'message held. Capped at 400 messages, 200 KB, and one hour.', 'messages held. Capped at 400 messages, 200 KB, and one hour.')}</p></div>
+          <div class="kf-chat-log">
+            <input class="kf-text" type="search" data-kf-chat-history-search value="${escapeHtml(state.chatComfort.query)}" placeholder="Search what you have seen" aria-label="Search this session’s chat">
+            <div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="export-chat-history">Save as a file</button><button type="button" class="kf-button kf-button-small kf-danger" data-action="clear-chat-history">Clear the log</button></div>
+            <div data-kf-chat-history-results></div>
+          </div>
+        </div>` : ''}
         ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
         ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
         ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
@@ -15640,7 +16559,10 @@ function renderSettingsPage() {
   reset.disabled = state.currentPage === 'about';
   reset.title = tr(reset.disabled ? 'About has no page settings to reset' : 'Restore page defaults');
   localizeInterface();
-  if (state.currentPage === 'content') applyStickerLibrarySearch();
+  if (state.currentPage === 'content') {
+    applyStickerLibrarySearch();
+    renderChatHistoryResults();
+  }
   // One read, on opening. Nothing is requested while the hub is closed.
   if (state.currentPage === 'viewer') refreshViewerCollectibles();
 }
@@ -15717,6 +16639,10 @@ function coerceSetting(path, raw) {
   const current = getSetting(path);
   if (typeof current === 'boolean') return raw === true || raw === 'true';
   if (typeof current === 'number') return Number(raw);
+  // One field holds a list. Parsed on the way in rather than on the way out, so
+  // what is stored is already the cleaned, de-duplicated set of names and every
+  // reader gets the same answer.
+  if (path === 'content.chatPriorityPeople') return parsePeopleList(raw);
   return String(raw);
 }
 
@@ -15831,6 +16757,14 @@ function selectViewingPreset(presetId) {
 }
 
 function onInterfaceClick(event) {
+  // The route chips on a saved view are a pressed-state group, not settings:
+  // they say what the view being saved should apply to, and nothing is stored
+  // until the save button is pressed.
+  const routeChip = event.target.closest('[data-kf-layout-route]');
+  if (routeChip) {
+    routeChip.setAttribute('aria-pressed', String(routeChip.getAttribute('aria-pressed') !== 'true'));
+    return;
+  }
   const searchResult = event.target.closest('[data-kf-search-goto]');
   if (searchResult) {
     state.currentPage = searchResult.dataset.kfSearchGoto;
@@ -16005,6 +16939,11 @@ function onInterfaceClick(event) {
     renderSettingsPage();
   }
   else if (action === 'self-check') runSelfCheck();
+  else if (action === 'save-layout') saveCurrentDiscoveryLayout();
+  else if (action === 'apply-layout') applyNamedDiscoveryLayout(actionTarget.dataset.kfLayout || '');
+  else if (action === 'delete-layout') deleteDiscoveryLayout(actionTarget.dataset.kfLayout || '');
+  else if (action === 'export-chat-history') exportChatHistory();
+  else if (action === 'clear-chat-history') clearChatHistory();
   else if (action === 'refresh-hub') {
     // An explicit ask, so the freshness guard is cleared first: the point of
     // the button is to re-read, not to be told the last reading is recent.
@@ -16107,6 +17046,12 @@ function clearSettingsSearch() {
 function onInterfaceInput(event) {
   const search = event.target.closest('input[data-kf-sticker-library-search]');
   if (search) applyStickerLibrarySearch(search.value);
+
+  const chatSearch = event.target.closest('input[data-kf-chat-history-search]');
+  if (chatSearch) {
+    state.chatComfort.query = chatSearch.value;
+    renderChatHistoryResults();
+  }
 
   const settingsSearch = event.target.closest('input[data-kf-settings-search]');
   if (settingsSearch) {
@@ -17647,6 +18592,7 @@ function syncEarnedState(accessibleLabel) {
   if (nav) nav.textContent = earned ? tr(earned.label) : '';
 }
 
+state.discoveryLayouts = loadDiscoveryLayouts();
 addStyle(SITE_CSS);
 installNetworkDefense();
 // Before anything else can append a preflight script.

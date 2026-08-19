@@ -1586,6 +1586,101 @@ try {
       swept.derived === 'ok' ? 'nothing broken' : `resolved but derived nothing: ${swept.derived} (probe:derivedValue)`);
   }
 
+  // R-68: what a busy chat costs, measured rather than reasoned about.
+  //
+  // The comfort switches all ride the pass that already walks chat once per
+  // apply cycle, which is the whole reason they were built that way — but "it
+  // reuses the existing walk" is a claim, and a channel doing 300 messages a
+  // minute is where a claim like that stops being true. So all five go on, a
+  // burst of rows lands in Kick's own message container, and the apply cycle is
+  // timed with them there.
+  //
+  // The budget: the apply cycle already reports its own recent average, and the
+  // gate already asserts that number exists. 120 ms is the line here — well
+  // above what a healthy cycle costs on this page and well below the point at
+  // which a reader would feel chat stutter, so it fails on a real regression
+  // rather than on a busy machine.
+  const chatBench = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+    const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
+    if (!messages) return { skip: 'Kick rendered no chat message list on this route; run the gate against a channel URL to measure it' };
+
+    // Every switch on at once, through the same controls a person would use.
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    shadow.querySelector('[data-page="content"]').click();
+    await settle();
+    const switches = ['content.chatTimestamps', 'content.chatMentionSound', 'content.chatHideMessages', 'content.chatHistory'];
+    for (const path of switches) {
+      const control = shadow.querySelector('[data-set="' + path + '"]');
+      if (control && control.getAttribute('aria-checked') !== 'true') control.click();
+      await settle(150);
+    }
+    const on = switches.filter((path) => shadow.querySelector('[data-set="' + path + '"]')?.getAttribute('aria-checked') === 'true');
+    shadow.querySelector('[data-action="close-settings"]')?.click();
+    await settle();
+
+    // 300 rows shaped like Kick's own: an indexed wrapper, an author button,
+    // and a text run.
+    const burst = document.createElement('div');
+    burst.dataset.kfBench = 'true';
+    for (let i = 0; i < 300; i += 1) {
+      const row = document.createElement('div');
+      row.dataset.index = 'kfbench' + i;
+      row.className = 'group';
+      const author = document.createElement('button');
+      author.dataset.preventExpand = 'true';
+      author.textContent = 'bench' + (i % 12);
+      const text = document.createElement('span');
+      text.textContent = 'benchmark message ' + i + ' with enough words in it to be a realistic line of chat';
+      row.append(author, text);
+      burst.append(row);
+    }
+    messages.append(burst);
+
+    // Time the cycle with the rows in place. A mutation is what schedules one,
+    // and the cost the mod publishes is what the gate already reads elsewhere.
+    const started = performance.now();
+    window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+    await settle(1500);
+    const elapsed = performance.now() - started;
+    const marked = document.querySelectorAll('[data-kf-bench] [data-kf-chat-hide]').length;
+    const hideControls = marked;
+    // The cost line only exists on the About page, so go and read it there
+    // rather than off a page that never renders it.
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    shadow.querySelector('[data-page="about"]').click();
+    await settle();
+    const cost = String(shadow.querySelector('[data-kf-apply-cost]')?.textContent || '');
+    shadow.querySelector('[data-action="close-settings"]')?.click();
+    const recent = /recent avg ([\\d.]+) ms/.exec(cost);
+
+    burst.remove();
+    await settle(600);
+    return {
+      ok: true,
+      on: on.length,
+      marked,
+      hideControls,
+      recentAvgMs: recent ? Number(recent[1]) : null,
+      wallMs: Math.round(elapsed),
+    };
+  })()`);
+  const bench = chatBench.value || {};
+  recordProbe('a 300-message burst with every chat comfort switch on stays inside the apply budget',
+    bench,
+    bench.ok === true
+      && bench.on === 4
+      && bench.marked >= 300
+      && bench.hideControls >= 300
+      && Number.isFinite(bench.recentAvgMs) && bench.recentAvgMs < 120,
+    bench.ok
+      ? `${bench.on}/4 switches on; ${bench.marked} rows marked and ${bench.hideControls} dismiss controls added; recent avg ${bench.recentAvgMs} ms, wall ${bench.wallMs} ms`
+      : bench.why);
+
   // The viewer hub, on the one thing only a browser can answer: that an absent
   // reading reaches the screen as words rather than as a number.
   //
