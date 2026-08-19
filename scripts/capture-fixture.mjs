@@ -156,6 +156,29 @@ const REDUCER = `(() => {
   }
   if (!keep.size) return { ok: false, why: 'nothing on this route matched a probe or a route selector' };
 
+  // Second pass: put back anything the sibling cap dropped that a marker needs.
+  // The cap keeps the first two matches of a repeated selector, which is right
+  // for proving "this is a list" and wrong when the marker is the fortieth item
+  // -- measured 2026-08-19, /category/slots is on the browse page twice and the
+  // first pass still lost it. The marker is turned back into a selector and
+  // looked up directly, so this costs one query rather than a walk of the DOM.
+  const markerSelector = (marker) => {
+    let match = /^id="([\w-]+)"$/.exec(marker);
+    if (match) return '#' + match[1];
+    match = /^([\w-]+)="([^"]+)"$/.exec(marker);
+    if (match) return '[' + match[1] + '="' + match[2] + '"]';
+    if (marker.startsWith('/')) return '[href*="' + marker + '"]';
+    if (/^[\w-]+$/.test(marker)) return '[data-testid*="' + marker + '"], [id*="' + marker + '"]';
+    return '';
+  };
+  for (const marker of __MARKERS__) {
+    const selector = markerSelector(marker);
+    if (!selector) continue;
+    let found = null;
+    try { found = document.querySelector(selector); } catch { found = null; }
+    if (found) markKeep(found);
+  }
+
   // A URL becomes its path: no query strings, no ids, nothing host-specific.
   const cleanUrl = (value) => {
     try { return new URL(value, location.href).pathname; } catch { return ''; }
@@ -254,9 +277,11 @@ try {
     // Kick renders client-side; there is no load event worth waiting on.
     await sleep(13000);
     const wantedMarkers = markers[name] || [];
+    // replaceAll with a *function*: the placeholder appears more than once, and
+    // a string replacement would interpret $& and friends in captured markup.
     const reduced = await evaluate(client, REDUCER
-      .replace('__KEEP__', JSON.stringify(route.keep))
-      .replace('__MARKERS__', JSON.stringify(wantedMarkers)));
+      .replaceAll('__KEEP__', () => JSON.stringify(route.keep))
+      .replaceAll('__MARKERS__', () => JSON.stringify(wantedMarkers)));
     const result = reduced.value || { ok: false, why: reduced.error || 'the reducer returned nothing' };
     if (!result.ok) {
       console.log(`FAIL  ${name} — ${result.why}`);

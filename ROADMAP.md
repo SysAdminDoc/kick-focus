@@ -17,11 +17,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
    Acceptance: Every marker is either confirmed against live Kick and kept, or removed with a one-line note saying why (route-shaped, renamed, or synthetic). Any marker that turns out to be a hook the runtime still needs gains a `LOCATOR_PROBES` entry so the live drift gate covers it. `capture-fixture.mjs` then runs clean on every route it can reach.
    Complexity: M
 
-2. **R-63, the fixture reducer's sibling cap can drop a marker that exists.** `SIBLING_CAP = 2` keeps the first two matches of any repeated selector, so a marker further down the list is lost — measured 2026-08-19: `/category/slots` is on the browse page **twice** and the reduction still dropped it. The script reports this correctly ("reducer dropped (the live page has these)") rather than calling it drift, so it misleads nobody, but browse cannot be regenerated until it is fixed.
-   Touches: `scripts/capture-fixture.mjs`
-   Acceptance: The reduction keeps whatever a marker needs — either by raising the cap for selectors whose matches differ from one another, or by adding the marker's own element to the keep set — and `capture-fixture.mjs browse` reports no dropped markers.
-   Complexity: S
-
 2. **A "my emotes" view.** v1.20.0 established that an authenticated `/emotes/{slug}` read returns every set the account owns, not just the channel being viewed — so one read on any channel is a complete personal inventory, and the library already reports the totals. What remains is the view itself: a list of what the account owns grouped by source channel, independently of where the user is standing. The *other* half of this item shipped 2026-08-18 — the colon-autocomplete now reads the reach data and no longer offers an emote Kick would refuse.
 
 ## Explicitly deferred
