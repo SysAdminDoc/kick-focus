@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-18**
+Updated: **2026-08-19**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 
@@ -13,8 +13,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
    Touches: `test/fixtures.test.js`, `test/fixtures/*.html`, `src/compatibility.mjs`, `scripts/verify-extension.mjs`
    Acceptance: The fixtures are read by a test that actually builds a DOM from them and asserts the probes and derived values resolve, so a regenerated fixture proves something. Every marker is then either confirmed live and kept, or dropped with a one-line note saying why (route-shaped, renamed, or synthetic). The live drift gate reports fall-throughs per route rather than only for the route it happens to load. `capture-fixture.mjs` runs clean on every route it can reach.
    Complexity: M
-
-2. **A "my emotes" view.** v1.20.0 established that an authenticated `/emotes/{slug}` read returns every set the account owns, not just the channel being viewed — so one read on any channel is a complete personal inventory, and the library already reports the totals. What remains is the view itself: a list of what the account owns grouped by source channel, independently of where the user is standing. The *other* half of this item shipped 2026-08-18 — the colon-autocomplete now reads the reach data and no longer offers an emote Kick would refuse.
 
 ## Explicitly deferred
 
@@ -87,7 +85,6 @@ Added from the authenticated journey, competitor, accessibility, and platform re
 ### P1 — coherent viewer personalization
 
 - **R-64 — Viewer Hub.** Add a read-only, progressively enhanced summary for Daily Reward state, active-channel points, Collectibles, Drops, level, and streak. Each card has its own source, freshness, loading, unavailable, and error state; absent data is never rendered as zero. Use established same-origin reads or page-visible state only, do not add polling while the hub is closed, and do not persist level/streak merely for decoration. Acceptance: every card can fail independently, diagnostics identify DOM-derived versus API-derived values, and tests cover partial/anonymous/account-menu-closed states. Complexity: L.
-- **R-65 — Viewing presets and custom accent.** Add Calm, Cinema, Chat First, and Discovery presets that apply the existing settings through the normal write path with immediate toast feedback. Add an optional custom accent whose preview and saved value pass contrast checks against text, focus, button, and surface roles; invalid colors are corrected or rejected without a confirmation dialog. Acceptance: presets are searchable, import/export-safe, localized, reversible through normal controls, and visually verified on Home, Browse, Following, Search, channel, VOD, and narrow widths. Complexity: M.
 - **R-66 — Signed-in route polish.** Extend route classification and shared styling to Profile/Settings, Drops, Collectibles, Subscriptions, and account-adjacent routes. Improve spacing, hierarchy, focus, empty states, and narrow-window reflow while keeping native Kick account controls visibly native. Acceptance: no native control is hidden accidentally, all seven settings tabs remain reachable, and screenshot comparison passes in every theme. Complexity: M.
 - **R-67 — Picture-in-Picture and multiview points disclosure.** Wherever Kick Focus offers popout, Picture-in-Picture, mirroring, or related detached playback, explain that Kick's current help says those modes do not accrue channel points. Keep the copy contextual and non-blocking. Acceptance: disclosure is keyboard/screen-reader reachable, localized, and does not appear on unrelated player controls. Complexity: S.
 
@@ -100,4 +97,3 @@ Added from the authenticated journey, competitor, accessibility, and platform re
 ### P3 — discovery and advanced organization
 
 - **R-71 — Local discovery layouts.** Investigate saved, route-aware discovery views that combine existing density, hidden-channel, category, language, and watched-state controls without creating a second recommendation system. Acceptance: layouts are local, editable through existing settings patterns, and never claim to change Kick's algorithm. Complexity: L.
-

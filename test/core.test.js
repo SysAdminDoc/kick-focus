@@ -65,6 +65,7 @@ import {
   normalizeShortcut,
   emoteTooltipText,
   emoteReach,
+  ownedEmoteGroups,
   appendMergedMessage,
   completionWouldBounce,
   dropMergedChannel,
@@ -688,6 +689,21 @@ test('an emote says where it can be sent, or says nothing at all', { tag: 'unit'
     emoteTooltipText({ name: 'xqcLK', nativeGroups: ['xqc'], access: 'channel', usableEverywhere: false, sourceSlug: 'xqc' }, [], false),
     ['xqcLK', 'xqc · Channel-only', 'Only works in xqc’s chat', 'Click to save'],
   );
+});
+
+test('owned emotes are grouped by source without mistaking local reach for ownership', { tag: 'unit' }, () => {
+  const groups = ownedEmoteGroups([
+    { key: 'kick:3', name: 'GlobalB', access: 'available', usableEverywhere: true, nativeGroups: ['Collectibles'] },
+    { key: 'kick:2', name: 'ChannelB', access: 'available', usableEverywhere: true, sourceSlug: 'peyx', nativeGroups: ['Peyx'] },
+    { key: 'kick:1', name: 'ChannelA', access: 'available', usableEverywhere: true, sourceSlug: 'peyx', nativeGroups: ['Peyx'] },
+    { key: 'kick:4', name: 'LocalFree', access: 'channel', usableEverywhere: false, sourceSlug: 'peyx' },
+    { key: 'kick:5', name: 'Locked', access: 'locked', usableEverywhere: true, sourceSlug: 'xqc' },
+  ]);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((group) => group.label), ['Collectibles', 'peyx']);
+  assert.deepEqual(groups[1].entries.map((entry) => entry.name), ['ChannelA', 'ChannelB']);
+  assert.equal(groups.flatMap((group) => group.entries).some((entry) => entry.name === 'LocalFree'), false);
+  assert.deepEqual(ownedEmoteGroups(null), []);
 });
 
 test('uptime counts from Kick own start time and refuses implausible values', { tag: 'unit' }, () => {

@@ -8,6 +8,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - **Four complete viewing presets.** Calm, Cinema, Chat First, and Discovery apply a coherent layout and visual treatment in one click, using the same settings people can still tune individually. They never change content filters, accessibility choices, hidden controls, or the Kick account, and every application reports exactly what happened through the existing toast and autosave path.
 - **A contrast-protected custom accent.** The color picker accepts any six-digit color, checks it against the darkest surfaces used by all three themes, and falls back to a safe rose when a value would make focus rings and selected controls disappear. Foreground ink is selected from measured contrast instead of guessed from hue, and the same tokens style Kick and the shadow-root settings interface.
+- **A real My Emotes collection.** The account-wide emote catalog is now a dedicated view instead of a number hidden in diagnostics. It shows only emotes Kick says the signed-in account can use in every chat, groups them by subscribed source channel or global collectible set, and keeps the library's search, favorite, local-group, copy, type, artwork, and access controls. A missing signed-in catalog produces instructions, not a false empty inventory.
 
 ### Changed
 

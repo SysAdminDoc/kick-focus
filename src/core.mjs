@@ -32,7 +32,7 @@ export const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.27.0': Object.freeze({
-    summary: 'Four viewing presets and a contrast-protected custom accent make Kick faster to personalize without changing account or content choices.',
+    summary: 'Four viewing presets, a contrast-protected custom accent, and a grouped My Emotes collection make Kick faster to personalize without changing account or content choices.',
     defaults: Object.freeze([]),
   }),
 });
@@ -656,6 +656,39 @@ export function emoteReach(entry) {
   return source
     ? { text: 'Only works in {channel}’s chat', channel: source }
     : { text: 'Only works in its own channel', channel: '' };
+}
+
+/**
+ * The account-level collection Kick's native picker never assembles.
+ *
+ * Ownership and reach are both required: an observed free emote may be usable
+ * on its own channel without being part of the account's portable collection,
+ * while an owned subscriber or collectible emote is available and usable in
+ * every chat. Group labels come from the source channel first, then Kick's set
+ * name for global/collectible sets. Nothing is invented when both are absent.
+ */
+export function ownedEmoteGroups(entries) {
+  const groups = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!isRecord(entry) || entry.access !== 'available' || entry.usableEverywhere !== true) continue;
+    const source = typeof entry.sourceSlug === 'string' ? entry.sourceSlug.trim().toLowerCase() : '';
+    const nativeGroup = Array.isArray(entry.nativeGroups)
+      ? entry.nativeGroups.find((value) => typeof value === 'string' && value.trim())?.trim() || ''
+      : '';
+    const label = source || nativeGroup || 'Collectibles & global';
+    const key = source ? `channel:${source}` : `set:${label.toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, { key, label, source, entries: [] });
+    groups.get(key).entries.push(entry);
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      entries: group.entries.sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''), undefined, { sensitivity: 'base' })),
+    }))
+    .sort((left, right) => {
+      if (Boolean(left.source) !== Boolean(right.source)) return left.source ? 1 : -1;
+      return left.label.localeCompare(right.label, undefined, { sensitivity: 'base' });
+    });
 }
 
 /**
