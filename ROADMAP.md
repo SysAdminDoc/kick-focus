@@ -70,10 +70,6 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 Added from the authenticated journey, competitor, accessibility, and platform research recorded in [RESEARCH.md](RESEARCH.md), run against v1.26.0. Continues the R-NN scheme from R-62. The existing “My emotes” Next item remains authoritative and is not duplicated below.
 
-### P0 — prove signed-in behavior without capturing account data
-
-- **R-63 — Authenticated journey evidence.** Extend the manual/live QA matrix to cover account menu, Daily Reward, Profile, Preferences, Notifications, Drops, Collectibles, and the authenticated emote catalog. Store sanitized route/selector expectations rather than screenshots or fixture text containing account identity, balances, chat, or session data. Every check is read-only and partial-data-safe. Acceptance: the release checklist names each signed-in journey, documents which checks require a user session, and proves no account mutation occurs. Complexity: M.
-
 ### P1 — coherent viewer personalization
 
 - **R-64 — Viewer Hub.** Add a read-only, progressively enhanced summary for Daily Reward state, active-channel points, Collectibles, Drops, level, and streak. Each card has its own source, freshness, loading, unavailable, and error state; absent data is never rendered as zero. Use established same-origin reads or page-visible state only, do not add polling while the hub is closed, and do not persist level/streak merely for decoration. Acceptance: every card can fail independently, diagnostics identify DOM-derived versus API-derived values, and tests cover partial/anonymous/account-menu-closed states. Complexity: L.

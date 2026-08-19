@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const screenshotRoot = resolve(process.env.KF_RELEASE_SCREENSHOT_DIR || await mkdtemp(join(tmpdir(), 'kick-focus-release-')));
@@ -84,6 +85,30 @@ if (summary.passed !== summary.asserted) {
   process.exit(1);
 }
 console.log(`\nREADME claims ${claimed[1]}/${claimed[2]}; this run asserted ${summary.passed}/${summary.asserted}${summary.skipped ? ` with ${summary.skipped} skipped` : ''}. Update the README if the figure has moved.`);
+
+/**
+ * What the run just did, and did not, cover behind a session.
+ *
+ * The live gate runs logged out, so the signed-in journeys come back as skips
+ * unless the operator pointed it at a profile that is already signed in. A
+ * release that does not say which of the two happened reads as though
+ * everything was exercised. This prints the matrix either way.
+ */
+const signedInResults = Array.isArray(summary.results)
+  ? summary.results.filter((entry) => entry.label.startsWith('signed-in journey: '))
+  : [];
+const asserted = signedInResults.filter((entry) => entry.outcome !== 'skip');
+console.log(`
+Release checklist: signed-in journeys (${asserted.length}/${SIGNED_IN_JOURNEYS.length} asserted by this run)`);
+for (const journey of SIGNED_IN_JOURNEYS) {
+  const result = signedInResults.find((entry) => entry.label === `signed-in journey: ${journey.title}`);
+  const state = !result ? 'NOT RUN' : result.outcome === 'skip' ? 'SKIPPED' : result.outcome.toUpperCase();
+  console.log(`  ${state.padEnd(8)} ${journey.title} (${journey.route}) — needs a session because ${journey.why}`);
+}
+if (asserted.length < SIGNED_IN_JOURNEYS.length) {
+  console.log('  Re-run with KF_USER_DATA_DIR pointing at a signed-in Chromium profile to assert these instead of skipping them.');
+  console.log('  Every check above is read-only; scripts/check.mjs proves the only account writes in the build are the follow gesture and its undo.');
+}
 
 // The Firefox package is a separate engine with its own network layer, and it
 // had never been executed anywhere until this gate existed. Skipped rather than

@@ -23,6 +23,7 @@
  *   CHROME_PATH=/path/to/chromium node scripts/verify-extension.mjs
  *   KF_WINDOW_POSITION=5360,0 node scripts/verify-extension.mjs   # off-screen display
  *   KF_HEADLESS=1 node scripts/verify-extension.mjs               # network checks only
+ *   KF_USER_DATA_DIR=/path/to/profile node scripts/verify-extension.mjs   # signed-in journeys
  */
 import { spawn } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -30,6 +31,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCATOR_PROBES } from '../src/compatibility.mjs';
 import { CAPTURABLE, FIXTURE_CONTRACT } from './fixture-contract.mjs';
+import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
 async function findChromium() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
@@ -96,7 +98,16 @@ console.log(`Chromium: ${CHROME}`);
 console.log(`Extension: ${EXT}`);
 console.log(`Target: ${TARGET_URL}\n`);
 
-const profile = await mkdtemp(join(tmpdir(), 'kf-verify-'));
+/**
+ * A throwaway profile by default, so a run cannot inherit or leave state.
+ *
+ * `KF_USER_DATA_DIR` points it at a profile the operator keeps — the only way
+ * to give the run a Kick session, which is what turns the signed-in journey
+ * matrix from skips into assertions. A profile the operator owns is never
+ * deleted afterwards.
+ */
+const ownedProfile = process.env.KF_USER_DATA_DIR || '';
+const profile = ownedProfile || await mkdtemp(join(tmpdir(), 'kf-verify-'));
 const child = spawn(CHROME, [
   `--user-data-dir=${profile}`,
   `--remote-debugging-port=${PORT}`,
@@ -1575,6 +1586,83 @@ try {
       swept.derived === 'ok' ? 'nothing broken' : `resolved but derived nothing: ${swept.derived} (probe:derivedValue)`);
   }
 
+  // The journeys only a session can reach.
+  //
+  // This gate runs logged out on purpose: it needs no credentials, cannot
+  // damage an account, and is safe to run anywhere. What that used to cost is
+  // that everything behind a session was covered by a manual pass whose result
+  // lived in one line of README prose, which is not evidence. So the matrix in
+  // `scripts/signed-in-journeys.mjs` names each journey, and this either
+  // asserts it or says out loud that it did not — one line per journey either
+  // way, so a release states what was exercised rather than implying all of it
+  // was.
+  //
+  // Point the gate at a profile that is already signed in
+  // (`KF_USER_DATA_DIR=/path/to/profile`) to turn the skips into assertions.
+  // No check here writes anything: the expectations are selector reads, and
+  // `scripts/check.mjs` proves the build's only account write is the follow
+  // request behind the click-to-save gesture, which is none of these journeys.
+  const sessionProbe = await evaluate(pageClient, `(async () => {
+    try {
+      // The per-account read this build already declares. 200 means a session,
+      // 401/403 means anonymous, and nothing new is requested to find out.
+      const response = await fetch('https://kick.com/api/v2/channels/xqc/me', {
+        credentials: 'include', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000),
+      });
+      return { status: response.status };
+    } catch { return { status: 'network' }; }
+  })()`);
+  const sessionStatus = sessionProbe.value?.status ?? 'unreadable';
+  const signedIn = sessionStatus === 200;
+  record('this run knows whether it has a Kick session', sessionStatus !== 'unreadable',
+    `the per-account read answered ${sessionStatus}, so the signed-in matrix runs ${signedIn ? 'as assertions' : 'as skips'}`);
+
+  for (const journey of SIGNED_IN_JOURNEYS) {
+    const label = `signed-in journey: ${journey.title}`;
+    if (!signedIn) {
+      skip(label, `${journey.why}; run with KF_USER_DATA_DIR pointing at a signed-in profile to assert ${journey.expects.join(' and ')} on ${journey.route}`);
+      continue;
+    }
+    const opener = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await opener.ready;
+    const targetId = (await opener.send('Target.createTarget', { url: `https://kick.com${journey.route}` })).result.targetId;
+    opener.close();
+    await sleep(Number(process.env.KF_ROUTE_SETTLE_MS || 11000));
+    const entry = (await json('/json/list')).find((candidate) => candidate.id === targetId);
+    let seen = { why: 'the journey tab never opened' };
+    if (entry) {
+      const client = cdp(entry.webSocketDebuggerUrl);
+      await client.ready;
+      await client.send('Runtime.enable');
+      const probe = await evaluate(client, `(() => {
+        const expects = ${JSON.stringify(journey.expects)};
+        // Counts only. Nothing is read out of these nodes: no display name, no
+        // balance, no notification text, nothing a committed log should carry.
+        const counts = expects.map((selector) => {
+          try { return [selector, document.querySelectorAll(selector).length]; }
+          catch { return [selector, -1]; }
+        });
+        return { ok: true, counts, landed: location.pathname, mounted: Boolean(document.getElementById('kick-focus-root')) };
+      })()`);
+      seen = probe.value || { why: probe.error || 'the journey probe returned nothing' };
+      client.close();
+    }
+    const closer = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await closer.ready;
+    await closer.send('Target.closeTarget', { targetId });
+    closer.close();
+    const missing = (seen.counts || []).filter(([, count]) => count < 1).map(([selector]) => selector);
+    // Landing somewhere else means Kick bounced the route, which for these is
+    // the session expiring mid-run rather than the expectation being wrong.
+    const bounced = seen.ok && seen.landed !== journey.route && !journey.route.startsWith('/x');
+    recordProbe(label,
+      bounced ? { skip: `Kick redirected ${journey.route} to ${seen.landed}, so this run's session no longer reaches it` } : {},
+      seen.ok === true && seen.mounted === true && missing.length === 0,
+      seen.ok
+        ? `mounted on ${seen.landed}; ${(seen.counts || []).map(([selector, count]) => `${count}x ${selector}`).join('; ')}`
+        : seen.why);
+  }
+
   // The library provider against Chromium's real IndexedDB. The pure split and
   // merge are covered by node:test with a stub; what only a browser can answer
   // is whether the database this build opens actually holds the whole record
@@ -2904,6 +2992,11 @@ try {
       passed: asserted.length - failures.length,
       asserted: asserted.length,
       skipped: skipped.length,
+      // Labels and outcomes only, so the release checklist can report which
+      // signed-in journeys this run actually asserted. No detail strings: those
+      // carry counts and route text, and this file is written to a directory an
+      // operator may well share.
+      results: results.map((entry) => ({ label: entry.label, outcome: entry.outcome })),
     }), 'utf8');
   }
 } catch (error) {
@@ -2913,5 +3006,5 @@ try {
 } finally {
   child.kill('SIGKILL');
   await sleep(600);
-  await rm(profile, { recursive: true, force: true }).catch(() => {});
+  if (!ownedProfile) await rm(profile, { recursive: true, force: true }).catch(() => {});
 }

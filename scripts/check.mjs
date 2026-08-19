@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, VERSION } from '../src/core.mjs';
+import { ONLY_ACCOUNT_WRITE, SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
 const exportProbe = buildSettingsExport({
   settings: { probe: 1 }, stickers: 1, usage: 1, multistream: 1, channelLayouts: 1,
@@ -592,7 +593,62 @@ const sourceFiles = await Promise.all(
 );
 const controlByteFiles = withControlBytes(sourceFiles);
 
+/**
+ * Every request this build sends with a method other than GET.
+ *
+ * The signed-in journey matrix claims each of its journeys is read-only, and a
+ * claim in a comment is worth nothing. This is the falsifiable half: find every
+ * non-GET request in the shipped bundle and insist the only ones are the follow
+ * request behind the click-to-save gesture and the unfollow that undoes it.
+ *
+ * Two spellings are counted, because the build carries both: a literal
+ * `method: 'POST'`, and a `method` shorthand fed by a parameter defaulting to
+ * POST. The literal sweep is filtered to real HTTP verbs — `method` is also the
+ * name of a field recording *how* the remote blocklist was fetched, and
+ * `method: 'companion'` is not a request.
+ *
+ * A third write appearing in either shape fails this, which is the point. It
+ * should be a decision somebody makes on purpose, not a diff nobody noticed.
+ */
+const HTTP_VERBS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+
+const accountWrites = (bundle) => {
+  const literals = [...bundle.matchAll(/method:\s*'(\w+)'/g)]
+    .map((match) => match[1].toUpperCase())
+    .filter((method) => HTTP_VERBS.has(method) && method !== 'GET' && method !== 'HEAD');
+  const shorthand = [...bundle.matchAll(/async function (\w+)\([^)]*method = '(\w+)'/g)]
+    .filter((match) => HTTP_VERBS.has(match[2].toUpperCase()) && match[2].toUpperCase() !== 'GET')
+    .map((match) => match[1]);
+  return { literals, shorthand };
+};
+
+/** The follow write, and the unfollow that reverses it, and nothing else. */
+const onlyWritesAreTheFollowGesture = (bundle) => {
+  const { literals, shorthand } = accountWrites(bundle);
+  if (literals.length > 0) return false;
+  if (shorthand.length !== 1 || shorthand[0] !== 'mutateKickChannelFollow') return false;
+  // One definition plus exactly two call sites.
+  if ([...bundle.matchAll(/mutateKickChannelFollow\(/g)].length !== 3) return false;
+  // The follow: reached only after the emote's own follow requirement is read.
+  const follow = bundle.indexOf("mutateKickChannelFollow(follow.slug, 'POST')");
+  if (follow < 0) return false;
+  const beforeFollow = bundle.slice(Math.max(0, follow - 900), follow);
+  if (!beforeFollow.includes('emoteFollowRequirement(') || !beforeFollow.includes('follow.required')) return false;
+  // The unfollow: reached only from the undo of that same save.
+  const undo = bundle.indexOf("mutateKickChannelFollow(unfollowSlug, 'DELETE')");
+  if (undo < 0) return false;
+  return bundle.slice(Math.max(0, undo - 600), undo).includes('undoChatStickerSave');
+};
+
 const checks = [
+  ['every account write in every bundle is the follow gesture or the undo that reverses it',
+    bundleTargets.every(([, bundleSource]) => onlyWritesAreTheFollowGesture(bundleSource))],
+  ['every signed-in journey the live gate names is declared read-only, with a reason a session is needed',
+    SIGNED_IN_JOURNEYS.length >= 8
+    && SIGNED_IN_JOURNEYS.every((journey) => journey.mutates === false && journey.why.length > 25 && journey.expects.length > 0)
+    && ONLY_ACCOUNT_WRITE.journeys.length === 0],
+  ['the live gate reads the signed-in matrix rather than a list of its own',
+    liveGate.includes('SIGNED_IN_JOURNEYS') && /for \(const journey of SIGNED_IN_JOURNEYS\)/.test(liveGate)],
   [`every artifact is inside its size budget${overBudget.length ? `: ${overBudget.join('; ')}` : ''}`, overBudget.length === 0],
   ['every privileged Chromium message type checks its sender', everyMessageChecksSender(background)],
   ['every privileged Firefox message type checks its sender', everyMessageChecksSender(firefoxBackground)],
@@ -1317,6 +1373,14 @@ const redProbes = [
     withControlBytes([['fake.mjs', ['const re = /', String.fromCharCode(8), 'name/g;'].join('')]]).length === 1],
   ['control-byte gate accepts tabs and newlines',
     withControlBytes([['fake.mjs', ['const a = 1;', String.fromCharCode(10), String.fromCharCode(9), 'const b = 2;', String.fromCharCode(13)].join('')]]).length === 0],
+  ['account-write gate would catch a literal write added anywhere in the bundle',
+    !onlyWritesAreTheFollowGesture(`async function mutateKickChannelFollow(slug, method = 'POST') {}
+fetch(url, { method: 'PUT' });`)],
+  ['account-write gate would catch the follow being called without reading the emote requirement',
+    !onlyWritesAreTheFollowGesture(`async function mutateKickChannelFollow(slug, method = 'POST') {}
+mutateKickChannelFollow(follow.slug, 'POST');
+mutateKickChannelFollow(unfollowSlug, 'DELETE');`)],
+  ['account-write gate accepts the real bundle', onlyWritesAreTheFollowGesture(source)],
   ['derived gates accept the real bundle',
     derivedExpectationsAreWired(source) && compatibilityVerdictIsPublished(source)],
   ['pop-out gate would catch the grid frame being moved into the window',
