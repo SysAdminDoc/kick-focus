@@ -29,33 +29,31 @@
  *     gate runs logged out, so there is little to leak, but a fixture is a file
  *     that gets committed and read for years.
  *
- * Routes needing a session (Drops with campaigns, the open sticker picker) are
- * not reachable here and stay hand-maintained; `sticker-scroll` and `drops` are
- * absent from ROUTES for exactly that reason.
+ * Which routes it can reach, what to keep from each, and the markers a fixture
+ * must not lose all come from `scripts/fixture-contract.mjs`. Anything the
+ * contract gives no URL is hand-maintained: `drops` and `sticker-scroll` need a
+ * session, and `chat` carries scaffolding that simulates an incoming sticker,
+ * which a capture of the real page would delete.
  */
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { CAPTURABLE, FIXTURE_CONTRACT } from './fixture-contract.mjs';
 
 const PORT = Number(process.env.KF_CAPTURE_PORT || 9481);
 
 /**
- * What each fixture is a fixture *of*.
+ * Which routes can be captured, and what to keep from each.
  *
- * `keep` is the structure worth preserving; everything else is dropped. The
- * markers are not repeated here — they are read from `test/fixtures.test.js`,
- * so this file and the test cannot disagree about what a fixture must contain.
+ * Both come from `scripts/fixture-contract.mjs`, so this file, the offline test
+ * and the live drift sweep cannot disagree about what a fixture is a fixture
+ * of. A contract entry with no `url` is hand-maintained — either it needs a
+ * session (`drops`, `sticker-scroll`) or it carries scaffolding a capture would
+ * delete (`chat` simulates an incoming sticker, and Kick has no such button).
  */
-const ROUTES = {
-  home: { url: 'https://kick.com/', keep: ['[data-testid="kicks-top-nav"]', '[data-testid="livestream-results-card"]', '#channel-chatroom'] },
-  browse: { url: 'https://kick.com/browse', keep: ['[data-testid="livestream-results-card"]', '[aria-label*="Resize chatroom" i]', 'a[href*="/category/"]'] },
-  category: { url: 'https://kick.com/category/just-chatting', keep: ['[data-testid="livestream-results-card"]', 'a[href*="/category/"]'] },
-  search: { url: 'https://kick.com/search?query=kick', keep: ['[data-testid="search"]', '[data-testid*="search-results"]'] },
-  channel: { url: 'https://kick.com/xqc', keep: ['[data-testid="channel-player"]', '#channel-chatroom', '[role="separator"][aria-valuemin]'] },
-  chat: { url: 'https://kick.com/xqc', keep: ['[data-testid="chat-resizer"]', '[data-testid="chatroom"]', '[data-testid="chatroom-messages"]', '[data-testid="add-chat-sticker"]'] },
-};
+const ROUTES = Object.fromEntries(CAPTURABLE.map((name) => [name, FIXTURE_CONTRACT[name]]));
 
 /** Attributes a shape check can legitimately depend on. Everything else goes. */
 const KEEP_ATTRIBUTES = /^(id|class|role|href|lang|hidden|type|value|data-.*|aria-.*)$/;
@@ -123,19 +121,6 @@ async function evaluate(client, expression) {
   const res = await client.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
   if (res.result?.exceptionDetails) return { error: res.result.exceptionDetails.text };
   return { value: res.result?.result?.value };
-}
-
-/** The markers `test/fixtures.test.js` will demand, read from the test itself. */
-async function markersFromTest() {
-  const source = await readFile(resolve('test/fixtures.test.js'), 'utf8');
-  const block = source.slice(source.indexOf('const fixtures = {'), source.indexOf('};', source.indexOf('const fixtures = {')));
-  const markers = {};
-  for (const line of block.split('\n')) {
-    const match = /^\s*'?([\w-]+)'?:\s*\[(.*)\],\s*$/.exec(line);
-    if (!match) continue;
-    markers[match[1]] = [...match[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((entry) => entry[1].replace(/\\'/g, "'"));
-  }
-  return markers;
 }
 
 const REDUCER = `(() => {
@@ -243,7 +228,6 @@ if (!CHROME) {
   process.exit(1);
 }
 
-const markers = await markersFromTest();
 const profile = await mkdtemp(join(tmpdir(), 'kf-capture-'));
 const child = spawn(CHROME, [
   `--remote-debugging-port=${PORT}`,
@@ -276,7 +260,7 @@ try {
     await client.send('Page.navigate', { url: route.url });
     // Kick renders client-side; there is no load event worth waiting on.
     await sleep(13000);
-    const wantedMarkers = markers[name] || [];
+    const wantedMarkers = route.markers;
     // replaceAll with a *function*: the placeholder appears more than once, and
     // a string replacement would interpret $& and friends in captured markup.
     const reduced = await evaluate(client, REDUCER

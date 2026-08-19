@@ -6,14 +6,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 
 ## Next — ordered by value
 
-1. **R-62, the fixtures assert a contract nothing checks, and some of it Kick no longer serves.** Two findings from the reducer that shipped 2026-08-19, in the order they matter.
-   **(a) The fixtures have no consumer.** `test/fixtures.test.js` is the only thing that reads `test/fixtures/`, and all it does is assert that each hand-written file contains a list of substrings — a file being checked against a description of itself. No test builds a DOM from a fixture, so `compatibilitySnapshot`, `findProbe` and the derived-value expectations are never exercised offline against a realistic shell. Now that fixtures can be regenerated from the live site, they are worth something: parse each one and assert the probes resolve and the derived values come out, which is the offline half of the live drift gate.
-   **(b) The drift gate only runs on one route, so route-shaped fall-throughs are invisible.** Measured live 2026-08-19 logged out: `#main-container` is **1** on home and **0** on a channel, so on every channel page `main` already resolves through a fallback and no gate has ever said so — the live drift check runs against home. Same shape for the chat hooks.
-   The markers Kick no longer serves, with live counts: home `[data-testid="kicks-top-nav"]` **0**, `#channel-chatroom` **0** (route-shaped, already known); browse `Resize chatroom` **0**; search `search-results` **0**; channel `#main-container` **0**, `[data-testid="channel-player"]` **0**; chat `[data-testid="chat-resizer"]` **0**, `[data-testid="chatroom"]` **0**, `[data-testid="add-chat-sticker"]` **0**. Of these only `add-chat-sticker` is referenced **nowhere** in `src/` — the rest are live probes that have quietly fallen through to fallbacks. `fixture=/emotes/7001` is synthetic scaffolding the fixture invented and must stay.
-   Touches: `test/fixtures.test.js`, `test/fixtures/*.html`, `src/compatibility.mjs`, `scripts/verify-extension.mjs`
-   Acceptance: The fixtures are read by a test that actually builds a DOM from them and asserts the probes and derived values resolve, so a regenerated fixture proves something. Every marker is then either confirmed live and kept, or dropped with a one-line note saying why (route-shaped, renamed, or synthetic). The live drift gate reports fall-throughs per route rather than only for the route it happens to load. `capture-fixture.mjs` runs clean on every route it can reach.
-   Complexity: M
-
 ## Explicitly deferred
 
 - Full mobile-site support; the settings surface still reflows at narrow window sizes

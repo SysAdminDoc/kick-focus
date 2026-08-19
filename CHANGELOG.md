@@ -2,6 +2,16 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.29.0 — 2026-08-19
+
+### Changed
+
+- **The offline DOM fixtures are read as documents now, not as text.** Each fixture is parsed and run through the same compatibility snapshot the mod takes on every apply cycle, and the suite checks that every shell hook resolves to the probe Kick really serves on that route, and that the values derived from those hooks still come out. The previous check only asserted that a hand-written file contained a list of substrings, so it stayed green while several of those substrings had already vanished from the live site.
+- **The live compatibility gate sweeps every route it can reach.** It used to run against the home page alone, which hid two long-standing fall-throughs: a channel page carries no `#main-container`, so the main hook has been resolving through a plain `<main>` for months, and the home page's featured preview resolves the chat panel through its third probe. Home, browse, category, search and a channel are now each opened in turn and compared against a recorded per-route expectation, so a stable hook coming back is reported as clearly as one going away.
+- **Markers Kick no longer serves have been retired, with the reason attached.** `kicks-top-nav`, the `Resize chatroom` label, `search-results`, `channel-player` and the `chatroom` test id all return nothing on the live site and are recorded as retired rather than quietly deleted. Fixture scaffolding that Kick never served, like the button that simulates an incoming chat sticker, is now labelled as scaffolding instead of passing for a real hook.
+
+Maintainer tooling only. The shipped userscript and both companion extensions behave exactly as they did in 1.28.0.
+
 ## 1.28.0 — 2026-08-19
 
 ### Added

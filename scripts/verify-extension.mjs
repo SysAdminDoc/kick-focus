@@ -29,6 +29,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { CAPTURABLE, FIXTURE_CONTRACT } from './fixture-contract.mjs';
 
 async function findChromium() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
@@ -1472,16 +1473,24 @@ try {
       : hide.why);
 
   // Kick DOM drift, measured against the ordered probes the runtime actually
-  // uses rather than a second list that would rot separately.
+  // uses rather than a second list that would rot separately, and measured on
+  // every route rather than on whichever one this run happened to open.
   //
-  // Each hook in LOCATOR_PROBES is stable-id first, then structural and
-  // accessible fallbacks. Everything keeps working when the first one stops
-  // matching — that is what the fallbacks are for — which is exactly why it is
-  // worth failing on: it is the early warning, and it is silent otherwise. A
-  // hook with nothing matching at all is normal here for the ones this route
-  // has no business showing (an expanded sidebar has no expand control), so
-  // only a *fallen-through* hook is drift.
-  const probeReport = await evaluate(pageClient, `(() => {
+  // The old shape of this check was "the first probe must win, except for the
+  // hooks we softened". That is not true of Kick and never was: a channel page
+  // has no `#main-container`, so `main` has been resolving through the bare
+  // `<main>` fallback on every channel since before this gate existed, and the
+  // gate said nothing because it only ever ran on home. Measured 2026-08-19,
+  // the same was true of the chat separator on a channel and of the chat panel
+  // on home.
+  //
+  // So each route records which probe is *supposed* to win, in
+  // `scripts/fixture-contract.mjs` beside the offline fixture expectations, and
+  // drift is any change from that — in either direction. A stable id coming
+  // back matters as much as one going away, and both are one line of output
+  // instead of a silent fall-through.
+  const PROBE_REPORT = `(async () => {
+    const settle = (ms) => new Promise((done) => setTimeout(done, ms));
     const probes = ${JSON.stringify(LOCATOR_PROBES)};
     const out = {};
     for (const [hook, list] of Object.entries(probes)) {
@@ -1490,58 +1499,81 @@ try {
         catch { return { id: probe.id, count: -1 }; }
       });
     }
-    return out;
-  })()`);
-  const probes = probeReport.value || {};
-  // Only the hooks every Kick route carries can be *required* to match their
-  // best probe here. The chat hooks are route-shaped — this gate runs on the
-  // home page, where the chat panel is a preview that has never carried
-  // `#channel-chatroom` — so a fall-through there is reported, not failed. It
-  // is still the number to watch: the day it appears for `main` or `card`, the
-  // stable ids went away and the fallbacks are all that is holding the mod up.
-  const REQUIRED_HOOKS = new Set(['main', 'sidebar', 'card']);
-  const drifted = [];
-  const softened = [];
-  const winners = [];
-  for (const [hook, list] of Object.entries(probes)) {
-    const first = list.findIndex((probe) => probe.count > 0);
-    if (first === -1) continue; // nothing on this route uses that hook
-    winners.push(`${hook}:${list[first].id}`);
-    if (first === 0) continue;
-    const note = `${hook} fell back to ${list[first].id}; ${list[0].id} matched nothing`;
-    if (REQUIRED_HOOKS.has(hook)) drifted.push(note);
-    else softened.push(note);
-  }
-  record('every shell hook Kick shows on all routes matches its most stable probe',
-    Object.keys(probes).length > 0 && drifted.length === 0,
-    drifted.length
-      ? drifted.join(' | ')
-      : `${winners.length} hooks: ${winners.join(', ')}${softened.length ? ` | route-shaped fall-through (not a failure): ${softened.join('; ')}` : ''}`);
-  record('no shell hook lost every probe it has',
-    Object.values(probes).every((list) => list.some((probe) => probe.count >= 0)),
-    'a -1 here is a selector Kick made invalid, not merely absent');
+    // The mod's own verdict on the values derived from those hooks, polled
+    // rather than sampled: this tab was opened seconds ago and the apply cycle
+    // publishes the attribute on its own schedule.
+    let derived = null;
+    for (let i = 0; i < 40 && !derived; i += 1) {
+      derived = document.documentElement.dataset.kfDerived || null;
+      if (!derived) await settle(300);
+    }
+    return { out, derived, route: location.pathname };
+  })()`;
 
-  // R-56: the half a probe report cannot answer. A hook matching says nothing
-  // about whether the value computed from it survived, and twice this month a
-  // whole feature class died with every probe green. The mod publishes its own
-  // verdict on `html[data-kf-derived]`, built from the same derivers the apply
-  // cycle uses, so this reads that rather than recomputing anything — and reads
-  // it off the document rather than out of a settings panel, so it cannot be
-  // knocked out by whatever the preceding probes left in the profile.
-  const derivedProbe = await evaluate(pageClient, `(async () => {
-    const verdict = await __kfWait(() => document.documentElement.dataset.kfDerived || null, { timeout: 12000 });
-    if (!verdict) return { skip: 'the mod published no compatibility verdict on this route' };
-    const cards = document.querySelectorAll('[data-testid="livestream-results-card"], [data-testid="stream-card"]').length;
-    return { ok: true, verdict, cards };
-  })()`);
-  const derivedState = derivedProbe.value || {};
-  recordProbe('every probe that feeds a derived value still produces one', derivedState,
-    derivedState.ok === true && derivedState.verdict === 'ok',
-    derivedState.ok
-      ? (derivedState.verdict === 'ok'
-        ? `nothing broken; ${derivedState.cards} cards on this route`
-        : `resolved but derived nothing: ${derivedState.verdict} (probe:derivedValue)`)
-      : derivedState.why);
+  /** Open one route in its own tab, read the probe report, close it again. */
+  const sweepRoute = async (url) => {
+    const opener = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await opener.ready;
+    const targetId = (await opener.send('Target.createTarget', { url })).result.targetId;
+    opener.close();
+    await sleep(Number(process.env.KF_ROUTE_SETTLE_MS || 11000));
+    const entry = (await json('/json/list')).find((candidate) => candidate.id === targetId);
+    let report = { error: 'the route tab never opened' };
+    if (entry) {
+      const client = cdp(entry.webSocketDebuggerUrl);
+      await client.ready;
+      await client.send('Runtime.enable');
+      report = await evaluate(client, PROBE_REPORT);
+      client.close();
+    }
+    const closer = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await closer.ready;
+    await closer.send('Target.closeTarget', { targetId });
+    closer.close();
+    return report.value || { why: report.error || 'the probe report returned nothing' };
+  };
+
+  for (const name of CAPTURABLE) {
+    const contract = FIXTURE_CONTRACT[name];
+    const swept = await sweepRoute(contract.url);
+    if (!swept.out) {
+      record(`Kick's shell on ${name} matches what the fixture contract records`, false, swept.why);
+      continue;
+    }
+    const winners = {};
+    const fellBack = [];
+    const invalid = [];
+    for (const [hook, list] of Object.entries(swept.out)) {
+      if (list.some((probe) => probe.count === -1)) invalid.push(hook);
+      const first = list.findIndex((probe) => probe.count > 0);
+      winners[hook] = first === -1 ? null : list[first].id;
+      // Reported for the hooks the contract does not pin — player controls,
+      // sidebar sections — where a fall-through is worth saying out loud and
+      // not worth failing on. The pinned five are already named in full below,
+      // so repeating them here would read as a warning about the expectation
+      // that was just confirmed.
+      if (first > 0 && !(hook in contract.shell)) fellBack.push(`${hook}->${list[first].id}`);
+    }
+    const changed = Object.entries(contract.shell)
+      .filter(([hook, expected]) => winners[hook] !== expected)
+      .map(([hook, expected]) => `${hook}: contract says ${expected || 'absent'}, Kick serves ${winners[hook] || 'absent'}`);
+    record(`Kick's shell on ${name} matches what the fixture contract records`,
+      changed.length === 0,
+      changed.length
+        ? `${changed.join('; ')} — update scripts/fixture-contract.mjs and test/fixtures/${name}.html together`
+        : `${Object.entries(contract.shell).map(([hook, probe]) => `${hook}:${probe || 'absent'}`).join(', ')}`
+        + `${fellBack.length ? ` | route-shaped fall-through (not a failure): ${fellBack.join(', ')}` : ''}`);
+    record(`no shell hook on ${name} lost every probe it has`, invalid.length === 0,
+      invalid.length ? `invalid selectors: ${invalid.join(', ')}` : 'every selector Kick still accepts as a selector');
+    // R-56 per route: a hook matching says nothing about whether the value
+    // computed from it survived, and twice in one month a whole feature class
+    // died with every probe green. The mod publishes its own verdict on
+    // `html[data-kf-derived]`, built from the derivers the apply cycle uses.
+    recordProbe(`every probe that feeds a derived value still produces one on ${name}`,
+      swept.derived ? {} : { skip: `the mod published no compatibility verdict on ${contract.url}` },
+      swept.derived === 'ok',
+      swept.derived === 'ok' ? 'nothing broken' : `resolved but derived nothing: ${swept.derived} (probe:derivedValue)`);
+  }
 
   // The library provider against Chromium's real IndexedDB. The pure split and
   // merge are covered by node:test with a stub; what only a browser can answer

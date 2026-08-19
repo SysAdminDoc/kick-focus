@@ -1,9 +1,9 @@
-/* Kick Focus 1.28.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.29.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.28.0';
+const VERSION = '1.29.0';
 const SETTINGS_SCHEMA = 5;
 
 /**
@@ -42,6 +42,10 @@ const VERSION_NOTES = Object.freeze({
   }),
   '1.28.0': Object.freeze({
     summary: 'Every channel profile now has a StreamerStats action that opens that channel’s current analytics in a compact popup window.',
+    defaults: Object.freeze([]),
+  }),
+  '1.29.0': Object.freeze({
+    summary: 'Maintenance release: the offline DOM fixtures and the live compatibility gate now check every route against the same recorded contract, so Kick changing its markup is reported instead of absorbed.',
     defaults: Object.freeze([]),
   }),
 });
