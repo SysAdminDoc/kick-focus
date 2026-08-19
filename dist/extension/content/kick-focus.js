@@ -1,9 +1,9 @@
-/* Kick Focus 1.25.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.26.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.25.0';
+const VERSION = '1.26.0';
 const SETTINGS_SCHEMA = 4;
 
 /**

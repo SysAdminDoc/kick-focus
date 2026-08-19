@@ -1,4 +1,4 @@
-export const VERSION = '1.25.0';
+export const VERSION = '1.26.0';
 export const SETTINGS_SCHEMA = 4;
 
 /**
