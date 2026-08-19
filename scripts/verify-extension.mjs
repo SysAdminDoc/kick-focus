@@ -2367,10 +2367,27 @@ try {
       await settle();
 
       // 2. Ready: exactly one click, and the claim is recorded.
+      //
+      // Not a plain cycle(). The claim needs two passes — one to open Kick's
+      // dialog and one to act on it — and the *open* pass arms a ten-minute
+      // cooldown in storage *before* it clicks, so any apply cycle that fires
+      // between phases leaves this one cooling and the click lands in phase 3
+      // instead. That is what clicks=0 here and clicks=1 below was, on
+      // 2026-08-18, and it is a property of the schedule rather than of a race:
+      // the cooldown is read fresh from storage on every pass, so clearing it
+      // on every pass makes this phase independent of what came before.
+      //
+      // Only while nothing has been claimed. After the claim, the record *is*
+      // the thing under test and wiping it would destroy the evidence.
       clicks = 0;
       parts = mount(true);
-      await cycle();
-      const ready = { clicks, stored: JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null') };
+      let readyPasses = 0;
+      for (; readyPasses < 8 && clicks === 0; readyPasses += 1) {
+        localStorage.removeItem('kick-focus:reward-claims');
+        window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+        await settle(450);
+      }
+      const ready = { clicks, passes: readyPasses, stored: JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null') };
       // A claim sleeps to the nightly rollover, whatever hour the run happens at.
       ready.nextHour = ready.stored?.nextCheckAt ? new Date(ready.stored.nextCheckAt).getHours() : null;
 
@@ -2421,8 +2438,8 @@ try {
     reward.ok ? `next look in ${reward.notReady?.waitMinutes} min, rollover in ${reward.notReady?.minutesToReset} min` : reward.why);
   record('a ready reward is claimed once and then sleeps to the nightly rollover',
     reward.ok === true && reward.ready?.clicks === 1 && Number(reward.ready?.stored?.lastClaimAt) > 0
-      && reward.ready?.nextHour === 20,
-    reward.ok ? `clicks=${reward.ready?.clicks}, stored claims=${reward.ready?.stored?.claims}, next check at hour ${reward.ready?.nextHour}` : reward.why);
+      && reward.ready?.nextHour === 20 && reward.again?.clicks === 0,
+    reward.ok ? `claimed on pass ${reward.ready?.passes} of 8: clicks=${reward.ready?.clicks}, stored claims=${reward.ready?.stored?.claims}, next check at hour ${reward.ready?.nextHour}; second pass clicked ${reward.again?.clicks}` : reward.why);
   record('a reward already claimed is not chased again',
     reward.ok === true && reward.again?.clicks === 0,
     reward.ok ? `second pass clicked ${reward.again?.clicks} times` : reward.why);
