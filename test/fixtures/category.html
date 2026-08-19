@@ -1,17 +1,61 @@
 <!doctype html>
 <html lang="en">
   <body>
-    <div data-sidebar="true">
-      <div id="sidebar-wrapper"><button data-testid="sidebar-collapse" aria-controls="sidebar-wrapper" aria-expanded="true"></button></div>
-      <main id="main-container">
-        <section data-testid="category-results">
-          <div data-testid="livestream-results-card"><a href="https://kick.com/category/just-chatting">Just Chatting</a></div>
-          <div data-testid="livestream-results-card"><a href="https://kick.com/category/just-chatting">Just Chatting</a></div>
-        </section>
-      </main>
-      <div><div role="separator" aria-valuemin="280" aria-valuemax="420"></div><div id="channel-chatroom"></div></div>
+    <div class="group/main" data-sidebar="true" data-chat="true" data-theatre="false">
+      <nav>
+        <div>
+          <button aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar-wrapper" data-testid="sidebar-collapse"></button>
+        </div>
+      </nav>
+      <div>
+        <div id="sidebar-wrapper" data-nosnippet="true">
+          <ul>
+            <li>
+              <a data-state="inactive" data-testid="sidebar-home" href="/">a</a>
+            </li>
+            <li>
+              <a data-state="inactive" data-testid="sidebar-browse" href="/browse">a</a>
+            </li>
+            <li>
+              <button data-testid="sidebar-following">button</button>
+            </li>
+          </ul>
+          <div>
+            <div>
+              <section>
+                <button>
+                  <a data-testid="sidebar-recommended-channel-1" data-state="false" href="/deenthegreat">a</a>
+                </button>
+                <button>
+                  <a data-testid="sidebar-recommended-channel-2" data-state="false" href="/samxfrank">a</a>
+                </button>
+              </section>
+            </div>
+          </div>
+        </div>
+        <div id="main-container">
+          <main>
+            <div>
+              <div>
+                <div>
+                  <div>
+                    <a data-state="active" href="/category/just-chatting">a</a>
+                    <a href="/category/just-chatting/clips">a</a>
+                  </div>
+                  <div>
+                    <div>
+                      <section class="grid grid-cols-1 sm:grid-cols-2 3xl:grid-cols-6 group-data-[sidebar=false]/main:3xl:grid-cols-7 lg:grid-cols-4 xl:grid-cols-4 group-data-[sidebar=false]/main:xl:grid-cols-5 2xl:grid-cols-5 group-data-[sidebar=false]/main:2xl:grid-cols-6" data-showingmore="false">
+                        <div class="group/card" data-testid="livestream-results-card">div</div>
+                        <div class="group/card" data-testid="livestream-results-card">div</div>
+                      </section>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
     </div>
-    <script>history.replaceState(null, '', '/category/just-chatting');</script>
-    <script src="/dist/kick-focus.user.js"></script>
   </body>
 </html>

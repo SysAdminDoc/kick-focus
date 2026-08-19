@@ -6,8 +6,21 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 
 ## Next — ordered by value
 
-1. **Automated Kick DOM drift snapshots — capture half.** The *detection* half shipped 2026-08-16: the live gate reads `LOCATOR_PROBES` (the ordered probes the runtime itself uses, so there is no second list to rot) and fails when a route-independent hook falls through to a fallback. It found real drift on its first run — the home page's chat preview has never carried `#channel-chatroom`, so `chatPanel` resolves via `chat-messages-owner`; that is reported, not failed, because it is route-shaped.
-   What remains is the maintainer-only reducer: turn a fresh MHTML/live capture into a small sanitized fixture under `test/fixtures/`, so those hand-written shells can be regenerated instead of hand-edited. Needs its own browser session (the live gate's is not reusable as a module) and only covers routes reachable logged out — Drops and the open sticker picker need a session, so their fixtures stay hand-maintained. Raw captures stay ignored (`page_examples/`).
+1. **R-62, the fixtures assert a Kick shell contract that live Kick no longer serves.** The reducer that shipped 2026-08-19 (`node scripts/capture-fixture.mjs`) compares each fixture's markers against the live page, and found that `test/fixtures.test.js` is green while asserting markup Kick has stopped emitting. Measured on live Kick 2026-08-19, logged out, with the count from a direct `querySelectorAll`:
+   - **home** — `[data-testid="kicks-top-nav"]` **0**; `#channel-chatroom` **0** (already known to be route-shaped: home's chat preview never carried it).
+   - **browse** — `Resize chatroom` **0** (the resizer's aria-label is worded differently or gone).
+   - **search** — `search-results` **0**, while `[data-testid="search"]` is **2**.
+   - **channel** — `#main-container` **0** (it is **1** on home, so this is route-shaped, not a rename); `[data-testid="channel-player"]` **0**.
+   - **chat** — `[data-testid="chat-resizer"]` **0**, `[data-testid="chatroom"]` **0**, `[data-testid="add-chat-sticker"]` **0**, while `[data-testid="chatroom-messages"]` is **2** and `[role="separator"][aria-valuemin]` is **2**.
+   Each needs a per-marker judgement that is not mechanical, which is why this is recorded rather than fixed in the same pass: is the marker something the runtime still depends on (then `LOCATOR_PROBES` needs a new fallback and the live drift gate should be failing on it), something route-shaped (then the fixture asserting it is simply wrong), or scaffolding the hand-written fixture invented and Kick never served? `fixture=/emotes/7001` in `chat` is definitely the third — it is a synthetic emote URL, and the reducer correctly reports it as absent from the live page while it must stay in the fixture.
+   Touches: `test/fixtures.test.js`, `test/fixtures/*.html`, possibly `src/compatibility.mjs`
+   Acceptance: Every marker is either confirmed against live Kick and kept, or removed with a one-line note saying why (route-shaped, renamed, or synthetic). Any marker that turns out to be a hook the runtime still needs gains a `LOCATOR_PROBES` entry so the live drift gate covers it. `capture-fixture.mjs` then runs clean on every route it can reach.
+   Complexity: M
+
+2. **R-63, the fixture reducer's sibling cap can drop a marker that exists.** `SIBLING_CAP = 2` keeps the first two matches of any repeated selector, so a marker further down the list is lost — measured 2026-08-19: `/category/slots` is on the browse page **twice** and the reduction still dropped it. The script reports this correctly ("reducer dropped (the live page has these)") rather than calling it drift, so it misleads nobody, but browse cannot be regenerated until it is fixed.
+   Touches: `scripts/capture-fixture.mjs`
+   Acceptance: The reduction keeps whatever a marker needs — either by raising the cap for selectors whose matches differ from one another, or by adding the marker's own element to the keep set — and `capture-fixture.mjs browse` reports no dropped markers.
+   Complexity: S
 
 2. **A "my emotes" view.** v1.20.0 established that an authenticated `/emotes/{slug}` read returns every set the account owns, not just the channel being viewed — so one read on any channel is a complete personal inventory, and the library already reports the totals. What remains is the view itself: a list of what the account owns grouped by source channel, independently of where the user is standing. The *other* half of this item shipped 2026-08-18 — the colon-autocomplete now reads the reach data and no longer offers an emote Kick would refuse.
 
