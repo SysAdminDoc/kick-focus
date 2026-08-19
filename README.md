@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.26.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.27.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -18,7 +18,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - Adds Standard, Theater, and Focus stream layouts, plus Right, Docked, and Hidden chat.
 - Widens browse grids and preserves a compact, sticky desktop top bar. Following and Drops are classified as first-class routes instead of being mistaken for channels.
 - Adds a searchable command menu (`Ctrl+K`) and configurable keyboard shortcuts.
-- Adds Studio, OLED, and Slate surfaces, four accent choices, density, radius, thumbnail, contrast, and text controls.
+- Adds Studio, OLED, and Slate surfaces; four ready-made viewing presets; four branded accents plus a contrast-protected custom color; density, radius, thumbnail, contrast, and text controls. Calm, Cinema, Chat First, and Discovery apply coherent layout and style choices without changing content filters or account settings.
 - Keeps home-page previews silent, blurs marked mature cards, and can filter casino, Drops, sponsored, and promoted content using Kick's own category and badge markup. Filtering suspends itself and says so rather than emptying a page.
 - Adds an opt-in **Poor mode** that removes Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards while preserving Follow, chat, and free daily rewards. It identifies exact controls instead of hiding arbitrary text. It also reaches the two spend surfaces that are not controls — the KICKs balance in the chat footer and the gift-shop panel — by test id, which is why the free channel-points counter sitting directly beside the balance is left alone.
 - **Says what your account can actually send, and where.** Kick's emote endpoint answers differently depending on who asks: read with your own session it returns every channel you subscribe to and the collectibles you have pulled, not just the channel you are looking at. That answer is used as the entitlement it is, so an emote you own reads as available and one you do not is marked as such rather than left unconfirmed. Reach is shown separately from ownership, because they are different facts — a *free* channel emote works only in that channel, while a subscriber emote you own works in every chat. Kick's own picker states neither, and only ever shows the channel you are standing in.

@@ -35,6 +35,10 @@ import {
   evictStickerLibrary,
   STICKER_LIBRARY_LIMIT,
   normalizeSettings,
+  applyViewingPreset,
+  colorContrastRatio,
+  customAccentTokens,
+  normalizeCustomAccent,
   STICKER_PREFERENCES_SCHEMA,
   FAVORITES_PER_SCOPE_LIMIT,
   favoriteScope,
@@ -1019,6 +1023,36 @@ test('normalization clamps values and keeps core ad defense enabled', { tag: 'un
   assert.equal(value.appearance.language, 'auto');
   assert.equal(normalizeSettings({ appearance: { language: 'xx' } }).appearance.language, 'auto');
   assert.equal(value.accessibility.captionOpacity, 0);
+});
+
+test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {
+  assert.equal(normalizeCustomAccent('#2a0030'), '#FF5CA8', 'a dark picker value must not erase focus rings');
+  assert.equal(normalizeCustomAccent('#38d7d0'), '#38D7D0');
+  assert.equal(normalizeCustomAccent('not-a-color'), '#FF5CA8');
+  const tokens = customAccentTokens('#38d7d0');
+  assert.deepEqual(tokens, { hex: '#38D7D0', rgb: '56, 215, 208', onAccent: '#071004' });
+  assert.ok(colorContrastRatio(tokens.hex, '#141817') >= 3);
+
+  const normalized = normalizeSettings({ appearance: { accent: 'custom', customAccent: '#2a0030' } });
+  assert.equal(normalized.appearance.accent, 'custom');
+  assert.equal(normalized.appearance.customAccent, '#FF5CA8');
+});
+
+test('viewing presets change layout and style without touching content choices', { tag: 'unit' }, () => {
+  const starting = normalizeSettings({
+    layout: { hidden: ['player-clip'] },
+    content: { hideCasino: true, hiddenChannels: ['/quiet-channel'] },
+    accessibility: { reduceMotion: true },
+  });
+  const cinema = applyViewingPreset(starting, 'cinema');
+  assert.equal(cinema.layout.sidebar, 'hidden');
+  assert.equal(cinema.layout.chat, 'hidden');
+  assert.equal(cinema.appearance.theme, 'oled');
+  assert.deepEqual(cinema.layout.hidden, ['player-clip']);
+  assert.equal(cinema.content.hideCasino, true);
+  assert.deepEqual(cinema.content.hiddenChannels, ['/quiet-channel']);
+  assert.equal(cinema.accessibility.reduceMotion, true);
+  assert.deepEqual(applyViewingPreset(starting, 'unknown'), starting);
 });
 
 test('v2 migrates the former desktop defaults without overwriting custom layout choices', { tag: 'unit' }, () => {

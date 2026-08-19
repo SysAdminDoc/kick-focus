@@ -2,6 +2,17 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.27.0 — 2026-08-19
+
+### Added
+
+- **Four complete viewing presets.** Calm, Cinema, Chat First, and Discovery apply a coherent layout and visual treatment in one click, using the same settings people can still tune individually. They never change content filters, accessibility choices, hidden controls, or the Kick account, and every application reports exactly what happened through the existing toast and autosave path.
+- **A contrast-protected custom accent.** The color picker accepts any six-digit color, checks it against the darkest surfaces used by all three themes, and falls back to a safe rose when a value would make focus rings and selected controls disappear. Foreground ink is selected from measured contrast instead of guessed from hue, and the same tokens style Kick and the shadow-root settings interface.
+
+### Changed
+
+- **Appearance starts with decisions, not individual knobs.** Presets are described in plain language above the existing theme, accent, radius, thumbnail, scale, contrast, and live-color controls. The accent grid now reflows five choices cleanly, the custom value stays visible beside its picker, and the layout collapses to one column on narrow windows.
+
 ## 1.26.0 — 2026-08-19
 
 ### Changed

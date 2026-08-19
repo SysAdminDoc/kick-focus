@@ -1,5 +1,5 @@
-export const VERSION = '1.26.0';
-export const SETTINGS_SCHEMA = 4;
+export const VERSION = '1.27.0';
+export const SETTINGS_SCHEMA = 5;
 
 /**
  * What changed, per version, for the notice shown after an update.
@@ -29,6 +29,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.25.0': Object.freeze({
     summary: 'The grid can merge every channel into one chat or float the focused one in an always-on-top window, and the emote suggestions stop offering emotes Kick would refuse.',
+    defaults: Object.freeze([]),
+  }),
+  '1.27.0': Object.freeze({
+    summary: 'Four viewing presets and a contrast-protected custom accent make Kick faster to personalize without changing account or content choices.',
     defaults: Object.freeze([]),
   }),
 });
@@ -124,6 +128,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   appearance: Object.freeze({
     theme: 'studio',
     accent: 'kick',
+    customAccent: '#FF5CA8',
     language: 'auto',
     radius: 'balanced',
     thumbnail: 55,
@@ -207,6 +212,25 @@ export const DEFAULT_SETTINGS = Object.freeze({
     sidebar: 'S',
     settings: 'Alt+K',
     mature: 'B',
+  }),
+});
+
+export const VIEWING_PRESETS = Object.freeze({
+  calm: Object.freeze({
+    layout: Object.freeze({ sidebar: 'compact', chat: 'right', chatWidth: 410, density: 'comfortable', streamStart: 'standard', wideGrid: true }),
+    appearance: Object.freeze({ theme: 'studio', accent: 'cyan', radius: 'balanced', thumbnail: 34, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: false }),
+  }),
+  cinema: Object.freeze({
+    layout: Object.freeze({ sidebar: 'hidden', chat: 'hidden', density: 'comfortable', streamStart: 'theater', wideGrid: true }),
+    appearance: Object.freeze({ theme: 'oled', accent: 'gold', radius: 'subtle', thumbnail: 50, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: true }),
+  }),
+  chat: Object.freeze({
+    layout: Object.freeze({ sidebar: 'compact', chat: 'docked', chatWidth: 480, density: 'compact', streamStart: 'standard', wideGrid: false }),
+    appearance: Object.freeze({ theme: 'slate', accent: 'violet', radius: 'balanced', thumbnail: 46, interfaceScale: 100, dimWatched: false, strongContrast: true, colorizeLive: true }),
+  }),
+  discovery: Object.freeze({
+    layout: Object.freeze({ sidebar: 'auto', chat: 'right', chatWidth: 380, density: 'compact', streamStart: 'standard', wideGrid: true, showFollowingRail: true, showRecommendedRail: true }),
+    appearance: Object.freeze({ theme: 'studio', accent: 'kick', radius: 'balanced', thumbnail: 70, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: true }),
   }),
 });
 
@@ -390,6 +414,62 @@ function enumValue(value, allowed, fallback) {
 export function clamp(value, minimum, maximum, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
+}
+
+const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
+const CUSTOM_ACCENT_SURFACES = Object.freeze(['#000000', '#080B09', '#141817']);
+
+function rgbFromHex(value) {
+  const match = /^#([0-9a-f]{6})$/i.exec(String(value || '').trim());
+  if (!match) return null;
+  const number = Number.parseInt(match[1], 16);
+  return {
+    red: (number >> 16) & 255,
+    green: (number >> 8) & 255,
+    blue: number & 255,
+  };
+}
+
+function relativeLuminance({ red, green, blue }) {
+  const linear = [red, green, blue].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+export function colorContrastRatio(first, second) {
+  const a = rgbFromHex(first);
+  const b = rgbFromHex(second);
+  if (!a || !b) return 0;
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * A custom accent is a focus indicator and a control boundary, not decoration.
+ * WCAG 2.2 requires 3:1 against adjacent colors for those non-text roles, so a
+ * valid but too-dark picker value falls back to a known-safe rose rather than
+ * quietly making focus and selected states disappear in one of the dark themes.
+ */
+export function normalizeCustomAccent(value, fallback = CUSTOM_ACCENT_FALLBACK) {
+  const parsed = rgbFromHex(value);
+  const normalizedFallback = rgbFromHex(fallback) ? String(fallback).toUpperCase() : CUSTOM_ACCENT_FALLBACK;
+  if (!parsed) return normalizedFallback;
+  const normalized = `#${[parsed.red, parsed.green, parsed.blue].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+  return CUSTOM_ACCENT_SURFACES.every((surface) => colorContrastRatio(normalized, surface) >= 3)
+    ? normalized
+    : normalizedFallback;
+}
+
+export function customAccentTokens(value) {
+  const hex = normalizeCustomAccent(value);
+  const rgb = rgbFromHex(hex);
+  const darkInk = '#071004';
+  const lightInk = '#FFFFFF';
+  const onAccent = colorContrastRatio(hex, darkInk) >= colorContrastRatio(hex, lightInk) ? darkInk : lightInk;
+  return Object.freeze({ hex, rgb: `${rgb.red}, ${rgb.green}, ${rgb.blue}`, onAccent });
 }
 
 export function normalizeShortcut(value, fallback) {
@@ -1085,7 +1165,8 @@ export function normalizeSettings(input) {
     },
     appearance: {
       theme: enumValue(appearance.theme, ['studio', 'oled', 'slate'], defaults.appearance.theme),
-      accent: enumValue(appearance.accent, ['kick', 'cyan', 'violet', 'gold'], defaults.appearance.accent),
+      accent: enumValue(appearance.accent, ['kick', 'cyan', 'violet', 'gold', 'custom'], defaults.appearance.accent),
+      customAccent: normalizeCustomAccent(appearance.customAccent, defaults.appearance.customAccent),
       language: enumValue(appearance.language, ['auto', 'en', 'es', 'pt'], defaults.appearance.language),
       radius: enumValue(appearance.radius, ['subtle', 'balanced', 'rounded'], defaults.appearance.radius),
       thumbnail: Math.round(clamp(appearance.thumbnail, 0, 100, defaults.appearance.thumbnail)),
@@ -1148,6 +1229,17 @@ export function normalizeSettings(input) {
       normalizeShortcut(shortcuts[key], fallback),
     ])),
   };
+}
+
+export function applyViewingPreset(settings, presetId) {
+  const current = normalizeSettings(settings);
+  const preset = VIEWING_PRESETS[String(presetId || '')];
+  if (!preset) return current;
+  return normalizeSettings({
+    ...current,
+    layout: { ...current.layout, ...preset.layout },
+    appearance: { ...current.appearance, ...preset.appearance },
+  });
 }
 
 export function routeKind(input) {

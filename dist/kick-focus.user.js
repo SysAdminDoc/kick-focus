@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.26.0
+// @version      1.27.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -23,8 +23,8 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.26.0';
-const SETTINGS_SCHEMA = 4;
+const VERSION = '1.27.0';
+const SETTINGS_SCHEMA = 5;
 
 /**
  * What changed, per version, for the notice shown after an update.
@@ -54,6 +54,10 @@ const VERSION_NOTES = Object.freeze({
   }),
   '1.25.0': Object.freeze({
     summary: 'The grid can merge every channel into one chat or float the focused one in an always-on-top window, and the emote suggestions stop offering emotes Kick would refuse.',
+    defaults: Object.freeze([]),
+  }),
+  '1.27.0': Object.freeze({
+    summary: 'Four viewing presets and a contrast-protected custom accent make Kick faster to personalize without changing account or content choices.',
     defaults: Object.freeze([]),
   }),
 });
@@ -149,6 +153,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   appearance: Object.freeze({
     theme: 'studio',
     accent: 'kick',
+    customAccent: '#FF5CA8',
     language: 'auto',
     radius: 'balanced',
     thumbnail: 55,
@@ -232,6 +237,25 @@ const DEFAULT_SETTINGS = Object.freeze({
     sidebar: 'S',
     settings: 'Alt+K',
     mature: 'B',
+  }),
+});
+
+const VIEWING_PRESETS = Object.freeze({
+  calm: Object.freeze({
+    layout: Object.freeze({ sidebar: 'compact', chat: 'right', chatWidth: 410, density: 'comfortable', streamStart: 'standard', wideGrid: true }),
+    appearance: Object.freeze({ theme: 'studio', accent: 'cyan', radius: 'balanced', thumbnail: 34, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: false }),
+  }),
+  cinema: Object.freeze({
+    layout: Object.freeze({ sidebar: 'hidden', chat: 'hidden', density: 'comfortable', streamStart: 'theater', wideGrid: true }),
+    appearance: Object.freeze({ theme: 'oled', accent: 'gold', radius: 'subtle', thumbnail: 50, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: true }),
+  }),
+  chat: Object.freeze({
+    layout: Object.freeze({ sidebar: 'compact', chat: 'docked', chatWidth: 480, density: 'compact', streamStart: 'standard', wideGrid: false }),
+    appearance: Object.freeze({ theme: 'slate', accent: 'violet', radius: 'balanced', thumbnail: 46, interfaceScale: 100, dimWatched: false, strongContrast: true, colorizeLive: true }),
+  }),
+  discovery: Object.freeze({
+    layout: Object.freeze({ sidebar: 'auto', chat: 'right', chatWidth: 380, density: 'compact', streamStart: 'standard', wideGrid: true, showFollowingRail: true, showRecommendedRail: true }),
+    appearance: Object.freeze({ theme: 'studio', accent: 'kick', radius: 'balanced', thumbnail: 70, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: true }),
   }),
 });
 
@@ -415,6 +439,62 @@ function enumValue(value, allowed, fallback) {
 function clamp(value, minimum, maximum, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
+}
+
+const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
+const CUSTOM_ACCENT_SURFACES = Object.freeze(['#000000', '#080B09', '#141817']);
+
+function rgbFromHex(value) {
+  const match = /^#([0-9a-f]{6})$/i.exec(String(value || '').trim());
+  if (!match) return null;
+  const number = Number.parseInt(match[1], 16);
+  return {
+    red: (number >> 16) & 255,
+    green: (number >> 8) & 255,
+    blue: number & 255,
+  };
+}
+
+function relativeLuminance({ red, green, blue }) {
+  const linear = [red, green, blue].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function colorContrastRatio(first, second) {
+  const a = rgbFromHex(first);
+  const b = rgbFromHex(second);
+  if (!a || !b) return 0;
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * A custom accent is a focus indicator and a control boundary, not decoration.
+ * WCAG 2.2 requires 3:1 against adjacent colors for those non-text roles, so a
+ * valid but too-dark picker value falls back to a known-safe rose rather than
+ * quietly making focus and selected states disappear in one of the dark themes.
+ */
+function normalizeCustomAccent(value, fallback = CUSTOM_ACCENT_FALLBACK) {
+  const parsed = rgbFromHex(value);
+  const normalizedFallback = rgbFromHex(fallback) ? String(fallback).toUpperCase() : CUSTOM_ACCENT_FALLBACK;
+  if (!parsed) return normalizedFallback;
+  const normalized = `#${[parsed.red, parsed.green, parsed.blue].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+  return CUSTOM_ACCENT_SURFACES.every((surface) => colorContrastRatio(normalized, surface) >= 3)
+    ? normalized
+    : normalizedFallback;
+}
+
+function customAccentTokens(value) {
+  const hex = normalizeCustomAccent(value);
+  const rgb = rgbFromHex(hex);
+  const darkInk = '#071004';
+  const lightInk = '#FFFFFF';
+  const onAccent = colorContrastRatio(hex, darkInk) >= colorContrastRatio(hex, lightInk) ? darkInk : lightInk;
+  return Object.freeze({ hex, rgb: `${rgb.red}, ${rgb.green}, ${rgb.blue}`, onAccent });
 }
 
 function normalizeShortcut(value, fallback) {
@@ -1110,7 +1190,8 @@ function normalizeSettings(input) {
     },
     appearance: {
       theme: enumValue(appearance.theme, ['studio', 'oled', 'slate'], defaults.appearance.theme),
-      accent: enumValue(appearance.accent, ['kick', 'cyan', 'violet', 'gold'], defaults.appearance.accent),
+      accent: enumValue(appearance.accent, ['kick', 'cyan', 'violet', 'gold', 'custom'], defaults.appearance.accent),
+      customAccent: normalizeCustomAccent(appearance.customAccent, defaults.appearance.customAccent),
       language: enumValue(appearance.language, ['auto', 'en', 'es', 'pt'], defaults.appearance.language),
       radius: enumValue(appearance.radius, ['subtle', 'balanced', 'rounded'], defaults.appearance.radius),
       thumbnail: Math.round(clamp(appearance.thumbnail, 0, 100, defaults.appearance.thumbnail)),
@@ -1173,6 +1254,17 @@ function normalizeSettings(input) {
       normalizeShortcut(shortcuts[key], fallback),
     ])),
   };
+}
+
+function applyViewingPreset(settings, presetId) {
+  const current = normalizeSettings(settings);
+  const preset = VIEWING_PRESETS[String(presetId || '')];
+  if (!preset) return current;
+  return normalizeSettings({
+    ...current,
+    layout: { ...current.layout, ...preset.layout },
+    appearance: { ...current.appearance, ...preset.appearance },
+  });
 }
 
 function routeKind(input) {
@@ -8431,6 +8523,17 @@ function applySettingsAttributes() {
   root.dataset.kfPlayerContain = String(layout.playerContainVideo);
   root.dataset.kfTheme = appearance.theme;
   root.dataset.kfAccent = appearance.accent;
+  const accent = customAccentTokens(appearance.customAccent);
+  root.style.setProperty('--kf-custom-accent', accent.hex);
+  if (appearance.accent === 'custom') {
+    root.style.setProperty('--kf-accent', accent.hex);
+    root.style.setProperty('--kf-accent-rgb', accent.rgb);
+    root.style.setProperty('--kf-on-accent', accent.onAccent);
+  } else {
+    root.style.removeProperty('--kf-accent');
+    root.style.removeProperty('--kf-accent-rgb');
+    root.style.removeProperty('--kf-on-accent');
+  }
   root.dataset.kfRadius = appearance.radius;
   root.dataset.kfDimWatched = String(appearance.dimWatched);
   root.dataset.kfLiveColor = String(appearance.colorizeLive);
@@ -11959,8 +12062,15 @@ const UI_CSS = `
   .kf-select:hover { border-color: var(--border-strong); }
   .kf-select:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
 
-  .kf-theme-grid, .kf-swatch-grid { display: grid; grid-template-columns: repeat(4, minmax(76px, 1fr)); gap: 8px; }
+  .kf-theme-grid, .kf-swatch-grid { display: grid; grid-template-columns: repeat(5, minmax(64px, 1fr)); gap: 8px; }
   .kf-theme-grid { grid-template-columns: repeat(3, minmax(104px, 1fr)); }
+  .kf-preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kf-preset-card { display: grid; gap: 5px; min-height: 92px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: linear-gradient(145deg, rgba(var(--accent-rgb), .08), transparent 58%), var(--surface-inset); color: var(--text); text-align: left; cursor: pointer; }
+  .kf-preset-card:hover { border-color: var(--border-strong); background-color: var(--surface-hover); transform: translateY(-1px); box-shadow: var(--shadow-control); }
+  .kf-preset-card:active { transform: translateY(0); box-shadow: none; }
+  .kf-preset-card span { color: var(--accent); font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+  .kf-preset-card strong { font-size: 13px; }
+  .kf-preset-card small { color: var(--muted); font-size: 10px; line-height: 1.4; }
   .kf-choice-card {
     min-height: 86px;
     padding: 11px;
@@ -11983,6 +12093,11 @@ const UI_CSS = `
   .kf-swatch[data-color="cyan"] { background: #38d7d0; }
   .kf-swatch[data-color="violet"] { background: #9667ff; }
   .kf-swatch[data-color="gold"] { background: #ffbe2e; }
+  .kf-swatch[data-color="custom"] { background: var(--kf-custom-accent, #ff5ca8); }
+  .kf-custom-color { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
+  .kf-custom-color input { width: 42px; height: 34px; padding: 2px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
+  .kf-custom-color strong { color: var(--text); font-size: 11px; }
+  .kf-custom-color small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
 
   .kf-appearance-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 22px; }
   .kf-appearance-controls { min-width: 0; }
@@ -12548,6 +12663,7 @@ const UI_CSS = `
     .kf-range { grid-template-columns: 42px minmax(120px, 1fr) 42px; }
     .kf-channel-input-row, .kf-emote-catalog-form { grid-template-columns: 1fr; }
     .kf-theme-grid, .kf-swatch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kf-preset-grid { grid-template-columns: 1fr; }
     .kf-appearance-layout { grid-template-columns: 1fr; }
     .kf-preview { position: static; padding: 18px 0 0; border-top: 1px solid var(--border); border-left: 0; }
     .kf-about-status, .kf-stats { grid-template-columns: 1fr; }
@@ -12715,6 +12831,23 @@ const TRANSLATIONS = {
     'Clear hierarchy, restrained motion, and one consistent accent.': 'Jerarquía clara, movimiento moderado y un solo acento consistente.',
     'Theme': 'Tema',
     'Accent color': 'Color de acento',
+    'Viewing presets': 'Preajustes de visualización',
+    'Apply a complete layout and style in one click. Content filters and account choices stay untouched.': 'Aplica una disposición y un estilo completos con un clic. Los filtros de contenido y las opciones de la cuenta no cambian.',
+    'Preset': 'Preajuste',
+    'Calm': 'Calma',
+    'Cinema': 'Cine',
+    'Chat First': 'Chat primero',
+    'Discovery': 'Descubrimiento',
+    'Roomier cards, quieter live color, and a compact rail.': 'Tarjetas más amplias, color en vivo más discreto y una barra compacta.',
+    'OLED surfaces with the player first and chrome tucked away.': 'Superficies OLED con el reproductor primero y los controles apartados.',
+    'A wider docked chat, compact density, and a clearer accent.': 'Un chat acoplado más ancho, densidad compacta y un acento más claro.',
+    'More stream cards, vivid thumbnails, and both discovery rails.': 'Más tarjetas de streams, miniaturas intensas y ambas barras de descubrimiento.',
+    'Custom': 'Personalizado',
+    'Custom accent': 'Acento personalizado',
+    'Pick any color. Values that cannot keep controls and focus rings visible fall back to a safe rose.': 'Elige cualquier color. Los valores que no mantengan visibles los controles y anillos de foco vuelven a un rosa seguro.',
+    'Custom accent color': 'Color de acento personalizado',
+    'Contrast protected': 'Contraste protegido',
+    '{preset} preset applied. Content filters were not changed.': 'Se aplicó el preajuste {preset}. Los filtros de contenido no cambiaron.',
     'Corner radius': 'Radio de esquinas',
     'Thumbnail treatment': 'Tratamiento de miniaturas',
     'Interface scale': 'Escala de la interfaz',
@@ -13130,6 +13263,23 @@ const TRANSLATIONS = {
     'Clear hierarchy, restrained motion, and one consistent accent.': 'Hierarquia clara, movimento discreto e um único destaque consistente.',
     'Theme': 'Tema',
     'Accent color': 'Cor de destaque',
+    'Viewing presets': 'Predefinições de visualização',
+    'Apply a complete layout and style in one click. Content filters and account choices stay untouched.': 'Aplica um layout e um estilo completos com um clique. Os filtros de conteúdo e as escolhas da conta não mudam.',
+    'Preset': 'Predefinição',
+    'Calm': 'Calmo',
+    'Cinema': 'Cinema',
+    'Chat First': 'Chat primeiro',
+    'Discovery': 'Descoberta',
+    'Roomier cards, quieter live color, and a compact rail.': 'Cartões mais espaçosos, cor ao vivo mais discreta e uma barra compacta.',
+    'OLED surfaces with the player first and chrome tucked away.': 'Superfícies OLED com o player em primeiro plano e os controles recolhidos.',
+    'A wider docked chat, compact density, and a clearer accent.': 'Um chat acoplado mais largo, densidade compacta e um destaque mais claro.',
+    'More stream cards, vivid thumbnails, and both discovery rails.': 'Mais cartões de transmissão, miniaturas vivas e as duas barras de descoberta.',
+    'Custom': 'Personalizado',
+    'Custom accent': 'Destaque personalizado',
+    'Pick any color. Values that cannot keep controls and focus rings visible fall back to a safe rose.': 'Escolha qualquer cor. Valores que não mantiverem controles e anéis de foco visíveis voltam a um rosa seguro.',
+    'Custom accent color': 'Cor de destaque personalizada',
+    'Contrast protected': 'Contraste protegido',
+    '{preset} preset applied. Content filters were not changed.': 'A predefinição {preset} foi aplicada. Os filtros de conteúdo não mudaram.',
     'Corner radius': 'Raio dos cantos',
     'Thumbnail treatment': 'Tratamento das miniaturas',
     'Interface scale': 'Escala da interface',
@@ -13836,13 +13986,21 @@ function renderLayoutPage() {
 function renderAppearancePage() {
   const value = state.settings.appearance;
   const themes = [['studio','Studio'],['oled','OLED'],['slate','Slate']];
-  const accents = [['kick','Kick Green'],['cyan','Cyan'],['violet','Violet'],['gold','Gold']];
+  const accents = [['kick','Kick Green'],['cyan','Cyan'],['violet','Violet'],['gold','Gold'],['custom','Custom']];
+  const presets = [
+    ['calm', 'Calm', 'Roomier cards, quieter live color, and a compact rail.'],
+    ['cinema', 'Cinema', 'OLED surfaces with the player first and chrome tucked away.'],
+    ['chat', 'Chat First', 'A wider docked chat, compact density, and a clearer accent.'],
+    ['discovery', 'Discovery', 'More stream cards, vivid thumbnails, and both discovery rails.'],
+  ];
   return `
     <div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>Appearance</h2><p>Set a premium visual style without replacing Kick’s identity.</p></div><div class="kf-page-meta kf-page-meta-control"><span>Language</span>${selectControl('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']], 'Interface language')}</div></div>
     <div class="kf-appearance-layout">
       <section class="kf-panel kf-appearance-controls">
+        <div class="kf-row kf-row-wide"><div><h3>Viewing presets</h3><p>Apply a complete layout and style in one click. Content filters and account choices stay untouched.</p></div><div class="kf-preset-grid">${presets.map(([id, label, description]) => `<button type="button" class="kf-preset-card" data-action="apply-viewing-preset" data-preset="${id}"><span>Preset</span><strong>${label}</strong><small>${description}</small></button>`).join('')}</div></div>
         <div class="kf-row kf-row-wide"><div><h3>Theme</h3><p>Choose the overall surface treatment.</p></div><div class="kf-theme-grid">${themes.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.theme" data-value="${id}" aria-pressed="${selected(value.theme,id)}"><span class="kf-theme-sample" aria-hidden="true"><span>Surface</span><b>Active</b></span><strong>${label}</strong></button>`).join('')}</div></div>
         <div class="kf-row kf-row-wide"><div><h3>Accent color</h3><p>Use one clear accent for highlights and controls.</p></div><div class="kf-swatch-grid">${accents.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.accent" data-value="${id}" aria-pressed="${selected(value.accent,id)}"><span class="kf-swatch" data-color="${id}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
+        <div class="kf-row kf-row-wide"><div><h3>Custom accent</h3><p>Pick any color. Values that cannot keep controls and focus rings visible fall back to a safe rose.</p></div><label class="kf-custom-color"><input type="color" data-set="appearance.customAccent" value="${escapeHtml(value.customAccent)}" aria-label="Custom accent color"><span><strong data-kf-no-translate>${escapeHtml(value.customAccent)}</strong><small>Contrast protected</small></span></label></div>
         ${row('Corner radius', 'Adjust the roundness of enhanced UI.', segmented('appearance.radius', value.radius, [['subtle','Subtle'],['balanced','Balanced'],['rounded','Rounded']]))}
         ${row('Thumbnail treatment', 'Adjust stream-card color intensity.', range('appearance.thumbnail', value.thumbnail, 0, 100, 'Natural', 'Vivid', '%'), { wide: true })}
         ${row('Interface scale', 'Set the size of Kick Focus controls.', segmented('appearance.interfaceScale', value.interfaceScale, [[90,'90%'],[100,'100%'],[110,'110%']]))}
@@ -14727,6 +14885,17 @@ function assignLibrarySticker(selectElement) {
   saveStickerOrganization(groupId ? 'Emote assigned to custom group.' : 'Emote moved to Ungrouped.');
 }
 
+function selectViewingPreset(presetId) {
+  const labels = { calm: 'Calm', cinema: 'Cinema', chat: 'Chat First', discovery: 'Discovery' };
+  if (!VIEWING_PRESETS[presetId] || !labels[presetId]) return;
+  state.settings = applyViewingPreset(state.settings, presetId);
+  saveSettings(`${labels[presetId]} preset applied`);
+  scheduleApply(0);
+  renderSettingsPage();
+  renderCommands();
+  showToast(trf('{preset} preset applied. Content filters were not changed.', { preset: tr(labels[presetId]) }));
+}
+
 function onInterfaceClick(event) {
   const searchResult = event.target.closest('[data-kf-search-goto]');
   if (searchResult) {
@@ -14784,6 +14953,7 @@ function onInterfaceClick(event) {
   else if (action === 'undo-import') undoImport();
   else if (action === 'copy-sticker-name') copyStickerName(actionTarget);
   else if (action === 'insert-sticker-name') insertStickerName(actionTarget);
+  else if (action === 'apply-viewing-preset') selectViewingPreset(actionTarget.dataset.preset);
   else if (action === 'toggle-hidden-element') toggleHiddenElement(actionTarget.dataset.element);
   else if (action === 'copy-diagnostics') copyDiagnostics();
   else if (action === 'copy-error-log') copyErrorLog();
