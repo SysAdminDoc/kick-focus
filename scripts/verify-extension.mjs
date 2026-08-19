@@ -1586,6 +1586,74 @@ try {
       swept.derived === 'ok' ? 'nothing broken' : `resolved but derived nothing: ${swept.derived} (probe:derivedValue)`);
   }
 
+  // The viewer hub, on the one thing only a browser can answer: that an absent
+  // reading reaches the screen as words rather than as a number.
+  //
+  // Logged out, which is the interesting case — Kick renders no reward control,
+  // no points control and no Drops entry, and answers the collectible read with
+  // 403 — so every card here should be explaining itself. A digit in any of
+  // them is the exact defect this feature was built to avoid: an unread value
+  // rendered as zero, which reads as "you have none".
+  const hubProbe = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    shadow.querySelector('[data-page="viewer"]')?.click();
+    await settle();
+    const cards = await __kfWait(() => {
+      const found = [...shadow.querySelectorAll('[data-kf-hub-card]')];
+      return found.length === 6 ? found : null;
+    }, { timeout: 8000 });
+    if (!cards) return { ok: false, why: 'the hub rendered no cards, or not all six' };
+    // Give the collectible read time to answer, so the loading state is not
+    // what gets measured.
+    await settle(2500);
+    const read = [...shadow.querySelectorAll('[data-kf-hub-card]')].map((card) => ({
+      id: card.dataset.kfHubCard,
+      state: card.dataset.state,
+      value: String(card.querySelector('strong')?.textContent || '').trim(),
+      explained: String(card.querySelector('em')?.textContent || '').trim().length > 0,
+    }));
+    const sources = String(shadow.querySelector('[data-kf-hub-sources]')?.textContent || '').trim();
+    // The earned marker, which must not exist at all on an anonymous page.
+    const quick = shadow.querySelector('[data-kf-quick]');
+    const marked = [...shadow.querySelectorAll('[data-kf-earned]')].map((node) => node.dataset.kfEarned);
+    const navEarned = String(shadow.querySelector('[data-page="viewer"] [data-kf-nav-earned]')?.textContent || '');
+    shadow.querySelector('[data-action="close-settings"]')?.click();
+    return { ok: true, read, sources, marked, navEarned, quickLabel: String(quick?.getAttribute('aria-label') || '') };
+  })()`);
+  const hub = hubProbe.value || {};
+  const hubCards = hub.read || [];
+  const numeric = hubCards.filter((card) => card.state !== 'ready' && /[0-9]/.test(card.value));
+  const unexplained = hubCards.filter((card) => !card.explained);
+  record('the viewer hub renders every card, and an unread one shows words rather than a zero',
+    hub.ok === true
+      && hubCards.length === 6
+      && numeric.length === 0
+      && unexplained.length === 0
+      && String(hub.sources || '').length > 0,
+    hub.ok
+      ? `${hubCards.map((card) => `${card.id}=${card.state}:${JSON.stringify(card.value)}`).join(' ')}`
+        + `${numeric.length ? ` | showed a number with no reading: ${numeric.map((card) => card.id).join(', ')}` : ''}`
+        + `${unexplained.length ? ` | explained nothing: ${unexplained.map((card) => card.id).join(', ')}` : ''}`
+      : hub.why);
+
+  // R-69: nothing is marked as earned for an account that has none.
+  //
+  // Logged out there is no reward control on the page, so there is no earned
+  // state to publish, and a client that invented a badge here would be applying
+  // engagement pressure on Kick's behalf rather than reporting something.
+  record('an anonymous page carries no earned-state marker anywhere',
+    hub.ok === true
+      && Array.isArray(hub.marked) && hub.marked.length === 0
+      && String(hub.navEarned || '') === ''
+      && !/reward/i.test(hub.quickLabel || ''),
+    hub.ok
+      ? `marked ${JSON.stringify(hub.marked)}, nav note ${JSON.stringify(hub.navEarned)}, quick button labelled ${JSON.stringify(hub.quickLabel)}`
+      : hub.why);
+
   // The journeys only a session can reach.
   //
   // This gate runs logged out on purpose: it needs no credentials, cannot

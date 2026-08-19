@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_SETTINGS,
+  VIEWER_HUB_CARDS,
+  earnedState,
+  VIEWER_HUB_STALE_MS,
+  viewerHubCards,
+  viewerHubSummary,
   isAdPreflightScript,
   SETTINGS_SCHEMA,
   approximateStorageBytes,
@@ -2577,4 +2582,188 @@ test('completionWouldBounce answers only from positive knowledge', { tag: 'unit'
   assert.equal(completionWouldBounce({ usableEverywhere: true }, 'alpha'), false);
   assert.equal(completionWouldBounce({}, 'alpha'), false);
   assert.equal(completionWouldBounce(null, 'alpha'), false);
+});
+
+test('the viewer hub always renders every card, in the same order', { tag: 'unit' }, () => {
+  // A hub that drops a card when its source is missing changes shape under the
+  // reader, and the missing card is the one worth explaining.
+  const cards = viewerHubCards({}, 1000);
+  assert.deepEqual(cards.map((entry) => entry.id), VIEWER_HUB_CARDS.map((entry) => entry.id));
+  assert.ok(cards.every((entry) => entry.state === 'unavailable' && entry.reason === 'not-read'));
+});
+
+test('an absent reading never arrives as a zero', { tag: 'unit' }, () => {
+  // The whole reason this module exists. A viewer with no points and a viewer
+  // whose points could not be read must not look the same.
+  const absent = viewerHubCards({
+    points: { onChannel: true, value: null, observedAt: 900 },
+    collectibles: { owned: undefined, observedAt: 900 },
+    drops: { navPresent: true, onRoute: true, campaigns: null, observedAt: 900 },
+    level: { dialogOpen: true, value: NaN, observedAt: 900 },
+  }, 1000);
+  for (const entry of absent) {
+    assert.equal(entry.value, null, `${entry.id} produced a value from nothing`);
+    assert.notEqual(entry.state, 'ready', `${entry.id} claims to be ready with nothing to show`);
+  }
+
+  // And the other half of the same rule: a measured zero is a real answer and
+  // survives, which is why the guard is "absent", not "falsy".
+  const zero = viewerHubCards({
+    points: { onChannel: true, value: 0, observedAt: 900 },
+    collectibles: { owned: 0, copies: 0, observedAt: 900 },
+  }, 1000);
+  assert.equal(zero.find((entry) => entry.id === 'points').value, 0);
+  assert.equal(zero.find((entry) => entry.id === 'points').state, 'ready');
+  assert.equal(zero.find((entry) => entry.id === 'collectibles').value, 0);
+});
+
+test('every card fails on its own', { tag: 'unit' }, () => {
+  // One source going down must cost one card, not the hub.
+  const cards = viewerHubCards({
+    points: { onChannel: true, value: 4200, observedAt: 900 },
+    collectibles: { failed: true },
+    // A fact that throws the moment it is read: the builder must contain it.
+    drops: { get navPresent() { throw new Error('nope'); } },
+    level: { dialogOpen: false },
+  }, 1000);
+  const by = Object.fromEntries(cards.map((entry) => [entry.id, entry]));
+  assert.equal(by.points.state, 'ready');
+  assert.equal(by.points.value, 4200);
+  assert.equal(by.collectibles.state, 'error');
+  assert.equal(by.drops.state, 'error');
+  assert.equal(by.drops.reason, 'threw');
+  assert.equal(by.level.state, 'unavailable');
+  assert.equal(by.level.reason, 'dialog-closed');
+});
+
+test('an anonymous page says so, and says it per card', { tag: 'unit' }, () => {
+  // Signed out, Kick renders no reward control, no points control, no Drops
+  // entry, and answers the collectible read with 403. Each is its own sentence.
+  const cards = viewerHubCards({
+    reward: { trigger: false },
+    points: { onChannel: true, value: null, observedAt: 900 },
+    collectibles: { denied: true },
+    drops: { navPresent: false },
+    level: { dialogOpen: false },
+    streak: { dialogOpen: false },
+  }, 1000);
+  const reasons = Object.fromEntries(cards.map((entry) => [entry.id, entry.reason]));
+  assert.deepEqual(reasons, {
+    reward: 'anonymous',
+    points: 'anonymous',
+    collectibles: 'anonymous',
+    drops: 'anonymous',
+    level: 'dialog-closed',
+    streak: 'dialog-closed',
+  });
+  assert.ok(cards.every((entry) => entry.state === 'unavailable'));
+  assert.deepEqual(viewerHubSummary(cards), { ready: 0, total: 6, errors: 0, stale: 0, fromDom: [], fromApi: [] });
+});
+
+test('level and streak are only read while Kick has the reward dialog open', { tag: 'unit' }, () => {
+  // Neither is persisted to fill the gap: a level kept from yesterday is a
+  // number that looks live and is not.
+  const closed = viewerHubCards({ level: { dialogOpen: false, value: 12 }, streak: { dialogOpen: false, value: 3 } }, 1000);
+  assert.deepEqual(closed.filter((entry) => ['level', 'streak'].includes(entry.id)).map((entry) => entry.value), [null, null]);
+
+  const open = viewerHubCards({
+    level: { dialogOpen: true, value: 12, observedAt: 990 },
+    streak: { dialogOpen: true, value: 3, observedAt: 990 },
+  }, 1000);
+  const by = Object.fromEntries(open.map((entry) => [entry.id, entry]));
+  assert.equal(by.level.value, 12);
+  assert.equal(by.streak.value, 3);
+  assert.equal(by.level.source, 'dom');
+
+  // Open, but Kick rendered no figure: that is "not shown", not zero.
+  const empty = viewerHubCards({ level: { dialogOpen: true, value: null, observedAt: 990 } }, 1000);
+  assert.equal(empty.find((entry) => entry.id === 'level').reason, 'not-shown');
+});
+
+test('the reward card distinguishes claimed, waiting, and available', { tag: 'unit' }, () => {
+  const at = 10_000_000;
+  const rolledOver = at - 3_600_000;
+  const base = { trigger: true, previousResetAt: rolledOver, observedAt: at - 1000 };
+
+  const claimed = viewerHubCards({ reward: { ...base, lastClaimAt: rolledOver + 60_000 } }, at);
+  assert.equal(claimed.find((entry) => entry.id === 'reward').value, 'claimed');
+
+  // Claimed, but before the rollover: that reward is yesterday's and the card
+  // must not report today's as taken.
+  const yesterday = viewerHubCards({ reward: { ...base, lastClaimAt: rolledOver - 60_000 } }, at);
+  assert.equal(yesterday.find((entry) => entry.id === 'reward').value, 'available');
+
+  const waiting = viewerHubCards({ reward: { ...base, nextCheckAt: at + 600_000 } }, at);
+  assert.equal(waiting.find((entry) => entry.id === 'reward').value, 'waiting');
+});
+
+test('a reading that stopped updating is shown as an old one, not as current', { tag: 'unit' }, () => {
+  const now = 5_000_000;
+  const fresh = viewerHubCards({ points: { onChannel: true, value: 7, observedAt: now - 1000 } }, now);
+  assert.equal(fresh.find((entry) => entry.id === 'points').stale, false);
+
+  const old = viewerHubCards({ points: { onChannel: true, value: 7, observedAt: now - VIEWER_HUB_STALE_MS - 1 } }, now);
+  const card = old.find((entry) => entry.id === 'points');
+  assert.equal(card.stale, true);
+  // Still shown: an old reading is a fact about the reading, not a reason to
+  // blank a number the viewer can see on Kick's own page.
+  assert.equal(card.value, 7);
+  assert.equal(viewerHubSummary(old).stale, 1);
+});
+
+test('the hub summary tells DOM-derived values from API-derived ones', { tag: 'unit' }, () => {
+  const now = 5_000_000;
+  const cards = viewerHubCards({
+    points: { onChannel: true, value: 7, observedAt: now },
+    collectibles: { owned: 21, copies: 34, observedAt: now },
+    reward: { trigger: true, previousResetAt: now - 1000, lastClaimAt: now - 500, observedAt: now },
+  }, now);
+  const summary = viewerHubSummary(cards);
+  assert.equal(summary.ready, 3);
+  assert.deepEqual(summary.fromApi, ['collectibles']);
+  assert.deepEqual(summary.fromDom.sort(), ['points', 'reward']);
+  // A card with no reading names no source, so "where did this come from" can
+  // never be answered for a value that does not exist.
+  assert.ok(cards.filter((entry) => entry.state !== 'ready').every((entry) => entry.source === 'none'));
+});
+
+test('a hub still loading says loading, per card, rather than empty', { tag: 'unit' }, () => {
+  const cards = viewerHubCards({
+    collectibles: { loading: true },
+    points: { loading: true },
+  }, 1000);
+  const by = Object.fromEntries(cards.map((entry) => [entry.id, entry]));
+  assert.equal(by.collectibles.state, 'loading');
+  assert.equal(by.points.state, 'loading');
+  assert.equal(by.collectibles.value, null);
+});
+
+test('an earned state is marked only when Kick itself says one is waiting', { tag: 'unit' }, () => {
+  const at = 10_000_000;
+  const rolledOver = at - 3_600_000;
+  const base = { trigger: true, previousResetAt: rolledOver, observedAt: at - 1000 };
+
+  const waiting = earnedState(viewerHubCards({ reward: base }, at));
+  assert.deepEqual(waiting, { kind: 'reward-ready', label: 'Daily reward ready' });
+
+  // Already taken, still counting down, and signed out: three different reasons
+  // there is nothing to mark, and all three mark nothing.
+  assert.equal(earnedState(viewerHubCards({ reward: { ...base, lastClaimAt: rolledOver + 60_000 } }, at)), null);
+  assert.equal(earnedState(viewerHubCards({ reward: { ...base, nextCheckAt: at + 600_000 } }, at)), null);
+  assert.equal(earnedState(viewerHubCards({ reward: { trigger: false } }, at)), null);
+  assert.equal(earnedState(viewerHubCards({}, at)), null);
+});
+
+test('nothing but the reward is ever marked as earned', { tag: 'unit' }, () => {
+  // No streak flourish, no collectible confetti, no progress toward anything.
+  // A number that Kick reports and does not call earned is just a number.
+  const at = 10_000_000;
+  const cards = viewerHubCards({
+    collectibles: { owned: 40, copies: 120, observedAt: at },
+    points: { onChannel: true, value: 99_999, observedAt: at },
+    streak: { dialogOpen: true, value: 30, observedAt: at },
+    level: { dialogOpen: true, value: 60, observedAt: at },
+  }, at);
+  assert.equal(earnedState(cards), null);
+  assert.equal(earnedState(null), null);
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS } from '../src/core.mjs';
+import { EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -88,6 +88,15 @@ async function collect() {
     // dictionary entries, and this is what says so.
     ...HIDEABLE_ELEMENTS.map((entry) => entry.label),
     ...HIDEABLE_GROUPS.map((group) => group.label),
+    // The viewer hub's card titles, its "no reading" sentences, and the reward
+    // card's three words all reach the DOM through a lookup keyed by card id,
+    // so no literal of any of them exists in runtime.js for the scanners.
+    ...Object.values(VIEWER_HUB_TITLES),
+    ...Object.values(VIEWER_HUB_REASONS),
+    ...Object.values(VIEWER_HUB_REWARD_WORDS),
+    // The earned marker's status, which reaches the accessible name through a
+    // lookup and never appears as a literal in runtime.js.
+    'Daily reward ready',
     'Click to save',
     'Saved — click to open in the library',
     'Name shadowed by another set',

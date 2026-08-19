@@ -40,7 +40,7 @@ export const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.29.0': Object.freeze({
-    summary: 'Maintenance release: the offline DOM fixtures and the live compatibility gate now check every route against the same recorded contract, so Kick changing its markup is reported instead of absorbed.',
+    summary: 'A read-only Viewer page gathers the daily reward, channel points, collectibles, Drops, level and streak, says where each number came from rather than showing a zero for one it could not read, and marks the Focus button when a reward is actually waiting.',
     defaults: Object.freeze([]),
   }),
 });
@@ -910,6 +910,265 @@ export function decideRewardClaim(facts = {}) {
   if (!hasAction) return { action: 'wait', reason: 'no-action-button' };
   if (actionDisabled) return { action: 'wait', reason: 'not-ready' };
   return { action: 'claim', reason: 'ready' };
+}
+
+// ---------------------------------------------------------------------------
+// Viewer hub
+//
+// One read-only summary of what Kick already tells this account, assembled from
+// values the page is showing and reads this build already makes. It adds no
+// endpoint, claims nothing, and changes nothing.
+//
+// The whole design is in the card states, and the reason is a failure mode this
+// project has hit before: a summary that renders an absent number as zero. A
+// viewer with no reward waiting and a viewer whose reward state could not be
+// read look identical at that point, and the second one is a lie. So a value
+// reaches a card only when it was actually measured, every card carries where
+// it came from and when, and "not known" is a state with its own words rather
+// than a default.
+//
+// Cards are independent by construction: each is derived from its own fact,
+// inside its own try, so a card that throws becomes one card in `error` and the
+// other five still render. That is the difference between a hub and a hub-shaped
+// blank page.
+//
+// The decisions live here, where they are testable without a browser. The
+// runtime supplies the facts and turns the returned codes into copy.
+// ---------------------------------------------------------------------------
+
+/** The six cards, in the order they are shown. `source` is where the value comes from. */
+export const VIEWER_HUB_CARDS = Object.freeze([
+  Object.freeze({ id: 'reward', source: 'dom' }),
+  Object.freeze({ id: 'points', source: 'dom' }),
+  Object.freeze({ id: 'collectibles', source: 'api' }),
+  Object.freeze({ id: 'drops', source: 'dom' }),
+  Object.freeze({ id: 'level', source: 'dom' }),
+  Object.freeze({ id: 'streak', source: 'dom' }),
+]);
+
+/**
+ * The hub's own copy, kept here with the card definitions.
+ *
+ * In core rather than beside the markup so `test/i18n-coverage.test.js` can see
+ * it: these strings reach the DOM through a lookup rather than as literals, and
+ * the scanners that read `runtime.js` cannot find a string that is never
+ * written there. Same reason the hideable-element labels live in a catalog.
+ */
+export const VIEWER_HUB_TITLES = Object.freeze({
+  reward: 'Daily reward',
+  points: 'Channel points',
+  collectibles: 'Collectibles',
+  drops: 'Drops',
+  level: 'Level',
+  streak: 'Streak',
+});
+
+/** What a card says instead of a number. One sentence, and it names the cause. */
+export const VIEWER_HUB_REASONS = Object.freeze({
+  'not-read': 'Not read yet on this page.',
+  anonymous: 'Kick shows this to a signed-in account only.',
+  'off-channel': 'Open a channel to see its points.',
+  'off-route': 'Open Drops to count the campaigns waiting.',
+  'dialog-closed': 'Kick shows this inside the daily reward dialog only.',
+  'not-shown': 'The reward dialog did not show a figure this time.',
+  'read-failed': 'Kick did not answer that read. Nothing was changed.',
+  threw: 'This card could not be built. The rest of the hub is unaffected.',
+});
+
+/** The reward card has words rather than a number, because the state is not a quantity. */
+export const VIEWER_HUB_REWARD_WORDS = Object.freeze({
+  claimed: 'Claimed today',
+  waiting: 'Not ready yet',
+  available: 'Ready to claim',
+});
+
+/**
+ * How long a reading stays current.
+ *
+ * Not a polling interval — nothing here polls, and the hub reads only while it
+ * is open. This is how long a value may still be *shown* before it is labelled
+ * as an old reading, so a number that stopped updating is visibly old instead of
+ * quietly wrong.
+ */
+export const VIEWER_HUB_STALE_MS = 60_000;
+
+/** A measured number, or null. `0` is a real answer here and survives; absent does not. */
+function measured(value) {
+  return Number.isFinite(value) ? Number(value) : null;
+}
+
+function card(id, source, state, extra = {}) {
+  return {
+    id,
+    source: state === 'ready' ? source : 'none',
+    state,
+    value: null,
+    reason: '',
+    observedAt: 0,
+    stale: false,
+    ...extra,
+  };
+}
+
+/** Was this reading taken recently enough to show without a caveat? */
+function freshness(observedAt, now) {
+  const at = measured(observedAt) || 0;
+  if (!at) return { observedAt: 0, stale: true };
+  return { observedAt: at, stale: now - at > VIEWER_HUB_STALE_MS };
+}
+
+const BUILDERS = {
+  /**
+   * The reward. `trigger` is Kick's own header control: absent means either a
+   * signed-out page or a Kick that renamed it, and neither is a reward of zero.
+   */
+  reward(fact, now) {
+    if (!fact) return card('reward', 'dom', 'unavailable', { reason: 'not-read' });
+    if (fact.loading) return card('reward', 'dom', 'loading');
+    if (!fact.trigger) return card('reward', 'dom', 'unavailable', { reason: 'anonymous' });
+    const claimedAt = measured(fact.lastClaimAt);
+    const nextAt = measured(fact.nextCheckAt);
+    const rest = freshness(fact.observedAt, now);
+    // Claimed since the last rollover: the one case where there is nothing to
+    // wait for. `resetAt` is passed in rather than recomputed so the caller and
+    // this agree about when the day turns over.
+    const rolledOverAt = measured(fact.previousResetAt) || 0;
+    if (claimedAt && claimedAt >= rolledOverAt) {
+      return card('reward', 'dom', 'ready', { value: 'claimed', ...rest });
+    }
+    if (nextAt && nextAt > now) return card('reward', 'dom', 'ready', { value: 'waiting', ...rest });
+    return card('reward', 'dom', 'ready', { value: 'available', ...rest });
+  },
+
+  /**
+   * Channel points for the channel being watched.
+   *
+   * Kick renders the exact figure in a `title` and an abbreviated one in the
+   * text, so the runtime prefers the attribute. Off a channel there is no
+   * control and therefore no number — not a zero balance.
+   */
+  points(fact, now) {
+    if (!fact) return card('points', 'dom', 'unavailable', { reason: 'not-read' });
+    if (fact.loading) return card('points', 'dom', 'loading');
+    if (!fact.onChannel) return card('points', 'dom', 'unavailable', { reason: 'off-channel' });
+    const value = measured(fact.value);
+    if (value === null) return card('points', 'dom', 'unavailable', { reason: 'anonymous' });
+    return card('points', 'dom', 'ready', { value, channel: String(fact.channel || ''), ...freshness(fact.observedAt, now) });
+  },
+
+  /** The account's own collectible inventory. 401/403 is the signed-out answer, not an error. */
+  collectibles(fact, now) {
+    if (!fact) return card('collectibles', 'api', 'unavailable', { reason: 'not-read' });
+    if (fact.loading) return card('collectibles', 'api', 'loading');
+    if (fact.denied) return card('collectibles', 'api', 'unavailable', { reason: 'anonymous' });
+    if (fact.failed) return card('collectibles', 'api', 'error', { reason: 'read-failed' });
+    const owned = measured(fact.owned);
+    if (owned === null) return card('collectibles', 'api', 'unavailable', { reason: 'not-read' });
+    return card('collectibles', 'api', 'ready', {
+      value: owned,
+      copies: measured(fact.copies),
+      ...freshness(fact.observedAt, now),
+    });
+  },
+
+  /**
+   * Drops. Off the Drops route there is no campaign list to count, so the card
+   * says the surface exists and stops there rather than reporting zero
+   * campaigns to somebody who simply is not looking at the page.
+   */
+  drops(fact, now) {
+    if (!fact) return card('drops', 'dom', 'unavailable', { reason: 'not-read' });
+    if (fact.loading) return card('drops', 'dom', 'loading');
+    if (!fact.navPresent) return card('drops', 'dom', 'unavailable', { reason: 'anonymous' });
+    if (!fact.onRoute) return card('drops', 'dom', 'unavailable', { reason: 'off-route' });
+    const campaigns = measured(fact.campaigns);
+    if (campaigns === null) return card('drops', 'dom', 'unavailable', { reason: 'not-read' });
+    return card('drops', 'dom', 'ready', { value: campaigns, ...freshness(fact.observedAt, now) });
+  },
+};
+
+/**
+ * Level and streak share a builder because they share a constraint: Kick shows
+ * both only inside the reward dialog, and this build opens that dialog on the
+ * user's own auto-claim schedule and never for decoration. Outside it there is
+ * nothing to read, and neither value is persisted to fill the gap — a level
+ * kept from yesterday is a number that looks live and is not.
+ */
+function fromRewardDialog(id) {
+  return (fact, now) => {
+    if (!fact) return card(id, 'dom', 'unavailable', { reason: 'not-read' });
+    if (fact.loading) return card(id, 'dom', 'loading');
+    if (!fact.dialogOpen) return card(id, 'dom', 'unavailable', { reason: 'dialog-closed' });
+    const value = measured(fact.value);
+    if (value === null) return card(id, 'dom', 'unavailable', { reason: 'not-shown' });
+    return card(id, 'dom', 'ready', { value, ...freshness(fact.observedAt, now) });
+  };
+}
+
+BUILDERS.level = fromRewardDialog('level');
+BUILDERS.streak = fromRewardDialog('streak');
+
+/**
+ * Build every card from the facts the runtime collected.
+ *
+ * One card per entry, always, in a fixed order: a hub that drops a card when
+ * its source is missing is a hub whose shape changes under the reader, and the
+ * missing card is precisely the one worth explaining.
+ */
+export function viewerHubCards(facts = {}, now = 0) {
+  return VIEWER_HUB_CARDS.map(({ id, source }) => {
+    try {
+      const built = BUILDERS[id](facts[id], now);
+      // A value may only ride on a `ready` card. This is the guard for the
+      // failure this whole module exists to prevent: an absent reading arriving
+      // at the interface as a number.
+      if (built.state !== 'ready' && built.value !== null) built.value = null;
+      return built;
+    } catch {
+      // One card's fault is one card's problem.
+      return card(id, source, 'error', { reason: 'threw' });
+    }
+  });
+}
+
+/**
+ * The one earned state worth marking outside the hub, or null.
+ *
+ * Deliberately narrow. Kick exposes exactly one thing a client can honestly
+ * say is *earned and waiting*: a reward the account has not taken since the
+ * rollover, and only because Kick's own control is on the page saying so. Every
+ * other candidate is either unknown (a level nobody can read outside a dialog)
+ * or a number that does not change (a collectible count).
+ *
+ * So there is no streak flourish, no progress bar toward a reward, no "you are
+ * close" copy, and nothing at all for a signed-out page: with no reward control
+ * there is no earned state, and inventing one would be a client pressuring
+ * somebody on Kick's behalf. A card in any state but `ready` yields null.
+ *
+ * The label is the status in words. Whatever paints it may add a dot, a colour,
+ * or a motion-safe pulse on top, but the sentence has to stand on its own —
+ * colour is not a status and neither is an animation.
+ */
+export function earnedState(cards = []) {
+  const reward = (Array.isArray(cards) ? cards : []).find((entry) => entry?.id === 'reward');
+  if (!reward || reward.state !== 'ready' || reward.value !== 'available') return null;
+  return { kind: 'reward-ready', label: 'Daily reward ready' };
+}
+
+/** How many cards actually have a reading. Used for the hub's own one-line summary. */
+export function viewerHubSummary(cards = []) {
+  const list = Array.isArray(cards) ? cards : [];
+  return {
+    ready: list.filter((entry) => entry.state === 'ready').length,
+    total: list.length,
+    errors: list.filter((entry) => entry.state === 'error').length,
+    stale: list.filter((entry) => entry.state === 'ready' && entry.stale).length,
+    // Named so diagnostics can say which half of the hub is speaking: a value
+    // read off the page and one read from an endpoint fail for different
+    // reasons and are worth telling apart when one of them stops arriving.
+    fromDom: list.filter((entry) => entry.state === 'ready' && entry.source === 'dom').map((entry) => entry.id),
+    fromApi: list.filter((entry) => entry.state === 'ready' && entry.source === 'api').map((entry) => entry.id),
+  };
 }
 
 /** Shortest query worth opening a list for. One letter matches most of a library. */

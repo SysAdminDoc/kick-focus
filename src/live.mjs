@@ -412,6 +412,40 @@ export function createLive(host) {
     refreshLiveDiagnostics();
   }
 
+  /**
+   * The account's own collectible inventory, read once, on request.
+   *
+   * The viewer hub asks for this when it opens and never on a timer: the read
+   * is one GET to the endpoint Kick's own client already calls, and a summary
+   * nobody is looking at is not worth a request.
+   *
+   * The three answers are kept apart because they mean different things to a
+   * reader. 401/403 is the signed-out answer and is not a failure. A response
+   * whose shape this build does not recognise is a failure, and is recorded as
+   * drift. An empty inventory is a *measured zero* and is reported as one — the
+   * only case in this file where zero is the honest answer.
+   */
+  async function readCollectibleInventory() {
+    const response = await kickFetchJson(endpoints.collectibles());
+    const observedAt = Date.now();
+    if (!response.ok) {
+      const denied = response.status === 401 || response.status === 403;
+      return { denied, failed: !denied, status: response.status, observedAt };
+    }
+    const cards = Array.isArray(response.body?.data) ? response.body.data
+      : (Array.isArray(response.body) ? response.body : null);
+    if (!cards) {
+      recordApiDrift('collectibles', 'shape-changed');
+      return { failed: true, status: 'shape', observedAt };
+    }
+    const summary = summarizeCollectibleInventory(cards);
+    return {
+      owned: summary.ok ? summary.distinct : 0,
+      copies: summary.ok ? summary.copies : 0,
+      observedAt,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Realtime
   // -------------------------------------------------------------------------
@@ -919,6 +953,7 @@ export function createLive(host) {
     liveStatusSummary,
     mutateKickChannelFollow,
     onRealtimeFrame,
+    readCollectibleInventory,
     recordApiDrift,
     refreshLiveChannel,
     refreshLiveDiagnostics,

@@ -4,6 +4,12 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## 1.29.0 — 2026-08-19
 
+### Added
+
+- **A Viewer page that reads what Kick already tells your account.** Daily reward, channel points, collectibles, Drops, level and streak in one place, and every card says where its number came from and how old the reading is. It reads only: nothing is claimed, changed, or sent anywhere, and the daily reward is still claimed by Kick's own dialog under the setting you already control.
+- **One quiet marker, for the one thing Kick actually says is waiting.** When a daily reward is there to take, the Focus button and the Viewer tab say so: a dot, a short line of text, and the same words in the button's accessible name. Nothing pulses under Reduced Motion, nothing is signalled by colour alone, and a signed-out page gets no marker at all. There is no streak flourish, no progress bar toward a reward, and no "you are close" copy, because Kick publishes no such state and a client inventing one is pressure rather than delight.
+- **A card with no reading says so.** This is the whole design. An empty balance and a balance nobody could read are different things, and showing zero for the second one is a lie a summary tells easily. Signed out, or off a channel, or with the reward dialog closed, each card explains itself in a sentence instead. Cards fail one at a time too, so a collectible read that Kick refuses costs one card and not the page.
+
 ### Changed
 
 - **The offline DOM fixtures are read as documents now, not as text.** Each fixture is parsed and run through the same compatibility snapshot the mod takes on every apply cycle, and the suite checks that every shell hook resolves to the probe Kick really serves on that route, and that the values derived from those hooks still come out. The previous check only asserted that a hand-written file contained a list of substrings, so it stayed green while several of those substrings had already vanished from the live site.

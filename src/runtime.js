@@ -96,6 +96,10 @@ const state = {
   siteStyle: null,
   siteSheet: null,
   presence: { channel: null, answers: [], offer: [] },
+  // The viewer hub's one piece of remembered state: the collectible read, which
+  // is the only card that is not read straight off the page. Null means nobody
+  // has opened the hub yet, which is why nothing has been requested.
+  viewerHub: { collectibles: null },
   modal: null,
   command: null,
   commandInput: null,
@@ -2339,6 +2343,7 @@ const {
   mergedChatEntries,
   syncMergedChat,
   mutateKickChannelFollow,
+  readCollectibleInventory,
   recordApiDrift,
   refreshLiveChannel,
   replayPendingBadges,
@@ -5045,6 +5050,9 @@ async function runApplyCycle() {
     state.runtime.applyRunning = false;
     state.diagnostics.apply = recordApplyCost(state.diagnostics.apply, elapsed + (performance.now() - started));
     updateApplyCostInPlace();
+    // Only while the hub is the page on screen. Off it there is nothing to
+    // repaint, and the whole point of the hub is that it reads when looked at.
+    if (state.currentPage === 'viewer' && state.modal && !state.modal.hidden) renderViewerHubInPlace();
   }
 }
 
@@ -5763,6 +5771,31 @@ const UI_CSS = `
   .kf-mini-card { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
   .kf-mini-card span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
   .kf-mini-card strong { display: block; margin-top: 4px; color: var(--accent); }
+  /* The earned marker. The word is the status; the dot repeats it for a glance
+     and the pulse is decoration on top of both, which is why either can be
+     removed without the meaning going with it. */
+  .kf-nav-earned:empty { display: none; }
+  .kf-nav-earned { display: block; margin-top: 3px; color: var(--accent); font-size: 11px; }
+  .kf-nav-earned::before { content: '● '; }
+  [data-kf-earned="reward-ready"] { position: relative; }
+  [data-kf-earned="reward-ready"]::after {
+    content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
+    border: 1px solid var(--surface); border-radius: 50%; background: var(--accent);
+    animation: kf-earned-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes kf-earned-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  /* Stated here as well as in the blanket rule below, because this is the one
+     animation in the build that exists purely to draw the eye. */
+  @media (prefers-reduced-motion: reduce) {
+    [data-kf-earned="reward-ready"]::after { animation: none; }
+  }
+
+  .kf-hub-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 18px 0; }
+  .kf-hub-card em { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; font-style: normal; line-height: 1.45; }
+  /* A card with no reading is quieter than one with a number, and says so in
+     words as well: state is never carried by colour alone. */
+  .kf-hub-card[data-state="unavailable"] strong, .kf-hub-card[data-state="loading"] strong { color: var(--muted); }
+  .kf-hub-card[data-state="error"] strong { color: var(--danger-text); }
   .kf-action-row { min-height: 78px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
   .kf-action-row h3 { margin: 0 0 4px; font-size: 13px; }
   .kf-action-row p { max-width: 560px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
@@ -6200,7 +6233,7 @@ const UI_CSS = `
     .kf-preset-grid { grid-template-columns: 1fr; }
     .kf-appearance-layout { grid-template-columns: 1fr; }
     .kf-preview { position: static; padding: 18px 0 0; border-top: 1px solid var(--border); border-left: 0; }
-    .kf-about-status, .kf-stats { grid-template-columns: 1fr; }
+    .kf-about-status, .kf-stats, .kf-hub-grid { grid-template-columns: 1fr; }
     .kf-mini-card, .kf-stat { border-left: 0; border-top: 1px solid var(--border-subtle); }
     .kf-action-row { grid-template-columns: 1fr; }
     .kf-button-group { justify-content: flex-start; }
@@ -6231,6 +6264,7 @@ const NAV_ITEMS = [
   ['appearance', 'Appearance', 'Themes, colors, and style', 'sliders'],
   ['content', 'Content & Ads', 'Filter and hide elements', 'shield'],
   ['accessibility', 'Accessibility & Shortcuts', 'Shortcuts and accessibility', 'keyboard'],
+  ['viewer', 'Viewer', 'What Kick tells this account', 'user'],
   ['about', 'About', 'Version, diagnostics, and privacy', 'info'],
 ];
 
@@ -6264,6 +6298,7 @@ const FEATHER_ICONS = Object.freeze({
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',
   keyboard: '<rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6" y2="8"></line><line x1="10" y1="8" x2="10" y2="8"></line><line x1="14" y1="8" x2="14" y2="8"></line><line x1="18" y1="8" x2="18" y2="8"></line><line x1="6" y1="12" x2="6" y2="12"></line><line x1="10" y1="12" x2="10" y2="12"></line><line x1="14" y1="12" x2="14" y2="12"></line><line x1="18" y1="12" x2="18" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line>',
   info: '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>',
   close: '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>',
   reset: '<polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 .49-9.5L1 10"></path>',
   export: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>',
@@ -6277,6 +6312,37 @@ function uiIcon(name) {
 
 const TRANSLATIONS = {
   es: {
+    'Daily reward ready': 'Recompensa diaria lista',
+    'Viewer': 'Cuenta',
+    'What Kick tells this account': 'Lo que Kick indica de esta cuenta',
+    'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'Lo que Kick ya indica de esta cuenta, reunido en un sitio. Aquí no se cambia nada, no se reclama nada y no se envía nada a ninguna parte.',
+    'Reading': 'Lecturas',
+    'Reading…': 'Leyendo…',
+    'From Kick’s API': 'Desde la API de Kick',
+    'Read from the page': 'Leído de la página',
+    '{n} min ago': 'hace {n} min',
+    'Daily reward': 'Recompensa diaria',
+    'Channel points': 'Puntos del canal',
+    'Collectibles': 'Coleccionables',
+    'Drops': 'Drops',
+    'Level': 'Nivel',
+    'Streak': 'Racha',
+    'Not read yet on this page.': 'Todavía no se ha leído en esta página.',
+    'Kick shows this to a signed-in account only.': 'Kick solo muestra esto a una cuenta con sesión iniciada.',
+    'Open a channel to see its points.': 'Abre un canal para ver sus puntos.',
+    'Open Drops to count the campaigns waiting.': 'Abre Drops para contar las campañas pendientes.',
+    'Kick shows this inside the daily reward dialog only.': 'Kick solo muestra esto dentro del diálogo de la recompensa diaria.',
+    'The reward dialog did not show a figure this time.': 'Esta vez el diálogo de la recompensa no mostró ninguna cifra.',
+    'Kick did not answer that read. Nothing was changed.': 'Kick no respondió a esa lectura. No se cambió nada.',
+    'This card could not be built. The rest of the hub is unaffected.': 'Esta tarjeta no se pudo construir. El resto de la página no se ve afectado.',
+    'Claimed today': 'Reclamada hoy',
+    'Not ready yet': 'Todavía no está lista',
+    'Ready to claim': 'Lista para reclamar',
+    'Where these come from': 'De dónde salen estos datos',
+    'Nothing has been read yet. Each card above says why.': 'Todavía no se ha leído nada. Cada tarjeta de arriba explica por qué.',
+    'Read again': 'Leer otra vez',
+    'Nothing is claimed for you here': 'Aquí no se reclama nada por ti',
+    'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content &amp; Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': 'Esta página lee. La recompensa diaria la sigue reclamando el propio diálogo de Kick, y solo si lo has activado en Contenido y anuncios. Una tarjeta sin lectura lo dice en lugar de mostrar un cero, porque un saldo vacío y uno que no se puede leer no son lo mismo.',
     'Settings': 'Configuración',
     'Autosaved': 'Guardado automático',
     'Close settings': 'Cerrar configuración',
@@ -6724,6 +6790,37 @@ const TRANSLATIONS = {
     '{count} of {max} streams': '{count} de {max} transmisiones',
   },
   pt: {
+    'Daily reward ready': 'Recompensa diária pronta',
+    'Viewer': 'Conta',
+    'What Kick tells this account': 'O que a Kick informa desta conta',
+    'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'O que a Kick já informa desta conta, reunido num só lugar. Aqui nada é alterado, nada é resgatado e nada é enviado para lugar nenhum.',
+    'Reading': 'Leituras',
+    'Reading…': 'A ler…',
+    'From Kick’s API': 'Da API da Kick',
+    'Read from the page': 'Lido da página',
+    '{n} min ago': 'há {n} min',
+    'Daily reward': 'Recompensa diária',
+    'Channel points': 'Pontos do canal',
+    'Collectibles': 'Colecionáveis',
+    'Drops': 'Drops',
+    'Level': 'Nível',
+    'Streak': 'Sequência',
+    'Not read yet on this page.': 'Ainda não foi lido nesta página.',
+    'Kick shows this to a signed-in account only.': 'A Kick só mostra isto a uma conta com sessão iniciada.',
+    'Open a channel to see its points.': 'Abre um canal para ver os seus pontos.',
+    'Open Drops to count the campaigns waiting.': 'Abre Drops para contar as campanhas pendentes.',
+    'Kick shows this inside the daily reward dialog only.': 'A Kick só mostra isto dentro da janela da recompensa diária.',
+    'The reward dialog did not show a figure this time.': 'Desta vez a janela da recompensa não mostrou nenhum número.',
+    'Kick did not answer that read. Nothing was changed.': 'A Kick não respondeu a essa leitura. Nada foi alterado.',
+    'This card could not be built. The rest of the hub is unaffected.': 'Este cartão não pôde ser construído. O resto da página não é afetado.',
+    'Claimed today': 'Resgatada hoje',
+    'Not ready yet': 'Ainda não está pronta',
+    'Ready to claim': 'Pronta para resgatar',
+    'Where these come from': 'De onde vêm estes dados',
+    'Nothing has been read yet. Each card above says why.': 'Ainda não foi lido nada. Cada cartão acima explica porquê.',
+    'Read again': 'Ler outra vez',
+    'Nothing is claimed for you here': 'Aqui nada é resgatado por ti',
+    'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content &amp; Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': 'Esta página lê. A recompensa diária continua a ser resgatada pela própria janela da Kick, e só se tiveres ativado isso em Conteúdo e anúncios. Um cartão sem leitura di-lo em vez de mostrar um zero, porque um saldo vazio e um saldo ilegível não são a mesma coisa.',
     'Settings': 'Configurações',
     'Autosaved': 'Salvo automaticamente',
     'Close settings': 'Fechar configurações',
@@ -7313,7 +7410,7 @@ function buildInterface() {
         <div class="kf-body">
           <nav class="kf-nav" aria-label="Kick Focus settings">
             <div class="kf-nav-search"><input type="search" class="kf-input" data-kf-settings-search placeholder="Search settings" aria-label="Search settings" aria-controls="kf-settings-page"></div>
-            ${NAV_ITEMS.map(([id, title, description, icon]) => `<button type="button" data-page="${id}">${uiIcon(icon)}<span class="kf-nav-copy"><strong>${title}</strong><span>${description}</span></span></button>`).join('')}
+            ${NAV_ITEMS.map(([id, title, description, icon]) => `<button type="button" data-page="${id}">${uiIcon(icon)}<span class="kf-nav-copy"><strong>${title}</strong><span>${description}</span><span class="kf-nav-earned" data-kf-nav-earned></span></span></button>`).join('')}
           </nav>
           <main class="kf-page" data-kf-page tabindex="-1"></main>
         </div>
@@ -8138,6 +8235,187 @@ function renderStorageHealthPanel() {
     </section>`;
 }
 
+// ---------------------------------------------------------------------------
+// Viewer hub
+//
+// Reads what Kick is already showing this account and shows it in one place.
+// It writes nothing, claims nothing, and adds no endpoint: five of the six
+// values come off the page, and the sixth is the collectible read this build
+// already makes.
+//
+// Nothing here runs while the hub is closed. The facts are gathered when the
+// page is opened and again on the apply cycle only while it is the page being
+// looked at, which is the difference between a summary and a background poller.
+// ---------------------------------------------------------------------------
+
+// From a signed-in capture: Kick renders the exact figure in a `title` and an
+// abbreviated one ("1.2K") in the text, so the attribute is read first.
+const POINTS_VALUE = '[data-testid="channel-points-value"]';
+const DROPS_NAV = '[data-testid="sidebar-drops"]';
+const DROPS_CAMPAIGN = 'main a[href^="/drops/"]';
+
+/** A whole number out of Kick's own markup, or null when there is nothing to read. */
+function readNumber(text) {
+  const raw = String(text ?? '').replace(/[\s,]/g, '');
+  if (!/^\d+$/.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function readChannelPoints() {
+  const node = document.querySelector(POINTS_VALUE);
+  if (!node) return null;
+  // The title carries the unrounded number. Text is the fallback, and an
+  // abbreviated one fails `readNumber` rather than becoming a wrong figure.
+  const titled = node.querySelector('[title]')?.getAttribute('title') ?? node.getAttribute('title');
+  return readNumber(titled) ?? readNumber(node.textContent);
+}
+
+/**
+ * Level and streak, read only from the reward dialog this build itself opened.
+ *
+ * Kick shows both there and nowhere else on the page, and neither is persisted
+ * between openings: a level kept from yesterday is a number that looks live and
+ * is not. Matched on Kick's own label text rather than on a test id, because
+ * the dialog carries no id for either.
+ */
+function readRewardDialogFigures() {
+  const dialog = rewardDialog();
+  if (!dialog) return { dialogOpen: false, level: null, streak: null };
+  const text = String(dialog.textContent || '').replace(/\s+/g, ' ');
+  const level = /\blevel\b[^0-9]{0,12}(\d{1,4})/i.exec(text) || /(\d{1,4})[^0-9]{0,12}\blevel\b/i.exec(text);
+  const streak = /\bstreak\b[^0-9]{0,12}(\d{1,4})/i.exec(text) || /(\d{1,4})[^0-9]{0,12}\b(?:day )?streak\b/i.exec(text);
+  return {
+    dialogOpen: true,
+    level: level ? readNumber(level[1]) : null,
+    streak: streak ? readNumber(streak[1]) : null,
+  };
+}
+
+/**
+ * Everything the hub knows right now, gathered in one pass.
+ *
+ * Deliberately dumb: it observes and records, and every decision about what a
+ * missing observation means belongs to `viewerHubCards` in core, where it is
+ * testable without a browser.
+ */
+function collectViewerFacts() {
+  const now = Date.now();
+  const record = rewardRecord();
+  const figures = readRewardDialogFigures();
+  const onChannel = state.route === 'channel';
+  const points = onChannel ? readChannelPoints() : null;
+  return {
+    reward: {
+      trigger: Boolean(document.querySelector(REWARD_TRIGGER)),
+      lastClaimAt: record.lastClaimAt,
+      nextCheckAt: record.nextCheckAt,
+      // The rollover this reward belongs to, so a claim from yesterday is not
+      // reported as today's.
+      previousResetAt: nextClaimResetAt(now) - 24 * 60 * 60 * 1000,
+      observedAt: now,
+    },
+    points: { onChannel, value: points, channel: currentChannelSlug(), observedAt: now },
+    collectibles: state.viewerHub.collectibles,
+    drops: {
+      navPresent: Boolean(document.querySelector(DROPS_NAV)),
+      onRoute: location.pathname.startsWith('/drops'),
+      campaigns: location.pathname.startsWith('/drops')
+        ? document.querySelectorAll(DROPS_CAMPAIGN).length
+        : null,
+      observedAt: now,
+    },
+    level: { dialogOpen: figures.dialogOpen, value: figures.level, observedAt: now },
+    streak: { dialogOpen: figures.dialogOpen, value: figures.streak, observedAt: now },
+  };
+}
+
+/**
+ * Ask Kick for the collectible inventory, once, because the hub was opened.
+ *
+ * Guarded so reopening the panel does not re-request: a value read a minute ago
+ * is still the answer, and the card labels it as an older reading rather than
+ * this fetching again to refresh a number that barely moves.
+ */
+async function refreshViewerCollectibles() {
+  const current = state.viewerHub.collectibles;
+  if (current?.loading) return;
+  if (current?.observedAt && Date.now() - current.observedAt < VIEWER_HUB_STALE_MS) return;
+  state.viewerHub.collectibles = { loading: true };
+  renderViewerHubInPlace();
+  try {
+    state.viewerHub.collectibles = await readCollectibleInventory();
+  } catch {
+    state.viewerHub.collectibles = { failed: true, observedAt: Date.now() };
+  }
+  renderViewerHubInPlace();
+}
+
+/** Grouped by the reader's own locale: 12,480 rather than 12480. */
+function hubNumber(value) {
+  return Number(value).toLocaleString();
+}
+
+function hubCardValue(card) {
+  if (card.id === 'reward') return tr(VIEWER_HUB_REWARD_WORDS[card.value] || VIEWER_HUB_REWARD_WORDS.available);
+  // Distinct collectibles first, total copies in brackets, and only when the
+  // two differ — "21 (21)" says nothing that "21" does not.
+  if (card.id === 'collectibles' && Number.isFinite(card.copies) && card.copies > card.value) {
+    return `${hubNumber(card.value)} (${hubNumber(card.copies)})`;
+  }
+  return hubNumber(card.value);
+}
+
+/** The line under each value: where it came from, and how old the reading is. */
+function hubCardSource(card, now) {
+  if (card.state !== 'ready') return '';
+  const source = card.source === 'api' ? tr('From Kick’s API') : tr('Read from the page');
+  if (!card.stale) return source;
+  const minutes = Math.max(1, Math.round((now - card.observedAt) / 60_000));
+  return `${source} · ${trf('{n} min ago', { n: minutes })}`;
+}
+
+function renderViewerHubCards() {
+  const now = Date.now();
+  const cards = viewerHubCards(collectViewerFacts(), now);
+  return cards.map((card) => `
+    <div class="kf-mini-card kf-hub-card" data-kf-hub-card="${card.id}" data-state="${card.state}">
+      <span>${escapeHtml(tr(VIEWER_HUB_TITLES[card.id]))}</span>
+      <strong>${card.state === 'ready' ? escapeHtml(hubCardValue(card)) : escapeHtml(tr(card.state === 'loading' ? 'Reading…' : '—'))}</strong>
+      <em>${escapeHtml(card.state === 'ready' ? hubCardSource(card, now) : tr(VIEWER_HUB_REASONS[card.reason] || VIEWER_HUB_REASONS['not-read']))}</em>
+    </div>`).join('');
+}
+
+/** Repaint the cards without rebuilding the page, so scroll and focus survive. */
+function renderViewerHubInPlace() {
+  const host = state.shadow?.querySelector('[data-kf-hub-cards]');
+  if (!host) return;
+  setMarkup(host, renderViewerHubCards());
+  localizeInterface();
+}
+
+function renderViewerPage() {
+  const summary = viewerHubSummary(viewerHubCards(collectViewerFacts(), Date.now()));
+  return `
+    ${pageHeader('Viewer', 'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.', 'Reading', `${summary.ready}/${summary.total}`)}
+    <div class="kf-hub-grid" data-kf-hub-cards>${renderViewerHubCards()}</div>
+    <section class="kf-panel">
+      <div class="kf-action-row"><div><h3>Where these come from</h3><p data-kf-hub-sources>${escapeHtml(hubSourceSummary(summary))}</p></div><button type="button" class="kf-button" data-action="refresh-hub">Read again</button></div>
+      <div class="kf-action-row"><div><h3>Nothing is claimed for you here</h3><p>This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content &amp; Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.</p></div></div>
+    </section>`;
+}
+
+/** One sentence naming which values were read off the page and which came from an endpoint. */
+function hubSourceSummary(summary) {
+  if (!summary.ready) return 'Nothing has been read yet. Each card above says why.';
+  const parts = [];
+  if (summary.fromDom.length) parts.push(`${summary.fromDom.map((id) => tr(VIEWER_HUB_TITLES[id])).join(', ')} read from the page`);
+  if (summary.fromApi.length) parts.push(`${summary.fromApi.map((id) => tr(VIEWER_HUB_TITLES[id])).join(', ')} from Kick’s API`);
+  const stale = summary.stale ? ` ${summary.stale} showing an older reading.` : '';
+  const errors = summary.errors ? ` ${summary.errors} could not be built.` : '';
+  return `${parts.join('; ')}.${stale}${errors}`;
+}
+
 function renderAboutPage() {
   return `
     ${pageHeader('About', 'A desktop-first layout and control layer for Kick.', 'Version', VERSION)}
@@ -8196,6 +8474,7 @@ function settingsSearchIndex() {
     appearance: renderAppearancePage,
     content: renderContentPage,
     accessibility: renderAccessibilityPage,
+    viewer: renderViewerPage,
     about: renderAboutPage,
   };
   const index = [];
@@ -8264,6 +8543,7 @@ function renderSettingsPage() {
     appearance: renderAppearancePage,
     content: renderContentPage,
     accessibility: renderAccessibilityPage,
+    viewer: renderViewerPage,
     about: renderAboutPage,
   }[state.currentPage] || renderLayoutPage;
   setMarkup(page, renderer());
@@ -8292,6 +8572,8 @@ function renderSettingsPage() {
   reset.title = tr(reset.disabled ? 'About has no page settings to reset' : 'Restore page defaults');
   localizeInterface();
   if (state.currentPage === 'content') applyStickerLibrarySearch();
+  // One read, on opening. Nothing is requested while the hub is closed.
+  if (state.currentPage === 'viewer') refreshViewerCollectibles();
 }
 
 function updateDiagnosticsInPlace() {
@@ -8654,6 +8936,13 @@ function onInterfaceClick(event) {
     renderSettingsPage();
   }
   else if (action === 'self-check') runSelfCheck();
+  else if (action === 'refresh-hub') {
+    // An explicit ask, so the freshness guard is cleared first: the point of
+    // the button is to re-read, not to be told the last reading is recent.
+    state.viewerHub.collectibles = null;
+    refreshViewerCollectibles();
+    renderViewerHubInPlace();
+  }
   else if (action === 'restore-shortcuts') restoreShortcuts();
   else if (action === 'save-local-channel') saveLocalChannelTools();
   else if (action === 'clear-local-channel') clearLocalChannelTools();
@@ -9968,6 +10257,18 @@ function onGlobalKeydown(event) {
 const HEADER_CONTROL_CSS = `
   :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
   * { box-sizing: border-box; }
+  /* Repeats the settings panel's earned marker inside Kick's own header. The
+     status itself is in the button's accessible name; this is the glance. */
+  [data-kf-earned="reward-ready"] { position: relative; }
+  [data-kf-earned="reward-ready"]::after {
+    content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--kf-accent, #53fc18);
+    animation: kf-earned-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes kf-earned-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) {
+    [data-kf-earned="reward-ready"]::after { animation: none; }
+  }
   button {
     display: inline-flex;
     height: 36px;
@@ -10248,6 +10549,33 @@ function syncQuickButton() {
   state.quickButton.textContent = label;
   state.quickButton.setAttribute('aria-label', accessibleLabel);
   state.quickButton.hidden = !shouldShow || headerMounted;
+  syncEarnedState(accessibleLabel);
+}
+
+/**
+ * Mark the one earned state Kick actually publishes: a reward waiting.
+ *
+ * Read from the page each apply cycle, which costs one `querySelector` and one
+ * storage read and adds no timer. Signed out there is no reward control, so
+ * `earnedState` returns null and nothing is marked at all — a client inventing
+ * a badge for an account that has none is pressure, not delight.
+ *
+ * The status is carried in the accessible name, which is the part that has to
+ * work: the dot and the motion-safe pulse the stylesheet adds on top of the
+ * attribute are decoration, and neither is the message.
+ */
+function syncEarnedState(accessibleLabel) {
+  const earned = earnedState(viewerHubCards(collectViewerFacts(), Date.now()));
+  const kind = earned ? earned.kind : '';
+  for (const button of [state.quickButton, state.headerControlButton]) {
+    if (!button) continue;
+    if (button.dataset.kfEarned === kind) continue;
+    if (kind) button.dataset.kfEarned = kind;
+    else delete button.dataset.kfEarned;
+    button.setAttribute('aria-label', earned ? `${accessibleLabel} — ${tr(earned.label)}` : accessibleLabel);
+  }
+  const nav = state.shadow?.querySelector('[data-page="viewer"] [data-kf-nav-earned]');
+  if (nav) nav.textContent = earned ? tr(earned.label) : '';
 }
 
 addStyle(SITE_CSS);

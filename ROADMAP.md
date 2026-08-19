@@ -70,14 +70,9 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 Added from the authenticated journey, competitor, accessibility, and platform research recorded in [RESEARCH.md](RESEARCH.md), run against v1.26.0. Continues the R-NN scheme from R-62. The existing “My emotes” Next item remains authoritative and is not duplicated below.
 
-### P1 — coherent viewer personalization
-
-- **R-64 — Viewer Hub.** Add a read-only, progressively enhanced summary for Daily Reward state, active-channel points, Collectibles, Drops, level, and streak. Each card has its own source, freshness, loading, unavailable, and error state; absent data is never rendered as zero. Use established same-origin reads or page-visible state only, do not add polling while the hub is closed, and do not persist level/streak merely for decoration. Acceptance: every card can fail independently, diagnostics identify DOM-derived versus API-derived values, and tests cover partial/anonymous/account-menu-closed states. Complexity: L.
-
 ### P2 — chat comfort, delight, and player utility
 
 - **R-68 — Bounded Chat Comfort module.** Add opt-in timestamps, priority people, mention sound, local per-message hide, and searchable session history. History defaults off, excludes private/whisper content, has row/byte/age caps, exports only through an explicit action, and never retains a remote-deleted message longer than the configured session window. Acceptance: high-volume observer benchmark stays within the apply-cost budget; storage and expiry tests cover cap boundaries; each feature can be enabled independently. Complexity: L.
-- **R-69 — Earned-state delight.** Add subtle reward-ready, streak, or collectible-earned treatments only when Kick exposes the real state. Reuse established icons and design tokens; provide text status; disable nonessential motion under Reduced Motion. Do not simulate rewards, randomized wins, or engagement pressure. Acceptance: no animation under Reduced Motion, no status communicated by color alone, and anonymous users see no placeholder gamification. Complexity: S.
 - **R-70 — Player utility feasibility gate.** Measure screenshot capture, live-edge recovery, and adaptive catch-up against Kick's current player and existing page-realm hooks before implementing video filters, recording, or downloads. Acceptance: a short design note records browser support, DRM/canvas limits, CPU/memory impact, and whether each utility can remain local and zero-dependency; only proven low-risk utilities advance. Complexity: M.
 
 ### P3 — discovery and advanced organization
