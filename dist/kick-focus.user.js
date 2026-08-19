@@ -57,7 +57,7 @@ const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.27.0': Object.freeze({
-    summary: 'Four viewing presets, a contrast-protected custom accent, and a grouped My Emotes collection make Kick faster to personalize without changing account or content choices.',
+    summary: 'Viewing presets, a protected custom accent, My Emotes, calmer signed-in pages, and honest points guidance make Kick easier to personalize without changing the account.',
     defaults: Object.freeze([]),
   }),
 });
@@ -1314,6 +1314,9 @@ function routeKind(input) {
   if (segments[0] === 'browse') return 'browse';
   if (segments[0] === 'following') return 'following';
   if (segments[0] === 'drops') return 'drops';
+  if (segments[0] === 'settings') return 'settings';
+  if (segments[0] === 'collectibles') return 'collectibles';
+  if (segments[0] === 'subscriptions') return 'subscriptions';
   if (segments[0] === 'category') return 'category';
   if (segments[0] === 'search') return 'search';
   if (RESERVED_ROUTES.has(segments[0])) return 'other';
@@ -7881,6 +7884,122 @@ const SITE_CSS = `
       padding-top: 22px !important;
     }
 
+    html[data-kf-route="settings"] main,
+    html[data-kf-route="collectibles"] main,
+    html[data-kf-route="subscriptions"] main {
+      width: min(1180px, calc(100% - 48px)) !important;
+      margin-inline: auto !important;
+      padding: 28px 0 64px !important;
+    }
+
+    html[data-kf-route="settings"] main > h1,
+    html[data-kf-route="collectibles"] main > h1,
+    html[data-kf-route="subscriptions"] main > h1 {
+      margin: 0 0 18px !important;
+      color: var(--kf-text) !important;
+      font-size: clamp(26px, 3vw, 36px) !important;
+      letter-spacing: -.025em !important;
+    }
+
+    html[data-kf-route="settings"] main [data-kf-settings-tab="true"] {
+      display: inline-flex !important;
+      align-items: center !important;
+      min-height: 40px !important;
+      margin: 0 5px 18px 0 !important;
+      padding: 0 12px !important;
+      border: 1px solid transparent !important;
+      border-radius: 8px !important;
+      color: var(--kf-text-muted) !important;
+      font-size: 13px !important;
+      font-weight: 700 !important;
+      text-decoration: none !important;
+    }
+
+    html[data-kf-route="settings"] main [data-kf-settings-tab="true"]:is(:hover, :focus-visible) {
+      border-color: var(--kf-border-strong) !important;
+      background: var(--kf-surface-hover) !important;
+      color: var(--kf-text) !important;
+    }
+
+    html[data-kf-route="settings"] main [data-kf-settings-active="true"] {
+      border-color: rgba(var(--kf-accent-rgb), .45) !important;
+      background: rgba(var(--kf-accent-rgb), .09) !important;
+      color: var(--kf-accent) !important;
+      box-shadow: inset 0 -2px 0 var(--kf-accent) !important;
+    }
+
+    html[data-kf-route="settings"] main :is(h2, h3),
+    html[data-kf-route="collectibles"] main :is(h2, h3),
+    html[data-kf-route="subscriptions"] main :is(h2, h3) {
+      color: var(--kf-text) !important;
+      letter-spacing: -.012em !important;
+    }
+
+    html[data-kf-route="settings"] main :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select, [role="combobox"]),
+    html[data-kf-route="collectibles"] main :is(select, [role="combobox"]),
+    html[data-kf-route="subscriptions"] main :is(input, select, [role="combobox"]) {
+      border: 1px solid var(--kf-border-strong) !important;
+      border-radius: 8px !important;
+      background: var(--kf-surface-inset) !important;
+      color: var(--kf-text) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important;
+    }
+
+    html[data-kf-route="settings"] main :is(input, textarea, select, [role="combobox"]):focus-visible,
+    html[data-kf-route="collectibles"] main :is(select, [role="combobox"]):focus-visible,
+    html[data-kf-route="subscriptions"] main :is(input, select, [role="combobox"]):focus-visible {
+      border-color: var(--kf-accent) !important;
+      outline: 2px solid var(--kf-accent) !important;
+      outline-offset: 2px !important;
+      box-shadow: 0 0 0 4px rgba(var(--kf-accent-rgb), .12) !important;
+    }
+
+    html[data-kf-route="settings"] main button,
+    html[data-kf-route="collectibles"] main button,
+    html[data-kf-route="subscriptions"] main button {
+      min-height: 38px !important;
+      transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease !important;
+    }
+
+    html[data-kf-route="settings"] main button:not(:disabled):hover,
+    html[data-kf-route="collectibles"] main button:not(:disabled):hover,
+    html[data-kf-route="subscriptions"] main button:not(:disabled):hover {
+      border-color: var(--kf-border-strong) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    html[data-kf-route="settings"] main button:disabled,
+    html[data-kf-route="subscriptions"] main button:disabled {
+      opacity: .52 !important;
+      transform: none !important;
+    }
+
+    html[data-kf-route="settings"] main img,
+    html[data-kf-route="collectibles"] main img {
+      border-radius: 8px !important;
+    }
+
+    html[data-kf-route="collectibles"] main > h1 + p,
+    html[data-kf-route="subscriptions"] main > h1 + p {
+      max-width: 760px !important;
+      margin-bottom: 24px !important;
+      color: var(--kf-text-muted) !important;
+      font-size: 14px !important;
+      line-height: 1.65 !important;
+    }
+
+    html[data-kf-route="collectibles"] main button:has(img) {
+      border: 1px solid var(--kf-border) !important;
+      background: var(--kf-panel) !important;
+      box-shadow: 0 8px 20px rgba(0,0,0,.18) !important;
+    }
+
+    html[data-kf-route="collectibles"] main button:has(img):is(:hover, :focus-visible) {
+      border-color: rgba(var(--kf-accent-rgb), .55) !important;
+      background: var(--kf-panel-raised) !important;
+      box-shadow: 0 12px 26px rgba(0,0,0,.28), 0 0 0 3px rgba(var(--kf-accent-rgb), .08) !important;
+    }
+
     html[data-kf-route="channel"] #channel-content {
       gap: 18px !important;
       padding: 18px 24px 28px !important;
@@ -8665,6 +8784,20 @@ function tagHideableElements() {
       if (state.root?.contains(element)) continue;
       if (element.dataset.kfElement !== entry.id) element.dataset.kfElement = entry.id;
     }
+  }
+}
+
+/** Route-local account chrome that Kick does not mark as selected accessibly. */
+function tagSignedInRouteChrome() {
+  if (state.route !== 'settings') return;
+  const current = location.pathname.replace(/\/$/, '');
+  for (const link of document.querySelectorAll('main a[href^="/settings/"]')) {
+    link.dataset.kfSettingsTab = 'true';
+    let path = '';
+    try { path = new URL(link.href, location.href).pathname.replace(/\/$/, ''); } catch { /* leave unmatched */ }
+    link.dataset.kfSettingsActive = String(path === current);
+    if (path === current) link.setAttribute('aria-current', 'page');
+    else if (link.getAttribute('aria-current') === 'page') link.removeAttribute('aria-current');
   }
 }
 
@@ -11511,6 +11644,7 @@ async function runApplyCycle() {
     tagChatPanel();
     tagMonetizationSurfaces();
     tagHideableElements();
+    tagSignedInRouteChrome();
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
@@ -12523,6 +12657,8 @@ const UI_CSS = `
     flex-wrap: wrap;
   }
   .kf-ms-foot { border-bottom: 0; border-top: 1px solid var(--border); }
+  .kf-ms-points-note { flex: 1 0 100%; display: flex; align-items: center; gap: 7px; margin: 2px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+  .kf-ms-points-note svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--warning); }
   .kf-ms-spacer { flex: 1; }
   .kf-ms-count { color: var(--muted); font-size: 11px; }
   .kf-ms-head input, .kf-ms-foot input {
@@ -13026,6 +13162,7 @@ const TRANSLATIONS = {
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
     'Show stream uptime': 'Mostrar tiempo en directo',
     'Pop out chat': 'Chat en ventana flotante',
+    'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Puntos del canal: Kick indica que la imagen en imagen y la visualización reflejada no acumulan puntos. Mantén abierto un reproductor normal de Kick cuando el progreso importe.',
     'Merge all chats': 'Unir todos los chats',
     'Merged chat from every channel in the grid': 'Chat unificado de todos los canales de la cuadrícula',
     'One chat per tile': 'Un chat por canal',
@@ -13466,6 +13603,7 @@ const TRANSLATIONS = {
     'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
     'Show stream uptime': 'Mostrar tempo ao vivo',
     'Pop out chat': 'Chat em janela flutuante',
+    'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Pontos do canal: o Kick informa que Picture-in-Picture e visualização espelhada não acumulam pontos. Mantenha um player normal do Kick aberto quando o progresso for importante.',
     'Merge all chats': 'Juntar todos os chats',
     'Merged chat from every channel in the grid': 'Chat unificado de todos os canais da grelha',
     'One chat per tile': 'Um chat por canal',
@@ -13847,7 +13985,7 @@ function buildInterface() {
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-mute" data-kf-multistream-mute aria-pressed="false">Mute all</button>
           <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" hidden>Pop out chat</button>
+          <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" aria-describedby="kf-ms-points-note" hidden>Pop out chat</button>
           <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-merged" aria-pressed="false">Merge all chats</button>
           <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
         </header>
@@ -13865,6 +14003,7 @@ function buildInterface() {
           <input id="kf-ms-layout-name" data-kf-multistream-layout-name type="text" autocomplete="off" placeholder="Name this layout…">
           <button type="button" class="kf-button kf-button-small" data-action="multistream-save">Save layout</button>
           <div class="kf-ms-layouts" data-kf-multistream-layouts></div>
+          <p class="kf-ms-points-note" id="kf-ms-points-note">${uiIcon('info')}<span>Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.</span></p>
         </footer>
       </section>
     </div>

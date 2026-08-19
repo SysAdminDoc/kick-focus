@@ -1432,6 +1432,9 @@ test('route classifier covers every audited desktop surface', { tag: 'unit' }, (
   assert.equal(routeKind('/following'), 'following');
   assert.equal(routeKind('/following/channels'), 'following');
   assert.equal(routeKind('/drops/campaigns'), 'drops');
+  assert.equal(routeKind('/settings/profile'), 'settings');
+  assert.equal(routeKind('/collectibles'), 'collectibles');
+  assert.equal(routeKind('/subscriptions'), 'subscriptions');
   assert.equal(routeKind('/category/just-chatting'), 'category');
   assert.equal(routeKind('/search?query=music'), 'search');
   assert.equal(routeKind('/lordkebun'), 'channel');

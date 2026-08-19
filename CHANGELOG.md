@@ -13,6 +13,8 @@ All notable changes are documented here. Dates use ISO 8601.
 ### Changed
 
 - **Appearance starts with decisions, not individual knobs.** Presets are described in plain language above the existing theme, accent, radius, thumbnail, scale, contrast, and live-color controls. The accent grid now reflows five choices cleanly, the custom value stays visible beside its picker, and the layout collapses to one column on narrow windows.
+- **Signed-in pages now belong to the same design system.** Profile/Settings, Collectibles, and Subscriptions are classified separately instead of falling into a generic route. Settings tabs gain a reliable current-page marker, forms and focus rings use the selected theme, disabled actions are visibly inert, explanatory copy has a readable measure, and collectible buttons use consistent borders, depth, and focus feedback. Native account controls remain native and no value is changed.
+- **Detached viewing no longer hides the channel-points tradeoff.** The multi-stream footer carries Kick's own warning that Picture-in-Picture and mirrored viewing do not accrue channel points, and the popout-chat control points assistive technology to the same note.
 
 ## 1.26.0 — 2026-08-19
 

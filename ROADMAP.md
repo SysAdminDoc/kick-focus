@@ -85,8 +85,6 @@ Added from the authenticated journey, competitor, accessibility, and platform re
 ### P1 — coherent viewer personalization
 
 - **R-64 — Viewer Hub.** Add a read-only, progressively enhanced summary for Daily Reward state, active-channel points, Collectibles, Drops, level, and streak. Each card has its own source, freshness, loading, unavailable, and error state; absent data is never rendered as zero. Use established same-origin reads or page-visible state only, do not add polling while the hub is closed, and do not persist level/streak merely for decoration. Acceptance: every card can fail independently, diagnostics identify DOM-derived versus API-derived values, and tests cover partial/anonymous/account-menu-closed states. Complexity: L.
-- **R-66 — Signed-in route polish.** Extend route classification and shared styling to Profile/Settings, Drops, Collectibles, Subscriptions, and account-adjacent routes. Improve spacing, hierarchy, focus, empty states, and narrow-window reflow while keeping native Kick account controls visibly native. Acceptance: no native control is hidden accidentally, all seven settings tabs remain reachable, and screenshot comparison passes in every theme. Complexity: M.
-- **R-67 — Picture-in-Picture and multiview points disclosure.** Wherever Kick Focus offers popout, Picture-in-Picture, mirroring, or related detached playback, explain that Kick's current help says those modes do not accrue channel points. Keep the copy contextual and non-blocking. Acceptance: disclosure is keyboard/screen-reader reachable, localized, and does not appear on unrelated player controls. Complexity: S.
 
 ### P2 — chat comfort, delight, and player utility
 

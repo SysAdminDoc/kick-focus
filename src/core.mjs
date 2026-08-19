@@ -32,7 +32,7 @@ export const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.27.0': Object.freeze({
-    summary: 'Four viewing presets, a contrast-protected custom accent, and a grouped My Emotes collection make Kick faster to personalize without changing account or content choices.',
+    summary: 'Viewing presets, a protected custom accent, My Emotes, calmer signed-in pages, and honest points guidance make Kick easier to personalize without changing the account.',
     defaults: Object.freeze([]),
   }),
 });
@@ -1289,6 +1289,9 @@ export function routeKind(input) {
   if (segments[0] === 'browse') return 'browse';
   if (segments[0] === 'following') return 'following';
   if (segments[0] === 'drops') return 'drops';
+  if (segments[0] === 'settings') return 'settings';
+  if (segments[0] === 'collectibles') return 'collectibles';
+  if (segments[0] === 'subscriptions') return 'subscriptions';
   if (segments[0] === 'category') return 'category';
   if (segments[0] === 'search') return 'search';
   if (RESERVED_ROUTES.has(segments[0])) return 'other';
