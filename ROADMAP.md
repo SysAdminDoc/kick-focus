@@ -73,8 +73,6 @@ Added from the authenticated journey, competitor, accessibility, and platform re
 ### P2 — chat comfort, delight, and player utility
 
 - **R-68 — Bounded Chat Comfort module.** Add opt-in timestamps, priority people, mention sound, local per-message hide, and searchable session history. History defaults off, excludes private/whisper content, has row/byte/age caps, exports only through an explicit action, and never retains a remote-deleted message longer than the configured session window. Acceptance: high-volume observer benchmark stays within the apply-cost budget; storage and expiry tests cover cap boundaries; each feature can be enabled independently. Complexity: L.
-- **R-70 — Player utility feasibility gate.** Measure screenshot capture, live-edge recovery, and adaptive catch-up against Kick's current player and existing page-realm hooks before implementing video filters, recording, or downloads. Acceptance: a short design note records browser support, DRM/canvas limits, CPU/memory impact, and whether each utility can remain local and zero-dependency; only proven low-risk utilities advance. Complexity: M.
-
 ### P3 — discovery and advanced organization
 
 - **R-71 — Local discovery layouts.** Investigate saved, route-aware discovery views that combine existing density, hidden-channel, category, language, and watched-state controls without creating a second recommendation system. Acceptance: layouts are local, editable through existing settings patterns, and never claim to change Kick's algorithm. Complexity: L.

@@ -252,6 +252,32 @@ The settings schema is already large. Adding isolated toggles without improving 
 - Chrome Web Store user-data policy FAQ: https://developer.chrome.com/docs/webstore/program-policies/user-data-faq
 - `userScripts` API constraints: https://developer.chrome.com/docs/extensions/reference/api/userScripts
 
+## Player utility feasibility, measured 2026-08-19 (R-70)
+
+Three utilities were proposed on top of Kick's player: a screenshot capture, a live-edge recovery control, and adaptive catch-up. This is what a page-realm client can actually observe, measured against a live channel in Chromium for Testing 1234 at 1440x900, logged out, with `--autoplay-policy=no-user-gesture-required` and audio muted.
+
+**What was measured**
+
+| Question | Answer |
+|---|---|
+| Is the media EME-protected? | No. `video.mediaKeys` is null on the element, so DRM is not what stands between a client and a frame. |
+| Does the canvas taint? | No. `drawImage` from the video followed by `toDataURL` and `getImageData` raises nothing at all. |
+| What does a capture cost? | 0.2 ms to draw and 2.6 ms to PNG-encode at 320x180. Cheap enough to ignore. |
+| Is `captureStream` available? | Yes, and `MediaRecorder` with it. Both exist in this engine. |
+| Can playback rate be nudged? | Yes. 1.05 was accepted and still held three seconds later. |
+| Is there a live edge to seek to? | **No.** `seekable` and `buffered` are both empty ranges, so the element offers no end time to compute from and no target to seek to. |
+| Did a frame ever decode? | **No.** Across 30 seconds the element stayed at `readyState` 0 with `videoWidth` 0 and an empty `currentSrc`, while `paused` was false. It was trying and never got a source. |
+
+**What that means**
+
+The capture path is not blocked by DRM and not blocked by canvas tainting, which were the two ways it could have been dead on arrival. It is blocked by something more awkward: an automated browser on this project's own gate never gets a decoded frame, so a screenshot feature could be written and the gate could never see whether it produced a picture or a blank rectangle. The measured capture above returned exactly that, a 320x180 image with no lit pixels.
+
+The cause was not isolated. Playback here runs through `amazon-ivs-wasmworker.min.js` and a `blob:` worker, so the manifest never reaches page-realm `fetch` and the element gets its source from inside the worker; either that worker never attached one, or Kick's bot defence refused the playback token to an automated browser. Both are consistent with what was seen, and telling them apart needs work this gate did not need to do to answer the question it was asked.
+
+Live-edge recovery is a separate answer and a firmer one. With `seekable` empty there is no live edge to recover to from the element, so a control offering it would either do nothing or need Kick's own player API, which this build does not touch. Adaptive catch-up is mechanically possible, in that the rate is accepted and held, but catch-up without a live edge has nothing to aim at.
+
+**Outcome: nothing advances.** No video filter, recording, or download work follows from this. Screenshot capture is the only candidate that survives its own feasibility questions, and it fails the one this project actually enforces: a feature its automated gate cannot verify would rest on somebody remembering to check by hand, which is the failure mode the whole gate exists to prevent. Revisit if playback ever starts under the extension gate, since that would make a real frame available to assert on.
+
 ## Open questions
 
 1. Which stable page-visible or already-established same-origin source exposes level and streak without requiring the account menu to be open? Do not add an undocumented endpoint solely to answer this.
