@@ -26,6 +26,12 @@ This pass combined four evidence sources:
 
 Confidence labels below mean: **Verified** = observed in current source, current signed-in UI, or a primary source; **Likely** = supported by multiple current signals but not exercised end-to-end; **Hypothesis** = valuable idea whose data path or user demand still needs validation.
 
+## StreamerStats integration follow-up
+
+**Verified 2026-08-19.** StreamerStats' current Kick channel route is `https://streamerstats.com/kick/channels/{channel}`; the older `/{channel}/streamer/profile` route now returns 404. A live `xqc` profile resolved and loaded channel overview, stream history, category, rank, monetization, and all-time tabs. Its response carries `X-Frame-Options: DENY`, so embedding it in a Kick-side dialog or iframe cannot work.
+
+**Decision.** The channel-profile action opens a named, centered popup window and severs `window.opener` before sending it to StreamerStats. The action runs only on an explicit click, validates the public channel slug locally, adds no host permission or background request, and offers a new-tab recovery action if the popup is blocked. This preserves the requested compact second surface without pretending an iframe can bypass the site's security policy.
+
 ## Current product map
 
 ### What Kick Focus already does well
@@ -163,6 +169,7 @@ The settings schema is already large. Adding isolated toggles without improving 
 ## Security, privacy, and performance
 
 - Continue same-origin reads with the user's existing Kick session. Do not introduce OAuth, external synchronization, or remote code.
+- Keep third-party navigation user-initiated and explicit. The StreamerStats action may send only the public channel slug in the destination URL; never attach settings, account state, tokens, or referrer-derived identifiers.
 - Do not read browser cookies, storage, profiles, passwords, or session stores directly. Page-visible state and established extension data paths are sufficient.
 - Viewer Hub data should be memory-first. Persist only stable, non-sensitive organization such as favorite emote groups; do not persist account level or streak merely for decoration.
 - Chat Comfort history should default off, remain local, cap both rows and bytes, expire automatically, and exclude whispers/private data.
@@ -214,6 +221,9 @@ The settings schema is already large. Adding isolated toggles without improving 
 - News and platform announcements: https://about.kick.com/news-and-press/news
 
 ### Competitors and community evidence
+
+- StreamerStats Kick analytics: https://streamerstats.com/kick
+- StreamerStats channel route verified with xQc: https://streamerstats.com/kick/channels/xqc
 
 - Mo'Kick: https://chromewebstore.google.com/detail/mokick-better-kick-for-ev/lhjnnfenfahhjkmcngnocfclechcibkc
 - PureKick: https://chromewebstore.google.com/detail/purekick-ad-blocker-for-k/mhicbhkhokaocipkioiibmficljoijnf

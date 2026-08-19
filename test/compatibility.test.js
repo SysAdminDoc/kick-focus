@@ -117,8 +117,8 @@ test('a hideable probe resolves through its ordered fallbacks', { tag: 'unit' },
 
 /** A root carrying one card, one video inside a container, and two quality rows. */
 function derivedRoot() {
-  const card = new FakeNode();
-  const categoryCard = new FakeNode();
+  const card = new FakeNode({ query: { 'a[href]': new FakeNode() } });
+  const categoryCard = new FakeNode({ query: { 'a[href]': new FakeNode() } });
   const video = new FakeNode();
   const container = new FakeNode();
   video.parentElement = container;
@@ -137,6 +137,16 @@ function derivedRoot() {
   root.all.set('[data-testid="livestream-results-card"], [data-testid="stream-card"]', [card, categoryCard]);
   return { root, card, categoryCard, video, container, rows: [rowA, rowB] };
 }
+
+test('card loading skeletons are absent, not a broken slug derivation', { tag: 'unit' }, () => {
+  const skeleton = new FakeNode();
+  const root = new FakeNode({
+    all: { '[data-testid="livestream-results-card"], [data-testid="stream-card"]': [skeleton] },
+  });
+  const result = derivedSnapshot(root, { cardSlug: () => '' }).find((entry) => entry.id === 'cardSlug');
+  assert.equal(result.outcome, 'absent');
+  assert.equal(result.checked, 0);
+});
 
 test('a probe that resolves while its derived value does not is reported as broken', { tag: 'unit' }, () => {
   const { root, card, video, container, rows } = derivedRoot();

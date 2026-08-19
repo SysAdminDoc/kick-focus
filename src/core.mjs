@@ -1,4 +1,4 @@
-export const VERSION = '1.27.0';
+export const VERSION = '1.28.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -33,6 +33,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.27.0': Object.freeze({
     summary: 'Viewing presets, a protected custom accent, My Emotes, calmer signed-in pages, and honest points guidance make Kick easier to personalize without changing the account.',
+    defaults: Object.freeze([]),
+  }),
+  '1.28.0': Object.freeze({
+    summary: 'Every channel profile now has a StreamerStats action that opens that channel’s current analytics in a compact popup window.',
     defaults: Object.freeze([]),
   }),
 });
@@ -1296,6 +1300,13 @@ export function routeKind(input) {
   if (segments[0] === 'search') return 'search';
   if (RESERVED_ROUTES.has(segments[0])) return 'other';
   return 'channel';
+}
+
+/** The current StreamerStats analytics page for a validated Kick channel slug. */
+export function streamerStatsProfileUrl(slug) {
+  const channel = String(slug ?? '').trim();
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(channel)) return '';
+  return `https://streamerstats.com/kick/channels/${encodeURIComponent(channel)}`;
 }
 
 function matchesHost(hostname, domains) {

@@ -103,6 +103,9 @@ const state = {
   quickButton: null,
   headerControlHost: null,
   headerControlButton: null,
+  profileStatsHost: null,
+  profileStatsButton: null,
+  chatResizeCleanup: null,
   lastFocused: null,
   applyTimer: 0,
   applyPendingSince: 0,
@@ -1306,6 +1309,28 @@ const SITE_CSS = `
       max-width: 520px !important;
     }
 
+    [data-kf-chat-panel] :is(#channel-chatroom, [data-testid="chatroom"]) {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+
+    html[data-kf-chat="right"] [data-kf-chat-panel][data-kf-chat-resizing="true"] {
+      transition: none !important;
+    }
+
+    html[data-kf-theater="true"] [data-kf-channel-row] {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+    }
+
+    html[data-kf-theater="true"] [data-kf-channel-row] > :not([data-kf-chat-panel]) {
+      max-width: 100% !important;
+      min-width: 0 !important;
+    }
+
     html[data-kf-chat="docked"] [data-kf-chat-separator] { display: none !important; }
     html[data-kf-chat="docked"] [data-kf-chat-panel] {
       position: fixed !important;
@@ -2047,6 +2072,65 @@ function tagSignedInRouteChrome() {
   }
 }
 
+function chatLayoutOwner(separator, panel) {
+  const split = separator?.parentElement;
+  if (split?.contains(panel)) {
+    // Kick wraps the resizer and #channel-chatroom in a width-bearing flex box,
+    // then wraps that once more as the actual flex item beside the player. The
+    // old tag landed on #channel-chatroom, so its forced width could grow past
+    // the still-narrow outer item and overflow the viewport in Theater mode.
+    const outer = split.parentElement;
+    if (outer && outer !== document.body && outer.children.length === 1) return outer;
+    return split;
+  }
+  return ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]');
+}
+
+function bindChatResizer(separator) {
+  if (separator.dataset.kfChatResizeBound === 'true') return;
+  separator.dataset.kfChatResizeBound = 'true';
+  separator.addEventListener('pointerdown', guard('chat resize', (event) => {
+    if (event.button !== 0 || event.isPrimary === false || state.settings.layout.chat !== 'right') return;
+    const panel = separator.nextElementSibling || findProbe(document, 'chatPanel').element;
+    const owner = chatLayoutOwner(separator, panel);
+    if (!owner) return;
+
+    state.chatResizeCleanup?.();
+    const startX = event.clientX;
+    const initialWidth = state.settings.layout.chatWidth;
+    const startWidth = Math.round(clamp(owner.getBoundingClientRect().width, 320, 520, state.settings.layout.chatWidth));
+    let nextWidth = startWidth;
+    owner.dataset.kfChatResizing = 'true';
+
+    const move = (moveEvent) => {
+      if (moveEvent.pointerId !== event.pointerId) return;
+      nextWidth = Math.round(clamp(startWidth + startX - moveEvent.clientX, 320, 520, startWidth));
+      state.settings.layout.chatWidth = nextWidth;
+      document.documentElement.style.setProperty('--kf-chat-width', `${nextWidth}px`);
+      separator.setAttribute('aria-valuenow', String(nextWidth));
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', finish, true);
+      window.removeEventListener('pointercancel', finish, true);
+      delete owner.dataset.kfChatResizing;
+      if (state.chatResizeCleanup === cleanup) state.chatResizeCleanup = null;
+    };
+    const finish = (finishEvent) => {
+      if (finishEvent?.pointerId != null && finishEvent.pointerId !== event.pointerId) return;
+      cleanup();
+      if (nextWidth !== initialWidth) {
+        updateSetting('layout.chatWidth', nextWidth, 'Chat width saved');
+        showToast('Chat width saved');
+      }
+    };
+    state.chatResizeCleanup = cleanup;
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', finish, true);
+    window.addEventListener('pointercancel', finish, true);
+  }), true);
+}
+
 function tagChatPanel() {
   const separator = findProbe(document, 'chatSeparator').element;
   if (!separator) return;
@@ -2056,8 +2140,20 @@ function tagChatPanel() {
     panel = findProbe(document, 'chatPanel').element;
   }
   if (panel) {
-    const owner = ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]');
+    const owner = chatLayoutOwner(separator, panel);
+    for (const previous of document.querySelectorAll('[data-kf-chat-panel]')) {
+      if (previous !== owner) delete previous.dataset.kfChatPanel;
+    }
     owner.dataset.kfChatPanel = 'true';
+    const row = owner.parentElement;
+    for (const previous of document.querySelectorAll('[data-kf-channel-row]')) {
+      if (previous !== row) delete previous.dataset.kfChannelRow;
+    }
+    if (row && row !== document.body) row.dataset.kfChannelRow = 'true';
+    separator.setAttribute('aria-valuemin', '320');
+    separator.setAttribute('aria-valuemax', '520');
+    separator.setAttribute('aria-valuenow', String(state.settings.layout.chatWidth));
+    bindChatResizer(separator);
   }
 }
 
@@ -4440,6 +4536,21 @@ function streamStartedAt() {
   );
 }
 
+/** Prefer the player Kick is actually painting over hidden preload media. */
+function primaryVideo() {
+  const videos = [...document.querySelectorAll('video')];
+  for (const video of videos) {
+    try {
+      const box = video.getBoundingClientRect();
+      const style = getComputedStyle(video);
+      if (box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden') return video;
+    } catch {
+      // A partial DOM still gets the first media element as the fallback below.
+    }
+  }
+  return videos[0] || null;
+}
+
 function applyStreamUptime() {
   const existing = document.querySelector('[data-kf-uptime]');
   const startedAt = streamStartedAt();
@@ -4452,7 +4563,7 @@ function applyStreamUptime() {
     state.uptimeTimer = 0;
     return;
   }
-  const video = document.querySelector('video');
+  const video = primaryVideo();
   const owner = playerOverlayHost(video);
   if (!owner) return;
   let chip = owner.querySelector?.('[data-kf-uptime]');
@@ -4507,7 +4618,7 @@ function applyVodExpiry() {
     existing?.remove();
     return;
   }
-  const video = document.querySelector('video');
+  const video = primaryVideo();
   const owner = playerOverlayHost(video);
   if (!owner) return;
   let chip = owner.querySelector?.('[data-kf-vod-expiry]');
@@ -4534,7 +4645,7 @@ function applyPlaybackDiagnostics() {
     state.playbackDiagnosticsTimer = 0;
     return;
   }
-  const video = document.querySelector('video');
+  const video = primaryVideo();
   if (!video) return;
   const owner = playerOverlayHost(video);
   if (!owner) return;
@@ -4891,6 +5002,7 @@ async function runApplyCycle() {
     tagMonetizationSurfaces();
     tagHideableElements();
     tagSignedInRouteChrome();
+    ensureProfileStatsControl();
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
@@ -6156,6 +6268,7 @@ const FEATHER_ICONS = Object.freeze({
   reset: '<polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 .49-9.5L1 10"></path>',
   export: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>',
   check: '<polyline points="20 6 9 17 4 12"></polyline>',
+  stats: '<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>',
 });
 
 function uiIcon(name) {
@@ -6220,6 +6333,7 @@ const TRANSLATIONS = {
     'Sidebar mode': 'Modo de barra lateral',
     'Chat layout': 'Diseño del chat',
     'Chat width': 'Ancho del chat',
+    'Chat width saved': 'Ancho del chat guardado',
     'Content density': 'Densidad del contenido',
     'Stream start behavior': 'Comportamiento al abrir streams',
     'Remember per-channel layout': 'Recordar diseño por canal',
@@ -6545,6 +6659,11 @@ const TRANSLATIONS = {
     'Channel to hide': 'Canal que ocultar',
     'Open Kick Focus multi-stream': 'Abrir la multitransmisión de Kick Focus',
     'Multi-stream': 'Multitransmisión',
+    'Stats': 'Estadísticas',
+    'Open {channel} stats in StreamerStats': 'Abrir las estadísticas de {channel} en StreamerStats',
+    'Opened {channel} in StreamerStats.': 'Se abrió {channel} en StreamerStats.',
+    'The browser blocked the stats popup.': 'El navegador bloqueó la ventana emergente de estadísticas.',
+    'Open tab': 'Abrir pestaña',
     'Add this channel to Kick Focus multi-stream': 'Añadir este canal a la multitransmisión de Kick Focus',
     'Add to multi-stream': 'Añadir a la multitransmisión',
     'Undo': 'Deshacer',
@@ -6660,6 +6779,7 @@ const TRANSLATIONS = {
     'Sidebar mode': 'Modo da barra lateral',
     'Chat layout': 'Layout do chat',
     'Chat width': 'Largura do chat',
+    'Chat width saved': 'Largura do chat salva',
     'Content density': 'Densidade do conteúdo',
     'Stream start behavior': 'Comportamento ao abrir transmissões',
     'Remember per-channel layout': 'Lembrar layout por canal',
@@ -6985,6 +7105,11 @@ const TRANSLATIONS = {
     'Channel to hide': 'Canal a ocultar',
     'Open Kick Focus multi-stream': 'Abrir a multitransmissão do Kick Focus',
     'Multi-stream': 'Multitransmissão',
+    'Stats': 'Estatísticas',
+    'Open {channel} stats in StreamerStats': 'Abrir as estatísticas de {channel} no StreamerStats',
+    'Opened {channel} in StreamerStats.': '{channel} foi aberto no StreamerStats.',
+    'The browser blocked the stats popup.': 'O navegador bloqueou a janela de estatísticas.',
+    'Open tab': 'Abrir aba',
     'Add this channel to Kick Focus multi-stream': 'Adicionar este canal à multitransmissão do Kick Focus',
     'Add to multi-stream': 'Adicionar à multitransmissão',
     'Undo': 'Desfazer',
@@ -7119,7 +7244,7 @@ function applyInterfaceLanguage() {
   // host is built during boot, and a `const` declared this far down the file
   // would still be in its temporal dead zone when that runs. Function
   // declarations hoist; `const` does not. See test/boot.test.js.
-  for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control']) {
+  for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control', 'kick-focus-streamer-stats']) {
     const host = document.getElementById(id);
     if (host && host.lang !== locale) host.lang = locale;
   }
@@ -9479,6 +9604,8 @@ function restoreShortcuts() {
 
 function clearEnhancedPage() {
   const root = document.documentElement;
+  state.chatResizeCleanup?.();
+  state.chatResizeCleanup = null;
   clearStickerUI();
   disconnectChatStickerObserver();
   if (root.dataset.kfManagedSidebar === 'true') {
@@ -9490,7 +9617,7 @@ function clearEnhancedPage() {
   for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
     root.style.removeProperty(property);
   }
-  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization]')) {
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization]')) {
     if (node.matches?.('[data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
     else {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
@@ -9520,6 +9647,7 @@ function clearEnhancedPage() {
   state.runtime.chatPaused = false;
   if (state.modal) state.modal.hidden = true;
   if (state.command) state.command.hidden = true;
+  state.profileStatsHost?.remove?.();
   state.runtime.suspended = true;
   syncQuickButton();
 }
@@ -9870,6 +9998,133 @@ const HEADER_CONTROL_CSS = `
     span { display: none; }
   }
 `;
+
+const PROFILE_STATS_CSS = `
+  :host { display: inline-flex; }
+  button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    gap: 6px;
+    padding: 0 12px;
+    border: 1px solid var(--kf-border-strong, rgba(255,255,255,.16));
+    border-radius: 8px;
+    background: var(--kf-panel-raised, #191e1b);
+    color: var(--kf-text, #f4f7f5);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    font: 700 14px/1 "Segoe UI", sans-serif;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease;
+  }
+  button:hover {
+    border-color: rgba(var(--kf-accent-rgb, 83, 252, 24), .62);
+    background: rgba(var(--kf-accent-rgb, 83, 252, 24), .10);
+    color: var(--kf-accent, #53fc18);
+    transform: translateY(-1px);
+  }
+  button:active { transform: translateY(0) scale(.98); }
+  button:focus-visible {
+    border-color: var(--kf-accent, #53fc18);
+    outline: 2px solid var(--kf-accent, #53fc18);
+    outline-offset: 2px;
+  }
+  svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @media (max-width: 960px) {
+    button { width: 40px; padding: 0; }
+    span { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button { transition-duration: .001ms; }
+  }
+`;
+
+function streamerStatsPopupFeatures() {
+  const availableWidth = Math.max(704, Number(window.screen?.availWidth) || Number(window.outerWidth) || 1280);
+  const availableHeight = Math.max(624, Number(window.screen?.availHeight) || Number(window.outerHeight) || 900);
+  const width = Math.max(640, Math.min(1180, availableWidth - 64));
+  const height = Math.max(560, Math.min(820, availableHeight - 64));
+  const originX = Number.isFinite(Number(window.screenX)) ? Number(window.screenX) : 0;
+  const originY = Number.isFinite(Number(window.screenY)) ? Number(window.screenY) : 0;
+  const outerWidth = Math.max(width, Number(window.outerWidth) || availableWidth);
+  const outerHeight = Math.max(height, Number(window.outerHeight) || availableHeight);
+  const left = Math.round(originX + Math.max(0, (outerWidth - width) / 2));
+  const top = Math.round(originY + Math.max(0, (outerHeight - height) / 2));
+  return `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+}
+
+function openStreamerStats(slug = currentChannelSlug()) {
+  const url = streamerStatsProfileUrl(slug);
+  if (!url) return false;
+  const popup = window.open('', 'kick-focus-streamer-stats', streamerStatsPopupFeatures());
+  if (!popup) {
+    showToast('The browser blocked the stats popup.', true, [{
+      label: 'Open tab',
+      onClick: () => window.open(url, '_blank', 'noopener,noreferrer'),
+    }]);
+    return false;
+  }
+  try {
+    popup.opener = null;
+    popup.location.replace(url);
+    popup.focus();
+  } catch {
+    try { popup.location.href = url; } catch { /* the toast still names the destination */ }
+  }
+  showToast(trf('Opened {channel} in StreamerStats.', { channel: slug }));
+  return true;
+}
+
+/** Mount the StreamerStats action inside Kick's channel-profile action row. */
+function ensureProfileStatsControl() {
+  const slug = currentChannelSlug();
+  const anchor = slug && document.querySelector('[data-testid="follow-button"], [data-testid="sub-button"], [data-testid="gift-sub-button"]');
+  const owner = anchor?.parentElement;
+  if (!slug || !anchor || !owner || state.root?.contains(owner)) {
+    state.profileStatsHost?.remove?.();
+    return false;
+  }
+
+  if (!state.profileStatsHost) {
+    const host = document.createElement('span');
+    host.id = 'kick-focus-streamer-stats';
+    host.lang = activeLocale();
+    host.dataset.kfProfileStats = 'true';
+    const shadow = host.attachShadow({ mode: 'open' });
+    setMarkup(shadow, `<button type="button" data-kf-profile-stats>${uiIcon('stats')}<span data-kf-profile-stats-label>Stats</span></button>`);
+    adoptStyles(shadow, PROFILE_STATS_CSS);
+    const button = shadow.querySelector('[data-kf-profile-stats]');
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openStreamerStats();
+    });
+    state.profileStatsHost = host;
+    state.profileStatsButton = button;
+  }
+
+  const host = state.profileStatsHost;
+  if (host.parentElement !== owner || host.previousElementSibling !== anchor) {
+    owner.insertBefore(host, anchor.nextSibling);
+  }
+  host.lang = activeLocale();
+  const label = host.shadowRoot?.querySelector('[data-kf-profile-stats-label]');
+  if (label) label.textContent = tr('Stats');
+  const accessibleLabel = trf('Open {channel} stats in StreamerStats', { channel: slug });
+  state.profileStatsButton?.setAttribute('aria-label', accessibleLabel);
+  state.profileStatsButton?.setAttribute('title', accessibleLabel);
+  return host.isConnected;
+}
 
 function headerQuickTarget() {
   const primary = document.querySelector('nav [data-testid="kicks-top-nav"], [data-testid="kicks-top-nav"]');

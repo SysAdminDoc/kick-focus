@@ -296,7 +296,13 @@ export const DERIVED_EXPECTATIONS = Object.freeze([
     id: 'cardSlug',
     probe: 'card',
     claim: 'a card yields a channel slug',
-    sample: (owner) => findAllProbe(owner, 'card').elements,
+    // Loading skeletons already carry the card test id but have no destination
+    // yet. They are nothing to derive from, not evidence that slug derivation
+    // broke. Judge only cards whose channel/category anchor has arrived.
+    sample: (owner) => findAllProbe(owner, 'card').elements.filter((card) => {
+      try { return Boolean(card.matches?.('a[href]') || card.querySelector?.('a[href]')); }
+      catch { return false; }
+    }),
     judge: (value) => typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value),
     // Only a clean sweep counts. A discovery page mixes channel cards with
     // category cards, and `cardSlugFromPath` returns '' for a category on

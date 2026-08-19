@@ -2,6 +2,22 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.28.0 — 2026-08-19
+
+### Added
+
+- **Channel profiles now open directly in StreamerStats.** A native-sized **Stats** action sits beside Follow on live and offline channel profiles. It validates the current Kick slug, opens the current `streamerstats.com/kick/channels/{channel}` analytics route in a centered 1180×820-or-smaller popup, reuses that popup as you browse channels, and gives a translated new-tab recovery action when the browser blocks popups. StreamerStats sends `X-Frame-Options: DENY`, so an in-page iframe would always fail; the compact popup is the working equivalent.
+
+### Changed
+
+- **The external handoff is explicit and bounded.** No StreamerStats request runs in the background, no permission was added, and no account token or Kick session is sent. The browser visits StreamerStats only after the viewer presses **Stats**, with the public channel slug in the destination URL; the popup severs its opener before navigation.
+
+### Fixed
+
+- **Theater mode now keeps the player and chat inside the available width.** Kick Focus sizes the outer chat column that actually participates in Kick's player/chat split, keeps its inner chatroom matched to that column, and constrains the reclaimed theater row instead of letting chat extend past the viewport.
+- **The live chat separator is manually adjustable again.** Dragging Kick's existing separator now changes both chat layers together from 320–520 px, updates its accessible value, saves the result, and reports the saved width without replacing Kick's control.
+- **Player status chips attach to the visible video.** Kick can keep hidden preload media beside the painted player; uptime, VOD retention, and playback diagnostics now prefer the video with real on-screen geometry instead of disappearing into a hidden media container.
+
 ## 1.27.0 — 2026-08-19
 
 ### Added

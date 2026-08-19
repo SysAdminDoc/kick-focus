@@ -342,8 +342,8 @@ const skipReasonsAreActionable = (source) => {
  *
  * Kick's document is `<html lang="en">` and `lang` inherits through the flat
  * tree into a shadow root, so a translated surface that does not say otherwise
- * is announced with English phonemes — WCAG 2.2 SC 3.1.2 (AA). There are four
- * hosts and it is the *fifth* one, added later by someone who did not know
+ * is announced with English phonemes — WCAG 2.2 SC 3.1.2 (AA). There are five
+ * hosts and it is the *sixth* one, added later by someone who did not know
  * this, that the gate exists to catch.
  */
 const hostsDeclareLanguage = (bundle) => {

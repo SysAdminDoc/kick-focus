@@ -451,7 +451,7 @@ try {
     };
     // Every host this build owns, so a translated surface that forgot to say
     // which language it is in shows up here rather than in a screen reader.
-    const hostLangs = () => ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control']
+    const hostLangs = () => ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control', 'kick-focus-streamer-stats']
       .map((id) => document.getElementById(id))
       .filter(Boolean)
       .map((host) => host.id + '=' + (host.getAttribute('lang') || ''));
@@ -1219,6 +1219,174 @@ try {
       ? `floating opened=${focusButton.floating?.opened}, header opened=${focusButton.header?.opened} (anchor ${focusButton.synthesised ? 'supplied' : 'already present'}), command menu never opened, quick action=${focusButton.action}`
       : focusButton.why);
 
+  // Kick's live channel markup puts the resizer and chatroom inside two nested
+  // wrappers. The outer wrapper is the flex item beside the player; sizing only
+  // the inner chatroom overflows that column and leaves the visible separator
+  // unable to change the forced width. Recreate that exact shape, enter Theater
+  // mode through the shipped control, and drag the real separator binding.
+  const chatLayoutProbe = await evaluate(pageClient, `(async () => {
+    const settle = (ms = 650) => new Promise((done) => setTimeout(done, ms));
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const beforeUrl = location.pathname + location.search + location.hash;
+    const beforeState = history.state;
+    const row = document.createElement('div');
+    const player = document.createElement('main');
+    const outer = document.createElement('div');
+    const split = document.createElement('div');
+    const separator = document.createElement('div');
+    const panel = document.createElement('div');
+    row.style.cssText = 'position:fixed;left:-3000px;top:0;width:1000px;height:600px;display:flex;overflow:auto';
+    player.style.cssText = 'flex:1 1 auto;min-width:0';
+    split.style.cssText = 'position:relative;display:flex;height:100%';
+    separator.setAttribute('role', 'separator');
+    separator.setAttribute('aria-label', 'Resize chatroom');
+    separator.setAttribute('aria-orientation', 'vertical');
+    separator.setAttribute('aria-valuemin', '280');
+    separator.setAttribute('aria-valuemax', '420');
+    separator.setAttribute('aria-valuenow', '340');
+    separator.setAttribute('data-testid', 'chat-resizer');
+    panel.id = 'channel-chatroom';
+    panel.style.height = '100%';
+    split.append(separator, panel);
+    outer.append(split);
+    row.append(player, outer);
+    document.body.prepend(row);
+    let initialWidth = 410;
+    let initialTheater = false;
+    try {
+      history.pushState({}, '', '/kf-layout-probe');
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+      initialWidth = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--kf-chat-width'), 10) || 410;
+      initialTheater = document.documentElement.dataset.kfTheater === 'true';
+      const ownerTagged = outer.dataset.kfChatPanel === 'true';
+      const innerTagged = panel.dataset.kfChatPanel === 'true';
+      const bound = separator.dataset.kfChatResizeBound === 'true';
+      const before = { owner: outer.getBoundingClientRect().width, inner: panel.getBoundingClientRect().width };
+
+      if (!initialTheater) {
+        shadow.querySelector('[data-kf-quick]')?.click();
+        shadow.querySelector('[data-action="command:theater"]')?.click();
+        await settle();
+      }
+      const theater = document.documentElement.dataset.kfTheater === 'true';
+      const expected = Math.min(520, initialWidth + 70);
+      const startX = separator.getBoundingClientRect().left;
+      separator.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX }));
+      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX - 70 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX - 70 }));
+      await settle(180);
+      const dragged = {
+        owner: Math.round(outer.getBoundingClientRect().width),
+        inner: Math.round(panel.getBoundingClientRect().width),
+        aria: Number(separator.getAttribute('aria-valuenow')),
+        css: Number.parseInt(document.documentElement.style.getPropertyValue('--kf-chat-width'), 10),
+      };
+      const bounded = row.scrollWidth <= row.clientWidth;
+
+      const restoreX = separator.getBoundingClientRect().left;
+      separator.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX }));
+      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX + expected - initialWidth }));
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX + expected - initialWidth }));
+      if (!initialTheater) {
+        shadow.querySelector('[data-kf-quick]')?.click();
+        shadow.querySelector('[data-action="command:theater"]')?.click();
+      }
+      await settle(180);
+      return { ok: true, ownerTagged, innerTagged, bound, before, theater, expected, dragged, bounded };
+    } finally {
+      row.remove();
+      history.replaceState(beforeState, '', beforeUrl);
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+    }
+  })()`);
+  const chatLayout = chatLayoutProbe.value || {};
+  record('Theater mode keeps the player/chat row bounded and the visible separator resizes both chat layers',
+    chatLayout.ok === true
+      && chatLayout.ownerTagged === true && chatLayout.innerTagged === false && chatLayout.bound === true
+      && chatLayout.theater === true && chatLayout.bounded === true
+      && Math.abs(chatLayout.before?.owner - chatLayout.before?.inner) <= 1
+      && Math.abs(chatLayout.dragged?.owner - chatLayout.expected) <= 1
+      && Math.abs(chatLayout.dragged?.inner - chatLayout.expected) <= 1
+      && chatLayout.dragged?.aria === chatLayout.expected
+      && chatLayout.dragged?.css === chatLayout.expected,
+    chatLayout.ok
+      ? `owner ${chatLayout.before?.owner}px / inner ${chatLayout.before?.inner}px; dragged both to ${chatLayout.dragged?.owner}px (aria ${chatLayout.dragged?.aria}, css ${chatLayout.dragged?.css}); bounded=${chatLayout.bounded}`
+      : chatLayout.why);
+
+  // StreamerStats refuses framing with X-Frame-Options: DENY, so the profile
+  // action must open a real popup. Supply a stable channel action row and stub
+  // window.open so this proves the URL, placement, security handoff, and popup
+  // feature string without opening an external site during the release gate.
+  const statsButtonProbe = await evaluate(pageClient, `(async () => {
+    const settle = (ms = 650) => new Promise((done) => setTimeout(done, ms));
+    const beforeUrl = location.pathname + location.search + location.hash;
+    const beforeState = history.state;
+    const beforeOpen = window.open;
+    const row = document.createElement('div');
+    row.style.cssText = 'position:fixed;left:-3000px;top:0;display:flex';
+    const follow = document.createElement('button');
+    follow.setAttribute('data-testid', 'follow-button');
+    follow.textContent = 'Follow';
+    row.append(follow);
+    document.body.prepend(row);
+    try {
+      history.pushState({}, '', '/xqc');
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      const host = await __kfWait(() => document.getElementById('kick-focus-streamer-stats'));
+      if (!host) return { ok: false, why: 'profile stats control never mounted' };
+      const button = host.shadowRoot?.querySelector('[data-kf-profile-stats]');
+      if (!button) return { ok: false, why: 'profile stats button missing from its host' };
+      const opened = {};
+      const popup = {
+        opener: window,
+        location: { replace(url) { opened.url = url; } },
+        focus() { opened.focused = true; },
+      };
+      window.open = (url, name, features) => {
+        opened.initial = url;
+        opened.name = name;
+        opened.features = features;
+        return popup;
+      };
+      button.click();
+      await settle(50);
+      return {
+        ok: true,
+        label: button.textContent.trim(),
+        aria: button.getAttribute('aria-label'),
+        sameRow: host.parentElement === row,
+        opened,
+        openerCleared: popup.opener === null,
+      };
+    } finally {
+      window.open = beforeOpen;
+      row.remove();
+      history.replaceState(beforeState, '', beforeUrl);
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      await settle();
+    }
+  })()`);
+  const statsButton = statsButtonProbe.value || {};
+  record('the channel profile Stats button opens the exact StreamerStats profile in a centered popup',
+    statsButton.ok === true
+      && statsButton.label === 'Stats'
+      && statsButton.aria === 'Open xqc stats in StreamerStats'
+      && statsButton.sameRow === true
+      && statsButton.opened?.initial === ''
+      && statsButton.opened?.name === 'kick-focus-streamer-stats'
+      && statsButton.opened?.url === 'https://streamerstats.com/kick/channels/xqc'
+      && /(?:^|,)popup=yes(?:,|$)/.test(statsButton.opened?.features || '')
+      && /(?:^|,)resizable=yes(?:,|$)/.test(statsButton.opened?.features || '')
+      && /(?:^|,)scrollbars=yes(?:,|$)/.test(statsButton.opened?.features || '')
+      && statsButton.opened?.focused === true
+      && statsButton.openerCleared === true,
+    statsButton.ok
+      ? `label=${JSON.stringify(statsButton.label)}, aria=${JSON.stringify(statsButton.aria)}, same row=${statsButton.sameRow}, popup=${JSON.stringify(statsButton.opened)}, opener cleared=${statsButton.openerCleared}`
+      : statsButton.why);
+
   // Hiding a Kick control, driven the way a user drives it: the chip in the
   // settings panel, not a direct write to the settings store. That is what puts
   // the whole chain under test at once — the click handler, normalization, the
@@ -1894,6 +2062,7 @@ try {
         const withAnchor = cards.filter((card) => card.matches('a[href]') || card.querySelector('a[href]')).length;
         const withActions = cards.filter((card) => card.querySelector('[data-kf-card-actions]')).length;
         if (!cards.length) return { skip: 'Kick rendered no discovery cards on this route' };
+        if (!withAnchor) return { skip: 'Kick kept discovery cards in loading-skeleton state; rendered count: ' + cards.length };
         return { ok: false, why: 'no chip after waiting: ' + cards.length + ' cards in main, ' + withAnchor + ' carrying an anchor, ' + withActions + ' carrying our action row' };
       }
       const slug = chip.dataset.kfCardSlug;

@@ -47,6 +47,7 @@ import {
   toggleStickerFavorite,
   moveStickerFavorite,
   routeKind,
+  streamerStatsProfileUrl,
   sanitizeDiagnosticUrl,
   validateRemoteBlocklist,
   validateImportedSettings,
@@ -1439,6 +1440,14 @@ test('route classifier covers every audited desktop surface', { tag: 'unit' }, (
   assert.equal(routeKind('/search?query=music'), 'search');
   assert.equal(routeKind('/lordkebun'), 'channel');
   assert.equal(routeKind('/creator-dashboard'), 'other');
+});
+
+test('StreamerStats profile links accept channel slugs and reject path injection', { tag: 'unit' }, () => {
+  assert.equal(streamerStatsProfileUrl('xQc'), 'https://streamerstats.com/kick/channels/xQc');
+  assert.equal(streamerStatsProfileUrl('channel_name-2'), 'https://streamerstats.com/kick/channels/channel_name-2');
+  assert.equal(streamerStatsProfileUrl('../login'), '');
+  assert.equal(streamerStatsProfileUrl('channel/name'), '');
+  assert.equal(streamerStatsProfileUrl(''), '');
 });
 
 test('ad hosts and optional telemetry are separated from first-party playback', { tag: 'unit' }, () => {
