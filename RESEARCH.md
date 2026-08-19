@@ -1,125 +1,251 @@
 # Research — Kick Focus
-Date: 2026-08-18 — replaces all prior research (prior passes: 2026-08-15 v1.5.0, 2026-08-16 v1.9.0, 2026-08-17 v1.20.0).
 
-**This pass is a re-verification and a correction.** The repository is unchanged since the 2026-08-17 pass — same HEAD (`a1143a4`), clean tree, v1.20.0, R-38..R-57 undrained. So this pass spent its effort on the two things the 2026-08-17 pass could not do: it re-ran the live gate four times (and answered its own Open Question #1 with direct DOM measurement on live Kick), and it ran the competitor sweep that was budget-blocked. Both produced material corrections, recorded below.
+Date: **2026-08-19** — replaces all prior research.
 
-## Executive Summary
+## Executive summary
 
-Kick Focus at v1.20.0 is a zero-dependency, single-author kick.com client mod (123 commits) building four artifacts from one concatenation of seven ES modules — userscript, MV3 Chromium, MV2 Firefox, two zips — with no bundler, no `node_modules`, no lockfile. Shadow-DOM settings centre (~90 settings), schema-8 emote library in IndexedDB behind a scored storage provider, nine-tile on-origin multi-stream grid, page-realm + DNR ad defence, same-origin session-inherited reads, es/pt localization. **HEAD is releasable right now:** `npm run release:check` passes 55/55 at 1440×900 and 55/55 at 1920×1080, exit 0 (2026-08-18).
+Kick Focus v1.26.0 is already a broad, privacy-preserving Kick client mod: roughly 90 settings, three dark themes, four accents, five settings pages, content filters, player memory, local chat tools, a first-party emote library, live entitlement filtering, daily-reward automation, local diagnostics, and a nine-stream on-origin grid. The build has no runtime dependencies, no tracking, no account system, and no third-party emote federation. That posture is more valuable after this pass, not less.
 
-**Correction to the 2026-08-17 pass — read this first.** That pass filed a P0 stating that card actions (favourite, not-interested, add-to-grid) "render nothing on Kick's Home route," and recorded it as a second instance of silent feature death. **It was a false positive.** On identical code, 2026-08-18: the live gate passes 54/54 on `https://kick.com/`, and direct measurement on live Kick shows **42 of 42** Home cards carry an `<a href>` yielding a valid channel slug through the real `cardPath()` → `cardSlugFromPath()` path, with card nodes **stable across 10 seconds** with injected children intact (so no Kick re-render, and no user-visible flicker). The defect was in the *probe*, not the product. The cost of that error was one full research pass, which is why the gate's determinism is now the top item.
+The signed-in investigation changes the product direction in four material ways:
 
-Top opportunities, in priority order:
+1. **Native Kick gives viewers almost no control.** Its entire Preferences page exposed three category switches in the audited account: Pools/Hot Tubs, Slots/Casino, and VR Chat. Kick Focus should own the calm, legible, personalized viewing layer rather than imitate Kick's sparse account settings.
+2. **Kick's viewer progression is fragmented.** Level progress and streak live in the account menu; Daily Rewards use a separate modal; channel points are channel-scoped; collectibles and Drops are separate routes. A read-only, progressively enhanced Viewer Hub is the clearest signed-in opportunity.
+3. **The competitive bar moved.** Mo'Kick now reports 40,000 Chrome users and bundles chat history/search/stats, message actions, moderation tools, notes, player filters, recording, downloads, giveaways, and games. PureKick reports 20,000 users and focuses on ad blocking, themes, chat badges, and Drops. Kick Focus cannot win by accumulating the longest feature list. It can win on calm customization, accessibility, transparent limits, local-first data, and a coherent settings experience.
+4. **The authenticated emote catalog is the safest high-value data source already in the product.** The current API path returns the account's owned sets and usable-anywhere reach. The next release should turn that data into a real My Emotes view instead of only using it behind autocomplete and diagnostics.
 
-1. **The live gate is non-deterministic, and that is release-blocking.** `scripts/verify-extension.mjs` has **42 `{ok:false, why:'…'}` bail-out sites**, the great majority reached from a single unwaited `document.querySelector`; **exactly one** probe in the file (apply-cost, `:404`) first forces the mod to paint by poking the DOM in a loop and settling before it reads. The chip probe (`:1376`) is in the first group. Same check, same code: FAIL on 2026-08-17 reporting "27 cards scored", PASS on 2026-08-18 reporting "627 cards scored". `release-checklist.mjs:44-48` runs the live gate twice and `process.exit`s on the first non-zero, so any one flaky probe blocks a release. (R-38, reframed. P0. Verified.)
-2. **The gate reports route-shaped absence as FAIL for some probes and SKIP for others.** Reproduced 2026-08-18 against `/browse`: 50/54, four failures that are not defects (`library is empty on this profile` ×3, `no video on this route`) while the Poor-mode probe on the same run correctly SKIPs with a reason. Classification of the 42 bail-outs: **5 precondition-shaped** (should skip), **14 boot/paint-shaped** (`no shadow host` — should wait, then assert), 1 chip paint race, remainder genuine. R-38 and R-39 are one design change with three outcomes: wait-then-assert, skip-with-reason, fail. (R-39. P0. Verified.)
-3. **v1.20.0 is built, committed and releasable but untagged and unreleased**, and `README.md:147` claims "51/51 live checks pass … (2026-08-16)" against a gate that now runs 54–55. Nothing in `scripts/check.mjs` guards that number, which is why it drifted. Note the naive fix is wrong: static `record(` call sites number **56** while the runtime total is **54**, because some probes sit in route-dependent branches. (R-40. P0. Verified.)
-4. **`@updateURL` is unwired into an uncontested distribution tier.** Greasyfork lists **82 kick.com userscripts**, and the highest-installed genuinely Kick-specific one has **603 installs**; the list is entirely single-purpose scripts (at least seven separate "force 1080p" scripts, four auto-claim-drops, three volume-on-scroll). **There is no comprehensive Kick client mod on Greasyfork at all.** Combined with the repo now being public, this is the single largest reach gap. (R-45. P1. Verified.)
-5. **The translated interface carries no `lang` on any of its four shadow hosts** — `kick-focus-root` (settings, toasts, live region), `kick-focus-emote-complete`, `kick-focus-emote-tooltip`, `kick-focus-header-control`. Selecting Español or Português localizes ~200 strings inside Kick's `<html lang="en">`; WCAG 2.2 SC 3.1.2 *Language of Parts* (AA) failure on the one product in this space that ships an accessibility page. (R-41. P1. Verified.)
-6. **The Firefox package hands kick.com a per-install supercookie.** `manifest.firefox.json` declares `web_accessible_resources: ["content/kick-focus.js"]` and `bridge.firefox.js:19-21` injects it by `src`, putting `moz-extension://<per-install-UUID>/…` in the page. MV3 is unaffected (`world: "MAIN"`, no web-accessible resources). Confirmed viable mitigation: kick.com enforces **no** Trusted Types and `innerHTML` does not throw (measured live 2026-08-18, Chrome 151), so inline injection works today. (R-42. P1. Verified.)
-7. **Ad-blocking is a durable moat, not a race — and this is now verified from filter source rather than issue threads.** kick.com appears exactly three times across uAssets, none of them video-ad rules: a 1p analytics-script rule in `privacy.txt`, `kick.com##+js(no-fetch-if, litix.io)` in `resource-abuse.txt`, and an unrelated third-party embed rule. AdGuard #237440 shows `closed as completed` via API but reading it shows the maintainer's last word was "Did you try US VPN?" — **no rules shipped**. The reason is structural: SSAI on Amazon IVS puts ad segments in the same manifest from the same host, so there is no request for a declarative rule to match. Declarative blockers cannot commoditise this. (No item; positioning. Verified.)
-8. **Kick deletes endpoints without warning, and nothing in the gate would catch it.** Kick removed `/api/v1/video/:livestream_id` entirely in July 2026, breaking NipahTV's VOD pages — its latest commit is the firefight. Kick Focus's drift gate covers **DOM probes only**; `kickFetchJson` degrades correctly (`src/live.mjs:158`) and `recordApiDrift` (`:202`) records into a bounded diagnostics list, but no automated check asserts the endpoints the mod reads still answer. (R-58, new. P1. Verified.)
-9. **Document PiP, `setHTML`, anchor positioning and popover are all live in the shipping target** — measured directly on kick.com in Chrome 151 (2026-08-18), not inferred from Baseline tables. Document PiP is the largest capability unlock for a multi-stream mod and no Kick competitor ships it. (R-52/R-53/R-54. P2/P3. Verified.)
-10. **VOD retention/download is a confirmed unserved cluster.** Kick keeps VODs 7 days (unverified) / 30 (verified) with no download for anyone including the broadcaster. Demand is measurable: vidbee-quick-download at 1,047 Greasyfork installs, a CWS "Kick & Twitch VOD Downloader", three separate VOD auto-resume scripts. (R-49. P2. Verified.)
+The best next milestone is therefore a cohesive viewer-personalization release: My Emotes, visual presets and custom accent control, signed-in progress surfaces that only show evidence actually available, quieter account/settings routes, and disclosure that Picture-in-Picture viewing does not earn channel points. Chat-history and player-tooling ideas should follow only behind bounded, local-only storage and explicit resource budgets.
 
-## Product Map
+## Method
 
-**Core workflows.** Restyle and focus modes over Kick's desktop DOM (14 named Kick controls hideable by CSS only, `src/core.mjs:127`); a schema-8 platform-prefixed emote library in IndexedDB behind a priority-scored provider (`src/storage.mjs`) fed by the native picker, live chat frames, the channel catalog and on-demand browsing, with favourites, groups, provenance, usage-ranked shelves, windowed rendering, colon autocomplete (mouse-accept only), hover card and Copy/Type; entitlement stated rather than inferred from an authenticated `/emotes/{slug}` read (`src/api.mjs:557-569`); a ≤9-channel on-origin grid of Kick's own embeds with cross-tab convergence and shareable `?kf-multi=` links; page-realm hooks plus DNR (block-action only, `initiatorDomains:["kick.com"]`, no `modifyHeaders` — verified against `dist/extension/rules/ads.json`); quality memory, uptime chip, opt-in daily-reward auto-claim.
+This pass combined four evidence sources:
 
-**Personas.** Privacy-and-calm desktop viewer; emote collector / power-chatter; multi-channel viewer. No mobile, no auth flows, no writes beyond an explicit follow-gate and Kick's own claim button.
+- **Repository inspection:** all source modules, settings schema, API paths, tests, build scripts, docs, current roadmap, and the last ten commits at v1.26.0.
+- **Authenticated journey capture:** Kick Home, Browse, Following, Search, a live channel with chat, native emote picker, Daily Reward, account menu, Profile, Preferences, Notifications, and Drops on 2026-08-19. The account was used read-only except for one accidental single-emote send caused by an unlabeled dynamic chat control; no account setting or stored content was changed.
+- **Official platform research:** Kick's current viewer help for discovery, chat, profiles, controls, notifications, ads, rewards, points, level badges, predictions, subscriptions, gifts, clips, and moderation.
+- **Competitive and standards sweep:** major Kick extensions and multiview products, community requests, Chrome extension guidance, and WCAG 2.2.
 
-**Platforms & distribution.** Desktop Chromium (userscript + MV3) and desktop Firefox (userscript + MV2). Node ≥24.19. Public MIT repo `SysAdminDoc/kick-focus`, `main` protected, no CI by policy, releases v1.14.0–v1.19.0, 0 stars, **no store or catalog listing** — the userscript is the only artifact reaching Windows/macOS users unassisted, and it has no update channel. `@match` covers both `kick.com` and `www.kick.com` (`src/metadata.txt:7-8`), which is the exact class of bug 7TV has had open since 2026-02-21 (#1204).
+Confidence labels below mean: **Verified** = observed in current source, current signed-in UI, or a primary source; **Likely** = supported by multiple current signals but not exercised end-to-end; **Hypothesis** = valuable idea whose data path or user demand still needs validation.
 
-**Key data flows.** 12 registered stores (`STORAGE_STORES`, `src/core.mjs:2663`) across localStorage/GM and IndexedDB; page↔isolated-world DOM-event bridge with a nonce presence handshake; realtime WebSocket; same-origin `/api/v2` reads carrying the page's own `session_token` as a bearer on Kick origins only.
+## Current product map
 
-## Competitive Landscape
+### What Kick Focus already does well
 
-Swept 2026-08-18 unless noted. Install counts and dates are as measured that day.
+- **Customization:** Studio/OLED/Slate themes, Kick/lavender/rose/gold accents, density, radius, thumbnail shape, interface scale, text size, contrast, watched-card dimming, live-card colorization, rail behavior, wide grid, chat side/width, and stream start position.
+- **Focus and content control:** fourteen native controls can be hidden; category/channel blocklists; mature-content blur; promotion, Drops, casino, autoplay, telemetry, and ad-container suppression; a Poor mode and panic recovery.
+- **Playback:** volume and quality memory, best-quality preference, VOD position memory, uptime and VOD-retention indicators, mini-player collision handling, and resize recovery.
+- **Chat comfort:** local highlights and notes, sticky pause, name insertion, autocomplete, favorites, clickable emotes, entitlement-aware suggestions, live badges, deletion annotations, and bounded local diagnostics.
+- **Emotes:** IndexedDB library, favorites, groups, import/export, windowed picker, ranked shelves, colon suggestions, ownership/reach modeling, rarity and usage metadata, and static-emote fallback.
+- **Multiview:** up to nine same-origin Kick streams, shareable layout, cross-tab convergence, read-only merged chat, and popout chat.
+- **Trust:** no analytics, no remote code, no proprietary account, same-origin session-inherited reads, local export/import, zero runtime dependencies, and restrained extension permissions.
 
-- **PureKick** (CWS, v10.2.1, 2026-08-15, **20,000 users, 4.8/405**) — *does well:* the only Kick ad blocker with real scale, plus themes, chat badges and Drops notifications. *Learn:* it ships on a roughly two-day cadence — in-stream ad defence is a maintenance treadmill, not a build-once feature, and Kick Focus should budget for that rather than treat its `/playback` path as done. *Avoid:* it advertises "no pre-roll, no mid-roll", a claim SSAI makes very hard to keep honest. Kick Focus's `README.md:155` already says plainly that it *cannot* remove in-stream ads — keep that discipline; it is a differentiator, not a weakness.
-- **`Pkkls/kick-ad-blocker`** (GitHub, WIP, 2026-08-03, 3 stars) — **the closest architectural twin.** Stubs `window.googletag` in the MAIN world, rewrites the IVS `/playback` response with ad flags forced to zero, scrubs SCTE-35 from the manifest, mutes/seeks breaks that still fire, and is es/pt localised. *Learn:* the technique Kick Focus treats as its edge is public; the moat is completeness, gates and posture, not the trick. *Avoid:* nothing yet — it is too early to have made mistakes.
-- **7TV** (`SevenTV/Extension`) — **correction to prior research.** Earlier passes recorded "no tagged stable since v3.1.6 (2025-03-04), an unversioned nightly against a 2026 site — an opening for a maintained alternative." That is **wrong**: 7TV ships **v3.1.25 to AMO on 2026-07-31 with 160,220 daily users** (plus a second `7tv-new` listing at 58,221), and that build's notes are literally "Fixed Kick Emote Menu position." Its Kick module lives at `src/site/kick.com/`. *Learn:* the "abandoned incumbent" opening does not exist; compete on posture (read-only, same-origin, no federation) and on the grid/accessibility axes instead. *Avoid:* its open Kick bugs are selector-drift (#1220 after a Kick UI change, #1218 chat DOM) and #1204 apex-vs-`www` — all three are classes Kick Focus already defends against.
-- **NipahTV** (`Xzensi/NipahTV`, last commit 2026-07-29, 24 stars, 68 open issues) — *does well:* 7TV/BTTV/FFZ emote-provider integration, native-parity slow mode, VOD chat replay. *Learn:* **zero GitHub Releases and stale tags (v1.2.1/v1.3.2/v1.3.6) against a 1.5.x codebase** — a maintained project can still be undiscoverable and un-updatable, which is precisely Kick Focus's current position; and its latest commit is a firefight over Kick deleting `/api/v1/video/:livestream_id`, the direct evidence for R-58. *Avoid:* letting releases drift from the codebase (R-40).
-- **KickTalk** (`KickTalkOrg/KickTalk`, Electron, v1.1.3 2025-06-10, **122,274 downloads**) — *does well:* by far the largest install base in Kick tooling, and reply threads. *Learn:* effectively dormant since mid-2025 yet still the most-installed thing in the space — distribution beats iteration. *Avoid:* Electron; different category, and a dependency posture Kick Focus explicitly rejects.
-- **Kickplex** (CWS, v1.1.4 2026-06-09, **144 users, 0 ratings**) — **the closest multi-stream competitor.** *Does well:* 8 streams, drag-to-swap tiles, unified tabbed chat with an emote picker and recents, DVR rewind, in-grid moderation with slash commands, `M` to solo audio, 8 languages. *Learn:* it is feature-richer than Kick Focus's grid on chat unification and rewind, and has **no ad blocking and no accessibility work** — the two axes Kick Focus owns. Its 144 users after two months also show that grid features alone do not win. *Avoid:* nothing technical; the lesson is that a rich grid with no distribution is invisible.
-- **Kickerino** (`CarlBraun/Kickerino`, v1.37 2026-08-16) — *learn:* releasing near-daily with single-digit downloads. It remains the best early-warning system for Kick API churn; watch its commits rather than its features.
-- **MultiKick / kickmultistream.com / Streams Charts grid** — *learn:* a Greasyfork script exists purely to bridge Kick to MultiKick (38 installs, 2026-05-25), which is direct evidence that the off-origin split is felt as friction. Kick Focus's on-origin grid is the right architecture. *Avoid:* the off-origin model.
-- **Kick Quality Enforcer** (CWS v3.0.2, 2026-04-13, 1,000 users, 3.8/14), **Mo'Kick** (AMO, 901 daily, 2026-08-16), **uKick** (92 daily), **AeroKick** (95 daily) — *learn:* the AMO enhancer tier is small and fragmented; nobody holds it. Quality persistence remains the most re-implemented single need.
-- **Greasyfork, as a whole** — 82 kick.com userscripts; top genuinely-Kick-specific entry is 603 installs; the rest are single-purpose (seven "force 1080p", four auto-claim-drops, three volume-on-scroll, "Kick Third-Party Emotes" 51, "Kick Emote Picker" 81, "Kick Chat Flusher" 84). *Learn:* every one of these is a feature Kick Focus already bundles, and the tier has no comprehensive entrant. This is the strongest distribution argument in the research.
-- **FrankerFaceZ** (v4.82.0, last commit 2026-08-14; source read 2026-08-18) — *does well:* the settings model Kick Focus is closest to needing. Its **search is not an index** — `src/modules/main_menu/index.js` (~640-810) precomputes per-setting `search_terms` = `[key, translated title, translated description, ...getExtraTerms()]`, each stripped of HTML and lowercased, joined by newline; every container concatenates its children's blob **and walks up the parent chain appending to every ancestor**, so one substring test against a page's blob says whether anything beneath it matches and the tree prunes in a single pass. When `locale !== 'en'` it also indexes the untranslated English strings, so English keys still find a localized setting. `getExtraTerms()` is the synonym escape hatch (the storage-provider setting registers `['storage','local','indexeddb','localstorage']`). This is the whole design for R-48, and it needs no dependency. *Learn also:* its provider hierarchy selects by descending priority then **first provider that `hasContent()`** — precisely because localStorage can be wiped while IndexedDB survives, which is the failure `src/storage.mjs` also guards. *Avoid:* the addons.json dynamic-script loader (remote code), and FFZ's own distribution shape — **0 GitHub Releases, one tag, ships from its own CDN**, the same discoverability trap Kick Focus is in.
-- **BetterTTV** (v7.7.25, released 2026-07-16; source read 2026-08-18) — *does well:* two cheap patterns worth stealing outright. `TempValue` — `set(id, value, temporary)` lets the session see a new value while the *prior* value is what persists, i.e. "try this for now" with no commit. And bitflag settings stored as `[value, changedBits]` so the code can distinguish "the user explicitly chose this" from "this is still the default" when new flags are added later — directly useful to R-51's "call out any setting whose default changed". *Learn:* BTTV has **no settings search at all** (verified by reading its settings module and component list), so FFZ is the only precedent in the field. *Avoid:* its storage is 76 lines of `localStorage` + cookie fallback with no migration between backends — the thing `src/storage.mjs` already does better.
-- **Chatterino2** (v2.5.5, 2026-03-22) — *learn:* its tab-completion case-collision bugs (#1962/#3440) are the tests `rankEmoteCompletions` was written against. Its filter DSL is a hand-rolled recursive-descent parser with static type synthesis before execution and 38 exposed identifiers — impressive, dependency-free, and **out of proportion to Kick Focus's need** (see Rejected). The transferable part is not the language: it is `ChannelFilterEditorDialog`, a guided builder that emits filter text so the raw syntax stays optional, and `filterString()` on every AST node so a GUI-built filter and a hand-typed one are the same artifact. *Avoid:* the Lua runtime (remote code), and its own documented wart — filter-builder labels must be globally unique because the dialog depends on `std::map` ordering.
-- **viewgrid.tv / streamgrids.tv / multitwitch.tv / multistre.am / kicktheater.com** (probed 2026-08-18) — *does well:* viewgrid is the strongest multi-stream competitor found — **up to 20 streams**, presets of 1/2/4/6/8/12, **Kick + Twitch + YouTube + Rumble mixable in one grid**, works on mobile with native apps, and it markets itself as a "MultiKick alternative" on the premise that "Kick doesn't have its own multistream mode." streamgrids.tv offers resizable multiview with Kick support and keeps chat beside the *active* stream. *Learn:* every one of them starts all streams muted and requires per-tile unmute — the same invariant Kick Focus's grid already enforces; and **chat is the universal weak point**, with no good Kick chat embed, so third parties fall back to an unofficial relay (`chat.kick.cx`). Kick Focus using Kick's own popout chat on-origin sidesteps the problem the whole field has. *Avoid:* the off-origin model — and note the decisive gap: **every multi-stream tool surveyed is a separate site; none runs on-origin inside kick.com.** Kick Focus's grid occupies a niche nobody else is in, made feasible because Kick's player embed appears to require no Twitch-style `parent=` domain allowlist (Likely — corroborated by two secondary sources, not confirmed against live headers).
+### Primary personas
 
-## Security, Privacy, and Reliability
+1. The calm viewer who wants less visual noise and fewer promotions.
+2. The power chatter who collects, searches, and reuses emotes.
+3. The multistream viewer following several live channels.
+4. The accessibility-conscious viewer who needs stronger contrast, focus, targets, motion control, or larger text.
 
-- **[P1] Firefox MV2 extension-UUID leak (Verified).** `src/extension/manifest.firefox.json` + `src/extension/bridge.firefox.js:19-21`. The UUID is per-install, permanent, readable by any kick.com script, and survives cookie clears. Removing the element on load (`:22`) does not help — the URL is already in the DOM and in `performance.getEntriesByType('resource')`. MV3's `use_dynamic_url` has no MV2 equivalent. The inline-injection mitigation is confirmed viable today: measured live on kick.com 2026-08-18 (Chrome 151), there is no meta CSP, `trustedTypes.createPolicy` succeeds, and `innerHTML` does not throw — so `require-trusted-types-for 'script'` is not enforced. Document that dependency. (R-42.)
-- **[P1] No `sender` validation on runtime messages (Verified).** `src/extension/background.js:33`, `src/extension/background.firefox.js`. Defence-in-depth given no `externally_connectable` and one content script. Documented ceiling: a compromised renderer can spoof `MessageSender.id`/`.url`. (R-43.)
-- **[P1] No automated check that the endpoints the mod reads still exist (Verified).** Kick deleted `/api/v1/video/:livestream_id` in July 2026 and broke a competitor outright. `kickFetchJson` (`src/live.mjs:143`) returns `{ok:false, status}` for any non-ok and preserves the status, and `recordApiDrift` (`:202`) records into a bounded list surfaced in diagnostics — so the mod degrades correctly and *notices*. What is missing is anyone being told: a permanent 404/410 is indistinguishable from a transient 429 in the gate, because the gate asserts DOM probes only. (R-58.)
-- **[Verified, no action] DNR discipline holds.** `dist/extension/rules/*.json` are `{"type":"block"}` only with `initiatorDomains:["kick.com"]`; no `modifyHeaders` anywhere. DNR CSP-stripping remains the most consistent malicious signature in 2025–2026 extension compromises.
-- **[Verified, no action] The telemetry strategy is correct and externally validated.** uBO #33860 (2026-07-27) measured **139,182 blocked requests to `litix.io` in one session**, and uBO's own answer is a scriptlet (`kick.com##+js(no-fetch-if, litix.io)`), not a hard cancel — exactly the empty-200 approach `src/runtime.js:307-310` already takes.
-- **Distribution-channel takeover remains the dominant 2026 threat** (inherited, 2026-08-17 pass): Dec 2024 CWS OAuth phish, Feb 2025 compromised-developer campaign, **Feb 2025 Greasy Fork inactive-account takeover** that injected payment-scraping code into two live userscripts, ShadyPanda (Dec 2025), QuickLens ownership transfer (Feb 2026). This is the counterweight to R-45: wiring `@updateURL` points a channel at end-user machines.
-- **Reliability, unchanged and healthy.** Transactional import that refuses a forward schema (`src/core.mjs:1956`); reset keeps the library and clears the registry; export derives from `STORAGE_STORES`; storage provider falls back cleanly when IndexedDB refuses. Offline gate: 159 checks + 38 red probes, 208 tests, all green 2026-08-18.
-- **Observability is adequate and deliberately local (no action).** Error log with copy action (`src/runtime.js:7264`), last-crash summary, per-cycle apply cost, protection log, live-read diagnostics; `sanitizeErrorMessage()` (`src/core.mjs:802`) strips query strings and tokens. Nothing transmitted — which is also what clears the CWS Limited Use rule without changes.
-- **Multi-user is not a concept here and should not become one (no action).** Per-profile state, no accounts, no sync; export/import over all 12 stores is the correct portability mechanism.
+### Current product risk
 
-## Architecture Assessment
+The settings schema is already large. Adding isolated toggles without improving discoverability would make the extension harder to use. New customization should arrive as understandable presets, contextual summaries, and progressively disclosed advanced controls. Every signed-in surface must remain partial-data-safe: absent account data is not an error and must never be guessed.
 
-1. **The live gate's outcome model is the highest-leverage fix in the repo.** `record()` (`scripts/verify-extension.mjs:137`) has two outcomes; the file needs three, and the distinction is already visible in its own `why` strings — 5 precondition-shaped, 14 boot/paint-shaped (`no shadow host`), the rest genuine. One probe (`:404`) already demonstrates the wait pattern by poking the DOM and settling; generalising it is mechanical. This one change retires R-38 and R-39 together and is what stops the gate producing phantom P0s.
-2. **The drift gate covers DOM and not API.** `compatibilitySnapshot()` (`src/compatibility.mjs:242`) asserts probes resolve. Nothing asserts an endpoint still answers, which is the failure mode that took NipahTV's VOD pages out. (R-58.)
-3. **`runtime.js` grew back past the split.** 9,243 lines; the v1.17.0 refactor took it 9,012 → 7,988 and six releases refilled it. `CLAUDE.md:9` still says "~7,990 lines". Next seams: the settings renderer (~`:6760-7400`) and the emote library/organizer, both pure enough for the `host` factory pattern `live.mjs`/`multistream.mjs` already use.
-4. **`live.mjs` is the least-covered module** — 57.34% lines / 48.72% functions. Uncovered: `connectRealtime` (`:381-442`), `onRealtimeFrame`/`onRealtimeChatMessage` (`:453-496`), badge queue/render/replay (`:543-606`), deletion annotation (`:620-650`). It was extracted behind a `host` factory precisely to be testable; the realtime half never was. (R-47.)
-5. **No artifact-size budget.** `dist/kick-focus.user.js` is 763,775 B, up ~25 KB per release (612,899 at v1.14.0), against Violentmonkey's ~1 MB advisory ceiling for MV3 Alternative page mode. 159 checks and none measures a byte. (R-44.)
-6. **Numbers in docs that no gate owns will drift.** `README.md:147`'s "51/51" is the live instance. Note the trap for a naive fix: static `record(` call sites (56) ≠ runtime total (54). (R-40.)
+## Signed-in viewer journey audit
 
-**Docs drift.** `README.md:147` (stale check count); `CLAUDE.md:9` (line count); `Roadmap_Blocked.md` carries two items whose blockers no longer exist (repo public — verified `"visibility":"PUBLIC"` 2026-08-18; Firefox 153.0.3 installed).
+### Home
 
-## Rejected Ideas
+**Verified.** The page combines a large featured player, live chat, left navigation, recommendations, and dense card rows. Visual hierarchy is weak because several regions compete at full intensity. Kick Focus already has most of the raw controls to make this calmer; the opportunity is packaging them into one-click modes such as Calm, Cinema, Chat First, and Discovery.
 
-- **Attempting to strip Kick's in-stream ads.** SSAI on Amazon IVS puts ad segments in the same manifest from the same host; the opt-out lives in a server-signed playback token and the manifest is parsed in an opaque WASM worker. `README.md:155` already says so. (Verified from uAssets filter source + `oguzhan18/kick-ad-blocker`'s README, which states the limit outright.)
-- **Waiting for uBO/AdGuard to cover Kick and deferring to them.** They cannot — see above. Confirmed by grepping the live uAssets lists, not by reading issue titles: AdGuard #237440 reports `closed as completed` via the API while its last substantive comment is "Did you try US VPN?".
-- **A light theme.** Kick is dark-only; a light shell would fight the host site everywhere it does not fully cover.
-- **Storage Buckets, Region/Element Capture, `interestfor`, scroll-driven animations, cross-document view transitions, `speculationrules`, LoAF.** Each Chromium-only or Firefox-Nightly-only as of 2026-08; none earns a divergent path in a two-engine target. Mozilla's position on Element Capture is explicitly negative.
-- **`chrome.userScripts` as an injection route.** Mozilla's 2026-04-30 policy restricts the API to script-manager extensions only.
-- **An OAuth app against Kick's public API.** Replaces "the session the browser already has, same-origin, read-only" with "a token, talking to Kick as itself" — strictly worse posture for the same data, and Kick's developer terms bar apps that interfere with ads.
-- **A plugin/add-on system.** Every mechanism that makes third-party code loadable is remote code by another name; FFZ's addons.json loader is the cautionary example.
-- **Third-party emote federation (7TV/BTTV sets).** NipahTV's main differentiator, and a direct conflict with the same-origin posture. Ship as a documented decision, not silence.
-- **`Element.setHTML()` as a replacement for the Trusted Types policy** (was ROADMAP R-53). The premise held — it is in both target engines — but the conclusion did not. Measured against Chrome 151 on 2026-08-18 with a representative slice of the settings UI: the default configuration removed **all 39 attributes** (`class`, `id`, `data-*`, `aria-*`, `role`, `src`, `type`, `value`) and dropped `<button>`, `<input>`, `<select>`, `<option>`, `<label>`, `<img>` and `<span>` outright — 27 elements in, 15 out, zero `data-set` bindings, no `data:` brand mark. It is a sanitiser for untrusted documents, not a filter for application-authored UI. A custom `Sanitizer` config would work and would have to allow-list every element and attribute the interface already uses — a second list that rots with every new control, buying only protection against `<script>` and event-handler attributes that `escapeHtml` already prevents from being constructible. What the attempt did leave behind is worth keeping: markup now reaches the DOM through a single `setMarkup` chokepoint, gated at exactly one `innerHTML` write per bundle, so adopting a sanitiser later is a one-function change.
-- **A Chatterino-style message filter DSL.** Its implementation (`src/controllers/filters/`, read 2026-08-18) is a tokenizer + recursive-descent parser + static type synthesis over 38 identifiers — genuinely dependency-free, and genuinely XL. Kick Focus's keyword filters plus Custom Highlight painting already cover the common case, and a typed language contradicts "comprehensive within scope, no unrequested features." The transferable piece is the guided builder, which has nothing to build without the language. Revisit only if users ask for boolean/regex chat rules by name.
-- **Third-party settings providers** (`window.ffz_providers`). FFZ exposes an array external code can push provider constructors into before init, then `Object.seal()`s it. Elegant, and it is an extension point for remote code by another name — the same reason the plugin system is rejected.
-- **Full list virtualization** for the picker/organizer — superseded by the v1.17.0 windowed renderer (240 of 900 tiles measured live).
-- **Additional locales beyond es/pt.** No demand evidence found; the correct next i18n work is making the two existing ones programmatically announceable (R-41).
-- **Mobile support.** Explicitly deferred in `ROADMAP.md`; Kick's mobile app is a different product.
-- **Publishing to Greasyfork or a store.** Evidence now strongly favours it (§Competitive Landscape), but `ROADMAP.md` lists it under "Explicitly deferred" pending explicit approval — it stays an operator decision, not a roadmap item. R-57 prepares the posture so the decision is cheap when it comes.
+### Browse, Following, and Search
+
+**Verified.** Browse and Following are card-dense, with frequent title truncation and small metadata. Search has useful filters but consumes substantial vertical space before results. Existing density and grid controls should be made route-aware, while hidden-channel and watched-state controls need clearer feedback on cards.
+
+### Live channel and chat
+
+**Verified.** Native chat presents a large number of icon-only controls and a visually heavy emote picker. Kick Focus's picker is a strong differentiator, but its owned inventory is not presented as an account-level collection. A Chat Comfort follow-up can add opt-in timestamps, priority people, mention sound, per-message local hide, and bounded session search without transmitting or permanently archiving chat.
+
+### Daily Rewards and progression
+
+**Verified.** The audited reward modal required one hour of watch time and showed remaining minutes before Claim became available. The account menu separately showed a daily streak and level progress. Official help confirms Daily Rewards reset daily, may award collectibles/emotes/badges, and require one hour of watching. Official help also confirms global watch time drives level badges, while channel points are per-channel and do not accrue in Picture-in-Picture or mirrored viewing.
+
+**Opportunity:** one read-only Viewer Hub should summarize only the values currently visible or returned by existing same-origin reads: Daily Reward state, channel points on the active channel, owned collectibles, Drops state, level, and streak. Unknown data should display as unavailable, never zero.
+
+### Profile, Preferences, and Notifications
+
+**Verified.** Profile supports avatar, banner, offline banner, basic details, and social handles. Preferences exposed only three category switches. Notifications split website live alerts, mobile push, and marketing email; Kick notes website notifications require an active Kick tab. Official help says viewer profiles are public and that Kick currently has no dedicated privacy-settings page, while follows, subscriptions, and watch history are not publicly shown.
+
+**Opportunity:** extension settings should explain which controls are local-only, which alter Kick, and which merely restyle the page. Signed-in Kick settings pages should inherit the extension's spacing, focus, contrast, and distraction-reduction rules without impersonating native account controls.
+
+### Drops and Collectibles
+
+**Verified.** Drops is a first-class account route, but the audited state was mostly empty. Collectibles are also reachable from the account menu and Daily Rewards can award them. Empty states need explanation and a path back to eligible live content; progress should not be invented from DOM absence.
+
+## Competitive landscape
+
+### Mo'Kick
+
+**Verified, current Chrome Web Store listing.** 40,000 users, 4.7 from 99 ratings, v3.1.0 updated 2026-08-14, 7.29 MiB, three languages. It advertises chat logging/search/stats, a community panel, notes, message actions, moderation logging, mentions, player filters, adaptive playback speed, VOD download, recording, clip download, channel/category hiding, giveaways, and games.
+
+**Learn:** power users value chat history, message-level control, player tools, and small playful utilities. **Avoid:** matching its breadth without clear privacy, performance, and storage ceilings. Kick Focus's smaller artifact, local-first posture, and accessibility system are defensible product choices.
+
+### PureKick
+
+**Verified, current Chrome Web Store listing.** 20,000 users, 4.8 from 365 ratings, v10.2.1 updated 2026-08-15, 127 KiB, seven languages. It centers ad blocking and adds themes, chat badges, and Drops notifications.
+
+**Learn:** narrow value and frequent maintenance can achieve distribution. **Avoid:** absolute ad-removal claims against same-origin stitched video ads. Kick Focus should keep stating exactly what it blocks and what it cannot.
+
+### Kickplex
+
+**Verified.** Up to eight streams, unified chat, moderation, emote picker, and DVR; it advertises no account, server, or tracking. **Learn:** privacy claims are now table stakes in multiview. Kick Focus's on-origin integration and existing accessibility settings remain the stronger distinction. Add a visible warning anywhere popout/Picture-in-Picture is offered that Kick says those modes do not earn channel points.
+
+### 7TV and other emote tooling
+
+**Verified.** 7TV's issue tracker continues to show Kick selector and emote-picker drift. **Learn:** a third-party federation creates maintenance and remote-dependency costs. Kick Focus should deepen native owned-emote organization first. The existing compatibility registry and fixture work remain essential.
+
+### Community utilities
+
+**Likely.** Kick Radar and community posts demonstrate demand for keyword alerts, multi-chat monitoring, searchable local history, export, and visibility into deleted messages. Separate ad blockers demonstrate continuing demand for resilient ad handling. A front-page redesign discussion reinforces the discovery-density complaint.
+
+**Decision:** a bounded Chat Comfort module is worth planning, but permanent transcript capture, cross-channel surveillance, or retention of deleted messages should not ship silently. Default-off session history with explicit size and expiry controls is the acceptable posture.
+
+## Product strategy
+
+### Positioning
+
+**Kick Focus is the calm, accessible, customizable, local-first viewer layer for Kick.** It should make Kick feel personal and enjoyable without becoming another account, chat archive, remote emote platform, or opaque ad promise.
+
+### Principles for new work
+
+1. Prefer modes and presets over another page of unrelated toggles.
+2. Use existing same-origin data; do not probe undocumented private endpoints just to fill a dashboard.
+3. Label local-only controls and show when data is unavailable.
+4. Every animated or celebratory treatment respects Reduced Motion.
+5. Preserve usable contrast for any custom accent; reject or automatically correct inaccessible choices.
+6. Keep high-volume features bounded: chat history, diagnostics, and media metadata need explicit limits and expiry.
+7. Route polish must enhance native controls, never disguise extension UI as a Kick account setting.
+
+## Prioritized opportunities
+
+### P0 — integrity and proof
+
+- Finish R-62 so fixtures exercise real compatibility probes and the live drift gate covers multiple route shapes.
+- Add authenticated, read-only journey evidence for account menu, reward, settings, Drops, and owned-emote states without committing account data or browser-session artifacts.
+
+### P1 — next product milestone
+
+- Build My Emotes from the authenticated catalog already read by the extension, grouped by source channel with usable-anywhere status and fast filtering.
+- Add understandable viewing presets built from existing settings, plus a custom accent with contrast protection.
+- Polish signed-in settings, Drops, Collectibles, and account-adjacent routes using the existing design tokens and accessibility options.
+- Add a progressively enhanced Viewer Hub whose cards render independently and never treat missing data as zero.
+- Add clear channel-points disclosure to popout/Picture-in-Picture and multiview affordances.
+
+### P2 — comfort and fun
+
+- Add an opt-in Chat Comfort module: timestamps, priority people, mention sound, local per-message hide, and bounded session search.
+- Add subtle earned-state delight using existing iconography and CSS transitions, disabled under Reduced Motion; avoid simulated rewards or casino-like mechanics.
+- Evaluate screenshot, live-edge recovery, and adaptive catch-up controls against Kick's player events before adding video filters or recording.
+
+### P3 — larger bets
+
+- A route-aware discovery organizer that saves local layouts or viewing queues.
+- A guided content-filter builder if keyword filters grow beyond simple lists.
+- Distribution to a userscript catalog or extension store remains an operator decision, not an automatic release step.
+
+## Accessibility and UX requirements
+
+- WCAG 2.2 AA remains the baseline. New controls need visible names, keyboard access, programmatic state, and reflow at narrow widths.
+- Use at least 24×24 CSS-pixel targets or equivalent spacing under WCAG 2.2 Target Size (Minimum), while the existing large-target option can exceed that baseline.
+- Custom accent previews must test contrast against both surface and text roles, not only the Kick green button case.
+- Settings search must expose presets and Viewer Hub terminology in all supported locales.
+- Icon-only chat controls need accessible names and visible tooltips; the authenticated audit showed how unsafe unlabeled, shifting controls are in live chat.
+- Reward and progression information must be textually understandable without color or animation.
+- A status like “unavailable” is preferable to a false zero, disabled control, or silent empty card.
+
+## Security, privacy, and performance
+
+- Continue same-origin reads with the user's existing Kick session. Do not introduce OAuth, external synchronization, or remote code.
+- Do not read browser cookies, storage, profiles, passwords, or session stores directly. Page-visible state and established extension data paths are sufficient.
+- Viewer Hub data should be memory-first. Persist only stable, non-sensitive organization such as favorite emote groups; do not persist account level or streak merely for decoration.
+- Chat Comfort history should default off, remain local, cap both rows and bytes, expire automatically, and exclude whispers/private data.
+- Preserve MV3 least privilege and declare only capabilities actually used. Optional permissions should remain optional.
+- Keep the existing sanitizer/markup chokepoint and extension security checks. New settings rendering should not add remote HTML or user-controlled markup.
+- Set budgets for new surfaces: no persistent polling for closed cards, no full chat-DOM rescans, and no unbounded image or transcript cache.
+
+## Rejected or deferred ideas
+
+- **Third-party emote federation:** conflicts with the local/same-origin position and duplicates the strongest incumbent.
+- **Permanent deleted-message archive:** creates privacy and moderation risk disproportionate to viewer value.
+- **Automatic reward/points simulation:** progression must reflect Kick's real state; do not fabricate streaks, points, or celebration events.
+- **Aggressive in-stream ad claims:** Kick's delivery model makes universal removal unverifiable. Keep transparent capability wording.
+- **A plugin or remote-script system:** breaks the extension's remote-code-free trust model.
+- **Light theme as the default direction:** Kick remains dark-first. A future light option is only worthwhile if it can cover all first-party routes coherently.
+- **Undocumented account mutations:** settings and viewer-progress work should remain read-only unless the user performs Kick's native action.
+- **Full mobile-app work:** the extension targets desktop web; narrow desktop reflow still needs to remain usable.
+
+## Architecture notes
+
+- `src/runtime.js` is again roughly 9,250 lines. The next safe extraction seam is the settings/view-model layer, followed by emote-library presentation. Preserve the host-factory pattern used by `live.mjs` and `multistream.mjs`.
+- The current settings schema is comprehensive but increasingly difficult to browse. Presets should call the normal setting-write path so toast feedback, persistence, rendering, import/export, and tests stay unified.
+- My Emotes does not require a new backend. It should consume the normalized authenticated catalog and reach metadata already produced by `api.mjs` and used by autocomplete.
+- Viewer Hub should be a card registry with independent providers and freshness states, not one all-or-nothing request. DOM-visible reward/level/streak state and API-backed collectibles/points must remain distinguishable in diagnostics.
+- Route-aware polish belongs in the shared CSS/template layer, driven by route classification, so userscript, Chromium, and Firefox artifacts remain visually identical.
+- Any Chat Comfort observer must use the existing stable-node/semantic compatibility layer and bounded queues; no full-document MutationObserver work.
 
 ## Sources
 
-**Adjacent architecture (source read 2026-08-18)**
-- https://github.com/FrankerFaceZ/FrankerFaceZ (`src/settings/{index.ts,types.ts,providers.ts,profile.ts,filters.ts}`, `src/modules/main_menu/index.js`) · https://github.com/night/BetterTTV (`src/{settings.js,storage.js,constants.js}`) · https://github.com/Chatterino/chatterino2 (`src/controllers/filters/**`) · https://wiki.chatterino.com/Filters/
-- https://viewgrid.tv/watch/kick · https://streamgrids.tv/ · https://www.multitwitch.tv/ · https://multistre.am/ · https://kicktheater.com/ · https://www.streamweasels.com/how-to-embed-kick-live-streams-on-any-website-2023/
+### Official Kick viewer documentation
 
-**Competitors (swept 2026-08-18)**
-- https://chromewebstore.google.com/detail/purekick-ad-blocker-for-k/mhicbhkhokaocipkioiibmficljoijnf · https://chromewebstore.google.com/detail/kick-adblocker/cflefhbcniopcomabnpiilionhghdkbk · https://chromewebstore.google.com/detail/kickplex-multi-view-for-k/ondmecimbockbhnppeppaomeeikllllb · https://chromewebstore.google.com/detail/kick-quality-enforcer/ebbnoanfkddbmlhmldlpjdjpfodkimco
-- https://addons.mozilla.org/en-US/firefox/addon/kick-ad-blocker/ · https://addons.mozilla.org/en-US/firefox/addon/mokick/
-- https://github.com/Xzensi/NipahTV · https://github.com/SevenTV/Extension · https://github.com/KickTalkOrg/KickTalk · https://github.com/CarlBraun/Kickerino · https://github.com/Pkkls/kick-ad-blocker · https://github.com/oguzhan18/kick-ad-blocker · https://github.com/wyvern800/multikick · https://github.com/segelferd/kick-alert
-- https://greasyfork.org/en/scripts/by-site/kick.com?sort=total_installs · https://kickplex.app/ · https://multikick.com/
+- Daily Rewards: https://help.kick.com/en/articles/15715119-daily-rewards-on-kick
+- Channel Points: https://help.kick.com/en/articles/10709188-guide-to-channel-points
+- Level Badges: https://help.kick.com/en/articles/15332522-level-badges
+- Viewer help collection: https://help.kick.com/en/collections/19626444-for-viewers
+- Mobile viewer guide: https://help.kick.com/en/articles/14994597-the-kick-mobile-app-a-viewer-s-guide
+- Notification troubleshooting: https://help.kick.com/en/articles/14994301-notifications-not-arriving-on-kick
+- Live notifications: https://help.kick.com/en/articles/7122022-how-to-set-up-kick-live-notifications
+- Viewer profile and privacy: https://help.kick.com/en/articles/15064276-managing-your-viewer-profile-on-kick
+- Viewer controls: https://help.kick.com/en/articles/10137491-viewer-controls-streamer-controls
+- Homepage and discovery: https://help.kick.com/en/articles/14994615-understanding-kick-com-s-homepage-and-finding-content
+- Viewer chat: https://help.kick.com/en/articles/14994494-how-to-use-kick-chat-as-a-viewer
+- Viewer subscriptions: https://help.kick.com/en/articles/15159735-how-kick-subscriptions-work-for-viewers
+- Clips: https://help.kick.com/en/articles/7120566-how-to-create-clips-on-kick
+- Advertising for viewers: https://help.kick.com/en/articles/15300357-advertising-on-kick-for-viewers
+- Predictions for viewers: https://help.kick.com/en/articles/11043577-guide-to-predictions-for-viewers
+- KICKs and Gifts: https://help.kick.com/en/articles/12134119-guide-to-kicks-and-gifts
+- Chat moderation: https://help.kick.com/en/articles/7109164-how-to-moderate-your-kick-chat
+- News and platform announcements: https://about.kick.com/news-and-press/news
 
-**Filter lists and ad status (verified from source 2026-08-18)**
-- https://github.com/uBlockOrigin/uAssets/issues/33256 · https://github.com/uBlockOrigin/uAssets/issues/33860 · https://github.com/uBlockOrigin/uAssets/issues/34081 · https://github.com/AdguardTeam/AdguardFilters/issues/233048 · https://github.com/AdguardTeam/AdguardFilters/issues/237025 · https://github.com/AdguardTeam/AdguardFilters/issues/237440
+### Competitors and community evidence
 
-**Kick platform**
-- https://about.kick.com/news-and-press · https://help.kick.com/en/articles/7112432-kick-stream-replays-vods · https://help.kick.com/en/articles/14994255-clips-not-saving-or-clip-errors-on-kick · https://help.kick.com/en/articles/15715119-daily-rewards-on-kick · https://help.kick.com/en/articles/11182854-guide-to-predictions-for-streamers · https://docs.kick.com/ · https://github.com/fb-sean/kick-website-endpoints
-- https://piunikaweb.com/2026/05/21/kick-quietly-testing-ads-platform/ · https://www.tubefilter.com/2026/08/11/kick-launches-mid-roll-ads-creator-monetization/ · https://win.gg/kick-faces-backlash-over-ads-eddie-craven-responds/
+- Mo'Kick: https://chromewebstore.google.com/detail/mokick-better-kick-for-ev/lhjnnfenfahhjkmcngnocfclechcibkc
+- PureKick: https://chromewebstore.google.com/detail/purekick-ad-blocker-for-k/mhicbhkhokaocipkioiibmficljoijnf
+- Kickplex: https://kickplex.app/
+- 7TV Kick issues: https://github.com/SevenTV/Extension/issues
+- NipahTV: https://github.com/Xzensi/NipahTV
+- Pkkls Kick Ad Blocker: https://github.com/Pkkls/kick-ad-blocker
+- Scaptiq Kick Ad Free: https://github.com/Scaptiq/kick-ad-free
+- Kick Radar discussion: https://www.reddit.com/r/KickStreaming/comments/1vb7gig/i_built_a_chrome_extension_to_monitor_kick_chat/
+- Front-page redesign discussion: https://www.reddit.com/r/KickStreaming/comments/1tmtabu/the_front_page_reimagined/
+- Kick Quality Enforcer: https://chromewebstore.google.com/detail/kick-quality-enforcer/ebbnoanfkddbmlhmldlpjdjpfodkimco
+- MultiKick: https://multikick.com/
+- ViewGrid Kick multiview: https://viewgrid.tv/watch/kick
+- StreamGrids: https://streamgrids.tv/
+- KickTheater: https://kicktheater.com/
+- Greasy Fork Kick scripts: https://greasyfork.org/en/scripts/by-site/kick.com?sort=total_installs
 
-**Extension security and store policy (inherited 2026-08-17)**
-- https://www.sekoia.com/blog/targeted-supply-chain-attack-against-chrome-browser-extensions · https://gitlab-com.gitlab.io/gl-security/security-tech-notes/threat-intelligence-tech-notes/malicious-browser-extensions-feb-2025/ · https://thehackernews.com/2026/03/chrome-extension-turns-malicious-after.html · https://palant.info/2025/01/20/malicious-extensions-circumvent-googles-remote-code-ban/ · https://github.blog/security/vulnerability-research/attacking-browser-extensions/ · https://nvd.nist.gov/vuln/detail/CVE-2026-0628
-- https://developer.chrome.com/blog/cws-policy-updates-2026 · https://extensionworkshop.com/documentation/publish/add-on-policies/ · https://greasyfork.org/en/help/code-rules · https://developer.chrome.com/docs/extensions/reference/api/userScripts · https://www.waze.com/discuss/t/urgent-two-scripts-were-compromised-on-feb-1-please-read-if-you-use-scripts/365499
+### Accessibility, browser platform, and security
 
-**Web platform (inherited 2026-08-17; re-confirmed by live measurement in Chrome 151 on 2026-08-18)**
-- https://api.webstatus.dev/v1/features/ · https://github.com/mdn/browser-compat-data · https://www.firefox.com/en-US/firefox/151.0/releasenotes/ · https://www.firefox.com/en-US/firefox/147.0/releasenotes/ · https://webkit.org/blog/17333/webkit-features-in-safari-26-0/
+- WCAG 2.2: https://www.w3.org/TR/WCAG22/
+- Target Size (Minimum): https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum
+- Reflow: https://www.w3.org/WAI/WCAG22/Understanding/reflow
+- Chrome Manifest V3: https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3
+- Chrome extension security: https://developer.chrome.com/docs/extensions/develop/security-privacy/stay-secure
+- Permission declarations: https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions
+- Chrome Web Store user-data policy FAQ: https://developer.chrome.com/docs/webstore/program-policies/user-data-faq
+- `userScripts` API constraints: https://developer.chrome.com/docs/extensions/reference/api/userScripts
 
-## Open Questions
+## Open questions
 
-1. **What exactly triggered the 2026-08-17 chip-probe failure?** The product path is disproven as the cause (42/42 cards yield slugs; four consecutive green runs since). The probe's single-sample design is the structural cause and is fixable without answering this. Recorded only because the same run reported 27 cards where 2026-08-18 reported 627, and that swing is unexplained — if it recurs after R-38 lands, the card *count* is the thread to pull, not the chip.
-2. **Does an isolated-world MV3 content script bypass a page's Trusted Types enforcement while a page-world userscript does not?** Now hypothetical rather than urgent — kick.com enforces no Trusted Types today (measured 2026-08-18) — but it decides whether R-53 must ship in one artifact or both. Needs a page that actually enforces `require-trusted-types-for 'script'`.
-3. **What is Violentmonkey's real injected-script size limit in MV3 Alternative page mode?** The ~1 MB figure is the project's own recorded advisory number and sets R-44's threshold. Measurable in one session once a manager install exists (`Roadmap_Blocked.md`).
+1. Which stable page-visible or already-established same-origin source exposes level and streak without requiring the account menu to be open? Do not add an undocumented endpoint solely to answer this.
+2. Does Kick expose usable Drops progress through a page call already covered by the extension's same-origin policy, or should the first Viewer Hub card remain a route link plus empty/progress state derived from the DOM?
+3. What is the smallest bounded chat-history window that satisfies session search without becoming a transcript archive? Measure memory and observer cost with a genuinely high-traffic channel.
+4. Which visual presets survive Home, Browse, Following, Search, live channel, VOD, Settings, Drops, and narrow-window QA without surprising changes to hidden-content choices?
+5. Can account-level owned-emote groups be normalized without storing channel identity beyond the library entries the user already chose to keep?

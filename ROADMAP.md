@@ -76,4 +76,28 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 ### P3 — differentiators and future-proofing
 
+## Research-Driven Additions — 2026-08-19 signed-in viewer pass
+
+Added from the authenticated journey, competitor, accessibility, and platform research recorded in [RESEARCH.md](RESEARCH.md), run against v1.26.0. Continues the R-NN scheme from R-62. The existing “My emotes” Next item remains authoritative and is not duplicated below.
+
+### P0 — prove signed-in behavior without capturing account data
+
+- **R-63 — Authenticated journey evidence.** Extend the manual/live QA matrix to cover account menu, Daily Reward, Profile, Preferences, Notifications, Drops, Collectibles, and the authenticated emote catalog. Store sanitized route/selector expectations rather than screenshots or fixture text containing account identity, balances, chat, or session data. Every check is read-only and partial-data-safe. Acceptance: the release checklist names each signed-in journey, documents which checks require a user session, and proves no account mutation occurs. Complexity: M.
+
+### P1 — coherent viewer personalization
+
+- **R-64 — Viewer Hub.** Add a read-only, progressively enhanced summary for Daily Reward state, active-channel points, Collectibles, Drops, level, and streak. Each card has its own source, freshness, loading, unavailable, and error state; absent data is never rendered as zero. Use established same-origin reads or page-visible state only, do not add polling while the hub is closed, and do not persist level/streak merely for decoration. Acceptance: every card can fail independently, diagnostics identify DOM-derived versus API-derived values, and tests cover partial/anonymous/account-menu-closed states. Complexity: L.
+- **R-65 — Viewing presets and custom accent.** Add Calm, Cinema, Chat First, and Discovery presets that apply the existing settings through the normal write path with immediate toast feedback. Add an optional custom accent whose preview and saved value pass contrast checks against text, focus, button, and surface roles; invalid colors are corrected or rejected without a confirmation dialog. Acceptance: presets are searchable, import/export-safe, localized, reversible through normal controls, and visually verified on Home, Browse, Following, Search, channel, VOD, and narrow widths. Complexity: M.
+- **R-66 — Signed-in route polish.** Extend route classification and shared styling to Profile/Settings, Drops, Collectibles, Subscriptions, and account-adjacent routes. Improve spacing, hierarchy, focus, empty states, and narrow-window reflow while keeping native Kick account controls visibly native. Acceptance: no native control is hidden accidentally, all seven settings tabs remain reachable, and screenshot comparison passes in every theme. Complexity: M.
+- **R-67 — Picture-in-Picture and multiview points disclosure.** Wherever Kick Focus offers popout, Picture-in-Picture, mirroring, or related detached playback, explain that Kick's current help says those modes do not accrue channel points. Keep the copy contextual and non-blocking. Acceptance: disclosure is keyboard/screen-reader reachable, localized, and does not appear on unrelated player controls. Complexity: S.
+
+### P2 — chat comfort, delight, and player utility
+
+- **R-68 — Bounded Chat Comfort module.** Add opt-in timestamps, priority people, mention sound, local per-message hide, and searchable session history. History defaults off, excludes private/whisper content, has row/byte/age caps, exports only through an explicit action, and never retains a remote-deleted message longer than the configured session window. Acceptance: high-volume observer benchmark stays within the apply-cost budget; storage and expiry tests cover cap boundaries; each feature can be enabled independently. Complexity: L.
+- **R-69 — Earned-state delight.** Add subtle reward-ready, streak, or collectible-earned treatments only when Kick exposes the real state. Reuse established icons and design tokens; provide text status; disable nonessential motion under Reduced Motion. Do not simulate rewards, randomized wins, or engagement pressure. Acceptance: no animation under Reduced Motion, no status communicated by color alone, and anonymous users see no placeholder gamification. Complexity: S.
+- **R-70 — Player utility feasibility gate.** Measure screenshot capture, live-edge recovery, and adaptive catch-up against Kick's current player and existing page-realm hooks before implementing video filters, recording, or downloads. Acceptance: a short design note records browser support, DRM/canvas limits, CPU/memory impact, and whether each utility can remain local and zero-dependency; only proven low-risk utilities advance. Complexity: M.
+
+### P3 — discovery and advanced organization
+
+- **R-71 — Local discovery layouts.** Investigate saved, route-aware discovery views that combine existing density, hidden-channel, category, language, and watched-state controls without creating a second recommendation system. Acceptance: layouts are local, editable through existing settings patterns, and never claim to change Kick's algorithm. Complexity: L.
 
