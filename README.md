@@ -1,11 +1,11 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.30.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.31.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
 
-Kick Focus is a desktop-only userscript that gives [Kick](https://kick.com/) a calmer, more premium, and more controllable layout. It adds a consistent graphite-and-lime site shell, focus and theater modes, compact discovery, a complete settings center, accessibility controls, content filters, and a best-effort document-start ad defense without shipping remote code.
+Kick Focus is a desktop-only userscript that makes [Kick](https://kick.com/) calmer and easier to control. It adds a consistent graphite-and-lime shell, compact discovery, focus and theater modes, accessibility controls, a complete settings center, content filters, and document-start ad defense without shipping remote code.
 
 An optional Manifest V3 companion extension adds the one thing a userscript on Chromium can no longer do for itself: blocking ad requests at the browser network layer, before they are sent.
 
@@ -13,7 +13,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 
 ## What it changes
 
-- Restyles Kick's current semantic desktop shell, navigation, discovery rail, content cards, player, chat, tabs, search results, and empty states with one restrained premium design system.
+- Restyles Kick's current semantic desktop shell with clearer type, tighter spacing, quieter borders, fewer status pills, and text-first route tabs. Stream and category cards use imagery and whitespace instead of boxed perimeters.
 - Reclaims the permanent discovery rail with Auto, Compact, Dropdown, and Hidden modes; Auto is the default so the live site can choose the appropriate desktop width. Dropdown collapses the rail to a tab that expands on hover or keyboard focus.
 - Adds Standard, Theater, and Focus stream layouts, plus Right, Docked, and Hidden chat. Theater keeps the player/chat split inside the viewport, and Kick's chat separator remains draggable with widths saved from 320 to 520 px.
 - Widens browse grids and preserves a compact, sticky desktop top bar. Following and Drops are classified as first-class routes instead of being mistaken for channels.
@@ -217,7 +217,7 @@ It runs **headed**, because Kick answers headless browsers with a short JSON err
 ## Repository map
 
 ```text
-design/mockups/       Selected ImageGen references for Kick routes and settings pages
+design/mockups/       Selected visual references for Kick routes and settings pages
 design/screenshots/   Captured UI, re-taken when the interface changes
 dist/                 Installable userscript, unpacked extension, and zip
 scripts/              Deterministic build, artifact checks, live proof, release gate

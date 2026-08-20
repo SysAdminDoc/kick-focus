@@ -1,4 +1,4 @@
-export const VERSION = '1.30.0';
+export const VERSION = '1.31.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -45,6 +45,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.30.0': Object.freeze({
     summary: 'Studio, OLED, and Slate now change the full surface hierarchy. Settings boards, multi-stream, and the companion popup have clearer structure and less visual noise.',
+    defaults: Object.freeze([]),
+  }),
+  '1.31.0': Object.freeze({
+    summary: 'The main Kick theme now uses clearer type, quieter borders, tighter spacing, flatter content cards, and more compact route controls.',
     defaults: Object.freeze([]),
   }),
 });

@@ -2,6 +2,20 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.31.0, 2026-08-20
+
+### Changed
+
+- **The main Kick theme has a calmer visual hierarchy.** Navigation, route headers, stream grids, tabs, search context, Drops recovery, chat, and sticker tools now share clearer typography, tighter section spacing, quieter borders, and fewer raised surfaces.
+- **Stream and category cards no longer look boxed in.** Thumbnails carry the visual weight while titles and metadata sit directly on the page. Hover and keyboard focus remain clear without a shadow lift or bright perimeter.
+- **Studio, OLED, and Slate use less surface noise.** Each theme keeps its own depth and temperature while using subtler dividers, compact controls, and restrained selected states.
+- **Route-specific references now cover every main surface.** Home, Browse, Category, Following, Drops, Search, and Channel/chat share one graphite-and-lime desktop system while preserving the structure and behavior Kick owns.
+
+### Fixed
+
+- Chat header styling no longer pads the live resize separator. Theater mode keeps the player and both chat layers bounded while resizing.
+- Release screenshots now wait for temporary Undo controls to clear before capture.
+
 ## 1.30.0, 2026-08-20
 
 ### Changed
@@ -467,7 +481,7 @@ Settings schema 3. Existing preferences migrate without loss.
 - A compact three-row Quick favorites shelf for keeping substantially more one-click chat stickers visible at once.
 - Chat sticker organization with a local grouped shelf, pinned favorites, removable stickers, search-aware views, native-group fallback, and independent reset controls.
 - A persistent sticker library continuously merges every enabled or locked sticker Kick exposes, records native groups, supports custom group assignment in settings, and round-trips the complete catalog and configuration through JSON export/import.
-- Seven ImageGen-led Kick-site references for Home, Browse, Following, Drops, Category, Search, and Channel/chat, saved in `design/mockups/` and implemented as one graphite, charcoal, and Kick-lime desktop system.
+- Seven Kick-site references for Home, Browse, Following, Drops, Category, Search, and Channel/chat, saved in `design/mockups/` and implemented as one graphite, charcoal, and Kick-lime desktop system.
 - Route-specific Search context and a useful Drops empty state with direct, non-mutating navigation to eligible streams, upcoming campaigns, and reward activity.
 - The live extension gate now asserts that known ad creatives and empty ad shells are absent from the settled Kick DOM in addition to proving browser-level request blocking.
 

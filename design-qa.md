@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-The selected ImageGen direction was continued into one target for every settings-menu page:
+The selected visual direction was continued into one target for every settings-menu page:
 
 - Layout: `design/reimagined/settings-layout-premium.png`
 - Appearance: `design/reimagined/settings-appearance-premium.png`
@@ -35,7 +35,7 @@ The implementation is exercised through `test/fixtures/settings-preview.html` at
 - `design/screenshots/multistream-board.png`
 - `design/screenshots/extension-popup.png`
 
-Each retained image contains the normalized ImageGen target and its browser implementation together in the same comparison frame. Standalone browser captures and normalization intermediates were intentionally excluded from version control.
+Each retained image contains the normalized target and its browser implementation together in the same comparison frame. Standalone browser captures and normalization intermediates were intentionally excluded from version control.
 
 ## Focused evidence
 
@@ -58,7 +58,7 @@ The first implementation still read as a card-heavy preferences dialog. The shel
 
 ### Iteration 3, page fidelity
 
-- P2: the Appearance mock depended on meaningful photographic content while the implementation had a text-only preview. A project-bound ImageGen studio image is now embedded locally and updates inside the live preview.
+- P2: the Appearance mock depended on meaningful photographic content while the implementation had a text-only preview. A project-bound studio image is now embedded locally and updates inside the live preview.
 - P2: the thumbnail-treatment slider overflowed its column at narrower desktop widths. Its labels and track now use a bounded grid.
 - P2: the mobile menu exposed a browser scrollbar and felt unfinished. It now uses a clean horizontal navigation strip with all five pages keyboard- and touch-reachable.
 
@@ -95,7 +95,7 @@ No actionable P0, P1, or P2 visual differences remain.
 
 ### Source of truth
 
-ImageGen was used in built-in generation mode to create a route-specific target for each main Kick surface. The shared prompt called for a graphite canvas, readable 14 to 16 pixel type, compact navigation, text-and-underline tabs, borderless content cards, restrained green accents, and one clear surface per functional group. It explicitly excluded gradients, glass effects, nested cards, excessive pills, tiny labels, and decorative outlines.
+One route-specific target was created for each main Kick surface. The shared direction called for a graphite canvas, readable 14 to 16 pixel type, compact navigation, text-and-underline tabs, borderless content cards, restrained green accents, and one clear surface per functional group. It explicitly excluded gradients, glass effects, nested cards, excessive pills, tiny labels, and decorative outlines.
 
 - Home: `design/mockups/kick-home-premium.png`
 - Browse: `design/mockups/kick-browse-premium.png`
@@ -114,6 +114,7 @@ ImageGen was used in built-in generation mode to create a route-specific target 
 - Full comparison: `design/qa/comparison-main-home-v1.31.jpg`.
 - Focused chat comparison: `design/qa/focused-main-chat-v1.31.jpg`.
 - Final live capture: `design/qa/main-home-implementation-1440-final.png`.
+- Wide live capture: `design/qa/main-home-implementation-1920-final.png`.
 
 ### Findings and iterations
 
@@ -133,7 +134,7 @@ ImageGen was used in built-in generation mode to create a route-specific target 
 ### Final verification
 
 - `npm run verify`: 182 artifact checks passed, 76 negative probes fired as expected, and 324 tests passed.
-- Live Chromium gate: 88 of 88 checks passed at 1440 × 900. Nine account-only journeys were skipped because the throwaway profile was anonymous.
+- Live Chromium gate: 88 of 88 checks passed at 1440 × 900 after the layout change. The packaged v1.31.0 extension passed 88 of 88 again at 1920 × 1080. Nine account-only journeys were skipped because the throwaway profile was anonymous.
 - Chat resize proof: the 410-pixel chat owner and 409-pixel inner surface moved together to 480 pixels with no row overflow.
 - The final live capture has no document-level horizontal overflow, no surviving ad shell, and no actionable P0, P1, or P2 visual mismatch in the implemented theme system.
 
