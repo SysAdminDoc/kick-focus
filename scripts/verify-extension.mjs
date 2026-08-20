@@ -2621,6 +2621,10 @@ try {
   }
 
   if (process.env.KF_SCREENSHOT_PATH && reachedKick) {
+    // The interaction checks intentionally raise Undo toasts. Capture the
+    // resting page after those transient controls have cleared so release
+    // screenshots document the product, not the test harness.
+    await sleep(7500);
     const capture = await pageClient.send('Page.captureScreenshot', { format: 'png' });
     if (capture.result?.data) {
       await writeFile(resolve(process.env.KF_SCREENSHOT_PATH), Buffer.from(capture.result.data, 'base64'));

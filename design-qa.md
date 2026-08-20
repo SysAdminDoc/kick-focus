@@ -91,4 +91,50 @@ No actionable P0, P1, or P2 visual differences remain.
 - Opened the companion popup without an extension service and verified its unavailable and disabled states remained legible.
 - Browser console inspection after the final build returned no warnings or errors.
 
+## Main Kick theme, v1.31.0
+
+### Source of truth
+
+ImageGen was used in built-in generation mode to create a route-specific target for each main Kick surface. The shared prompt called for a graphite canvas, readable 14 to 16 pixel type, compact navigation, text-and-underline tabs, borderless content cards, restrained green accents, and one clear surface per functional group. It explicitly excluded gradients, glass effects, nested cards, excessive pills, tiny labels, and decorative outlines.
+
+- Home: `design/mockups/kick-home-premium.png`
+- Browse: `design/mockups/kick-browse-premium.png`
+- Category: `design/mockups/kick-category-premium.png`
+- Following: `design/mockups/kick-following-premium.png`
+- Drops: `design/mockups/kick-drops-premium.png`
+- Search: `design/mockups/kick-search-premium.png`
+- Channel and chat: `design/mockups/kick-channel-chat-premium.png`
+
+### Comparison setup
+
+- Target images: 1536 × 1024 pixels.
+- Live implementation: 1440 × 900 CSS pixels at DPR 1.
+- Normalization: the Home target was scaled to 1440 × 960 and cropped from the top to 1440 × 900.
+- State: Studio theme, anonymous Kick Home route, natural live content.
+- Full comparison: `design/qa/comparison-main-home-v1.31.jpg`.
+- Focused chat comparison: `design/qa/focused-main-chat-v1.31.jpg`.
+- Final live capture: `design/qa/main-home-implementation-1440-final.png`.
+
+### Findings and iterations
+
+#### Iteration 1, visual system
+
+- P1: outlines were doing the work of spacing on cards, panels, tabs, and controls. Stream and category cards now rely on image crop, type, and whitespace. Native tabs use text with an active underline.
+- P1: 9 to 12 pixel labels weakened the hierarchy in the organizer, picker, search summary, and Drops recovery UI. Core metadata now sits at 12 to 14 pixels, with body copy and controls at 14 to 15 pixels.
+- P2: the theme palette had too many close panel layers and visible perimeters. Studio, OLED, and Slate now use quieter borders, deeper canvases, and fewer raised surfaces.
+- P2: route headers and empty states repeated explanatory copy. Search and Drops now use shorter labels, compact section spacing, and one clear action when an action exists.
+
+#### Iteration 2, live parity
+
+- P1: the first live capture showed the featured chat header and controls retaining rounded glass treatment. The header, chat controls, and Home blur surfaces were flattened into the same matte system as the route targets.
+- P1: the first chat-header selector was broad enough to pad the live resize separator. It was narrowed to the actual `#channel-chatroom` header before release.
+- P2: the featured stream and grid were still visually heavier than the target. Their shadows, gradients, card perimeters, and hover lift were removed while thumbnail focus feedback was kept.
+
+### Final verification
+
+- `npm run verify`: 182 artifact checks passed, 76 negative probes fired as expected, and 324 tests passed.
+- Live Chromium gate: 88 of 88 checks passed at 1440 × 900. Nine account-only journeys were skipped because the throwaway profile was anonymous.
+- Chat resize proof: the 410-pixel chat owner and 409-pixel inner surface moved together to 480 pixels with no row overflow.
+- The final live capture has no document-level horizontal overflow, no surviving ad shell, and no actionable P0, P1, or P2 visual mismatch in the implemented theme system.
+
 final result: passed

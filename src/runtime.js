@@ -1344,13 +1344,6 @@ const SITE_CSS = `
       box-shadow: none !important;
     }
 
-    [data-kf-chat-panel] > div > div:first-child {
-      padding: 8px 12px !important;
-      border-bottom: 1px solid var(--kf-border) !important;
-      border-radius: 0 !important;
-      background: var(--kf-panel) !important;
-    }
-
     [data-kf-chat-panel] button[aria-label="Hide chat"],
     [data-kf-chat-panel] button[aria-label="Show chat"] {
       min-height: 40px !important;
@@ -1363,6 +1356,8 @@ const SITE_CSS = `
     }
 
     #channel-chatroom > div > div:first-child {
+      padding: 8px 12px !important;
+      border-radius: 0 !important;
       border-bottom-color: var(--kf-border) !important;
       background: var(--kf-panel) !important;
     }
