@@ -31,6 +31,7 @@ import {
   approximateStorageBytes,
   describeStorageFailures,
   formatBytes,
+  settingsFocusSelector,
   recordStorageResult,
   FILTER_MIN_SAMPLE,
   assessAdStack,
@@ -134,6 +135,15 @@ import {
   normalizeVersion,
   rankSettingsMatches,
 } from '../src/core.mjs';
+
+test('settings focus returns to the exact option after a re-render', { tag: 'unit' }, () => {
+  const attributes = new Map([
+    ['data-set', 'appearance.theme'],
+    ['data-value', 'slate'],
+  ]);
+  const control = { getAttribute: (name) => attributes.has(name) ? attributes.get(name) : null };
+  assert.equal(settingsFocusSelector(control), '[data-set="appearance.theme"][data-value="slate"]');
+});
 
 // The dialog is open and the reward is ready — the only state that clicks.
 const READY = { enabled: true, hasTrigger: true, dialogOpen: true, hasAction: true, actionDisabled: false, now: 1_000_000 };

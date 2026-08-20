@@ -45,9 +45,11 @@ const bundledApi = bundled(api);
 const bundledCompatibility = bundled(compatibility);
 const bundledStorage = bundled(storage);
 const bundledLive = bundled(live);
-const bundledMultistream = bundled(multistream);
+const iconData = `data:image/png;base64,${renderIcon(32).toString('base64')}`;
+const bundledMultistream = bundled(multistream)
+  .replaceAll('__KICK_FOCUS_ICON__', iconData);
 const bundledRuntime = runtime
-  .replaceAll('__KICK_FOCUS_ICON__', `data:image/png;base64,${renderIcon(32).toString('base64')}`)
+  .replaceAll('__KICK_FOCUS_ICON__', iconData)
   .replaceAll('__KICK_FOCUS_PREVIEW__', `data:image/jpeg;base64,${appearancePreview.toString('base64')}`);
 // Concat order is the dependency order: everything a module imports must have
 // been declared by an earlier entry in this list.

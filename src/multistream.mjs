@@ -433,7 +433,7 @@ export function createMultistream(host) {
         <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
         <span class="kf-ms-spacer"></span>
         <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
-        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid" title="Remove">×</button>`);
+        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid">Remove</button>`);
         tile.append(bar);
       }
       tile.dataset.kfMultistreamFocused = String(slug === focus);
@@ -442,7 +442,18 @@ export function createMultistream(host) {
 
     // Anything still in `existing` was removed from the grid.
     for (const stale of existing.values()) stale.remove();
-    for (const tile of ordered) grid.append(tile);
+    if (ordered.length) {
+      grid.querySelector('[data-kf-multistream-empty]')?.remove();
+      for (const tile of ordered) grid.append(tile);
+    } else if (!grid.querySelector('[data-kf-multistream-empty]')) {
+      setMarkup(grid, `<div class="kf-ms-empty-state" data-kf-multistream-empty>
+        <img src="__KICK_FOCUS_ICON__" alt="">
+        <span>Multi-stream workspace</span>
+        <h2>Build your viewing board</h2>
+        <p>Add a channel above to start. Focus decides which stream owns audio and chat, and your saved boards stay on this device.</p>
+        <button type="button" class="kf-button kf-button-primary" data-action="multistream-focus-input">Add your first channel</button>
+      </div>`);
+    }
 
     renderMultistreamChat(backdrop, chat, showChat);
     renderMergedChat(backdrop);
@@ -725,7 +736,7 @@ export function createMultistream(host) {
       // render, so it translates here and the localizer is told to skip it.
       count.textContent = streams.length
         ? trf('{count} of {max} streams', { count: streams.length, max: MULTISTREAM_MAX })
-        : tr('No streams yet — add a channel to start.');
+        : tr('Ready for your first channel');
     }
     const error = backdrop.querySelector('[data-kf-multistream-error]');
     if (error) {
@@ -782,9 +793,9 @@ export function createMultistream(host) {
           const status = state.multistreamLive.size
             ? `<small class="kf-ms-live" data-live="${live > 0}">${live}/${layout.streams.length} live</small>`
             : `<small>${layout.streams.length}</small>`;
-          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to layout ${escapeHtml(layout.name)}" title="Copy link">🔗</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`;
+          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to board ${escapeHtml(layout.name)}">Copy</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete board ${escapeHtml(layout.name)}">Remove</button></span>`;
         }).join('')
-        : '<span class="kf-ms-empty">No saved layouts yet.</span>');
+        : '<span class="kf-ms-empty">Saved boards will appear here.</span>');
     }
   }
 

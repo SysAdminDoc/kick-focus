@@ -29,8 +29,8 @@ const api = globalThis.browser || globalThis.chrome;
 
 function renderUnavailable() {
   els.version.textContent = '';
-  els.rulesets.textContent = '—';
-  els.blocked.textContent = '—';
+  els.rulesets.textContent = 'Not available';
+  els.blocked.textContent = 'Not available';
   els.networkState.dataset.state = 'off';
   els.networkState.textContent = 'Offline';
   els.title.textContent = 'Companion unavailable';
@@ -74,7 +74,7 @@ async function render() {
 
   els.version.textContent = `v${status?.version ?? ''}`;
   els.rulesets.textContent = String(status?.rulesets?.length ?? 0);
-  els.blocked.textContent = status?.countsAvailable ? String(status.blocked ?? 0) : '—';
+  els.blocked.textContent = status?.countsAvailable ? String(status.blocked ?? 0) : 'Not available';
 
   const adsOn = status?.rulesets?.includes('ads');
   els.networkState.dataset.state = adsOn ? 'on' : 'off';

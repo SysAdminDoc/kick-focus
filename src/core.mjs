@@ -1,4 +1,4 @@
-export const VERSION = '1.29.0';
+export const VERSION = '1.30.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -41,6 +41,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.29.0': Object.freeze({
     summary: 'A read-only Viewer page, five chat comfort switches, and saved discovery views: the daily reward and channel points in one place, message times and a bounded session chat search, and a named layout applied to the pages you choose.',
+    defaults: Object.freeze([]),
+  }),
+  '1.30.0': Object.freeze({
+    summary: 'Studio, OLED, and Slate now change the full surface hierarchy. Settings boards, multi-stream, and the companion popup have clearer structure and less visual noise.',
     defaults: Object.freeze([]),
   }),
 });
@@ -3772,4 +3776,22 @@ export function formatBytes(bytes) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/** Build a stable selector for the settings control that owns keyboard focus. */
+export function settingsFocusSelector(element) {
+  const escape = (value) => String(value).replace(/["\\]/g, '\\$&');
+  const setting = element?.getAttribute?.('data-set');
+  if (setting != null) {
+    const selector = `[data-set="${escape(setting)}"]`;
+    const value = element.getAttribute('data-value');
+    return value == null ? selector : `${selector}[data-value="${escape(value)}"]`;
+  }
+  for (const attr of ['data-action', 'data-shortcut', 'data-kf-sticker-key',
+    'data-kf-sticker-assignment', 'data-kf-sticker-library-filter', 'data-kf-sticker-library-search',
+    'data-kf-emote-catalog-input', 'data-page']) {
+    const value = element?.getAttribute?.(attr);
+    if (value != null) return `[${attr}="${escape(value)}"]`;
+  }
+  return '';
 }

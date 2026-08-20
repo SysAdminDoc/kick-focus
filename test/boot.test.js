@@ -173,6 +173,12 @@ test('the built bundle boots in a stubbed environment without a TDZ or bad const
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
+test('the built bundle resolves every embedded visual asset', { tag: 'artifact' }, async () => {
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  assert.equal(bundle.includes('__KICK_FOCUS_ICON__'), false, 'icon placeholder survived the build');
+  assert.equal(bundle.includes('__KICK_FOCUS_PREVIEW__'), false, 'preview placeholder survived the build');
+});
+
 test('with the Navigation API, route changes come from the browser and history is left untouched', { tag: 'artifact' }, async () => {
   const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
   const listeners = {};
