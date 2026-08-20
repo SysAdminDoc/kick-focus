@@ -2,7 +2,22 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
-## 1.29.0 — 2026-08-19
+## 1.30.0, 2026-08-20
+
+### Changed
+
+- **Studio, OLED, and Slate are now complete visual systems.** Each theme changes the page canvas, panel depth, raised controls, borders, hover surfaces, selected states, and muted text. Theme cards preview those layers directly, so choosing a theme is a visual decision instead of a name attached to nearly identical dark backgrounds.
+- **The settings center has a stronger desktop hierarchy.** The panel is wider, the header carries only identity and status, navigation descriptions are shorter, and long pages are grouped into layered boards. Appearance starts with four compact directions, followed by distinct theme boards and smaller accent controls. The custom color row stays hidden until Custom is selected.
+- **Multi-stream reads as a viewing board now.** Channel entry and playback controls have separate groups, the empty state has one clear action, saved boards live in a compact footer, and the canvas holds its center at narrower desktop sizes. Error, disabled, empty, and populated states share the same hierarchy.
+- **The companion popup matches the same system.** Status, counts, controls, disabled actions, focus, and reduced-motion behavior use the same graphite surfaces and restrained green accent.
+
+### Fixed
+
+- Theme selection now restores focus to the exact control after a page re-render. Selecting OLED or Slate no longer leaves Studio with a second focus outline.
+- The multi-stream footer no longer consumes the open canvas when its optional error row is hidden.
+- The multi-stream empty-state logo is embedded into every built artifact instead of shipping an unresolved placeholder.
+
+## 1.29.0, 2026-08-19
 
 ### Added
 
@@ -23,7 +38,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 Maintainer tooling only. The shipped userscript and both companion extensions behave exactly as they did in 1.28.0.
 
-## 1.28.0 — 2026-08-19
+## 1.28.0, 2026-08-19
 
 ### Added
 
@@ -36,10 +51,10 @@ Maintainer tooling only. The shipped userscript and both companion extensions be
 ### Fixed
 
 - **Theater mode now keeps the player and chat inside the available width.** Kick Focus sizes the outer chat column that actually participates in Kick's player/chat split, keeps its inner chatroom matched to that column, and constrains the reclaimed theater row instead of letting chat extend past the viewport.
-- **The live chat separator is manually adjustable again.** Dragging Kick's existing separator now changes both chat layers together from 320–520 px, updates its accessible value, saves the result, and reports the saved width without replacing Kick's control.
+- **The live chat separator is manually adjustable again.** Dragging Kick's existing separator now changes both chat layers together from 320 to 520 px, updates its accessible value, saves the result, and reports the saved width without replacing Kick's control.
 - **Player status chips attach to the visible video.** Kick can keep hidden preload media beside the painted player; uptime, VOD retention, and playback diagnostics now prefer the video with real on-screen geometry instead of disappearing into a hidden media container.
 
-## 1.27.0 — 2026-08-19
+## 1.27.0, 2026-08-19
 
 ### Added
 
@@ -53,199 +68,199 @@ Maintainer tooling only. The shipped userscript and both companion extensions be
 - **Signed-in pages now belong to the same design system.** Profile/Settings, Collectibles, and Subscriptions are classified separately instead of falling into a generic route. Settings tabs gain a reliable current-page marker, forms and focus rings use the selected theme, disabled actions are visibly inert, explanatory copy has a readable measure, and collectible buttons use consistent borders, depth, and focus feedback. Native account controls remain native and no value is changed.
 - **Detached viewing no longer hides the channel-points tradeoff.** The multi-stream footer carries Kick's own warning that Picture-in-Picture and mirrored viewing do not accrue channel points, and the popout-chat control points assistive technology to the same note.
 
-## 1.26.0 — 2026-08-19
+## 1.26.0, 2026-08-19
 
 ### Changed
 
-- **The offline DOM fixtures can be regenerated from the live site.** They were hand-written and hand-edited, so the day Kick changed its markup they described a version of the site that no longer existed and nothing noticed. A maintainer script now rebuilds one from a real page — keeping only structure, replacing all text, and reducing every URL to its path — and refuses to write a fixture that would weaken the checks reading it. Running it found that several things the fixtures assert are no longer served by Kick at all. Maintainer tooling only: the shipped userscript and both companions are unchanged from 1.25.0.
+- **The offline DOM fixtures can be regenerated from the live site.** They were hand-written and hand-edited, so the day Kick changed its markup they described a version of the site that no longer existed and nothing noticed. A maintainer script now rebuilds one from a real page, keeping only structure, replacing all text, and reducing every URL to its path, and refuses to write a fixture that would weaken the checks reading it. Running it found that several things the fixtures assert are no longer served by Kick at all. Maintainer tooling only: the shipped userscript and both companions are unchanged from 1.25.0.
 
-## 1.25.0 — 2026-08-18
-
-### Added
-
-- **The emote suggestions no longer offer emotes that would bounce.** When you are signed in, Kick refuses a subscriber emote you do not own and refuses a free channel emote outside its own channel — the list used to offer both and let you find out by sending. It now reads the entitlement data the library has carried since 1.20.0 and leaves them out. Signed out, nothing changes: an anonymous read genuinely cannot tell an emote you own from one you never will, so nothing is hidden on a guess.
-- **Two live checks no longer report defects that were not there.** The reward check declared a claim missing when the page had simply not reached it yet — claiming takes two passes and the first one arms a ten-minute back-off before it clicks, so a stray cycle could leave the check waiting. It now retries within its own phase and reports which pass claimed. The navigation check had the same shape and now waits for the route rather than sleeping a fixed interval.
-- **One chat for the whole grid.** "Merge all chats" replaces the single focused-channel chat with every channel in the grid interleaved in the order messages arrived, each line labelled with the channel it came from. It is off by default — one channel's chat with Kick's own emotes and badges is the better read — and it is strictly read-only, with no composer and nothing that can send. Connections are opened per channel and closed when a channel leaves the grid, so removing a tile stops it costing anything; switching back to per-tile chat gives you the same chat you had, without a reload.
-- **The multi-stream grid's chat can float above everything in its own window.** A "Pop out chat" control opens the focused channel's chat in an always-on-top window you can keep beside a game or another app. It follows the focused tile, and closing it puts chat straight back in the grid — the grid's own chat is hidden while the window has it rather than torn down, so nothing reloads on the way back and no messages are lost. The control only appears in browsers that can do this; everywhere else the grid behaves exactly as before. Read-only, like the in-grid chat, and it says so.
-
-## 1.24.0 — 2026-08-18
+## 1.25.0, 2026-08-18
 
 ### Added
 
-- **Drift detection now checks what a hook is *for*, not just that it matched.** Twice this month a feature stopped working while every check stayed green, both the same shape: the element was found and the value computed from it was not — a stream card that yields no channel name, a player container that turns out to be the video itself. Each of those now declares what it is supposed to produce, and the page records which ones failed, so a break shows up as "the card was found but the channel name was not" instead of silence. A route that simply does not render something is reported as such rather than as a failure.
+- **The emote suggestions no longer offer emotes that would bounce.** When you are signed in, Kick refuses a subscriber emote you do not own and refuses a free channel emote outside its own channel, the list used to offer both and let you find out by sending. It now reads the entitlement data the library has carried since 1.20.0 and leaves them out. Signed out, nothing changes: an anonymous read genuinely cannot tell an emote you own from one you never will, so nothing is hidden on a guess.
+- **Two live checks no longer report defects that were not there.** The reward check declared a claim missing when the page had simply not reached it yet, claiming takes two passes and the first one arms a ten-minute back-off before it clicks, so a stray cycle could leave the check waiting. It now retries within its own phase and reports which pass claimed. The navigation check had the same shape and now waits for the route rather than sleeping a fixed interval.
+- **One chat for the whole grid.** "Merge all chats" replaces the single focused-channel chat with every channel in the grid interleaved in the order messages arrived, each line labelled with the channel it came from. It is off by default, one channel's chat with Kick's own emotes and badges is the better read, and it is strictly read-only, with no composer and nothing that can send. Connections are opened per channel and closed when a channel leaves the grid, so removing a tile stops it costing anything; switching back to per-tile chat gives you the same chat you had, without a reload.
+- **The multi-stream grid's chat can float above everything in its own window.** A "Pop out chat" control opens the focused channel's chat in an always-on-top window you can keep beside a game or another app. It follows the focused tile, and closing it puts chat straight back in the grid, the grid's own chat is hidden while the window has it rather than torn down, so nothing reloads on the way back and no messages are lost. The control only appears in browsers that can do this; everywhere else the grid behaves exactly as before. Read-only, like the in-grid chat, and it says so.
+
+## 1.24.0, 2026-08-18
+
+### Added
+
+- **Drift detection now checks what a hook is *for*, not just that it matched.** Twice this month a feature stopped working while every check stayed green, both the same shape: the element was found and the value computed from it was not, a stream card that yields no channel name, a player container that turns out to be the video itself. Each of those now declares what it is supposed to produce, and the page records which ones failed, so a break shows up as "the card was found but the channel name was not" instead of silence. A route that simply does not render something is reported as such rather than as a failure.
 
 ### Changed
 
 - **A live check no longer reports a defect when the page simply had not finished laying out.** The emote-organizer check captured the grid before its column count settled, so a later legitimate re-render looked like a failure to patch the tile in place. It now waits for the window to stop rebuilding, and says "nothing stable to test" rather than "broken" when it never does.
 - **The distribution and listing posture is written down.** A section in the README states the single purpose, that nothing is collected or transmitted, why no remote code ships, why the userscript asks for broad connect permission and what uses it, and which channel each of the three artifacts could be listed on. Nothing is submitted anywhere; this exists so the answers are decided calmly rather than during a review.
 
-## 1.23.0 — 2026-08-18
+## 1.23.0, 2026-08-18
 
 ### Added
 
-- **A recording now says how long Kick will keep it.** Kick deletes VODs after 7 days, or 30 for a verified channel, offers no download to anyone including the broadcaster, and shows that deadline nowhere. On a VOD page a small countdown sits in the player corner. It is deliberately silent rather than approximate: if the recording is older than the list Kick returns, or the channel's tier cannot be established, it shows nothing at all — 7 and 30 days are four-fold apart, so a guess would be a confident wrong date rather than a rough one.
+- **A recording now says how long Kick will keep it.** Kick deletes VODs after 7 days, or 30 for a verified channel, offers no download to anyone including the broadcaster, and shows that deadline nowhere. On a VOD page a small countdown sits in the player corner. It is deliberately silent rather than approximate: if the recording is older than the list Kick returns, or the channel's tier cannot be established, it shows nothing at all, 7 and 30 days are four-fold apart, so a guess would be a confident wrong date rather than a rough one.
 
 ### Changed
 
-- **The emote hover card and the completion list now render above everything.** Both used to be placed by hand and rely on winning a stacking contest with Kick's own layers. They now use the browser's top layer, which no page styling can clip or cover, and they position themselves against the emote or the composer rather than by arithmetic this build does itself. On a browser without that capability the previous behaviour is used unchanged. Escape, focus and every keystroke behave exactly as before — the surfaces are opened in the mode that watches no keys and moves no focus, so nothing is taken away from Kick's own composer.
+- **The emote hover card and the completion list now render above everything.** Both used to be placed by hand and rely on winning a stacking contest with Kick's own layers. They now use the browser's top layer, which no page styling can clip or cover, and they position themselves against the emote or the composer rather than by arithmetic this build does itself. On a browser without that capability the previous behaviour is used unchanged. Escape, focus and every keystroke behave exactly as before, the surfaces are opened in the mode that watches no keys and moves no focus, so nothing is taken away from Kick's own composer.
 - **The completion list is pinned above the composer instead of following the caret.** It no longer slides sideways as you type, which is where Twitch and FrankerFaceZ both put theirs.
 
-## 1.22.0 — 2026-08-18
+## 1.22.0, 2026-08-18
 
 ### Added
 
-- **Search the settings.** Roughly ninety settings live across five pages, and finding one meant knowing which page it was on. A box above the page list searches all of them at once and shows what matched, with the page each setting lives on; clicking a result takes you there. It searches descriptions as well as names, and it matches the English name even when the interface is in Spanish or Portuguese — so a setting someone read about in English is still findable in a translated panel.
-- **Kick Focus tells you when it has changed under you.** After an update, one dismissible notice names the new version and offers a link to a short summary on the About page, and any setting whose default moved is called out by name. It stays quiet on a first install and on a profile that predates this feature — in neither case can it honestly claim to know what changed. Kick shipped ads to viewers with no notice in May 2026 and was rightly criticised for it; this build should not do the same thing to its own users.
+- **Search the settings.** Roughly ninety settings live across five pages, and finding one meant knowing which page it was on. A box above the page list searches all of them at once and shows what matched, with the page each setting lives on; clicking a result takes you there. It searches descriptions as well as names, and it matches the English name even when the interface is in Spanish or Portuguese, so a setting someone read about in English is still findable in a translated panel.
+- **Kick Focus tells you when it has changed under you.** After an update, one dismissible notice names the new version and offers a link to a short summary on the About page, and any setting whose default moved is called out by name. It stays quiet on a first install and on a profile that predates this feature, in neither case can it honestly claim to know what changed. Kick shipped ads to viewers with no notice in May 2026 and was rightly criticised for it; this build should not do the same thing to its own users.
 
 ### Changed
 
 - **Markup now reaches the page through a single checked path.** Every panel this build draws goes through one function, and the build refuses to ship if any surface writes markup on its own. Nothing looks different; it means a future change to how markup is handled is one edit rather than seventeen.
 
-## 1.21.0 — 2026-08-18
+## 1.21.0, 2026-08-18
 
 ### Added
 
-- **The live gate can now say "not here" instead of failing.** A check whose subject Kick simply did not render on the route being tested — no video on the home page, an empty emote library on a throwaway profile — used to come back red, which trains people to ignore a red gate. Those are reported as skips that name what was missing and how to cover it, and skips are counted apart from the total so a run that asserted nothing cannot report a perfect score. Run against the Browse page, that turns four failures that were not defects into four honest skips.
-- **Every artifact is under a declared size budget.** The userscript has grown about 25 KB a release, and Violentmonkey's Manifest V3 mode only gives true document-start injection below roughly 1 MB — past which injection silently lands late rather than erroring. The build now prints the userscript's size on every run and the gate fails before that ceiling is reached.
+- **The live gate can now say "not here" instead of failing.** A check whose subject Kick simply did not render on the route being tested, no video on the home page, an empty emote library on a throwaway profile, used to come back red, which trains people to ignore a red gate. Those are reported as skips that name what was missing and how to cover it, and skips are counted apart from the total so a run that asserted nothing cannot report a perfect score. Run against the Browse page, that turns four failures that were not defects into four honest skips.
+- **Every artifact is under a declared size budget.** The userscript has grown about 25 KB a release, and Violentmonkey's Manifest V3 mode only gives true document-start injection below roughly 1 MB, past which injection silently lands late rather than erroring. The build now prints the userscript's size on every run and the gate fails before that ceiling is reached.
 
-- **The live gate now checks that Kick's own endpoints still exist.** Kick removes endpoints without notice — it deleted the one serving video metadata outright in July 2026, which broke another Kick extension on the spot. Drift detection covered Kick's page markup and said nothing about its API, so a removed endpoint would have degraded into a diagnostics counter nobody reads. Each endpoint this build depends on is now read on every live run, and one that has genuinely gone fails the gate by name. An endpoint that answers only for a signed-in session is reported rather than failed, because the gate runs logged out. The list is derived from the module that owns the endpoints, so a new one cannot be added without either a check or a stated reason.
-- **The Firefox companion is now proven against a real Firefox.** It had never been executed anywhere: Firefox Release refuses to install unsigned packages permanently, so every claim about the Manifest V2 build rested on reading the code. A new gate drives Firefox over WebDriver BiDi, installs the package as a temporary add-on, and asserts against live Kick that the page bundle runs, the bridge handshake reaches the page, the interface mounts, and — the one only a real browser can answer — that an ad host requested by the Kick page is refused by the browser's own network layer. It joins the release gate and skips cleanly on a machine with no Firefox.
+- **The live gate now checks that Kick's own endpoints still exist.** Kick removes endpoints without notice, it deleted the one serving video metadata outright in July 2026, which broke another Kick extension on the spot. Drift detection covered Kick's page markup and said nothing about its API, so a removed endpoint would have degraded into a diagnostics counter nobody reads. Each endpoint this build depends on is now read on every live run, and one that has genuinely gone fails the gate by name. An endpoint that answers only for a signed-in session is reported rather than failed, because the gate runs logged out. The list is derived from the module that owns the endpoints, so a new one cannot be added without either a check or a stated reason.
+- **The Firefox companion is now proven against a real Firefox.** It had never been executed anywhere: Firefox Release refuses to install unsigned packages permanently, so every claim about the Manifest V2 build rested on reading the code. A new gate drives Firefox over WebDriver BiDi, installs the package as a temporary add-on, and asserts against live Kick that the page bundle runs, the bridge handshake reaches the page, the interface mounts, and, the one only a real browser can answer, that an ad host requested by the Kick page is refused by the browser's own network layer. It joins the release gate and skips cleanly on a machine with no Firefox.
 
 ### Fixed
 
-- **Live checks no longer report a working feature as broken.** Each check now waits for the thing it is about instead of looking once and giving up. This build paints on its own schedule, so a single look could miss a control that was about to appear — which is exactly what happened on 2026-08-17, when the discovery-card chips were reported dead while they were working. Nothing about the product was wrong; the check was.
+- **Live checks no longer report a working feature as broken.** Each check now waits for the thing it is about instead of looking once and giving up. This build paints on its own schedule, so a single look could miss a control that was about to appear, which is exactly what happened on 2026-08-17, when the discovery-card chips were reported dead while they were working. Nothing about the product was wrong; the check was.
 
-- **The Firefox package no longer hands kick.com a permanent identifier.** It used to inject its page bundle from a `moz-extension://` address, and that address contains a UUID which Firefox generates per install and never changes — so any script on the page could read it as a tracking identifier that survives clearing cookies. The bundle is now carried inside the extension's own bridge and injected as source, the address never reaches the page, and the package no longer marks anything web-accessible. This depends on Kick shipping no Content Security Policy, which it does not; the README says what happens if that changes.
+- **The Firefox package no longer hands kick.com a permanent identifier.** It used to inject its page bundle from a `moz-extension://` address, and that address contains a UUID which Firefox generates per install and never changes, so any script on the page could read it as a tracking identifier that survives clearing cookies. The bundle is now carried inside the extension's own bridge and injected as source, the address never reaches the page, and the package no longer marks anything web-accessible. This depends on Kick shipping no Content Security Policy, which it does not; the README says what happens if that changes.
 - **Privileged extension messages now check who sent them.** The part of the companion that owns the network rules and the blocklist fetch acted on any message with the right shape. It now refuses anything that is not this extension's own content script on a Kick page, or this extension's own popup.
-- **The interface now says which language it is written in.** Kick's page declares English, and that declaration reaches into this build's own panels, so with the interface set to Español or Português a screen reader was announcing every translated string with English phonemes. Each of the four surfaces this build owns — the settings shell, the emote suggestion list, the emote hover card, and the header control — now declares the language it is actually in, and follows the setting when it changes. The companion popup is unchanged and still declares English, because its copy is English.
+- **The interface now says which language it is written in.** Kick's page declares English, and that declaration reaches into this build's own panels, so with the interface set to Español or Português a screen reader was announcing every translated string with English phonemes. Each of the four surfaces this build owns, the settings shell, the emote suggestion list, the emote hover card, and the header control, now declares the language it is actually in, and follows the setting when it changes. The companion popup is unchanged and still declares English, because its copy is English.
 
-## 1.20.0 — 2026-08-17
+## 1.20.0, 2026-08-17
 
 ### Added
 
-- **Your emotes, stated rather than guessed.** Kick's `/emotes/{slug}` answers differently depending on who is asking. Read anonymously it returns the channel's own artwork, Global and Emojis. Read with the session's bearer token it returns those *plus every channel you subscribe to* and the collectibles you have pulled — measured on one live channel as three sets and 12,566 bytes against thirteen sets and 44,404 bytes. That larger answer is Kick's own statement of what your account may send, which is the explicit entitlement this build has always required and never had. The emote library now uses it: an emote you own reads as available, a subscriber emote from a channel you do not subscribe to is marked denied rather than merely unconfirmed, and a new line at the top of the library says how many emotes you can use in any chat and how many subscribed channels they come from. Kick shows that nowhere — its picker only ever shows the channel you are standing in.
-- **Where an emote actually works.** `subscribers_only` is inverted from what its name suggests, and the consequences are what matter: a *free* channel emote is refused everywhere except its own channel (`FOREIGN_CHANNEL_EMOTE_ERROR`), while a subscriber emote you own works in every chat. Both were measured by posting each kind into a real chatroom. Library tiles and the chat hover card now say which one an emote is — "Works in every chat", or "Only works in {channel}'s chat" — so a name you type is one that arrives. Where the catalog has not established reach, nothing is claimed.
-- **Stream uptime.** Kick sends the start time with every channel and displays it nowhere. A small clock in the player corner counts from it. It costs no request: the value rides along on a payload the mod already reads, and falls back to the stream's start in Kick's own structured data in the page — which also means it still works when Kick's channel API is rate-limiting the tab. On by default; an offline channel and a VOD both show nothing.
+- **Your emotes, stated rather than guessed.** Kick's `/emotes/{slug}` answers differently depending on who is asking. Read anonymously it returns the channel's own artwork, Global and Emojis. Read with the session's bearer token it returns those *plus every channel you subscribe to* and the collectibles you have pulled, measured on one live channel as three sets and 12,566 bytes against thirteen sets and 44,404 bytes. That larger answer is Kick's own statement of what your account may send, which is the explicit entitlement this build has always required and never had. The emote library now uses it: an emote you own reads as available, a subscriber emote from a channel you do not subscribe to is marked denied rather than merely unconfirmed, and a new line at the top of the library says how many emotes you can use in any chat and how many subscribed channels they come from. Kick shows that nowhere, its picker only ever shows the channel you are standing in.
+- **Where an emote actually works.** `subscribers_only` is inverted from what its name suggests, and the consequences are what matter: a *free* channel emote is refused everywhere except its own channel (`FOREIGN_CHANNEL_EMOTE_ERROR`), while a subscriber emote you own works in every chat. Both were measured by posting each kind into a real chatroom. Library tiles and the chat hover card now say which one an emote is, "Works in every chat", or "Only works in {channel}'s chat", so a name you type is one that arrives. Where the catalog has not established reach, nothing is claimed.
+- **Stream uptime.** Kick sends the start time with every channel and displays it nowhere. A small clock in the player corner counts from it. It costs no request: the value rides along on a payload the mod already reads, and falls back to the stream's start in Kick's own structured data in the page, which also means it still works when Kick's channel API is rate-limiting the tab. On by default; an offline channel and a VOD both show nothing.
 
 ### Fixed
 
 - **Session-gated reads were being made without the session.** `kickFetchJson` sent cookies and no bearer token, on the recorded belief that these endpoints authenticate by cookie alone. They do not: `/gamification/collectibles` answers **403** to a cookie-only read and 200 with the header, so collectible rarity and the duplicate-rate summary had been degrading for every signed-in user with no error to show for it. Kick's own page reads the same `session_token` cookie and sends it the same way. The header is attached to Kick origins only.
-- **A catalog emote that said "available" was filed as subscriber-only.** The library merge read the native picker's `available` flag but not the catalog's own `access`, so everything the catalog reported as usable — every Global and Emoji emote, and now everything the account owns — fell through to the locked branch.
+- **A catalog emote that said "available" was filed as subscriber-only.** The library merge read the native picker's `available` flag but not the catalog's own `access`, so everything the catalog reported as usable, every Global and Emoji emote, and now everything the account owns, fell through to the locked branch.
 - **Overlays were being appended inside the `<video>` element, where nothing renders.** Kick's video carries `id="video-player"`, and `closest()` tests the element itself first, so the ancestor lookup returned the video. Children of a media element are fallback content and are never drawn. That silently disabled the playback diagnostics panel and the `[data-kf-player] video` contain rule at once. Overlays now resolve to a container that holds the video, preferring one that already establishes a containing block so nothing of Kick's is restyled.
-- **Poor mode left two spend surfaces standing.** The KICKs balance in the chat footer and the gift-shop panel are not controls — the balance is a `<span>` whose entire text is a number — and the tagger walked only buttons and links. Both are now identified by test id, which is also why the free channel-points counter sitting directly beside the balance is untouched.
+- **Poor mode left two spend surfaces standing.** The KICKs balance in the chat footer and the gift-shop panel are not controls, the balance is a `<span>` whose entire text is a number, and the tagger walked only buttons and links. Both are now identified by test id, which is also why the free channel-points counter sitting directly beside the balance is untouched.
 
 ### Changed
 
 - The live gate gained three checks: that a player overlay anchors to a container and never to the video, that the uptime chip agrees with Kick's own start time read as UTC, and that Poor mode reaches the non-control spend surfaces while leaving Follow and channel points alone. The last two skip with a reason rather than failing when the route carries no live channel or no spend surface, so the default home-page run stays honest about what it did not cover.
-- The migration check no longer asserts the library's exact size. Home carries a live chat preview and emote discovery is on by default, so a message arriving mid-check legitimately added an entry — making it fail on a busy minute and pass on a quiet one. It now asserts that both imported entries survive and that every stored key carries the platform prefix.
+- The migration check no longer asserts the library's exact size. Home carries a live chat preview and emote discovery is on by default, so a message arriving mid-check legitimately added an entry, making it fail on a busy minute and pass on a quiet one. It now asserts that both imported entries survive and that every stored key carries the platform prefix.
 
-## 1.19.0 — 2026-08-16
+## 1.19.0, 2026-08-16
 
 ### Added
 
-- **Switch off Kick's own controls you never use.** A grid on the Layout page turns off eight player controls — miniplayer, clip, theater, fullscreen, the quality gear, volume, share, report — and six sidebar entries: the Home, Browse, Following and Drops links, and the followed and recommended channel lists. Each one is hidden with styling only. Nothing is clicked, nothing is removed from the page, and switching it back on brings it straight back without a reload. The controls are found through the same ordered probe list the rest of the mod uses, so the live gate reports it if Kick renames one of them, rather than the switch quietly hiding nothing.
-- **Always start at the highest quality** (off by default). Opens every stream at the best rung Kick offers on that channel, taking precedence over remembered quality. The rungs are learned from Kick's own quality menu rather than hard-coded, because the set differs per channel — so it does nothing until that menu has been opened once, and it will not open the menu for you to get there sooner. A rung Kick has badged as unavailable to your session is never recorded and never selected: signed out, that is the 1080p60 row, and the best rung becomes 720p60.
+- **Switch off Kick's own controls you never use.** A grid on the Layout page turns off eight player controls, miniplayer, clip, theater, fullscreen, the quality gear, volume, share, report, and six sidebar entries: the Home, Browse, Following and Drops links, and the followed and recommended channel lists. Each one is hidden with styling only. Nothing is clicked, nothing is removed from the page, and switching it back on brings it straight back without a reload. The controls are found through the same ordered probe list the rest of the mod uses, so the live gate reports it if Kick renames one of them, rather than the switch quietly hiding nothing.
+- **Always start at the highest quality** (off by default). Opens every stream at the best rung Kick offers on that channel, taking precedence over remembered quality. The rungs are learned from Kick's own quality menu rather than hard-coded, because the set differs per channel, so it does nothing until that menu has been opened once, and it will not open the menu for you to get there sooner. A rung Kick has badged as unavailable to your session is never recorded and never selected: signed out, that is the 1080p60 row, and the best rung becomes 720p60.
 
 ### Fixed
 
-- **Remembered quality was written in a format the player does not read.** Kick's player takes its starting quality from `sessionStorage['stream_quality']`, which holds the bare height — `720`, `360`, `0` for Auto — but this build wrote the menu's label there instead, so `720p60` went into a key that expects `720`. Measured against a live channel by picking each rung and reading the key back. The menu fallback beside it never fired either: it only clicked a rung when the control was a `<button>`, and Kick renders these as `div[role="menuitemradio"]`.
-- **A quality label was read from the whole row rather than the rung.** Signed out, Kick puts a sign-in badge beside the top rung, so the row's text is the rung glued to the badge — which ranks fine and is unusable. The label now comes from the rung's own element, and the badge is what marks the row as one this session may not pick.
+- **Remembered quality was written in a format the player does not read.** Kick's player takes its starting quality from `sessionStorage['stream_quality']`, which holds the bare height, `720`, `360`, `0` for Auto, but this build wrote the menu's label there instead, so `720p60` went into a key that expects `720`. Measured against a live channel by picking each rung and reading the key back. The menu fallback beside it never fired either: it only clicked a rung when the control was a `<button>`, and Kick renders these as `div[role="menuitemradio"]`.
+- **A quality label was read from the whole row rather than the rung.** Signed out, Kick puts a sign-in badge beside the top rung, so the row's text is the rung glued to the badge, which ranks fine and is unusable. The label now comes from the rung's own element, and the badge is what marks the row as one this session may not pick.
 
-## 1.18.2 — 2026-08-16
+## 1.18.2, 2026-08-16
 
 ### Changed
 
-- **The daily-reward check now schedules itself from what Kick actually says, instead of polling every ten minutes.** When the dialog reports "Watch 54 more minutes to claim", the next look is in 55 minutes. When the reward has already been collected — by this, or by you in another tab — it sleeps until the 8pm rollover rather than reopening the dialog all day. After claiming, it sleeps to the rollover too. Waking at 8pm and reading the countdown there lands the real attempt near 9pm on its own, without that hour being written down anywhere. Across a day that is about three openings of Kick's dialog instead of over a hundred. The Content & Ads page shows when the next check is due.
+- **The daily-reward check now schedules itself from what Kick actually says, instead of polling every ten minutes.** When the dialog reports "Watch 54 more minutes to claim", the next look is in 55 minutes. When the reward has already been collected, by this, or by you in another tab, it sleeps until the 8pm rollover rather than reopening the dialog all day. After claiming, it sleeps to the rollover too. Waking at 8pm and reading the countdown there lands the real attempt near 9pm on its own, without that hour being written down anywhere. Across a day that is about three openings of Kick's dialog instead of over a hundred. The Content & Ads page shows when the next check is due.
 
 ### Fixed
 
-- **The reward could be clicked more than once.** Kick's dialog stays on screen for the reveal animation after a claim, and the mod re-checks every few seconds — so for those few seconds it saw a claimable dialog and pressed the button again. It now lets go of the dialog before clicking.
+- **The reward could be clicked more than once.** Kick's dialog stays on screen for the reveal animation after a claim, and the mod re-checks every few seconds, so for those few seconds it saw a claimable dialog and pressed the button again. It now lets go of the dialog before clicking.
 
-## 1.18.1 — 2026-08-16
+## 1.18.1, 2026-08-16
 
 ### Fixed
 
-- **The Focus button now opens settings.** It used to open the command menu, which for signed-in users appeared to do nothing at all. The command menu is unchanged and still on its keyboard shortcut. Nothing asserted that pressing this button did anything, and the check that covers it now only ever reached the floating button — the header one, which is the button signed-in users actually see, was never exercised because Kick only renders its anchor when you are logged in. The gate now supplies that anchor and clicks both.
+- **The Focus button now opens settings.** It used to open the command menu, which for signed-in users appeared to do nothing at all. The command menu is unchanged and still on its keyboard shortcut. Nothing asserted that pressing this button did anything, and the check that covers it now only ever reached the floating button, the header one, which is the button signed-in users actually see, was never exercised because Kick only renders its anchor when you are logged in. The gate now supplies that anchor and clicks both.
 
-## 1.18.0 — 2026-08-16
-
-### Added
-
-- **Claim Kick's daily reward automatically** (off by default). When a reward is waiting, Kick Focus opens Kick's own reward dialog and clicks its claim button for you, then closes it again and gives you focus back. It clicks nothing else. A reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying — so it can never claim something the account has not earned. It waits until you are not typing and no Kick Focus panel is open, checks at most once every ten minutes, and stops for the day once it claims. The check is shared across your tabs, so four open Kick tabs do not each open the dialog. Signed-in only: the reward button does not exist otherwise.
-
-## 1.17.0 — 2026-08-16
+## 1.18.0, 2026-08-16
 
 ### Added
 
-- **The emote library is no longer limited by `localStorage`.** It is stored in IndexedDB, which holds orders of magnitude more, with a small synchronous copy kept where the page can read it instantly so nothing about startup changed. Browsers that refuse IndexedDB — private windows, some locked-down profiles — keep working exactly as before on that copy alone. Nothing was added to build this: it is about 200 lines and two object stores.
-- **Emote suggestions as you type** (off by default). Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send in that channel, then overall, with your favorites first and names that *start* with what you typed ahead of names that merely contain it. Click one and its plain name goes in at your cursor — never a wire token, never an id, and it never sends the message. Suggestions are accepted by click only: nothing here listens for a keystroke, so it cannot take a key that was meant for Kick's own composer.
+- **Claim Kick's daily reward automatically** (off by default). When a reward is waiting, Kick Focus opens Kick's own reward dialog and clicks its claim button for you, then closes it again and gives you focus back. It clicks nothing else. A reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying, so it can never claim something the account has not earned. It waits until you are not typing and no Kick Focus panel is open, checks at most once every ten minutes, and stops for the day once it claims. The check is shared across your tabs, so four open Kick tabs do not each open the dialog. Signed-in only: the reward button does not exist otherwise.
+
+## 1.17.0, 2026-08-16
+
+### Added
+
+- **The emote library is no longer limited by `localStorage`.** It is stored in IndexedDB, which holds orders of magnitude more, with a small synchronous copy kept where the page can read it instantly so nothing about startup changed. Browsers that refuse IndexedDB, private windows, some locked-down profiles, keep working exactly as before on that copy alone. Nothing was added to build this: it is about 200 lines and two object stores.
+- **Emote suggestions as you type** (off by default). Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send in that channel, then overall, with your favorites first and names that *start* with what you typed ahead of names that merely contain it. Click one and its plain name goes in at your cursor, never a wire token, never an id, and it never sends the message. Suggestions are accepted by click only: nothing here listens for a keystroke, so it cannot take a key that was meant for Kick's own composer.
 - **Collect a channel into multi-stream straight from a card.** Every stream card on Home, Browse, Following and Search gets a chip that adds it to the grid without opening it, showing whether it is already in there. Category tiles and section links wear the same card markup on Kick and deliberately do not get the chip.
-- **Tabs converge.** Adding or removing a channel in one Kick tab now updates the others as it happens, rather than the next time you open the grid. The stored grid remains the single source of truth and is re-read on every change and every open, so tabs that cannot hear each other — a `www.kick.com` tab beside a `kick.com` one — still agree; the live update is a convenience on top, not the mechanism.
+- **Tabs converge.** Adding or removing a channel in one Kick tab now updates the others as it happens, rather than the next time you open the grid. The stored grid remains the single source of truth and is re-read on every change and every open, so tabs that cannot hear each other, a `www.kick.com` tab beside a `kick.com` one, still agree; the live update is a convenience on top, not the mechanism.
 - **A shared `?kf-multi=` link now says what it replaced**, with an Undo that puts your own grid back, instead of silently overwriting a set you were part way through collecting.
-- **"Most used" and "Recent" shelves in the emote picker.** Two shelves over the usage Kick Focus already counts — one ordered by how often you send an emote, one by how recently — scoped to the channel you are in and falling back to your overall history for anything you have not sent there yet. They are presentational: nothing here sends, repeats, or schedules a send.
+- **"Most used" and "Recent" shelves in the emote picker.** Two shelves over the usage Kick Focus already counts, one ordered by how often you send an emote, one by how recently, scoped to the channel you are in and falling back to your overall history for anything you have not sent there yet. They are presentational: nothing here sends, repeats, or schedules a send.
 
 ### Changed
 
-- **The emote picker stops rendering your whole library at once.** Only the tiles near the viewport are put in the page, with a spacer standing in for the rest so the scrollbar still describes the full library — measured on the live site, 240 tiles in the page instead of 900. Typing in the picker's search now waits for you to stop typing rather than re-filtering on every keystroke, and favoriting or removing an emote updates that one tile instead of rebuilding the grid, so the images already on screen are never re-fetched or re-decoded.
+- **The emote picker stops rendering your whole library at once.** Only the tiles near the viewport are put in the page, with a spacer standing in for the rest so the scrollbar still describes the full library, measured on the live site, 240 tiles in the page instead of 900. Typing in the picker's search now waits for you to stop typing rather than re-filtering on every keystroke, and favoriting or removing an emote updates that one tile instead of rebuilding the grid, so the images already on screen are never re-fetched or re-decoded.
 
 ### Internal
 
-- The live gate now fails when Kick's DOM drifts. Each shell hook is found through an ordered list of probes — a stable id first, then structural and accessible fallbacks — and everything keeps working when the first stops matching, which is exactly why it needs catching: it is the early warning and it is otherwise silent. The check reads the same probe list the runtime uses, so there is no second list to fall out of date. It found a real fall-through on its first run.
-- The live-data surface is its own module too — the same treatment, and it brought twelve tests to paths that previously had none that could fail: that a slow endpoint is really aborted rather than left hanging, that an oversized or malformed body is refused instead of parsed, that the follow request rejects a junk channel before it reaches the network and decodes Kick's CSRF token rather than forwarding it raw, that recorded API drift is capped, and that a deletion annotation survives chat remounting a message without ever being applied twice.
-- The multi-stream grid is its own module. It used to be ~490 lines in the middle of the runtime file, reachable only by running the whole bundle in a browser; it now takes the page's storage, toasts and translation through an explicit boundary, which means the parts that actually matter — that a channel still in the grid keeps the exact `<iframe>` it had, that exactly one tile ever carries audio, that a suspended tile unloads while the focused one never does, and that a second tab's channels survive a write from this one — are proven by tests instead of by inspection. No behaviour changed.
+- The live gate now fails when Kick's DOM drifts. Each shell hook is found through an ordered list of probes, a stable id first, then structural and accessible fallbacks, and everything keeps working when the first stops matching, which is exactly why it needs catching: it is the early warning and it is otherwise silent. The check reads the same probe list the runtime uses, so there is no second list to fall out of date. It found a real fall-through on its first run.
+- The live-data surface is its own module too, the same treatment, and it brought twelve tests to paths that previously had none that could fail: that a slow endpoint is really aborted rather than left hanging, that an oversized or malformed body is refused instead of parsed, that the follow request rejects a junk channel before it reaches the network and decodes Kick's CSRF token rather than forwarding it raw, that recorded API drift is capped, and that a deletion annotation survives chat remounting a message without ever being applied twice.
+- The multi-stream grid is its own module. It used to be ~490 lines in the middle of the runtime file, reachable only by running the whole bundle in a browser; it now takes the page's storage, toasts and translation through an explicit boundary, which means the parts that actually matter, that a channel still in the grid keeps the exact `<iframe>` it had, that exactly one tile ever carries audio, that a suspended tile unloads while the focused one never does, and that a second tab's channels survive a write from this one, are proven by tests instead of by inspection. No behaviour changed.
 - The build now strips `import` as well as `export`, so a bundled module can declare its real dependencies and still load on its own under the test runner. Two artifact gates cover it: no module syntax may survive into any of the three artifacts, and the export/definition gate now reads the module list from the source tree rather than a hand-written list that a new file would have silently escaped.
-- Fixed a duplicate `currentChannelSlug` — two top-level definitions, where the second silently replaced the first for every caller.
+- Fixed a duplicate `currentChannelSlug`, two top-level definitions, where the second silently replaced the first for every caller.
 
 ### Changed
 
-- **Keyword matches are highlighted, not just the message.** The words themselves are now painted, and Kick Focus writes nothing into Kick's chat to do it — the browser paints them from a registry, so there is no markup for Kick to reconcile against and nothing to undo when a message scrolls away. Overlapping keywords produce one highlight rather than nested ones.
+- **Keyword matches are highlighted, not just the message.** The words themselves are now painted, and Kick Focus writes nothing into Kick's chat to do it, the browser paints them from a registry, so there is no markup for Kick to reconcile against and nothing to undo when a message scrolls away. Overlapping keywords produce one highlight rather than nested ones.
 - **The interface is measurably lighter.** Stylesheets are parsed once and shared by reference instead of being re-parsed for every panel and every panic-switch restore; off-screen emote tiles skip layout and paint entirely; and the work Kick Focus does on each page change is split so a click or keystroke is never stuck behind it. On the live site the per-cycle cost went from 2.6 ms average / 7.6 ms worst case to 1.8 ms / 3.2 ms.
 - **Kick Focus no longer replaces the browser's history functions** where the browser can report navigation itself, so nothing of this build is visible on `history.pushState` to any other script on the page.
 
 ### Added
 
-- **"Add open tabs" builds a grid from the channels you already have open.** Opening multi-stream asks your other Kick tabs which channel they are on and offers them in one click. It needs no new permission in either build and nothing but a channel name is ever exchanged — a tab you have closed simply stops answering, so the offer is never stale.
+- **"Add open tabs" builds a grid from the channels you already have open.** Opening multi-stream asks your other Kick tabs which channel they are on and offers them in one click. It needs no new permission in either build and nothing but a channel name is ever exchanged, a tab you have closed simply stops answering, so the offer is never stale.
 - The About page reports what each page-change pass costs, and the figure travels with the diagnostics copy.
 
 ### Internal
 
-- Recorded emotes now carry the platform they came from in their key (emote preferences schema 8). Everything is Kick's today, so this changes nothing you can see — it goes in now because the library, favorites, removals, and group assignments all share one key, and adding the origin later would mean migrating four stores at once against data that had grown for months. Existing libraries migrate on load or on import, keeping every entry and every favorite, and a backup from an older build still restores.
+- Recorded emotes now carry the platform they came from in their key (emote preferences schema 8). Everything is Kick's today, so this changes nothing you can see, it goes in now because the library, favorites, removals, and group assignments all share one key, and adding the origin later would mean migrating four stores at once against data that had grown for months. Existing libraries migrate on load or on import, keeping every entry and every favorite, and a backup from an older build still restores.
 
-## 1.15.0 — 2026-08-16
+## 1.15.0, 2026-08-16
 
 ### Changed
 
-- **The settings interface meets WCAG 2.2 AA on target size, focus, and reflow.** Every control now has a 24×24 CSS pixel floor that density and the 90% interface scale cannot shrink it below, focusing a control near the bottom of a page no longer parks it underneath the sticky footer, and the interface reflows at 200% zoom without a horizontal scrollbar. Verified by measurement on the live site — 228 controls across all five settings pages, zero violations.
-- **Ready for the day Kick turns on Trusted Types.** Kick currently ships no Content Security Policy, but `require-trusted-types-for 'script'` would make every `innerHTML` write in the page throw — including all of this build's own interface, which would simply stop appearing. Markup now goes through a feature-detected policy of its own. It deliberately does not claim the `default` policy, which would vouch for every other script on the page, Kick's included. Four writes that only cleared a node no longer produce markup at all.
+- **The settings interface meets WCAG 2.2 AA on target size, focus, and reflow.** Every control now has a 24×24 CSS pixel floor that density and the 90% interface scale cannot shrink it below, focusing a control near the bottom of a page no longer parks it underneath the sticky footer, and the interface reflows at 200% zoom without a horizontal scrollbar. Verified by measurement on the live site, 228 controls across all five settings pages, zero violations.
+- **Ready for the day Kick turns on Trusted Types.** Kick currently ships no Content Security Policy, but `require-trusted-types-for 'script'` would make every `innerHTML` write in the page throw, including all of this build's own interface, which would simply stop appearing. Markup now goes through a feature-detected policy of its own. It deliberately does not claim the `default` policy, which would vouch for every other script on the page, Kick's included. Four writes that only cleared a node no longer produce markup at all.
 
-## 1.14.0 — 2026-08-16
+## 1.14.0, 2026-08-16
 
 ### Added
 
-- **Recorded emotes can now be used, not just looked at.** Every emote in the library gets Copy name, and an off-by-default setting adds Type in chat, which puts the plain name at your cursor in Kick's own message box. It types the name and nothing else — never Kick's internal `[emote:id:name]` token, never an id — and it never sends the message, so entitlement stays exactly where Kick put it. Subscriber-only and shadowed names say so when you copy or type them, instead of letting you find out in a live chat.
-- **Hovering a chat emote tells you what it is before you save it.** A small card names the emote, the Kick set it belongs to, its access level, when you first saw it, and whether it is already in your collection — all of which was recorded but only reachable by opening the library manager. If another channel's emote shadows the name, the card says which one typing that name actually sends. It follows the keyboard too, never intercepts the pointer, and stays on screen near the edges.
+- **Recorded emotes can now be used, not just looked at.** Every emote in the library gets Copy name, and an off-by-default setting adds Type in chat, which puts the plain name at your cursor in Kick's own message box. It types the name and nothing else, never Kick's internal `[emote:id:name]` token, never an id, and it never sends the message, so entitlement stays exactly where Kick put it. Subscriber-only and shadowed names say so when you copy or type them, instead of letting you find out in a live chat.
+- **Hovering a chat emote tells you what it is before you save it.** A small card names the emote, the Kick set it belongs to, its access level, when you first saw it, and whether it is already in your collection, all of which was recorded but only reachable by opening the library manager. If another channel's emote shadows the name, the card says which one typing that name actually sends. It follows the keyboard too, never intercepts the pointer, and stays on screen near the edges.
 
 ### Changed
 
-- **Spanish and Portuguese now cover the copy that actually moves.** Toasts, screen-reader announcements, button labels, placeholders, and every count phrase were written straight to the page and never passed through the translator, so ~90 strings — every error message and every accessible label among them — stayed English no matter the language setting. All of them are translated, and count sentences now read naturally in each language rather than gluing a translated word onto an English sentence.
+- **Spanish and Portuguese now cover the copy that actually moves.** Toasts, screen-reader announcements, button labels, placeholders, and every count phrase were written straight to the page and never passed through the translator, so ~90 strings, every error message and every accessible label among them, stayed English no matter the language setting. All of them are translated, and count sentences now read naturally in each language rather than gluing a translated word onto an English sentence.
 
 - **Importing a backup is now all-or-nothing.** An import used to write its ten stores one after another, so a browser storage limit reached part-way left a configuration that was half the imported file and half the old one, with nothing to say where the seam was. The whole set is now sized and checked before anything is written, a refusal explains itself and changes nothing, and Undo import stays available if a restore fails. Userscript builds commit the set in a single batched write on Tampermonkey 5.3+ and Violentmonkey.
 
 ### Internal
 
-- The test suite adopts Node's own tooling with no new dependencies: tests are tagged so pure logic can run without a build (`npm run test:unit`), API-shape assertions tolerate Kick adding fields without going quiet about wrong ones, and a coverage gate names any source file no test reaches. That gate immediately found four — `runtime.js` and the three extension entry points were absent from the coverage table entirely, which made the reported percentage look better than it was. Each now states where it is actually covered. jsdom, happy-dom, and Node's built-in localStorage remain deliberately unadopted.
+- The test suite adopts Node's own tooling with no new dependencies: tests are tagged so pure logic can run without a build (`npm run test:unit`), API-shape assertions tolerate Kick adding fields without going quiet about wrong ones, and a coverage gate names any source file no test reaches. That gate immediately found four, `runtime.js` and the three extension entry points were absent from the coverage table entirely, which made the reported percentage look better than it was. Each now states where it is actually covered. jsdom, happy-dom, and Node's built-in localStorage remain deliberately unadopted.
 
 ### Fixed
 
 - **Escape cancels the reset prompt instead of tearing down all of Settings.** Answering "no" to a confirmation no longer closes the modal and discards the page you were working on, and the prompt now keeps Tab inside itself rather than letting focus wander the obscured settings behind it. Cancelling returns focus to the control you pressed.
 - **"Larger pointer targets" and "Reduce motion" now apply to Kick Focus's own controls.** Both settings only ever restyled Kick's markup: the mod's interface lives in a shadow root that the site-level rules cannot reach, so switches, buttons, and the multi-stream tile bar ignored them. Larger targets also pins the tile bar open, since a pointer-limited user may never trigger its hover reveal.
 
-## 1.13.0 — 2026-08-16
+## 1.13.0, 2026-08-16
 
 ### Added
 
 - **Click any chat emote to save it.** Emotes in live chat are now visible keyboard controls: click them or press Enter/Space to add them to the local favorites collection immediately. Dynamically arriving messages get the same treatment, repeated clicks are idempotent, and every new save offers Undo.
-- **Follow-gated emotes can complete the whole action in place.** When—and only when—Kick's own emote data explicitly says a source channel follow is required, the save click also performs Kick's normal same-origin Follow request without navigating away. Public artwork never triggers a follow, a missing source is never guessed, subscriber-only access remains locked, failures keep the local save and explain what happened, and Undo can reverse a follow created by that click.
+- **Follow-gated emotes can complete the whole action in place.** When,and only when,Kick's own emote data explicitly says a source channel follow is required, the save click also performs Kick's normal same-origin Follow request without navigating away. Public artwork never triggers a follow, a missing source is never guessed, subscriber-only access remains locked, failures keep the local save and explain what happened, and Undo can reverse a follow created by that click.
 
 ### Changed
 
@@ -261,7 +276,7 @@ Maintainer tooling only. The shipped userscript and both companion extensions be
 
 - Settings migrate to schema 4 for the click-to-save preference; emote preferences migrate to schema 7 for source-channel and explicit follow-gate evidence. The follow decision, follow endpoint, normalization, lock state, access merge, and portable metadata are unit-tested. The full suite is 118/118.
 
-## 1.12.0 — 2026-08-16
+## 1.12.0, 2026-08-16
 
 ### Added
 
@@ -276,60 +291,60 @@ Maintainer tooling only. The shipped userscript and both companion extensions be
 
 - Emote preferences migrate losslessly to schema 6, which adds the portable `channel` access state. The catalog-access decision and Poor mode's exact spending-control boundary are pure, unit-tested functions.
 
-## 1.11.0 — 2026-08-16
+## 1.11.0, 2026-08-16
 
 ### Added
 
-- **A local error log on the About page.** Kick Focus now captures uncaught errors from its own code — the apply cycle and settings interactions — to a bounded in-session log you can view and copy, with a last-crash summary that persists across reload. Messages are sanitized the same way the protection log is (no query strings or long tokens), and nothing is ever sent anywhere. A client mod on a site that changes as often as Kick should not fail silently.
+- **A local error log on the About page.** Kick Focus now captures uncaught errors from its own code, the apply cycle and settings interactions, to a bounded in-session log you can view and copy, with a last-crash summary that persists across reload. Messages are sanitized the same way the protection log is (no query strings or long tokens), and nothing is ever sent anywhere. A client mod on a site that changes as often as Kick should not fail silently.
 
-## 1.10.0 — 2026-08-16
+## 1.10.0, 2026-08-16
 
-Two operator-requested flagship features — collecting emotes straight from chat and one-click multi-stream — on top of a data-safety, security, and verification pass. Existing data migrates without loss.
+Two operator-requested flagship features, collecting emotes straight from chat and one-click multi-stream, on top of a data-safety, security, and verification pass. Existing data migrates without loss.
 
 ### Added
 
-- **Add the channel you're watching to multi-stream with one click.** The Kick Focus header control now shows a **+ Multi** button on any channel page. Click it to drop that channel into the grid without leaving the page — collect several as you browse, then open them together. The button flips to **In Multi ✓** once a channel is in the grid (click again to remove it), the header shows a live **Multi (n)** count, and each add pops a toast — "Added xqc — 3 of 9" — with **View** and **Undo**. Adds and removes are now merge-safe across tabs: two tabs each adding a different channel no longer clobber each other.
-- **Kick Focus now collects emotes straight from chat as they appear.** Every realtime chat message carries the id and name of each emote in it, and until now all of that was discarded except for counting your own sends. With **live chat events** and **organize chat emotes** both on, every emote anyone posts is now recorded in your library automatically — the single biggest source of emotes on a busy channel. A newly seen emote is only saved after its image actually loads from Kick's CDN, so a faked emote token can never take a slot, and emotes already in your library just refresh their last-seen date.
+- **Add the channel you're watching to multi-stream with one click.** The Kick Focus header control now shows a **+ Multi** button on any channel page. Click it to drop that channel into the grid without leaving the page, collect several as you browse, then open them together. The button flips to **In Multi ✓** once a channel is in the grid (click again to remove it), the header shows a live **Multi (n)** count, and each add pops a toast, "Added xqc, 3 of 9", with **View** and **Undo**. Adds and removes are now merge-safe across tabs: two tabs each adding a different channel no longer clobber each other.
+- **Kick Focus now collects emotes straight from chat as they appear.** Every realtime chat message carries the id and name of each emote in it, and until now all of that was discarded except for counting your own sends. With **live chat events** and **organize chat emotes** both on, every emote anyone posts is now recorded in your library automatically, the single biggest source of emotes on a busy channel. A newly seen emote is only saved after its image actually loads from Kick's CDN, so a faked emote token can never take a slot, and emotes already in your library just refresh their last-seen date.
 
 ### Security
 
-- **The companion bridge is no longer an open channel for a page to abuse.** A script on kick.com could previously make the companion fetch any HTTPS URL and read the body back, write arbitrary data into extension storage, and toggle the telemetry ruleset through an unvalidated payload — and the "network protection active" claim was read from a page-writable `<html>` attribute anything could set. Now the blocklist fetch is pinned to your configured URL (never a URL supplied in the event), announced settings are reduced to the one field the popup reads before anything is stored, the blocklist URL is validated as a well-formed `https:` URL when settings are saved, and companion presence is proven by a live nonce round-trip instead of a page-set attribute.
+- **The companion bridge is no longer an open channel for a page to abuse.** A script on kick.com could previously make the companion fetch any HTTPS URL and read the body back, write arbitrary data into extension storage, and toggle the telemetry ruleset through an unvalidated payload, and the "network protection active" claim was read from a page-writable `<html>` attribute anything could set. Now the blocklist fetch is pinned to your configured URL (never a URL supplied in the event), announced settings are reduced to the one field the popup reads before anything is stored, the blocklist URL is validated as a well-formed `https:` URL when settings are saved, and companion presence is proven by a live nonce round-trip instead of a page-set attribute.
 - **The userscript no longer sends your cookies when fetching a remote blocklist.** `GM_xmlhttpRequest` now runs anonymously, so a blocklist URL on any host cannot receive your credentials for that host.
 
 ### Fixed
 
-- **"Reset all settings" now keeps your recorded emote library and actually clears your private data.** It used to do the reverse: it destroyed the library — including the first-seen/rename provenance that cannot be regenerated — while leaving notes, keyword filters, layouts, favorites, not-interested channels, media preferences, usage counts, and multi-stream layouts untouched. A factory reset now clears all of those and preserves the library, and the dialog says so.
-- **Export and import now cover every store, so a backup is a real backup.** Export previously omitted per-channel layouts, favorite and not-interested channels, chat keyword filters, channel notes, and media preferences — channel notes had no backup path at all — while the panel promised "the only way to keep these." All of them travel in the export now, import restores every one, and import is non-destructive: it snapshots your current settings first and offers **Undo import**. Malformed and prototype-pollution keys (`__proto__`, `constructor`, `prototype`) are dropped per store, and emote usage counts are bounded on both read and write instead of growing without limit.
+- **"Reset all settings" now keeps your recorded emote library and actually clears your private data.** It used to do the reverse: it destroyed the library, including the first-seen/rename provenance that cannot be regenerated, while leaving notes, keyword filters, layouts, favorites, not-interested channels, media preferences, usage counts, and multi-stream layouts untouched. A factory reset now clears all of those and preserves the library, and the dialog says so.
+- **Export and import now cover every store, so a backup is a real backup.** Export previously omitted per-channel layouts, favorite and not-interested channels, chat keyword filters, channel notes, and media preferences, channel notes had no backup path at all, while the panel promised "the only way to keep these." All of them travel in the export now, import restores every one, and import is non-destructive: it snapshots your current settings first and offers **Undo import**. Malformed and prototype-pollution keys (`__proto__`, `constructor`, `prototype`) are dropped per store, and emote usage counts are bounded on both read and write instead of growing without limit.
 
-- **Accessibility fixes across the settings surface.** Toggling a setting deep in a page no longer throws keyboard focus and scroll back to the top — both are preserved across the re-render. Toasts now announce through a live region (errors interrupt as `role="alert"`, confirmations wait politely). Sliders expose `aria-valuetext` (so a screen reader hears "70%", not a bare "70") and a readable name instead of a dotted setting path. In Windows High Contrast / forced-colors mode, switches, the current page tab, and other selected states now show a system-color marker instead of looking identical to their "off" state.
+- **Accessibility fixes across the settings surface.** Toggling a setting deep in a page no longer throws keyboard focus and scroll back to the top, both are preserved across the re-render. Toasts now announce through a live region (errors interrupt as `role="alert"`, confirmations wait politely). Sliders expose `aria-valuetext` (so a screen reader hears "70%", not a bare "70") and a readable name instead of a dotted setting path. In Windows High Contrast / forced-colors mode, switches, the current page tab, and other selected states now show a system-color marker instead of looking identical to their "off" state.
 - **The Firefox companion popup now shows live data instead of static defaults.** The Chromium promise-API popup was copied verbatim into the Firefox package, where the callback-style tab query returned nothing, so the popup never read the active tab. It now uses the `browser`-or-`chrome` namespace so it works on both engines. The release Chromium zip also no longer bundles the dev-only `manifest.dev.json`, which would have shipped an extra permission.
-- **The companion no longer hard-blocks `litix.io`, which was reintroducing a stream-entry delay.** The page realm answers that telemetry host with an empty 200, which the player accepts, but the companion's network layer was cancelling it outright — the exact block that triggers an unbounded retry storm (documented upstream as "massive delays entering live streams"). It is now excluded from the Chromium DNR and Firefox webRequest cancel sets on both engines, and a gate keeps it out.
-- **The recorded emote library no longer silently drops new emotes once it fills up.** At 2,400 entries the old cap kept the *oldest* records and discarded every newly seen emote, and it rewrote the whole ~0.5 MB store on every scan cycle. Now the library evicts the most disposable records first — chat-only (`observed`) before locked, oldest-seen first — and never evicts an emote you have available, favorited, or filed in a custom group, so a full library makes room for a new emote instead of ignoring it. Background merges from chat and the picker are debounced into one write (and flushed when the tab closes) rather than rewriting on every cycle.
+- **The companion no longer hard-blocks `litix.io`, which was reintroducing a stream-entry delay.** The page realm answers that telemetry host with an empty 200, which the player accepts, but the companion's network layer was cancelling it outright, the exact block that triggers an unbounded retry storm (documented upstream as "massive delays entering live streams"). It is now excluded from the Chromium DNR and Firefox webRequest cancel sets on both engines, and a gate keeps it out.
+- **The recorded emote library no longer silently drops new emotes once it fills up.** At 2,400 entries the old cap kept the *oldest* records and discarded every newly seen emote, and it rewrote the whole ~0.5 MB store on every scan cycle. Now the library evicts the most disposable records first, chat-only (`observed`) before locked, oldest-seen first, and never evicts an emote you have available, favorited, or filed in a custom group, so a full library makes room for a new emote instead of ignoring it. Background merges from chat and the picker are debounced into one write (and flushed when the tab closes) rather than rewriting on every cycle.
 - **Removing an emote now frees its library slot.** "Remove" previously only hid the record, so it still counted toward the cap and kept being re-recorded from chat. It now deletes the record, keeps the emote out until you restore it, and the Removed view offers a single "Restore all removed" action.
 
-- **The live extension proof no longer exits 0 when it verified nothing.** A behavioral gate that reports success without a browser is worse than none, so `verify:extension` and `release:check` now fail loudly when Chromium is absent (set `KF_ALLOW_NO_CHROMIUM=1` to downgrade to a skip on a machine that genuinely cannot install one). The matched-rule readback — which needs `declarativeNetRequestFeedback`, a permission the release manifest deliberately omits so Chrome does not warn about browsing history — is now conditional on that permission rather than failing the shipped artifact, with `ERR_BLOCKED_BY_CLIENT` remaining the authoritative block proof. The isolated companion proof was re-run against live Kick: 22/22 checks pass at 1440×900.
+- **The live extension proof no longer exits 0 when it verified nothing.** A behavioral gate that reports success without a browser is worse than none, so `verify:extension` and `release:check` now fail loudly when Chromium is absent (set `KF_ALLOW_NO_CHROMIUM=1` to downgrade to a skip on a machine that genuinely cannot install one). The matched-rule readback, which needs `declarativeNetRequestFeedback`, a permission the release manifest deliberately omits so Chrome does not warn about browsing history, is now conditional on that permission rather than failing the shipped artifact, with `ERR_BLOCKED_BY_CLIENT` remaining the authoritative block proof. The isolated companion proof was re-run against live Kick: 22/22 checks pass at 1440×900.
 
 ### Internal
 
 - Pluralization now goes through a locale-correct `Intl.PluralRules` helper instead of a hand-built `n === 1 ? word : word + "s"` rule, which is wrong for Spanish and Portuguese (both have a "many" category English lacks). Count words route through a `plural()` helper keyed to the active locale, ready for the remaining dynamic-copy localization pass.
 - The artifact checks no longer pass vacuously. The DNR and content-script gates now fail on an empty host list or a broad `<all_urls>` match instead of an empty `.every()` reporting success, a shared exfiltration regex is proven to catch an off-origin API call and a lookalike host, and seven red probes assert each de-vacuumed gate can actually fire. The keyboard-shortcut conflict rejection the README advertises is extracted to a pure function and tested, and `normalizeShortcut` is covered.
-- A boot-execution gate now runs the concatenated bundle in a stubbed environment and asserts it bootstraps without a temporal-dead-zone read or bad const ordering across the four-module concat — a class of failure that previously passed every offline gate and surfaced only in the live browser harness. A companion red test injects a mis-ordered const and asserts the gate catches it.
-- The emote-preferences migration from every historical schema (1 through 5) to the current schema is now covered by a test that asserts favorites, custom groups, assignments, and Kick-edit provenance survive the upgrade losslessly — the highest-risk previously untested area, which the reset/backup changes above all touch.
-- Replaced a literal NUL byte in `src/core.mjs` (the favorites-key separator) with a `\u0000` escape. The runtime string is identical, but the source is now plain text, so ripgrep no longer classifies the settings-schema module as binary — restoring the repo's own re-grep-after-edit safeguard.
+- A boot-execution gate now runs the concatenated bundle in a stubbed environment and asserts it bootstraps without a temporal-dead-zone read or bad const ordering across the four-module concat, a class of failure that previously passed every offline gate and surfaced only in the live browser harness. A companion red test injects a mis-ordered const and asserts the gate catches it.
+- The emote-preferences migration from every historical schema (1 through 5) to the current schema is now covered by a test that asserts favorites, custom groups, assignments, and Kick-edit provenance survive the upgrade losslessly, the highest-risk previously untested area, which the reset/backup changes above all touch.
+- Replaced a literal NUL byte in `src/core.mjs` (the favorites-key separator) with a `\u0000` escape. The runtime string is identical, but the source is now plain text, so ripgrep no longer classifies the settings-schema module as binary, restoring the repo's own re-grep-after-edit safeguard.
 
-## 1.9.0 — 2026-08-15
+## 1.9.0, 2026-08-15
 
 Emote schema 5. Existing favorites migrate without loss.
 
 ### Added
 
-- **Emote favorites are now ordered, and can be scoped to one channel.** A favorite you save on a channel appears only there, above your global ones; global favorites still follow you everywhere. Order is explicit and set with the ‹ › controls in the favorites view — Kick's own "Frequently Used" ranks nothing, so this is the only real ordering available. New favorites stay global by default, so nothing you already had moves; the Content settings choose otherwise.
+- **Emote favorites are now ordered, and can be scoped to one channel.** A favorite you save on a channel appears only there, above your global ones; global favorites still follow you everywhere. Order is explicit and set with the ‹ › controls in the favorites view, Kick's own "Frequently Used" ranks nothing, so this is the only real ordering available. New favorites stay global by default, so nothing you already had moves; the Content settings choose otherwise.
 
   Favorites keep working when the channel's emote set is not loaded, because the library already stores a full snapshot for every recorded emote.
 
   Previous versions stored a flat favorites list with no scope. Position in that list *was* the order, so it carries over as your global order with nothing lost.
 
-## 1.8.0 — 2026-08-15
+## 1.8.0, 2026-08-15
 
 Emote schema 4. Existing libraries migrate without loss.
 
@@ -337,24 +352,24 @@ Emote schema 4. Existing libraries migrate without loss.
 
 - **Named-channel blocklist.** Specific channels can now be hidden from Home, Browse, Following, and Search through the Content settings. The list is normalized, capped at 200 entries, editable, exportable, and counts toward the fail-open ceiling.
 - **The emote library is now a record you can check Kick against.** Each entry keeps a first-seen and last-seen date, and when Kick renames an emote or replaces its artwork the value at first capture is kept and the entry is flagged. Kick changed emotes users had already pulled in July 2026 and answered with "remastered… clear your cache"; a local record is the only version that can show what changed. Entries carried over from the previous schema keep an unknown first-seen date rather than claiming today.
-- **The collectible facts Kick leaves unexplained**, each with its basis: the daily streak confers no bonus to drop quality or odds, no drop odds are published anywhere in the responses this build reads, duplicate protection is undocumented, and the collectibles page can disagree with the chat emote set. The duplicate count is measured from your own inventory only when Kick returns a per-item quantity — otherwise it is reported as unavailable rather than shown as zero.
+- **The collectible facts Kick leaves unexplained**, each with its basis: the daily streak confers no bonus to drop quality or odds, no drop odds are published anywhere in the responses this build reads, duplicate protection is undocumented, and the collectibles page can disagree with the chat emote set. The duplicate count is measured from your own inventory only when Kick returns a per-item quantity, otherwise it is reported as unavailable rather than shown as zero.
 - **Saved layouts are shareable and show who is live.** A layout copies as a kick.com link carrying channel names and nothing else; opening one revalidates every slug through the same rules the grid uses, then strips the parameter so a reload does not silently reopen it. Live status for the grid and every saved layout comes from one bulk request rather than per-channel polling.
 - **The badges Kick's own markup omits now render.** Kick's chat payload carries collectible and global badges the legacy array leaves out, so a client reading only the DOM showed a gap. Badges Kick already drew are skipped, and a badge image that fails to load is replaced by its name rather than an empty box.
 - **API drift detection.** When a normalizer rejects a payload for a shape reason, the endpoint and reason are recorded, and the About page reports accumulated drift instead of silently falling back.
-- **A locked emote now says why it is locked** — subscriber emote, collectible you have not pulled, or a denial Kick gives no reason for — and links to Kick's own unlock path. Nothing is enabled or sent; the link is the only action offered. Entitlement is read across every shape Kick has used, and the default with no signal is unlocked, because the expensive failure is greying out an emote you actually own.
+- **A locked emote now says why it is locked**, subscriber emote, collectible you have not pulled, or a denial Kick gives no reason for, and links to Kick's own unlock path. Nothing is enabled or sent; the link is the only action offered. Entitlement is read across every shape Kick has used, and the default with no signal is unlocked, because the expensive failure is greying out an emote you actually own.
 
 ### Changed
 
-- **The realtime transport is now swappable.** Frame parsing and subscription management moved into shared protocol functions and per-provider connection details into a registry, so Kick switching providers is one added entry rather than a rewrite. Kick's own gateway is registered but marked unverified — this project has never contacted it — and a verified provider wins when the broker offers both. An unverified transport that never delivers a frame degrades to reading the page and names itself.
+- **The realtime transport is now swappable.** Frame parsing and subscription management moved into shared protocol functions and per-provider connection details into a registry, so Kick switching providers is one added entry rather than a rewrite. Kick's own gateway is registered but marked unverified, this project has never contacted it, and a verified provider wins when the broker offers both. An unverified transport that never delivers a frame degrades to reading the page and names itself.
 - The README now corrects a widely repeated claim: a cross-origin WebSocket is not blocked by CORS. What can block Kick's gateway from a page context is the server rejecting the origin or its Cloudflare front requiring a token, and which applies remains untested here.
-- **Translation is now a single forward lookup.** Every string used to be resolved by scanning all ~250 dictionary entries to map a possibly-already-translated value back to English — ambiguous by construction, since several English sources are also translated values of other strings. The English original is remembered per node instead, so a re-render or a language change translates from the source rather than from what is on screen.
+- **Translation is now a single forward lookup.** Every string used to be resolved by scanning all ~250 dictionary entries to map a possibly-already-translated value back to English, ambiguous by construction, since several English sources are also translated values of other strings. The English original is remembered per node instead, so a re-render or a language change translates from the source rather than from what is on screen.
 - **Language names are no longer translated.** A picker that renames "Português" to "Portugués" is harder to use, not easier; endonyms now appear the same in every locale.
 
 ### Internal
 
 - Tile reuse across multi-stream renders, the single-unmuted-tile rule, and the deletion-annotates-once guard are now covered offline. Replacing an `<iframe>` restarts its stream, so the reuse rule is load-bearing; it was previously asserted only by a headed browser run that `npm run verify` does not execute. The reuse test was verified red against a deliberately broken plan before being trusted.
 
-## 1.7.0 — 2026-08-15
+## 1.7.0, 2026-08-15
 
 Trust, naming, and diagnostics pass.
 
@@ -372,26 +387,26 @@ Trust, naming, and diagnostics pass.
 
 ### Changed
 
-- **User-facing "sticker" vocabulary renamed to "emote"** throughout settings, translations, toasts, announcements, aria-labels, validation messages, and the README. Kick ships no product called a sticker — its API, chat wire format, and picker DOM all say emote. Internal identifiers and storage keys stay unchanged to preserve existing data without a migration.
+- **User-facing "sticker" vocabulary renamed to "emote"** throughout settings, translations, toasts, announcements, aria-labels, validation messages, and the README. Kick ships no product called a sticker, its API, chat wire format, and picker DOM all say emote. Internal identifiers and storage keys stay unchanged to preserve existing data without a migration.
 - Node engine floor updated to 22+ in the README to match `package.json`.
 
-## 1.6.0 — 2026-08-15
+## 1.6.0, 2026-08-15
 
 Accessibility, data safety, and hardening pass over everything 1.5.0 shipped.
 
 ### Fixed
 
-- **The multi-stream grid had no way to stop it.** Nine autoplaying tiles with no pause-all and the focused tile's audio with no mute-all are WCAG 2.2.2 and 1.4.2 failures — on a build that ships an accessibility page and so invites the standard. Both controls now sit before the grid in tab order, and a system request for reduced motion mounts the grid paused with a visible way to start, since `prefers-reduced-motion` is not accepted as a substitute for a real control. No surveyed competitor implements either.
-- **Nine tiles at source quality is more than most hardware can decode.** Tiles now unload when scrolled out of the grid or when the tab is hidden, and resume in place; the focused tile is never suspended because it carries the audio. Per-tile quality capping turned out to be impossible — `player.kick.com` is a different origin, so neither its storage nor its player internals are reachable, and the embed accepts no quality parameter.
+- **The multi-stream grid had no way to stop it.** Nine autoplaying tiles with no pause-all and the focused tile's audio with no mute-all are WCAG 2.2.2 and 1.4.2 failures, on a build that ships an accessibility page and so invites the standard. Both controls now sit before the grid in tab order, and a system request for reduced motion mounts the grid paused with a visible way to start, since `prefers-reduced-motion` is not accepted as a substitute for a real control. No surveyed competitor implements either.
+- **Nine tiles at source quality is more than most hardware can decode.** Tiles now unload when scrolled out of the grid or when the tab is hidden, and resume in place; the focused tile is never suspended because it carries the audio. Per-tile quality capping turned out to be impossible, `player.kick.com` is a different origin, so neither its storage nor its player internals are reachable, and the embed accepts no quality parameter.
 - **Most of the interface was untranslated and nothing detected it.** 78 rendered strings had no entry in any locale, so `es` and `pt` users read English for the majority of the settings interface. Roughly two thirds predated 1.5.0. The previous gate could not see it, because checking that locales agree with each other stays true when a string is absent from all of them equally.
 - **Export omitted two of the stores it promised to keep.** Emote usage counts and multi-stream layouts were listed in the About storage table but absent from the backup that page tells users to take. Both now round-trip, and import validates and reports them like everything else.
 - **Realtime frames were parsed without bounds.** The chat subscription is anonymous and public, so a frame is untrusted input by construction. Content and ids are now truncated, badge and rule arrays capped, sender colours accepted only as hex colours, and badge images only as https URLs on Kick hosts.
-- **Only the settings modal contained focus**, so keyboard users tabbed out of the command menu and the multi-stream grid onto a page they could not see — and in the grid the next stops are cross-origin frames that cannot be focus-managed at all.
+- **Only the settings modal contained focus**, so keyboard users tabbed out of the command menu and the multi-stream grid onto a page they could not see, and in the grid the next stops are cross-origin frames that cannot be focus-managed at all.
 - Player embeds no longer request `encrypted-media`; Kick playback is Amazon IVS HLS with no DRM.
 
 ### Added
 
-- **The two limitations users would otherwise hit blind are now stated.** Multi-stream chat is read-only because Kick's popout chat refuses to send from inside an iframe by design; and if Kick sign-in, sign-up, or Follow stops working, the cause is an ad-blocker filter list rather than this extension — Kick Focus blocks eleven third-party hosts and no kick.com host at all.
+- **The two limitations users would otherwise hit blind are now stated.** Multi-stream chat is read-only because Kick's popout chat refuses to send from inside an iframe by design; and if Kick sign-in, sign-up, or Follow stops working, the cause is an ad-blocker filter list rather than this extension, Kick Focus blocks eleven third-party hosts and no kick.com host at all.
 - A translation-coverage gate that fails when any rendered string has no dictionary entry, verified red before being trusted.
 - The live harness now explains itself when run on a binary that cannot load extensions: Chrome 139 removed the flags it depends on from official builds.
 
@@ -399,7 +414,7 @@ Accessibility, data safety, and hardening pass over everything 1.5.0 shipped.
 
 - Emote-usage counting moved from `src/api.mjs` to `src/core.mjs`. `core` owns the settings schema and the normalizers guarding import boundaries; `api` owns Kick's endpoints, and usage counts are local storage rather than a Kick surface.
 
-## 1.5.0 — 2026-08-15
+## 1.5.0, 2026-08-15
 
 Settings schema 3. Existing preferences migrate without loss.
 
@@ -417,16 +432,16 @@ Settings schema 3. Existing preferences migrate without loss.
 
 ### Added
 
-- **Kick's own API, read instead of scraped.** A new module covering the realtime broker, emote catalog, chat events, and collectibles — read-only, same-origin, using the session the page already has. Every normaliser reports a changed shape rather than throwing, and every path falls back to the existing DOM scraping.
+- **Kick's own API, read instead of scraped.** A new module covering the realtime broker, emote catalog, chat events, and collectibles, read-only, same-origin, using the session the page already has. Every normaliser reports a changed shape rather than throwing, and every path falls back to the existing DOM scraping.
   - The emote catalog loads without the picker ever being opened, carrying real entitlement rather than a `disabled` attribute.
   - Chat events come from whichever realtime provider Kick's broker names, so no key is written in this source and a provider switch degrades instead of breaking.
   - **Removed messages now say why they were removed.** The page discards that; the realtime event carries it.
   - **Emote usage is counted** per channel and globally. Kick's own "Frequently Used" hardcodes its counter and ranks nothing.
-  - **Collectible rarity is resolved.** Kick publishes rarity on card art and identity in the picker with no key joining them, so the join is evidence-scored and stays silent below a confidence floor — a mislabelled Mythic is worse than no label.
+  - **Collectible rarity is resolved.** Kick publishes rarity on card art and identity in the picker with no key joining them, so the join is evidence-scored and stays silent below a confidence floor, a mislabelled Mythic is worse than no label.
   - Wide collectibles render at their measured aspect instead of squashed square.
   - Shadowed emote names are reported with the set Kick will actually send.
 - **Multi-stream.** Up to nine channels in one grid, built on Kick's own embedded player and popout chat so playback, subscriptions, and entitlements are unchanged. Audio and chat follow the focused tile, layouts save by name, and closing the grid stops every player.
-- **Playback no longer waits on blocked ad preflight scripts.** Kick waits on Google PAL, Datazoom, and OM before requesting playback; blocking them — which this build does — left the dead script in the page and the player sat out the full timeout.
+- **Playback no longer waits on blocked ad preflight scripts.** Kick waits on Google PAL, Datazoom, and OM before requesting playback; blocking them, which this build does, left the dead script in the page and the player sat out the full timeout.
 - **Dropdown sidebar mode**, collapsing the discovery rail to a tab that expands on hover or keyboard focus.
 - Animated emotes and collectibles can be frozen to a static frame, honoured automatically under reduced motion.
 - The page-realm hooks no longer identify themselves through `name` or `toString`.
@@ -436,7 +451,7 @@ Settings schema 3. Existing preferences migrate without loss.
 - The preflight approach is adapted from [KickCX/KickFixPlayerLoading](https://github.com/KickCX/KickFixPlayerLoading) (MIT).
 - The dropdown sidebar concept comes from the "KICK Dropdown" userstyle by IamKoeda ([userstyles.world/style/29036](https://userstyles.world/style/29036), MIT), rebuilt here on this project's own tokens.
 
-## 1.4.0 — 2026-08-15
+## 1.4.0, 2026-08-15
 
 ### Fixed
 
@@ -468,7 +483,7 @@ Settings schema 3. Existing preferences migrate without loss.
 
 - Subscriber-only stickers are cataloged for organization and export but stay unavailable unless Kick marks them enabled. Copying a sticker name is not treated as an entitlement bypass.
 
-## 1.3.0 — 2026-08-14
+## 1.3.0, 2026-08-14
 
 ### Added
 
@@ -490,7 +505,7 @@ Settings schema 3. Existing preferences migrate without loss.
 
 - Browser-manager cold-start timing, authenticated surfaces, Safari, worker-only delivery, and server-side stitched ads remain unverified. The Firefox companion is package- and handshake-tested but still needs a live Firefox profile for end-to-end verification.
 
-## 1.2.0 — 2026-08-14
+## 1.2.0, 2026-08-14
 
 ### Fixed
 
@@ -501,20 +516,20 @@ Settings schema 3. Existing preferences migrate without loss.
 ### Changed
 
 - Analytics SDK blocks in the playback response (`mux_sdk`, `datazoom_sdk`) now follow the Reduce tracking telemetry setting instead of being removed unconditionally. Removing analytics is a privacy choice, not ad blocking, and `datazoom_sdk` was previously stripped from everyone regardless of the setting. Advertising SDKs are still always removed.
-- Content labels are read from Kick's own markup — the category slug and short badge elements — instead of matching prose anywhere in a card. "Drop the beat" no longer reads as a Drops promotion and a stream mentioning a casino is no longer classified as gambling. Text matching remains only as a fallback for signals with no structured evidence, and the slug also makes classification work in every language.
+- Content labels are read from Kick's own markup, the category slug and short badge elements, instead of matching prose anywhere in a card. "Drop the beat" no longer reads as a Drops promotion and a stream mentioning a casino is no longer classified as gambling. Text matching remains only as a fallback for signals with no structured evidence, and the slug also makes classification work in every language.
 
 ### Added
 
-- Ads are now disabled at their source. Kick decides client-side ad behaviour from flags in its `/playback` response, so that response is rewritten in flight: the automatic-ads session flag is reported false and the `google_ads_sdk`, `pal_sdk`, and `datazoom_sdk` blocks are removed before the player sees them. Covers both `fetch` and `XMLHttpRequest`, with the result cached per response body because the player re-reads it as the request progresses. Verified on a live channel — all three SDK blocks cleared, playback unaffected. Ads stitched into the video stream itself are still delivered; no page-level change can remove those.
-- Importing settings now names anything it could not keep — values adjusted to a supported range, unknown settings, unknown sections, and upgrades from an unversioned or older file — instead of reporting a clean success while silently dropping part of a configuration.
+- Ads are now disabled at their source. Kick decides client-side ad behaviour from flags in its `/playback` response, so that response is rewritten in flight: the automatic-ads session flag is reported false and the `google_ads_sdk`, `pal_sdk`, and `datazoom_sdk` blocks are removed before the player sees them. Covers both `fetch` and `XMLHttpRequest`, with the result cached per response body because the player re-reads it as the request progresses. Verified on a live channel, all three SDK blocks cleared, playback unaffected. Ads stitched into the video stream itself are still delivered; no page-level change can remove those.
+- Importing settings now names anything it could not keep, values adjusted to a supported range, unknown settings, unknown sections, and upgrades from an unversioned or older file, instead of reporting a clean success while silently dropping part of a configuration.
 - The About page explains the Chromium "Allow user scripts" toggle when the script started later than it should have, so the most common "it stopped working" case is answerable without leaving the browser. Hidden when injection was already first or the companion is installed.
 - The Content & Ads page now reports whether Kick's ad stack still looks the way this build expects, and warns when it does not. A silent zero in the protection log previously looked identical to a clean page and to defences aiming at something that no longer exists. It found real drift on first run: Kick's playback response carries a `mux_sdk` block this build did not know about.
 - The About page now reports when the script actually started, measured from what the page already contained, instead of claiming `document-start`. Chromium managers inject through `chrome.userScripts` and can land after the page's own scripts, so the timing is no longer asserted without evidence. Under the companion extension it reports `before any page script`. The Protection layer card and self-check also report the real layer rather than a fixed string.
 - Home-page previews are now silenced rather than paused once. The complaint is about sound on arrival, and Kick restarts previews and inserts new ones as the page lives, so a single pass missed anything added later. Each preview is muted and held muted through a `play` listener, so a preview the site restarts is still silent. Verified by forcing every preview to unmute and play: all stayed muted and paused. Manual playback and other routes are untouched.
-- Content filtering now fails open. When filters would hide more than a quarter of a grid of eight or more cards, nothing is hidden and the Content & Ads page explains why — a filter that empties a page is indistinguishable from the site being broken.
+- Content filtering now fails open. When filters would hide more than a quarter of a grid of eight or more cards, nothing is hidden and the Content & Ads page explains why, a filter that empties a page is indistinguishable from the site being broken.
 - `npm run verify:extension` refuses to report DOM results when it did not reach the real site. Kick serves headless browsers a short JSON error, against which every layout assertion passed trivially; the suite now runs headed and gates those checks on Kick's own markup being present.
 
-## 1.1.0 — 2026-08-14
+## 1.1.0, 2026-08-14
 
 ### Added
 
@@ -534,7 +549,7 @@ Settings schema 3. Existing preferences migrate without loss.
 - Both targets now refuse to boot twice, so having the userscript and the companion installed together no longer mounts two interfaces.
 - Settings reached the companion only after the user changed something, leaving defaults that are on (such as Reduce tracking telemetry) disagreeing with the network rulesets on a fresh profile. The page now announces its effective settings, and the companion asks for them, so the exchange no longer depends on which script is injected first.
 
-## 1.0.0 — 2026-08-14
+## 1.0.0, 2026-08-14
 
 ### Added
 
