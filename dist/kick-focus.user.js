@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.29.0
+// @version      1.30.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -23,7 +23,7 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.29.0';
+const VERSION = '1.30.0';
 const SETTINGS_SCHEMA = 5;
 
 /**
@@ -66,6 +66,10 @@ const VERSION_NOTES = Object.freeze({
   }),
   '1.29.0': Object.freeze({
     summary: 'A read-only Viewer page, five chat comfort switches, and saved discovery views: the daily reward and channel points in one place, message times and a bounded session chat search, and a named layout applied to the pages you choose.',
+    defaults: Object.freeze([]),
+  }),
+  '1.30.0': Object.freeze({
+    summary: 'Studio, OLED, and Slate now change the full surface hierarchy. Settings boards, multi-stream, and the companion popup have clearer structure and less visual noise.',
     defaults: Object.freeze([]),
   }),
 });
@@ -3799,6 +3803,24 @@ function formatBytes(bytes) {
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+/** Build a stable selector for the settings control that owns keyboard focus. */
+function settingsFocusSelector(element) {
+  const escape = (value) => String(value).replace(/["\\]/g, '\\$&');
+  const setting = element?.getAttribute?.('data-set');
+  if (setting != null) {
+    const selector = `[data-set="${escape(setting)}"]`;
+    const value = element.getAttribute('data-value');
+    return value == null ? selector : `${selector}[data-value="${escape(value)}"]`;
+  }
+  for (const attr of ['data-action', 'data-shortcut', 'data-kf-sticker-key',
+    'data-kf-sticker-assignment', 'data-kf-sticker-library-filter', 'data-kf-sticker-library-search',
+    'data-kf-emote-catalog-input', 'data-page']) {
+    const value = element?.getAttribute?.(attr);
+    if (value != null) return `[${attr}="${escape(value)}"]`;
+  }
+  return '';
+}
+
 /**
  * Kick's own API surface, as pure data handling.
  *
@@ -6962,7 +6984,7 @@ function createMultistream(host) {
         <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
         <span class="kf-ms-spacer"></span>
         <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
-        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid" title="Remove">×</button>`);
+        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid">Remove</button>`);
         tile.append(bar);
       }
       tile.dataset.kfMultistreamFocused = String(slug === focus);
@@ -6971,7 +6993,18 @@ function createMultistream(host) {
 
     // Anything still in `existing` was removed from the grid.
     for (const stale of existing.values()) stale.remove();
-    for (const tile of ordered) grid.append(tile);
+    if (ordered.length) {
+      grid.querySelector('[data-kf-multistream-empty]')?.remove();
+      for (const tile of ordered) grid.append(tile);
+    } else if (!grid.querySelector('[data-kf-multistream-empty]')) {
+      setMarkup(grid, `<div class="kf-ms-empty-state" data-kf-multistream-empty>
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt="">
+        <span>Multi-stream workspace</span>
+        <h2>Build your viewing board</h2>
+        <p>Add a channel above to start. Focus decides which stream owns audio and chat, and your saved boards stay on this device.</p>
+        <button type="button" class="kf-button kf-button-primary" data-action="multistream-focus-input">Add your first channel</button>
+      </div>`);
+    }
 
     renderMultistreamChat(backdrop, chat, showChat);
     renderMergedChat(backdrop);
@@ -7254,7 +7287,7 @@ function createMultistream(host) {
       // render, so it translates here and the localizer is told to skip it.
       count.textContent = streams.length
         ? trf('{count} of {max} streams', { count: streams.length, max: MULTISTREAM_MAX })
-        : tr('No streams yet — add a channel to start.');
+        : tr('Ready for your first channel');
     }
     const error = backdrop.querySelector('[data-kf-multistream-error]');
     if (error) {
@@ -7311,9 +7344,9 @@ function createMultistream(host) {
           const status = state.multistreamLive.size
             ? `<small class="kf-ms-live" data-live="${live > 0}">${live}/${layout.streams.length} live</small>`
             : `<small>${layout.streams.length}</small>`;
-          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to layout ${escapeHtml(layout.name)}" title="Copy link">🔗</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete layout ${escapeHtml(layout.name)}" title="Delete">×</button></span>`;
+          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to board ${escapeHtml(layout.name)}">Copy</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete board ${escapeHtml(layout.name)}">Remove</button></span>`;
         }).join('')
-        : '<span class="kf-ms-empty">No saved layouts yet.</span>');
+        : '<span class="kf-ms-empty">Saved boards will appear here.</span>');
     }
   }
 
@@ -8393,16 +8426,17 @@ const SITE_CSS = `
     --kf-accent: #7cff2b;
     --kf-accent-rgb: 124, 255, 43;
     --kf-canvas: #080b09;
-    --kf-panel: #0d120f;
-    --kf-panel-raised: #121814;
-    --kf-panel-high: #171e19;
-    --kf-border: #29312b;
-    --kf-border-strong: #3a453d;
-    --kf-text: #f4f7f5;
-    --kf-text-muted: #9ba59f;
-    --kf-text-secondary: #c7cec9;
-    --kf-surface-inset: #090d0a;
-    --kf-surface-hover: #202621;
+    --kf-panel: #0e130f;
+    --kf-panel-raised: #141a16;
+    --kf-panel-high: #1a221c;
+    --kf-border: #2c382f;
+    --kf-border-strong: #46564b;
+    --kf-text: #f5f8f6;
+    --kf-text-muted: #a4afa7;
+    --kf-text-secondary: #cbd3ce;
+    --kf-surface-inset: #080d09;
+    --kf-surface-hover: #202a23;
+    --kf-surface-selected: #172219;
     --kf-on-accent: #071004;
     --kf-danger: #ff6258;
     --kf-warning: #f6b943;
@@ -8418,8 +8452,34 @@ const SITE_CSS = `
   html[data-kf-accent="gold"] { --kf-accent: #ffbe2e; --kf-accent-rgb: 255, 190, 46; }
   html[data-kf-radius="subtle"] { --kf-radius: 6px; }
   html[data-kf-radius="rounded"] { --kf-radius: 12px; }
-  html[data-kf-theme="oled"] { --kf-canvas: #000; --kf-panel: #050606; --kf-panel-raised: #0a0c0d; --kf-panel-high: #101313; --kf-border: #24282b; --kf-border-strong: #3a4143; }
-  html[data-kf-theme="slate"] { --kf-canvas: #0e1110; --kf-panel: #141817; --kf-panel-raised: #1b211f; --kf-panel-high: #222926; --kf-border: #3a454f; --kf-border-strong: #53616c; }
+  html[data-kf-theme="oled"] {
+    --kf-canvas: #000;
+    --kf-panel: #030404;
+    --kf-panel-raised: #080a09;
+    --kf-panel-high: #0e1110;
+    --kf-border: #202622;
+    --kf-border-strong: #414b45;
+    --kf-text: #f8faf9;
+    --kf-text-muted: #a9b0ac;
+    --kf-text-secondary: #d2d7d4;
+    --kf-surface-inset: #000;
+    --kf-surface-hover: #151a17;
+    --kf-surface-selected: #0b170e;
+  }
+  html[data-kf-theme="slate"] {
+    --kf-canvas: #0b0f14;
+    --kf-panel: #111820;
+    --kf-panel-raised: #18222c;
+    --kf-panel-high: #202d39;
+    --kf-border: #344554;
+    --kf-border-strong: #5a7084;
+    --kf-text: #f3f7fa;
+    --kf-text-muted: #a6b5c2;
+    --kf-text-secondary: #cbd6df;
+    --kf-surface-inset: #0a1118;
+    --kf-surface-hover: #263544;
+    --kf-surface-selected: #1b2d29;
+  }
 
   body {
     background: var(--kf-canvas) !important;
@@ -8438,14 +8498,14 @@ const SITE_CSS = `
     nav {
       min-height: 56px !important;
       border-bottom: 1px solid var(--kf-border) !important;
-      background: rgba(8, 11, 9, .98) !important;
+      background: var(--kf-panel) !important;
       box-shadow: 0 8px 24px rgba(0, 0, 0, .22) !important;
     }
 
     nav form > div > div,
     nav [data-testid="search"]:is(input) {
       border-color: var(--kf-border-strong) !important;
-      background: #0b0f0c !important;
+      background: var(--kf-surface-inset) !important;
     }
 
     nav form > div > div {
@@ -8478,7 +8538,7 @@ const SITE_CSS = `
 
     #sidebar-wrapper {
       border-right: 1px solid var(--kf-border) !important;
-      background: #0a0f0c !important;
+      background: var(--kf-panel) !important;
       box-shadow: 12px 0 32px rgba(0,0,0,.12) !important;
     }
 
@@ -8491,7 +8551,7 @@ const SITE_CSS = `
       min-height: 44px !important;
       border: 1px solid transparent !important;
       border-radius: 9px !important;
-      color: #dce2de !important;
+      color: var(--kf-text-secondary) !important;
     }
 
     #sidebar-wrapper a[data-testid^="sidebar-"][data-state="active"] {
@@ -8517,7 +8577,7 @@ const SITE_CSS = `
       padding: 0 0 6px !important;
       border: 1px solid transparent !important;
       border-radius: var(--kf-radius) !important;
-      background: linear-gradient(180deg, rgba(18,24,20,.82), rgba(10,14,11,.58)) !important;
+      background: linear-gradient(180deg, var(--kf-panel-raised), var(--kf-panel)) !important;
       overflow: visible !important;
     }
 
@@ -8531,7 +8591,7 @@ const SITE_CSS = `
     main [data-testid="media-card-thumbnail"] {
       border: 1px solid var(--kf-border) !important;
       border-radius: var(--kf-radius) !important;
-      background: #050806 !important;
+      background: var(--kf-surface-inset) !important;
       overflow: hidden !important;
     }
 
@@ -8715,13 +8775,13 @@ const SITE_CSS = `
     [data-kf-chat-panel],
     #channel-chatroom {
       border-left: 1px solid var(--kf-border) !important;
-      background: #0a0f0c !important;
+      background: var(--kf-panel) !important;
       box-shadow: -12px 0 32px rgba(0,0,0,.14) !important;
     }
 
     #channel-chatroom > div > div:first-child {
       border-bottom-color: var(--kf-border) !important;
-      background: #0c110e !important;
+      background: var(--kf-panel-raised) !important;
     }
 
     #channel-chatroom [data-testid="pinned-message-modal"] > div {
@@ -13037,29 +13097,29 @@ const UI_CSS = `
     --surface-1: var(--kf-panel, #101311);
     --surface-2: var(--kf-panel-raised, #151917);
     --surface-3: var(--kf-panel-high, #1c211e);
-    --surface-inset: #0b0e0c;
-    --surface-hover: #202621;
-    --surface-selected: #182019;
+    --surface-inset: var(--kf-surface-inset, #0b0e0c);
+    --surface-hover: var(--kf-surface-hover, #202621);
+    --surface-selected: var(--kf-surface-selected, #182019);
     --surface-danger: #2a1416;
     --border: var(--kf-border, #353b37);
-    --border-subtle: #29302b;
-    --border-control: #48524b;
+    --border-subtle: color-mix(in srgb, var(--border) 68%, transparent);
+    --border-control: color-mix(in srgb, var(--border-strong) 78%, var(--border));
     --border-strong: var(--kf-border-strong, #59645c);
     --text: var(--kf-text, #f4f7f5);
-    --text-secondary: #c7cec9;
+    --text-secondary: var(--kf-text-secondary, #c7cec9);
     --muted: var(--kf-text-muted, #a5aea8);
-    --subtle: #7f8882;
-    --on-accent: #071004;
-    --danger: #ff6258;
+    --subtle: color-mix(in srgb, var(--muted) 72%, var(--surface-0));
+    --on-accent: var(--kf-on-accent, #071004);
+    --danger: var(--kf-danger, #ff6258);
     --danger-text: #ffaaa4;
-    --warning: #f6b943;
+    --warning: var(--kf-warning, #f6b943);
     --success: var(--accent);
     --radius-sm: 4px;
     --radius-md: 6px;
     --radius-lg: 10px;
     --radius: var(--kf-radius, 10px);
-    --shadow-dialog: 0 42px 120px rgba(0,0,0,.78);
-    --shadow-control: 0 10px 28px rgba(0,0,0,.28);
+    --shadow-dialog: 0 38px 110px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.015);
+    --shadow-control: 0 10px 28px rgba(0,0,0,.24);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px;
     line-height: 1.45;
@@ -13069,6 +13129,7 @@ const UI_CSS = `
   [hidden] { display: none !important; }
   button, input, select, textarea { font: inherit; }
   button { color: inherit; }
+  :is(button, input, select, textarea) { transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
   ::selection { background: rgba(var(--accent-rgb), .28); color: var(--text); }
 
   .kf-quick {
@@ -13099,18 +13160,18 @@ const UI_CSS = `
     z-index: 2147483200;
     display: grid;
     place-items: center;
-    padding: 24px;
-    background: rgba(2, 3, 3, .86);
+    padding: 22px;
+    background: radial-gradient(circle at 50% 14%, rgba(var(--accent-rgb), .055), transparent 38%), rgba(2, 3, 3, .9);
   }
 
   .kf-settings {
     position: relative;
-    width: min(1000px, calc(100vw - 48px));
-    height: min(920px, calc(100vh - 48px));
-    min-width: 820px;
-    min-height: 660px;
+    width: min(1140px, calc(100vw - 44px));
+    height: min(940px, calc(100vh - 44px));
+    min-width: 860px;
+    min-height: 640px;
     display: grid;
-    grid-template-rows: 88px minmax(0, 1fr) 80px;
+    grid-template-rows: 76px minmax(0, 1fr) 68px;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -13122,17 +13183,16 @@ const UI_CSS = `
 
   .kf-header {
     display: grid;
-    grid-template-columns: 252px 1fr auto auto;
+    grid-template-columns: 1fr auto auto;
     align-items: center;
-    gap: 24px;
-    padding: 0 24px;
+    gap: 18px;
+    padding: 0 20px;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-2);
   }
   .kf-brand { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 16px; font-weight: 820; letter-spacing: -.02em; }
   .kf-brand-mark { width: 28px; height: 28px; display: block; object-fit: contain; }
   .kf-badge { padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .68); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
-  .kf-title { font-size: 15px; font-weight: 760; }
   .kf-save { display: flex; align-items: center; color: var(--text-secondary); font-size: 12px; font-weight: 650; }
   .kf-save::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border: 1px solid var(--accent); border-radius: 2px; background: var(--accent); }
   .kf-save[data-error="true"] { color: var(--danger); }
@@ -13154,8 +13214,8 @@ const UI_CSS = `
   .kf-icon-button:active { background: var(--surface-selected); transform: translateY(1px); }
   .kf-icon { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  .kf-body { min-height: 0; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
-  .kf-nav { padding: 18px 10px; border-right: 1px solid var(--border); background: var(--surface-0); }
+  .kf-body { min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+  .kf-nav { padding: 14px 10px; border-right: 1px solid var(--border); background: var(--surface-0); }
   .kf-nav button {
     position: relative;
     width: 100%;
@@ -13163,7 +13223,7 @@ const UI_CSS = `
     grid-template-columns: 24px minmax(0, 1fr);
     align-items: center;
     gap: 13px;
-    min-height: 62px;
+    min-height: 56px;
     padding: 0 14px;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
@@ -13182,7 +13242,7 @@ const UI_CSS = `
   .kf-nav strong { font-size: 13px; font-weight: 760; }
   .kf-nav span { overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 
-  .kf-page { min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 26px 34px 40px 38px; scrollbar-color: var(--border-control) transparent; scrollbar-width: thin; }
+  .kf-page { min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 24px 34px 40px 36px; scrollbar-color: var(--border-control) transparent; scrollbar-width: thin; }
   .kf-page:focus { outline: 0; }
   .kf-nav-search { padding: 0 10px 10px; }
   .kf-nav-search input {
@@ -13224,8 +13284,8 @@ const UI_CSS = `
   .kf-search-empty { padding: 18px; color: var(--muted); }
   .kf-search-empty p { margin: 0 0 6px; }
 
-  .kf-page-header { min-height: 90px; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
-  .kf-page-header h2 { margin: 2px 0 5px; font-size: 28px; line-height: 1.08; letter-spacing: -.035em; }
+  .kf-page-header { min-height: 86px; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .kf-page-header h2 { margin: 2px 0 5px; font-size: 29px; line-height: 1.06; letter-spacing: -.04em; }
   .kf-page-header p { max-width: 560px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
   .kf-eyebrow { display: block; color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
   .kf-page-meta { display: grid; gap: 3px; min-width: 140px; text-align: right; }
@@ -13235,17 +13295,17 @@ const UI_CSS = `
 
   .kf-panel { border: 0; border-radius: 0; background: transparent; overflow: visible; }
   .kf-row {
-    min-height: 82px;
+    min-height: 74px;
     display: grid;
     grid-template-columns: minmax(230px, 1fr) minmax(300px, auto);
     align-items: center;
     gap: 26px;
-    padding: 14px 0;
+    padding: 12px 0;
     border-bottom: 1px solid var(--border-subtle);
   }
   .kf-row h3 { margin: 0 0 4px; color: var(--text); font-size: 13px; font-weight: 780; letter-spacing: .01em; }
   .kf-row p { max-width: 420px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-  .kf-row-wide { grid-template-columns: minmax(210px, .82fr) minmax(340px, 1.18fr); }
+  .kf-row-wide { grid-template-columns: minmax(220px, .82fr) minmax(360px, 1.18fr); }
   .kf-control { min-width: 300px; display: flex; justify-content: flex-end; }
 
   .kf-segmented { display: inline-flex; border: 1px solid var(--border-control); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-inset); box-shadow: inset 0 1px rgba(255,255,255,.02); }
@@ -13334,33 +13394,51 @@ const UI_CSS = `
   .kf-select:hover { border-color: var(--border-strong); }
   .kf-select:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
 
-  .kf-theme-grid, .kf-swatch-grid { display: grid; grid-template-columns: repeat(5, minmax(64px, 1fr)); gap: 8px; }
-  .kf-theme-grid { grid-template-columns: repeat(3, minmax(104px, 1fr)); }
-  .kf-preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .kf-preset-card { display: grid; gap: 5px; min-height: 92px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: linear-gradient(145deg, rgba(var(--accent-rgb), .08), transparent 58%), var(--surface-inset); color: var(--text); text-align: left; cursor: pointer; }
+  .kf-theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .kf-swatch-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+  .kf-preset-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+  .kf-preset-card { position: relative; display: grid; align-content: start; gap: 4px; min-height: 82px; padding: 11px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text); text-align: left; cursor: pointer; }
+  .kf-preset-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: rgba(var(--accent-rgb), .5); opacity: .55; }
   .kf-preset-card:hover { border-color: var(--border-strong); background-color: var(--surface-hover); transform: translateY(-1px); box-shadow: var(--shadow-control); }
   .kf-preset-card:active { transform: translateY(0); box-shadow: none; }
   .kf-preset-card span { color: var(--accent); font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-  .kf-preset-card strong { font-size: 13px; }
-  .kf-preset-card small { color: var(--muted); font-size: 10px; line-height: 1.4; }
-  .kf-choice-card {
-    min-height: 86px;
-    padding: 11px;
+  .kf-preset-card strong { font-size: 12px; }
+  .kf-preset-card small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+  .kf-theme-board {
+    position: relative;
+    min-height: 126px;
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--surface-inset);
+    color: var(--text);
     cursor: pointer;
     text-align: left;
   }
-  .kf-choice-card:hover { border-color: var(--border-strong); background: var(--surface-hover); transform: translateY(-1px); box-shadow: var(--shadow-control); }
-  .kf-choice-card:active { transform: translateY(0); box-shadow: none; }
-  .kf-choice-card[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-selected); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .18); }
-  .kf-choice-card strong { display: block; margin-top: 8px; font-size: 11px; }
-  .kf-theme-sample { height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px; border: 1px solid #303632; border-radius: 2px; background: #171b18; color: #9ca59f; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
-  .kf-choice-card[data-value="oled"] .kf-theme-sample { border-color: #292e30; background: #000; }
-  .kf-choice-card[data-value="slate"] .kf-theme-sample { border-color: #4a5660; background: #1b211f; }
-  .kf-theme-sample b { color: var(--accent); font-size: 8px; }
-  .kf-swatch { width: 28px; height: 28px; border-radius: 3px; border: 1px solid rgba(255,255,255,.24); }
+  .kf-theme-board:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: var(--shadow-control); }
+  .kf-theme-board:active { transform: translateY(0); box-shadow: none; }
+  .kf-theme-board[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-selected); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .15); }
+  .kf-theme-board-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .kf-theme-board-top > span:first-child { color: var(--subtle); font-size: 8px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+  .kf-theme-selected { min-height: 15px; color: var(--accent); font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+  .kf-theme-tones { height: 34px; display: grid; grid-template-columns: 1.4fr 1fr .8fr; gap: 3px; padding: 4px; border: 1px solid var(--theme-border); border-radius: 4px; background: var(--theme-canvas); }
+  .kf-theme-tones i { display: block; border-radius: 2px; background: var(--theme-panel); }
+  .kf-theme-tones i:nth-child(2) { background: var(--theme-raised); }
+  .kf-theme-tones i:nth-child(3) { background: var(--theme-high); }
+  .kf-theme-board[data-value="studio"] { --theme-canvas: #080b09; --theme-panel: #0e130f; --theme-raised: #141a16; --theme-high: #1a221c; --theme-border: #46564b; }
+  .kf-theme-board[data-value="oled"] { --theme-canvas: #000; --theme-panel: #030404; --theme-raised: #080a09; --theme-high: #0e1110; --theme-border: #414b45; }
+  .kf-theme-board[data-value="slate"] { --theme-canvas: #0b0f14; --theme-panel: #111820; --theme-raised: #18222c; --theme-high: #202d39; --theme-border: #5a7084; }
+  .kf-theme-copy { display: grid; gap: 2px; }
+  .kf-theme-copy strong { font-size: 12px; }
+  .kf-theme-copy small { color: var(--muted); font-size: 9px; line-height: 1.35; }
+  .kf-accent-chip { min-width: 0; min-height: 52px; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text-secondary); cursor: pointer; text-align: left; }
+  .kf-accent-chip:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+  .kf-accent-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-selected); color: var(--text); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .12); }
+  .kf-accent-chip strong { min-width: 0; font-size: 9px; line-height: 1.15; }
+  .kf-swatch { width: 18px; height: 30px; border-radius: 3px; border: 1px solid rgba(255,255,255,.24); }
   .kf-swatch[data-color="kick"] { background: #7cff2b; }
   .kf-swatch[data-color="cyan"] { background: #38d7d0; }
   .kf-swatch[data-color="violet"] { background: #9667ff; }
@@ -13370,8 +13448,9 @@ const UI_CSS = `
   .kf-custom-color input { width: 42px; height: 34px; padding: 2px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
   .kf-custom-color strong { color: var(--text); font-size: 11px; }
   .kf-custom-color small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+  .kf-custom-accent-row[data-visible="false"] { display: none; }
 
-  .kf-appearance-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 22px; }
+  .kf-appearance-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 24px; }
   .kf-appearance-controls { min-width: 0; }
   .kf-appearance-controls .kf-row, .kf-appearance-controls .kf-row-wide { min-height: 0; grid-template-columns: 1fr; gap: 8px; padding: 11px 0; }
   .kf-appearance-controls .kf-row:has(.kf-control) { min-height: 64px; grid-template-columns: minmax(160px, 1fr) minmax(190px, auto); align-items: center; gap: 12px; }
@@ -13380,9 +13459,6 @@ const UI_CSS = `
   .kf-appearance-controls .kf-segmented { width: 100%; }
   .kf-appearance-controls .kf-segmented button { min-width: 0; flex: 1; padding-inline: 8px; }
   .kf-appearance-controls .kf-range { grid-template-columns: 38px minmax(90px, 1fr) 34px; gap: 6px; }
-  .kf-appearance-controls .kf-choice-card { min-height: 64px; padding: 8px; }
-  .kf-appearance-controls .kf-theme-sample { height: 25px; padding-inline: 6px; }
-  .kf-appearance-controls .kf-choice-card strong { margin-top: 6px; font-size: 11px; }
 
   .kf-preview { position: sticky; top: 0; align-self: start; min-width: 0; padding-left: 20px; border-left: 1px solid var(--border); }
   .kf-preview-kicker { color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
@@ -13420,8 +13496,16 @@ const UI_CSS = `
   .kf-defense-overview .kf-status-card > .kf-active { display: none; }
   .kf-defense-overview .kf-stats { border-left: 1px solid var(--border-subtle); }
   .kf-content-section { margin-top: 18px; }
-  .kf-content-section .kf-subsection-header { margin-bottom: 0; padding-bottom: 9px; }
-  [data-kf-current-page="content"] .kf-row { min-height: 64px; padding: 10px 0; }
+  .kf-content-section {
+    overflow: hidden;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    box-shadow: 0 1px 0 rgba(255,255,255,.015) inset;
+  }
+  .kf-content-section .kf-subsection-header { margin: 0 -16px; padding: 14px 16px 12px; border-bottom-color: var(--border); background: var(--surface-2); }
+  [data-kf-current-page="content"] .kf-row { min-height: 62px; padding: 10px 0; }
   [data-kf-current-page="content"] .kf-row h3 { margin-bottom: 2px; font-size: 12px; }
   [data-kf-current-page="content"] .kf-row p { font-size: 11px; }
   [data-kf-current-page="content"] .kf-subsection { margin-top: 20px; }
@@ -13548,6 +13632,10 @@ const UI_CSS = `
   .kf-chat-log-row span:last-child { overflow-wrap: anywhere; }
 
   .kf-hub-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 18px 0; }
+  .kf-hub-card { position: relative; overflow: hidden; min-height: 118px; padding: 15px; border: 1px solid var(--border); border-radius: var(--radius-md); background: linear-gradient(145deg, var(--surface-inset), var(--surface-1)); }
+  .kf-hub-card::before { content: ''; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent); opacity: .32; }
+  .kf-hub-card > span { display: block; color: var(--subtle); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+  .kf-hub-card > strong { display: block; margin-top: 7px; color: var(--accent); font-size: 19px; }
   .kf-hub-card em { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; font-style: normal; line-height: 1.45; }
   /* A card with no reading is quieter than one with a number, and says so in
      words as well: state is never carried by colour alone. */
@@ -13565,6 +13653,15 @@ const UI_CSS = `
   [data-kf-current-page="accessibility"] .kf-subsection-header { margin-bottom: 0; padding-bottom: 8px; }
   [data-kf-current-page="accessibility"] .kf-table th, [data-kf-current-page="accessibility"] .kf-table td { padding-block: 7px; }
   [data-kf-current-page="accessibility"] .kf-button-small { min-height: 32px; }
+  [data-kf-current-page="layout"] > .kf-panel,
+  [data-kf-current-page="accessibility"] > .kf-panel,
+  [data-kf-current-page="about"] > .kf-panel {
+    margin-top: 16px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+  }
   [data-kf-current-page="about"] .kf-action-row { min-height: 78px; padding-block: 13px; }
   [data-kf-current-page="about"] .kf-subsection { margin-top: 18px; }
   [data-kf-current-page="about"] .kf-subsection > .kf-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 4px; }
@@ -13792,22 +13889,31 @@ const UI_CSS = `
     grid-template-rows: auto auto 1fr auto;
     width: 100vw;
     height: 100vh;
-    background: var(--surface-0);
+    background: radial-gradient(circle at 50% -12%, rgba(var(--accent-rgb), .06), transparent 34%), var(--surface-0);
     color: var(--text);
   }
   .kf-ms-head, .kf-ms-foot {
-    display: flex;
+    display: grid;
     align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
+    gap: 12px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--surface-2);
-    flex-wrap: wrap;
   }
-  .kf-ms-foot { border-bottom: 0; border-top: 1px solid var(--border); }
-  .kf-ms-points-note { flex: 1 0 100%; display: flex; align-items: center; gap: 7px; margin: 2px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+  .kf-ms-head { grid-row: 1; }
+  .kf-ms-error { grid-row: 2; }
+  .kf-ms-body { grid-row: 3; }
+  .kf-ms-foot { grid-row: 4; }
+  .kf-ms-head { grid-template-columns: minmax(150px, auto) minmax(300px, 1fr) auto; }
+  .kf-ms-foot { grid-template-columns: auto minmax(0, 1fr); border-bottom: 0; border-top: 1px solid var(--border); }
+  .kf-ms-brand { display: grid; gap: 2px; }
+  .kf-ms-brand strong { font-size: 15px; letter-spacing: -.015em; }
+  .kf-ms-add { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; }
+  .kf-ms-add input { width: min(420px, 100%); }
+  .kf-ms-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+  .kf-ms-save-layout { display: flex; align-items: center; gap: 7px; }
+  .kf-ms-points-note { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
   .kf-ms-points-note svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--warning); }
-  .kf-ms-spacer { flex: 1; }
   .kf-ms-count { color: var(--muted); font-size: 11px; }
   .kf-ms-head input, .kf-ms-foot input {
     min-width: 220px;
@@ -13829,11 +13935,30 @@ const UI_CSS = `
   .kf-ms-grid {
     display: grid;
     grid-template-columns: repeat(var(--kf-multistream-columns, 1), 1fr);
-    gap: 4px;
-    padding: 4px;
+    gap: 8px;
+    padding: 10px;
     min-height: 0;
     align-content: stretch;
   }
+  .kf-ms-empty-state {
+    grid-column: 1 / -1;
+    align-self: center;
+    justify-self: center;
+    width: min(520px, calc(100% - 36px));
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    padding: 34px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(145deg, var(--surface-1), var(--surface-inset));
+    box-shadow: var(--shadow-control);
+    text-align: center;
+  }
+  .kf-ms-empty-state img { width: 48px; height: 48px; object-fit: contain; }
+  .kf-ms-empty-state span { color: var(--accent); font-size: 9px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+  .kf-ms-empty-state h2 { margin: 0; font-size: 23px; letter-spacing: -.035em; }
+  .kf-ms-empty-state p { max-width: 420px; margin: 0 0 4px; color: var(--muted); font-size: 12px; line-height: 1.55; }
   .kf-ms-tile {
     position: relative;
     min-height: 0;
@@ -13872,6 +13997,7 @@ const UI_CSS = `
     transition: opacity .12s ease;
     font-size: 11px;
   }
+  .kf-ms-bar .kf-ms-spacer { flex: 1; }
   .kf-ms-tile:hover .kf-ms-bar, .kf-ms-tile:focus-within .kf-ms-bar { opacity: 1; }
   .kf-ms-bar button, .kf-ms-bar .kf-ms-link {
     border: 1px solid rgba(255,255,255,.25);
@@ -13930,7 +14056,19 @@ const UI_CSS = `
      enough to show on all of them at once. */
   .kf-ms-layout small.kf-ms-live { opacity: 1; color: var(--muted); }
   .kf-ms-layout small.kf-ms-live[data-live="true"] { color: var(--accent); font-weight: 700; }
-  .kf-ms-empty { font-size: 11px; opacity: .6; }
+  .kf-ms-empty { color: var(--muted); font-size: 11px; }
+
+  @media (max-width: 1180px) {
+    .kf-ms-head { grid-template-columns: auto minmax(280px, 1fr); }
+    .kf-ms-controls { grid-column: 1 / -1; justify-content: flex-start; }
+  }
+  @media (max-width: 760px) {
+    .kf-ms-head, .kf-ms-foot { grid-template-columns: 1fr; }
+    .kf-ms-add, .kf-ms-save-layout { justify-content: stretch; }
+    .kf-ms-add input, .kf-ms-save-layout input { width: 100%; min-width: 0; }
+    .kf-ms-layouts, .kf-ms-points-note { grid-column: 1; }
+    .kf-ms-empty-state { padding: 24px 18px; }
+  }
 
   .kf-shadow-warning { display: grid; gap: 6px; }
   .kf-shadow-warning code { font-size: 11px; color: var(--accent); }
@@ -13949,8 +14087,8 @@ const UI_CSS = `
 
   @media (max-width: 920px) {
     .kf-settings { width: calc(100vw - 28px); height: calc(100vh - 28px); min-width: 0; min-height: 620px; }
-    .kf-header { grid-template-columns: 188px 1fr auto auto; gap: 14px; padding-inline: 18px; }
-    .kf-body { grid-template-columns: 188px minmax(0, 1fr); }
+    .kf-header { grid-template-columns: 1fr auto auto; gap: 14px; padding-inline: 18px; }
+    .kf-body { grid-template-columns: 204px minmax(0, 1fr); }
     .kf-nav button { grid-template-columns: 21px minmax(0, 1fr); gap: 10px; padding-inline: 18px; }
     .kf-nav .kf-nav-copy { overflow: visible; white-space: normal; }
     .kf-nav-copy > strong { line-height: 1.15; white-space: normal; }
@@ -13971,7 +14109,6 @@ const UI_CSS = `
     .kf-backdrop { padding: 0; }
     .kf-settings { width: 100vw; height: 100vh; min-height: 0; grid-template-rows: 66px minmax(0, 1fr) 68px; border: 0; border-radius: 0; }
     .kf-header { grid-template-columns: 1fr auto auto; padding-inline: 14px; }
-    .kf-header .kf-title { display: none; }
     .kf-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
     .kf-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; overscroll-behavior-inline: contain; }
     .kf-nav::-webkit-scrollbar { display: none; }
@@ -14017,12 +14154,12 @@ const UI_CSS = `
 `;
 
 const NAV_ITEMS = [
-  ['layout', 'Layout', 'Structure and positioning', 'layout'],
-  ['appearance', 'Appearance', 'Themes, colors, and style', 'sliders'],
-  ['content', 'Content & Ads', 'Filter and hide elements', 'shield'],
-  ['accessibility', 'Accessibility & Shortcuts', 'Shortcuts and accessibility', 'keyboard'],
-  ['viewer', 'Viewer', 'What Kick tells this account', 'user'],
-  ['about', 'About', 'Version, diagnostics, and privacy', 'info'],
+  ['layout', 'Layout', 'Shell, player, and chat', 'layout'],
+  ['appearance', 'Appearance', 'Theme, color, and scale', 'sliders'],
+  ['content', 'Content & Ads', 'Privacy, filters, and playback', 'shield'],
+  ['accessibility', 'Accessibility & Shortcuts', 'Comfort and shortcuts', 'keyboard'],
+  ['viewer', 'Viewer', 'Read-only account signals', 'user'],
+  ['about', 'About', 'Status, privacy, and diagnostics', 'info'],
 ];
 
 /*
@@ -14187,6 +14324,12 @@ const TRANSLATIONS = {
     'Shortcuts and accessibility': 'Atajos y accesibilidad',
     'About': 'Acerca de',
     'Version, diagnostics, and privacy': 'Versión, diagnósticos y privacidad',
+    'Shell, player, and chat': 'Estructura, reproductor y chat',
+    'Theme, color, and scale': 'Tema, color y escala',
+    'Privacy, filters, and playback': 'Privacidad, filtros y reproducción',
+    'Comfort and shortcuts': 'Comodidad y atajos',
+    'Read-only account signals': 'Datos de cuenta de solo lectura',
+    'Status, privacy, and diagnostics': 'Estado, privacidad y diagnósticos',
     'Control how Kick is arranged across your desktop.': 'Controla cómo se organiza Kick en tu escritorio.',
     'Choose how the left discovery rail behaves.': 'Elige cómo funciona la barra de descubrimiento izquierda.',
     'Choose the overall surface treatment.': 'Elige el tratamiento general de las superficies.',
@@ -14235,6 +14378,21 @@ const TRANSLATIONS = {
     'Premium stream card preview': 'Vista previa premium de tarjeta de stream',
     'Clear hierarchy, restrained motion, and one consistent accent.': 'Jerarquía clara, movimiento moderado y un solo acento consistente.',
     'Theme': 'Tema',
+    'Choose a clear visual direction, then tune only what matters to you.': 'Elige una dirección visual clara y ajusta solo lo que te importe.',
+    'Quick directions': 'Direcciones rápidas',
+    'Apply a viewing setup without changing filters or account choices.': 'Aplica una configuración de visualización sin cambiar filtros ni opciones de cuenta.',
+    'Direction': 'Dirección',
+    'Each theme changes the full surface hierarchy, not just the page background.': 'Cada tema cambia toda la jerarquía de superficies, no solo el fondo de la página.',
+    'Layered graphite': 'Grafito en capas',
+    'Selected': 'Seleccionado',
+    'Balanced depth with a quiet green undertone.': 'Profundidad equilibrada con un matiz verde discreto.',
+    'True black': 'Negro real',
+    'Minimal lift and maximum contrast for dark rooms.': 'Relieve mínimo y contraste máximo para habitaciones oscuras.',
+    'Cool graphite': 'Grafito frío',
+    'Blue-toned surfaces with stronger separation.': 'Superficies azuladas con una separación más marcada.',
+    'Use one accent for focus, selection, and live state.': 'Usa un solo acento para el foco, la selección y el estado en vivo.',
+    'Low-contrast choices fall back to a safe rose.': 'Las opciones de bajo contraste vuelven a un rosa seguro.',
+    'Your current theme, accent, scale, and card treatment.': 'Tu tema, acento, escala y tratamiento de tarjetas actuales.',
     'Accent color': 'Color de acento',
     'Viewing presets': 'Preajustes de visualización',
     'Apply a complete layout and style in one click. Content filters and account choices stay untouched.': 'Aplica una disposición y un estilo completos con un clic. Los filtros de contenido y las opciones de la cuenta no cambian.',
@@ -14478,6 +14636,20 @@ const TRANSLATIONS = {
     'Enter a valid emote group name.': 'Escribe un nombre de grupo de emotes válido.',
     'Layout saved.': 'Diseño guardado.',
     'That layout has no usable channels.': 'Ese diseño no tiene canales utilizables.',
+    'Board saved.': 'Tablero guardado.',
+    'That board has no usable channels.': 'Ese tablero no tiene canales utilizables.',
+    'Channel name or kick.com link': 'Nombre del canal o enlace de kick.com',
+    'Multi-stream controls': 'Controles de transmisión múltiple',
+    'Name this board': 'Nombra este tablero',
+    'Board name': 'Nombre del tablero',
+    'Ready for your first channel': 'Listo para tu primer canal',
+    'Multi-stream workspace': 'Espacio de transmisión múltiple',
+    'Build your viewing board': 'Crea tu tablero de visualización',
+    'Add a channel above to start. Focus decides which stream owns audio and chat, and your saved boards stay on this device.': 'Añade un canal arriba para empezar. El enfoque decide qué stream controla el audio y el chat, y tus tableros guardados permanecen en este dispositivo.',
+    'Add your first channel': 'Añade tu primer canal',
+    'Add channel': 'Añadir canal',
+    'Save board': 'Guardar tablero',
+    'Saved boards will appear here.': 'Los tableros guardados aparecerán aquí.',
     'Could not reach the clipboard.': 'No se pudo acceder al portapapeles.',
     'Cached blocklist removed.': 'Se eliminó la lista de bloqueo almacenada en caché.',
     'Enter a channel name or URL.': 'Escribe un nombre de canal o una URL.',
@@ -14711,6 +14883,12 @@ const TRANSLATIONS = {
     'Shortcuts and accessibility': 'Atalhos e acessibilidade',
     'About': 'Sobre',
     'Version, diagnostics, and privacy': 'Versão, diagnósticos e privacidade',
+    'Shell, player, and chat': 'Estrutura, player e chat',
+    'Theme, color, and scale': 'Tema, cor e escala',
+    'Privacy, filters, and playback': 'Privacidade, filtros e reprodução',
+    'Comfort and shortcuts': 'Conforto e atalhos',
+    'Read-only account signals': 'Sinais da conta somente para leitura',
+    'Status, privacy, and diagnostics': 'Status, privacidade e diagnósticos',
     'Control how Kick is arranged across your desktop.': 'Controle como o Kick é organizado na sua área de trabalho.',
     'Choose the overall surface treatment.': 'Escolha o tratamento geral das superfícies.',
     'Set a premium visual style without replacing Kick’s identity.': 'Defina um estilo visual premium sem substituir a identidade do Kick.',
@@ -14758,6 +14936,21 @@ const TRANSLATIONS = {
     'Premium stream card preview': 'Prévia premium de cartão de transmissão',
     'Clear hierarchy, restrained motion, and one consistent accent.': 'Hierarquia clara, movimento discreto e um único destaque consistente.',
     'Theme': 'Tema',
+    'Choose a clear visual direction, then tune only what matters to you.': 'Escolha uma direção visual clara e ajuste apenas o que importa para você.',
+    'Quick directions': 'Direções rápidas',
+    'Apply a viewing setup without changing filters or account choices.': 'Aplique uma configuração de visualização sem mudar filtros ou opções da conta.',
+    'Direction': 'Direção',
+    'Each theme changes the full surface hierarchy, not just the page background.': 'Cada tema muda toda a hierarquia de superfícies, não apenas o fundo da página.',
+    'Layered graphite': 'Grafite em camadas',
+    'Selected': 'Selecionado',
+    'Balanced depth with a quiet green undertone.': 'Profundidade equilibrada com um tom verde discreto.',
+    'True black': 'Preto real',
+    'Minimal lift and maximum contrast for dark rooms.': 'Elevação mínima e contraste máximo para ambientes escuros.',
+    'Cool graphite': 'Grafite frio',
+    'Blue-toned surfaces with stronger separation.': 'Superfícies azuladas com separação mais forte.',
+    'Use one accent for focus, selection, and live state.': 'Use um só destaque para foco, seleção e estado ao vivo.',
+    'Low-contrast choices fall back to a safe rose.': 'Opções de baixo contraste voltam para um rosa seguro.',
+    'Your current theme, accent, scale, and card treatment.': 'Seu tema, destaque, escala e tratamento de cartões atuais.',
     'Accent color': 'Cor de destaque',
     'Viewing presets': 'Predefinições de visualização',
     'Apply a complete layout and style in one click. Content filters and account choices stay untouched.': 'Aplica um layout e um estilo completos com um clique. Os filtros de conteúdo e as escolhas da conta não mudam.',
@@ -15001,6 +15194,20 @@ const TRANSLATIONS = {
     'Enter a valid emote group name.': 'Digite um nome de grupo de emotes válido.',
     'Layout saved.': 'Layout salvo.',
     'That layout has no usable channels.': 'Esse layout não tem canais utilizáveis.',
+    'Board saved.': 'Painel salvo.',
+    'That board has no usable channels.': 'Esse painel não tem canais utilizáveis.',
+    'Channel name or kick.com link': 'Nome do canal ou link do kick.com',
+    'Multi-stream controls': 'Controles de multistream',
+    'Name this board': 'Dê um nome a este painel',
+    'Board name': 'Nome do painel',
+    'Ready for your first channel': 'Pronto para o primeiro canal',
+    'Multi-stream workspace': 'Área de trabalho multistream',
+    'Build your viewing board': 'Monte seu painel de visualização',
+    'Add a channel above to start. Focus decides which stream owns audio and chat, and your saved boards stay on this device.': 'Adicione um canal acima para começar. O foco decide qual transmissão controla o áudio e o chat, e seus painéis salvos ficam neste dispositivo.',
+    'Add your first channel': 'Adicione seu primeiro canal',
+    'Add channel': 'Adicionar canal',
+    'Save board': 'Salvar painel',
+    'Saved boards will appear here.': 'Os painéis salvos aparecerão aqui.',
     'Could not reach the clipboard.': 'Não foi possível acessar a área de transferência.',
     'Cached blocklist removed.': 'Lista de bloqueio em cache removida.',
     'Enter a channel name or URL.': 'Digite um nome de canal ou uma URL.',
@@ -15252,7 +15459,7 @@ function buildInterface() {
       <section class="kf-settings" data-kf-settings-shell role="dialog" aria-modal="true" aria-labelledby="kf-settings-title">
         <header class="kf-header">
           <div class="kf-brand"><img class="kf-brand-mark" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt=""><span>Kick Focus</span><span class="kf-badge">Premium</span></div>
-          <div class="kf-title" id="kf-settings-title">Settings</div>
+          <span class="kf-sr-only" id="kf-settings-title">Kick Focus settings</span>
           <div class="kf-save" data-kf-save-status data-error="false">Autosaved</div>
           <button class="kf-icon-button" type="button" data-action="close-settings" aria-label="Close settings">${uiIcon('close')}</button>
         </header>
@@ -15291,20 +15498,22 @@ function buildInterface() {
     <div class="kf-backdrop kf-ms-backdrop" data-kf-multistream-backdrop hidden>
       <section class="kf-ms-shell" role="dialog" aria-modal="true" aria-label="Kick Focus multi-stream">
         <header class="kf-ms-head">
-          <strong>Multi-stream</strong>
-          <span class="kf-ms-count" data-kf-multistream-count data-kf-no-translate></span>
-          <span class="kf-ms-spacer"></span>
-          <label class="kf-sr-only" for="kf-ms-input">Add a Kick channel</label>
-          <input id="kf-ms-input" data-kf-multistream-input type="search" autocomplete="off" placeholder="Add a channel or paste a kick.com link…">
-          <button type="button" class="kf-button kf-button-primary kf-button-small" data-action="multistream-add">Add</button>
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-add-open-tabs" data-kf-presence-add hidden></button>
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-pause" data-kf-multistream-pause aria-pressed="false">Pause all</button>
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-mute" data-kf-multistream-mute aria-pressed="false">Mute all</button>
-          <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" aria-describedby="kf-ms-points-note" hidden>Pop out chat</button>
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-merged" aria-pressed="false">Merge all chats</button>
-          <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
+          <div class="kf-ms-brand"><strong>Multi-stream</strong><span class="kf-ms-count" data-kf-multistream-count data-kf-no-translate></span></div>
+          <div class="kf-ms-add">
+            <label class="kf-sr-only" for="kf-ms-input">Add a Kick channel</label>
+            <input id="kf-ms-input" data-kf-multistream-input type="search" autocomplete="off" placeholder="Channel name or kick.com link">
+            <button type="button" class="kf-button kf-button-primary kf-button-small" data-action="multistream-add">Add channel</button>
+            <button type="button" class="kf-button kf-button-small" data-action="multistream-add-open-tabs" data-kf-presence-add hidden></button>
+          </div>
+          <div class="kf-ms-controls" aria-label="Multi-stream controls">
+            <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-pause" data-kf-multistream-pause aria-pressed="false">Pause all</button>
+            <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-mute" data-kf-multistream-mute aria-pressed="false">Mute all</button>
+            <select class="kf-select kf-ms-select" data-kf-multistream-chat-select aria-label="Which chat to show"></select>
+            <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-chat" aria-pressed="true">Hide chat</button>
+            <button type="button" class="kf-button kf-button-small" data-action="multistream-popout-chat" data-kf-multistream-popout aria-pressed="false" aria-describedby="kf-ms-points-note" hidden>Pop out chat</button>
+            <button type="button" class="kf-button kf-button-small" data-action="multistream-toggle-merged" aria-pressed="false">Merge chats</button>
+            <button type="button" class="kf-button kf-button-small" data-action="close-multistream">Close</button>
+          </div>
         </header>
         <div class="kf-ms-error" role="alert" data-kf-multistream-error hidden></div>
         <div class="kf-ms-body">
@@ -15316,9 +15525,7 @@ function buildInterface() {
           </aside>
         </div>
         <footer class="kf-ms-foot">
-          <label class="kf-sr-only" for="kf-ms-layout-name">Layout name</label>
-          <input id="kf-ms-layout-name" data-kf-multistream-layout-name type="text" autocomplete="off" placeholder="Name this layout…">
-          <button type="button" class="kf-button kf-button-small" data-action="multistream-save">Save layout</button>
+          <div class="kf-ms-save-layout"><label class="kf-sr-only" for="kf-ms-layout-name">Board name</label><input id="kf-ms-layout-name" data-kf-multistream-layout-name type="text" autocomplete="off" placeholder="Name this board"><button type="button" class="kf-button kf-button-small" data-action="multistream-save">Save board</button></div>
           <div class="kf-ms-layouts" data-kf-multistream-layouts></div>
           <p class="kf-ms-points-note" id="kf-ms-points-note">${uiIcon('info')}<span>Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.</span></p>
         </footer>
@@ -15621,7 +15828,11 @@ function renderLayoutPage() {
 
 function renderAppearancePage() {
   const value = state.settings.appearance;
-  const themes = [['studio','Studio'],['oled','OLED'],['slate','Slate']];
+  const themes = [
+    ['studio', 'Studio', 'Layered graphite', 'Balanced depth with a quiet green undertone.'],
+    ['oled', 'OLED', 'True black', 'Minimal lift and maximum contrast for dark rooms.'],
+    ['slate', 'Slate', 'Cool graphite', 'Blue-toned surfaces with stronger separation.'],
+  ];
   const accents = [['kick','Kick Green'],['cyan','Cyan'],['violet','Violet'],['gold','Gold'],['custom','Custom']];
   const presets = [
     ['calm', 'Calm', 'Roomier cards, quieter live color, and a compact rail.'],
@@ -15630,13 +15841,13 @@ function renderAppearancePage() {
     ['discovery', 'Discovery', 'More stream cards, vivid thumbnails, and both discovery rails.'],
   ];
   return `
-    <div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>Appearance</h2><p>Set a premium visual style without replacing Kick’s identity.</p></div><div class="kf-page-meta kf-page-meta-control"><span>Language</span>${selectControl('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']], 'Interface language')}</div></div>
+    <div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>Appearance</h2><p>Choose a clear visual direction, then tune only what matters to you.</p></div><div class="kf-page-meta kf-page-meta-control"><span>Language</span>${selectControl('appearance.language', value.language, [['auto','Auto'],['en','English'],['es','Español'],['pt','Português']], 'Interface language')}</div></div>
     <div class="kf-appearance-layout">
       <section class="kf-panel kf-appearance-controls">
-        <div class="kf-row kf-row-wide"><div><h3>Viewing presets</h3><p>Apply a complete layout and style in one click. Content filters and account choices stay untouched.</p></div><div class="kf-preset-grid">${presets.map(([id, label, description]) => `<button type="button" class="kf-preset-card" data-action="apply-viewing-preset" data-preset="${id}"><span>Preset</span><strong>${label}</strong><small>${description}</small></button>`).join('')}</div></div>
-        <div class="kf-row kf-row-wide"><div><h3>Theme</h3><p>Choose the overall surface treatment.</p></div><div class="kf-theme-grid">${themes.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.theme" data-value="${id}" aria-pressed="${selected(value.theme,id)}"><span class="kf-theme-sample" aria-hidden="true"><span>Surface</span><b>Active</b></span><strong>${label}</strong></button>`).join('')}</div></div>
-        <div class="kf-row kf-row-wide"><div><h3>Accent color</h3><p>Use one clear accent for highlights and controls.</p></div><div class="kf-swatch-grid">${accents.map(([id,label]) => `<button type="button" class="kf-choice-card" data-set="appearance.accent" data-value="${id}" aria-pressed="${selected(value.accent,id)}"><span class="kf-swatch" data-color="${id}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
-        <div class="kf-row kf-row-wide"><div><h3>Custom accent</h3><p>Pick any color. Values that cannot keep controls and focus rings visible fall back to a safe rose.</p></div><label class="kf-custom-color"><input type="color" data-set="appearance.customAccent" value="${escapeHtml(value.customAccent)}" aria-label="Custom accent color"><span><strong data-kf-no-translate>${escapeHtml(value.customAccent)}</strong><small>Contrast protected</small></span></label></div>
+        <div class="kf-row kf-row-wide"><div><h3>Quick directions</h3><p>Apply a viewing setup without changing filters or account choices.</p></div><div class="kf-preset-grid">${presets.map(([id, label, description]) => `<button type="button" class="kf-preset-card" data-action="apply-viewing-preset" data-preset="${id}"><span>Direction</span><strong>${label}</strong><small>${description}</small></button>`).join('')}</div></div>
+        <div class="kf-row kf-row-wide"><div><h3>Theme</h3><p>Each theme changes the full surface hierarchy, not just the page background.</p></div><div class="kf-theme-grid">${themes.map(([id, label, tone, description]) => `<button type="button" class="kf-theme-board" data-set="appearance.theme" data-value="${id}" aria-pressed="${selected(value.theme, id)}"><span class="kf-theme-board-top"><span>${tone}</span><span class="kf-theme-selected">${selected(value.theme, id) ? 'Selected' : ''}</span></span><span class="kf-theme-tones" aria-hidden="true"><i></i><i></i><i></i></span><span class="kf-theme-copy"><strong>${label}</strong><small>${description}</small></span></button>`).join('')}</div></div>
+        <div class="kf-row kf-row-wide"><div><h3>Accent color</h3><p>Use one accent for focus, selection, and live state.</p></div><div class="kf-swatch-grid">${accents.map(([id,label]) => `<button type="button" class="kf-accent-chip" data-set="appearance.accent" data-value="${id}" aria-pressed="${selected(value.accent,id)}"><span class="kf-swatch" data-color="${id}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div></div>
+        <div class="kf-row kf-row-wide kf-custom-accent-row" data-visible="${selected(value.accent, 'custom')}"><div><h3>Custom accent</h3><p>Low-contrast choices fall back to a safe rose.</p></div><label class="kf-custom-color"><input type="color" data-set="appearance.customAccent" value="${escapeHtml(value.customAccent)}" aria-label="Custom accent color"><span><strong data-kf-no-translate>${escapeHtml(value.customAccent)}</strong><small>Contrast protected</small></span></label></div>
         ${row('Corner radius', 'Adjust the roundness of enhanced UI.', segmented('appearance.radius', value.radius, [['subtle','Subtle'],['balanced','Balanced'],['rounded','Rounded']]))}
         ${row('Thumbnail treatment', 'Adjust stream-card color intensity.', range('appearance.thumbnail', value.thumbnail, 0, 100, 'Natural', 'Vivid', '%'), { wide: true })}
         ${row('Interface scale', 'Set the size of Kick Focus controls.', segmented('appearance.interfaceScale', value.interfaceScale, [[90,'90%'],[100,'100%'],[110,'110%']]))}
@@ -15645,7 +15856,7 @@ function renderAppearancePage() {
         ${row('Colorize live indicators', 'Use the selected accent for live-state emphasis.', toggle('appearance.colorizeLive', value.colorizeLive, { label: 'Colorize live indicators' }))}
       </section>
       <aside class="kf-preview" aria-label="Live style preview">
-        <div><div class="kf-preview-kicker">Live preview</div><p class="kf-preview-intro">Updates as you tune the controls.</p></div>
+        <div><div class="kf-preview-kicker">Live preview</div><p class="kf-preview-intro">Your current theme, accent, scale, and card treatment.</p></div>
         <div class="kf-preview-surface">
           <header><strong>Kick Focus</strong><span>Browse</span><span>Following</span></header>
           <img class="kf-preview-image" src="data:image/jpeg;base64,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" alt="">
@@ -15656,7 +15867,7 @@ function renderAppearancePage() {
             <div class="kf-preview-action"><span>2.4K watching</span><b>Follow</b></div>
           </section>
           <div class="kf-preview-list"><span>Recommended</span><strong>Three calm, focused rows</strong></div>
-          <div class="kf-preview-list"><span>Interface</span><strong>${escapeHtml(value.interfaceScale)}% · ${escapeHtml(value.radius)}</strong></div>
+          <div class="kf-preview-list"><span>Theme</span><strong>${escapeHtml(themes.find(([id]) => id === value.theme)?.[1] || value.theme)} · ${escapeHtml(value.interfaceScale)}%</strong></div>
         </div>
       </aside>
     </div>`;
@@ -16429,13 +16640,7 @@ function renderAboutPage() {
 // A stable selector for the focused control, so focus can be restored to the
 // equivalent element after the page's innerHTML is replaced.
 function focusRestoreKey(element) {
-  for (const attr of ['data-set', 'data-action', 'data-shortcut', 'data-kf-sticker-key',
-    'data-kf-sticker-assignment', 'data-kf-sticker-library-filter', 'data-kf-sticker-library-search',
-    'data-kf-emote-catalog-input', 'data-page']) {
-    const value = element.getAttribute(attr);
-    if (value != null) return `[${attr}="${value.replace(/["\\]/g, '\\$&')}"]`;
-  }
-  return '';
+  return settingsFocusSelector(element);
 }
 
 /**
@@ -16827,6 +17032,7 @@ function onInterfaceClick(event) {
   else if (action === 'copy-error-log') copyErrorLog();
   else if (action === 'open-multistream') openMultistream();
   else if (action === 'close-multistream') { closeChatWindow(); closeMergedChat(); closeMultistream(); }
+  else if (action === 'multistream-focus-input') state.shadow.querySelector('[data-kf-multistream-input]')?.focus();
   else if (action === 'multistream-add-open-tabs') addPresenceOffer();
   else if (action === 'multistream-add') {
     const input = state.shadow.querySelector('[data-kf-multistream-input]');
@@ -16892,7 +17098,7 @@ function onInterfaceClick(event) {
       state.multistream = result.value;
       persistMultistream();
       if (input) input.value = '';
-      showToast('Layout saved.');
+      showToast('Board saved.');
     }
     renderMultistream();
   }
@@ -16903,14 +17109,14 @@ function onInterfaceClick(event) {
       state.multistreamError = '';
       persistMultistream();
       renderMultistream();
-      announce(`Loaded layout ${layout.name}`);
+      announce(`Loaded board ${layout.name}`);
     }
   }
   else if (action === 'multistream-copy-layout') {
     const layout = state.multistream.layouts.find((entry) => entry.name === actionTarget.dataset.layout);
     if (!layout) return;
     const link = multistreamLayoutLink(layout.streams);
-    if (!link) { showToast('That layout has no usable channels.', true); return; }
+    if (!link) { showToast('That board has no usable channels.', true); return; }
     // The link carries channel names and nothing else — no settings, no
     // identifiers, nothing from this machine.
     navigator.clipboard?.writeText(link)
