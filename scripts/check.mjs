@@ -711,6 +711,8 @@ const checks = [
     const region = start >= 0 && end > start ? source.slice(start, end) : '';
     return source.includes('chatComposerRecall: false')
       && source.includes("document.addEventListener('keydown', guard('composer recall', onComposerKeydown), true)")
+      && region.includes('validChatComposer')
+      && region.includes('closest?.(CHAT_ROOM_SELECTOR)')
       && region.includes('isComposerRecallGesture(event)')
       && !/gm(?:Set|Delete)|localStorage|sessionStorage/.test(region);
   })()],
@@ -737,6 +739,7 @@ const checks = [
       && source.includes("'This browser session only'")
       && region.includes("state.route === 'channel'")
       && region.includes("document.visibilityState !== 'hidden'")
+      && region.includes('videoIsVisible(video)')
       && region.includes('state.viewerHub.watchPlayback')
       && !/gm(?:Set|Delete)|localStorage|sessionStorage|\bfetch\s*\(/.test(region);
   })()],

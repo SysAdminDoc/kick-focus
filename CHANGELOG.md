@@ -17,6 +17,7 @@ All notable changes are documented here. Dates use ISO 8601.
 - Paused chat now holds the message you were reading in place while Kick adds messages and recycles older rows. If that message has already left the page, the transcript keeps its current position instead of jumping.
 - Spanish and Portuguese now cover import validation, storage failures, save status, shortcut conflicts, and Viewer source notes. The translation gate also catches both branches of a conditional toast instead of missing them.
 - The companion popup now follows Studio, OLED, Slate, and the selected accent instead of always rendering with Studio colors. Accent-backed actions choose true black or white text, including mid-gray custom colors that the previous near-black ink left below 4.5 to 1.
+- Composer recall now ignores unrelated forms and generic editors outside channel chat. The session watch clock also refuses hidden preload video, while the browser gate proves native sidebar tagging and isolates the system Reduced Motion preference from the in-app setting.
 
 ### Changed
 

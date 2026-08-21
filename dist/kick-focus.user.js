@@ -7288,7 +7288,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              839631') || 0;
+const BUNDLE_BYTES = Number('              839776') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -11263,17 +11263,20 @@ function streamStartedAt() {
   );
 }
 
-function primaryVideo() {
-  const videos = [...document.querySelectorAll('video')];
-  for (const video of videos) {
-    try {
-      const box = video.getBoundingClientRect();
-      const style = getComputedStyle(video);
-      if (box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden') return video;
-    } catch {
-    }
+function videoIsVisible(video) {
+  if (!video?.isConnected) return false;
+  try {
+    const box = video.getBoundingClientRect();
+    const style = getComputedStyle(video);
+    return box.width > 0 && box.height > 0
+      && style.display !== 'none' && style.visibility !== 'hidden';
+  } catch {
+    return false;
   }
-  return videos[0] || null;
+}
+
+function primaryVideo() {
+  return [...document.querySelectorAll('video')].find(videoIsVisible) || null;
 }
 
 function applyStreamUptime() {
@@ -14851,7 +14854,7 @@ function sessionWatchIsActive(video) {
   return !state.runtime.suspended
     && state.route === 'channel'
     && document.visibilityState !== 'hidden'
-    && Boolean(video?.isConnected)
+    && videoIsVisible(video)
     && state.viewerHub.watchPlayback;
 }
 
@@ -16042,17 +16045,26 @@ function rewardStatusSummary() {
   return parts.join(' ');
 }
 
-function chatMessageInput() {
-  if (multistreamOpen()) return null;
-  const input = document.querySelector('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]');
+const CHAT_ROOM_SELECTOR = '#channel-chatroom, [data-testid="chatroom"]';
+const CHAT_COMPOSER_SELECTOR = '[data-testid="chat-input"], #chat-input, [contenteditable="true"][role="textbox"]';
+
+function validChatComposer(input) {
   if (!input || input.closest('[data-kf-multistream-backdrop], iframe')) return null;
+  if (!input.closest(CHAT_ROOM_SELECTOR)) return null;
   return input.isContentEditable || input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input : null;
 }
 
+function chatMessageInput() {
+  if (multistreamOpen()) return null;
+  for (const room of document.querySelectorAll(CHAT_ROOM_SELECTOR)) {
+    const input = validChatComposer(room.querySelector(CHAT_COMPOSER_SELECTOR));
+    if (input) return input;
+  }
+  return null;
+}
+
 function composerInputFor(node) {
-  const input = node?.closest?.('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]');
-  if (!input || input.closest('[data-kf-multistream-backdrop], iframe')) return null;
-  return input.isContentEditable || input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input : null;
+  return validChatComposer(node?.closest?.(CHAT_COMPOSER_SELECTOR));
 }
 
 function composerText(input) {
@@ -16132,15 +16144,16 @@ function onComposerInput(event) {
 }
 
 function onComposerSubmit(event) {
-  const input = event.target?.querySelector?.('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]')
-    || chatMessageInput();
+  const room = event.target?.closest?.(CHAT_ROOM_SELECTOR);
+  const input = room ? validChatComposer(event.target?.querySelector?.(CHAT_COMPOSER_SELECTOR)) : null;
   rememberComposerMessage(input);
 }
 
 function onComposerSendClick(event) {
   const button = event.target?.closest?.('[data-testid="chat-send-button"], [data-testid="send-message"], button[type="submit"][aria-label*="send" i]');
-  if (!button || !button.closest?.('#channel-chatroom, [data-testid="chatroom"], form')) return;
-  rememberComposerMessage(chatMessageInput());
+  const room = button?.closest?.(CHAT_ROOM_SELECTOR);
+  if (!room) return;
+  rememberComposerMessage(validChatComposer(room.querySelector(CHAT_COMPOSER_SELECTOR)));
 }
 
 function insertStickerName(target) {

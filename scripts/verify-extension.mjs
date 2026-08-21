@@ -393,8 +393,9 @@ try {
 
   // R-87: exercise the document-level hover and focus handlers on the real
   // Kick page. A synthetic followed row is used only when the signed-in rail is
-  // empty; a deliberately hidden rail is a skip, because the feature must not
-  // punch through the user's layout choice.
+  // genuinely empty. If Kick rendered a native row, that row itself must be
+  // tagged or the probe fails. A deliberately hidden rail is a skip because the
+  // feature must not punch through the user's layout choice.
   const followingPreviewProbe = await evaluate(pageClient, `(async () => {
     const sidebar = document.querySelector('#sidebar-wrapper, [data-testid="sidebar-wrapper"], [data-kf-sidebar], [data-kick-sidebar]');
     if (!sidebar || getComputedStyle(sidebar).display === 'none'
@@ -402,8 +403,12 @@ try {
       return { skip: 'the followed-channel rail is hidden on this run' };
     }
     const settle = (ms = 90) => new Promise((done) => setTimeout(done, ms));
+    const nativeMarkers = [...sidebar.querySelectorAll('[data-testid^="sidebar-following-channel-"]')];
     let row = await __kfWait(() => sidebar.querySelector('[data-kf-following-preview="true"]'), { timeout: 1200 });
     let synthetic = false;
+    if (!row && nativeMarkers.length) {
+      return { ok: false, why: nativeMarkers.length + ' native followed row(s) rendered but none were tagged' };
+    }
     if (!row) {
       synthetic = true;
       row = document.createElement('button');
@@ -443,6 +448,7 @@ try {
     return {
       ok: true,
       synthetic,
+      nativeMarkers: nativeMarkers.length,
       hoverOpen,
       focusOpen,
       escapePrevented: escape.defaultPrevented,
@@ -460,10 +466,44 @@ try {
       && followingPreview.onScreen === true && followingPreview.sourceExisting === true
       && followingPreview.width > 0 && followingPreview.height > 0,
     followingPreview.ok
-      ? `${followingPreview.synthetic ? 'synthetic' : 'native'} row, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
+      ? `${followingPreview.synthetic ? 'synthetic empty-rail fallback' : `${followingPreview.nativeMarkers} native row(s)`}, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
       : followingPreview.why);
 
   if (!followingPreview.skip) {
+    await pageClient.send('Emulation.setEmulatedMedia', { features: [] });
+    const ordinaryFollowingPreviewProbe = await evaluate(pageClient, `(async () => {
+      const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+      const row = document.querySelector('[data-kf-live-preview-probe], [data-kf-following-preview="true"]');
+      if (!shadow || !row) return { ok: false, why: 'the preview controls disappeared before the motion-preference pass' };
+      const settle = (ms = 160) => new Promise((done) => setTimeout(done, ms));
+      shadow.querySelector('[data-kf-quick]')?.click();
+      await settle();
+      shadow.querySelector('[data-page="accessibility"]')?.click();
+      await settle();
+      const control = shadow.querySelector('[data-set="accessibility.reduceMotion"]');
+      if (!control) return { ok: false, why: 'the Reduced Motion control is unavailable' };
+      const restoreReducedMotion = control.getAttribute('aria-checked') === 'true';
+      if (restoreReducedMotion) { control.click(); await settle(450); }
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+      await settle();
+      const host = document.getElementById('kick-focus-following-preview');
+      return {
+        ok: true,
+        restoreReducedMotion,
+        open: host?.dataset.kfOpen === 'true',
+        imageMode: host?.dataset.kfStatic === 'false'
+          && host.querySelector('img')?.hidden === false
+          && host.querySelector('canvas')?.hidden === true,
+      };
+    })()`);
+    const ordinaryFollowingPreview = ordinaryFollowingPreviewProbe.value || {};
+    record('followed-channel preview uses its ordinary image when neither motion preference is enabled',
+      ordinaryFollowingPreview.ok === true && ordinaryFollowingPreview.open === true
+        && ordinaryFollowingPreview.imageMode === true,
+      ordinaryFollowingPreview.ok
+        ? `open=${ordinaryFollowingPreview.open}, ordinary image=${ordinaryFollowingPreview.imageMode}`
+        : ordinaryFollowingPreview.why);
     await pageClient.send('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
     });
@@ -480,6 +520,17 @@ try {
           && host.querySelector('canvas')?.hidden === false
           && host.querySelector('img')?.hidden === true,
       };
+      if (${ordinaryFollowingPreview.restoreReducedMotion === true}) {
+        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+        shadow?.querySelector('[data-kf-quick]')?.click();
+        await new Promise((done) => setTimeout(done, 160));
+        shadow?.querySelector('[data-page="accessibility"]')?.click();
+        await new Promise((done) => setTimeout(done, 160));
+        const control = shadow?.querySelector('[data-set="accessibility.reduceMotion"]');
+        if (control?.getAttribute('aria-checked') !== 'true') control?.click();
+        await new Promise((done) => setTimeout(done, 450));
+        shadow?.querySelector('[data-action="close-settings"]')?.click();
+      }
       document.querySelector('[data-kf-live-preview-probe]')?.remove();
       return result;
     })()`);
@@ -569,7 +620,8 @@ try {
 
   // R-88: stand up a visible media element on a channel-shaped route, let the
   // session clock cross a second, then stop playback and prove the card stops
-  // with it. The storage assertion is the reload contract: there is no record
+  // with it. A hidden playing preload is left behind as an adversarial second
+  // phase. The storage assertion is the reload contract: there is no record
   // that a fresh page could restore.
   const sessionWatchProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
@@ -585,6 +637,12 @@ try {
     Object.defineProperty(video, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(video, 'readyState', { configurable: true, get: () => 4 });
     document.body.prepend(video);
+    const preload = document.createElement('video');
+    preload.dataset.kfSessionWatchPreloadProbe = 'true';
+    preload.style.cssText = 'display:none;width:640px;height:360px';
+    Object.defineProperty(preload, 'paused', { configurable: true, get: () => false });
+    Object.defineProperty(preload, 'ended', { configurable: true, get: () => false });
+    Object.defineProperty(preload, 'readyState', { configurable: true, get: () => 4 });
     try {
       history.pushState({}, '', '/xqc');
       const route = await __kfWait(() => document.documentElement.dataset.kfRoute === 'channel');
@@ -603,12 +661,18 @@ try {
       video.dispatchEvent(new Event('waiting'));
       await settle(1250);
       const second = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      video.remove();
+      document.body.prepend(preload);
+      preload.dispatchEvent(new Event('playing'));
+      await settle(1250);
+      const hiddenPreload = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
       const storageKeys = [...Object.keys(localStorage), ...Object.keys(sessionStorage)]
         .filter((key) => key.startsWith('kick-focus:') && /watch|session/i.test(key));
       shadow.querySelector('[data-action="close-settings"]')?.click();
-      return { ok: true, first, second, source, localSource, storageKeys };
+      return { ok: true, first, second, hiddenPreload, source, localSource, storageKeys };
     } finally {
       video.remove();
+      preload.remove();
       history.pushState({}, '', beforePath || '/');
     }
   })()`);
@@ -616,10 +680,11 @@ try {
   record('Viewer labels a playback-gated watch clock as browser-session-only and stores nothing',
     sessionWatch.ok === true && /^\d+:\d{2}(?::\d{2})?$/.test(sessionWatch.first || '')
       && sessionWatch.first !== '0:00' && sessionWatch.second === sessionWatch.first
+      && sessionWatch.hiddenPreload === sessionWatch.second
       && sessionWatch.localSource === true && /session|sesión|sessão/i.test(sessionWatch.source || '')
       && Array.isArray(sessionWatch.storageKeys) && sessionWatch.storageKeys.length === 0,
     sessionWatch.ok
-      ? `playing=${sessionWatch.first}, paused=${sessionWatch.second}, source="${sessionWatch.source}", storage=${JSON.stringify(sessionWatch.storageKeys)}`
+      ? `playing=${sessionWatch.first}, paused=${sessionWatch.second}, hidden preload=${sessionWatch.hiddenPreload}, source="${sessionWatch.source}", storage=${JSON.stringify(sessionWatch.storageKeys)}`
       : sessionWatch.why);
 
   // The accessibility settings and the modal focus ladder are about this mod's
@@ -1702,6 +1767,19 @@ try {
       type('first local send'); key('Enter');
       type('second local send'); key('Enter');
       type('/w friend private'); key('Enter');
+      type('not sent from unrelated form');
+      const unrelatedForm = document.createElement('form');
+      unrelatedForm.innerHTML = '<input type="search"><button type="submit">Search</button>';
+      document.body.append(unrelatedForm);
+      unrelatedForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      const unrelatedEditor = document.createElement('div');
+      unrelatedEditor.contentEditable = 'true';
+      unrelatedEditor.setAttribute('role', 'textbox');
+      unrelatedEditor.textContent = 'not sent from unrelated editor';
+      document.body.append(unrelatedEditor);
+      unrelatedEditor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      unrelatedForm.remove();
+      unrelatedEditor.remove();
       type('draft stays');
       const plainPrevented = key('ArrowUp');
       const plainValue = input.value;
