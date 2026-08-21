@@ -82,13 +82,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P2
 
-- [ ] P2 — R-81 — Read-only active-chatters card from the endpoint Kick’s page already calls
-  Why: Kick’s mobile viewer app advertised an active-chatters list in 2026-08-07 press; `web.kick.com/api/v1/channels/{id}/chat/active-chatters` was captured 2026-08-15 as a same-origin GET; Viewer Hub still has no chatters card.
-  Evidence: vault Kick API note 2026-08-15; https://win.gg/kick-rolls-out-updates-including-chat-ban-appeals/ ; `src/core.mjs` `VIEWER_HUB_CARDS`.
-  Touches: `src/api.mjs` `endpoints` (only after a live channel document is observed requesting it), `src/live.mjs`, Viewer Hub builders, i18n, live API-drift list.
-  Acceptance: signed-in channel shows bots/moderators/vips/ogs counts or an unavailable sentence; signed-out is unavailable not zero; if the page no longer calls the URL, the item is closed with that measurement rather than guessed.
-  Complexity: M
-
 - [ ] P2 — R-82 — Verify the Kick gateway transport when the broker names `KICK`
   Why: `REALTIME_TRANSPORTS.KICK` is registered `verified: false` and never contacted; kick-core (2026-08-09) treats `wss://websockets.kick.com/viewer/v1/connect?token=` as the current path, and a Pusher Authorized Connections flip would drop anonymous chat.
   Evidence: `src/api.mjs` `kickGatewaySocketUrl` / `verified: false`; https://github.com/Pkkls/kick-core ; README realtime section.

@@ -109,6 +109,8 @@ KickDevDocs #405 (`invalid_scope` / webhooks) closed 2026-08-20 by its author wi
 
 ## Rejected Ideas
 
+- **Active-chatters card in Viewer Hub (R-81), closed on measurement 2026-08-21.** The item's own gate was that a live channel document had to be observed requesting `web.kick.com/api/v1/channels/{id}/chat/active-chatters` before anything was built. It does not. A live `/xqc` was watched for roughly 40 seconds across a full load and settle: Kick's page issued `realtime/chat/{id}/client/{uuid}/connection`, `channels/{id}/chat/settings` and `chat/{id}/history`, and never the chatters URL. The endpoint does answer **200** anonymously when asked directly, which is exactly the trap — building on it would make this the only feature that originates a request Kick's own page does not, against the standing rule that data features read endpoints the page already calls. Revisit only if a future channel document is seen calling it, or if the mobile viewer app's chatters list arrives on web.
+
 - **Call Kick’s Ads Public API from the viewer layer.** Source: docs.kick.com/apis/ads, 2026-08-19. Creator OAuth; `ads_blocked` is not a viewer entitlement. Contradicts same-origin session-only reads.
 - **Remote broken-feature disable feed** (Refined GitHub `hotfix.tsx` / `broken-features.csv`). Source: Astra Deck research 2026-08-20. Same class as `@downloadURL` (Roadmap_Blocked). Local probe-gated skip is the substitute (R-90).
 - **Web Audio DynamicsCompressor on the Kick `<video>`.** Source: FFZ #738; Kick field uses gain (uKick, Augmenter), not compression. Enhancer Kick modules have no compressor. Unverifiable in this gate (R-70: automated Chromium never decodes a frame).
