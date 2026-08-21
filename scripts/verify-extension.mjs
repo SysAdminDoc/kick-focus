@@ -1967,10 +1967,52 @@ try {
     await settle(300);
     const after = { ...read(), top: Math.round(messages.scrollTop) };
 
-    const anchor = typeof captureChatScrollAnchor === 'function'
-      ? captureChatScrollAnchor(messages)
-      : null;
-    const anchorRowCount = typeof chatScrollRows === 'function' ? chatScrollRows(messages).length : null;
+    const viewport = messages.getBoundingClientRect();
+    const visible = (node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.height > 0
+        && rect.bottom > viewport.top
+        && rect.top < viewport.bottom
+        && String(node.textContent || '').trim().length > 0;
+    };
+    const identified = [...messages.querySelectorAll('[data-index], [data-message-id], [data-chat-entry], [role="listitem"], article, .group')]
+      .filter(visible);
+    const painted = [];
+    if (!identified.length && typeof document.elementsFromPoint === 'function') {
+      for (const ratio of [0.2, 0.5, 0.8]) {
+        const x = Math.min(viewport.right - 4, viewport.left + viewport.width * ratio);
+        for (let y = viewport.top + 8; y < viewport.bottom - 4; y += 24) {
+          const owners = [];
+          for (const hit of document.elementsFromPoint(x, y)) {
+            if (!messages.contains(hit)) continue;
+            for (let node = hit; node && node !== messages; node = node.parentElement) {
+              const rect = node.getBoundingClientRect();
+              if (rect.height >= 16
+                && rect.height <= Math.max(240, viewport.height * 0.45)
+                && rect.width >= viewport.width * 0.5
+                && String(node.textContent || '').trim().length > 0) owners.push({ node, rect });
+            }
+          }
+          owners.sort((a, b) => a.rect.height - b.rect.height || b.rect.width - a.rect.width);
+          if (owners[0] && !painted.includes(owners[0].node)) painted.push(owners[0].node);
+        }
+      }
+    }
+    const rows = (identified.length ? identified : painted)
+      .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    const chosen = rows.find((node) => node.getBoundingClientRect().top >= viewport.top) || rows[0] || null;
+    const rowSignature = (node) => {
+      if (!node) return '';
+      const stable = node.getAttribute('data-message-id') || node.getAttribute('data-index') || node.getAttribute('data-chat-entry') || '';
+      const text = String(node.textContent || '').replace(/\s+/g, ' ').trim();
+      return (stable ? 'id:' + stable + '|' : 'text:') + text;
+    };
+    const anchor = chosen ? {
+      node: chosen,
+      signature: rowSignature(chosen),
+      offset: chosen.getBoundingClientRect().top - viewport.top,
+    } : null;
+    const anchorRowCount = rows.length;
     const anchorSignature = anchor?.signature || '';
     const anchorStart = anchor?.offset ?? null;
 
@@ -1984,6 +2026,8 @@ try {
     const anchorEnd = anchor?.node?.isConnected
       ? anchor.node.getBoundingClientRect().top - messages.getBoundingClientRect().top
       : null;
+    const anchorEndSignature = anchor?.node?.isConnected ? rowSignature(anchor.node) : '';
+    const anchorSame = Boolean(anchorSignature) && anchorEndSignature === anchorSignature;
     const anchorDrift = anchorStart === null || anchorEnd === null
       ? null
       : Math.round(Math.abs(anchorEnd - anchorStart) * 10) / 10;
@@ -1995,7 +2039,7 @@ try {
     const off = await setSwitch('content.stickyChatPause', false);
     await settle(400);
     const cleared = { button: Boolean(control()) };
-    return { ok: true, before, after, held, pixelDrift, heldDistance, landed: Math.round(landed), anchorRowCount, anchorSignature, anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
+    return { ok: true, before, after, held, pixelDrift, heldDistance, landed: Math.round(landed), anchorRowCount, anchorSignature, anchorEndSignature, anchorSame, anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
   })()`);
   const scroll = scrollPause.value || { why: scrollPause.error || 'the probe returned nothing' };
   recordProbe('scrolling chat up enters the paused state, and Resume leaves it',
@@ -2004,14 +2048,15 @@ try {
       && scroll.before?.paused === 'false'
       && scroll.after?.paused === 'true'
       && /Resume chat/.test(scroll.after?.label || '')
-      && ((Number.isFinite(scroll.anchorDrift) && scroll.anchorDrift <= 8)
-        || (!Number.isFinite(scroll.anchorDrift) && scroll.pixelDrift <= 8))
+      && scroll.anchorSame === true
+      && Number.isFinite(scroll.anchorDrift)
+      && scroll.anchorDrift <= 8
       && scroll.heldDistance > 64
       && scroll.resumed?.paused === 'false'
       && /Pause chat/.test(scroll.resumed?.label || '')
       && scroll.cleared?.button === false,
     scroll.ok
-      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, signature ${scroll.anchorSignature || 'none'}, drift ${scroll.anchorDrift}px, pixel fallback drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
+      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, same message=${scroll.anchorSame}, drift ${scroll.anchorDrift}px, pixel drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
       : scroll.why);
 
   // R-76: a banned reader's way back into a chat, still on screen.
@@ -3402,7 +3447,7 @@ try {
     const popupTheme = await evaluate(popupClient, `(async () => {
       // This exercises the same validated appearance function render() calls
       // without writing synthetic settings into extension storage.
-      applyAppearance({ appearance: { theme: '${theme}', accent: 'custom', customAccent: '#00884F' } });
+      applyAppearance({ appearance: { theme: '${theme}', accent: 'custom', customAccent: '#787878' } });
       const channels = (value) => (String(value).match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
       const luminance = (value) => channels(value)
         .map((part) => part / 255)

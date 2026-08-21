@@ -13,10 +13,13 @@ test('the popup chooses the higher-contrast ink for a boundary custom accent', a
   const start = source.indexOf('function accentInk');
   const end = source.indexOf('function applyAppearance', start);
   assert.ok(start >= 0 && end > start, 'popup accent helper not found');
-  const context = { result: '' };
-  vm.runInNewContext(`${source.slice(start, end)}\nresult = accentInk('#00884F');`, context);
-  assert.equal(context.result, '#ffffff');
-  assert.ok(colorContrastRatio('#00884F', context.result) >= 4.5);
+  for (const [accent, expected] of [['#00884F', '#000000'], ['#787878', '#000000']]) {
+    const context = { result: '' };
+    vm.runInNewContext(`${source.slice(start, end)}\nresult = accentInk('${accent}');`, context);
+    assert.equal(context.result, expected);
+    assert.ok(colorContrastRatio(accent, context.result) >= 4.5,
+      `${accent} needs readable popup ink, got ${colorContrastRatio(accent, context.result).toFixed(3)}:1`);
+  }
 });
 
 class EventTargetStub {

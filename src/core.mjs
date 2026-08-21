@@ -528,7 +528,7 @@ export function normalizeCustomAccent(value, fallback = CUSTOM_ACCENT_FALLBACK) 
 export function customAccentTokens(value) {
   const hex = normalizeCustomAccent(value);
   const rgb = rgbFromHex(hex);
-  const darkInk = '#071004';
+  const darkInk = '#000000';
   const lightInk = '#FFFFFF';
   const onAccent = colorContrastRatio(hex, darkInk) >= colorContrastRatio(hex, lightInk) ? darkInk : lightInk;
   return Object.freeze({ hex, rgb: `${rgb.red}, ${rgb.green}, ${rgb.blue}`, onAccent });

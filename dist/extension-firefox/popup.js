@@ -35,7 +35,7 @@ const api = globalThis.browser || globalThis.chrome;
 
 function accentInk(hex) {
   const channels = String(hex).match(/[\da-f]{2}/gi)?.map((value) => Number.parseInt(value, 16) / 255);
-  if (!channels || channels.length !== 3) return '#071004';
+  if (!channels || channels.length !== 3) return '#000000';
   const luminance = channels
     .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
     .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
@@ -44,9 +44,9 @@ function accentInk(hex) {
     .map((part) => (part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4))
     .reduce((sum, part, index) => sum + part * [0.2126, 0.7152, 0.0722][index], 0);
   const contrast = (first, second) => (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
-  const dark = inkLuminance([7, 16, 4]);
+  const dark = inkLuminance([0, 0, 0]);
   const light = 1;
-  return contrast(luminance, dark) >= contrast(luminance, light) ? '#071004' : '#ffffff';
+  return contrast(luminance, dark) >= contrast(luminance, light) ? '#000000' : '#ffffff';
 }
 
 function applyAppearance(settings) {
