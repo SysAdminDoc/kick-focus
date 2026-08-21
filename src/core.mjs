@@ -2993,28 +2993,49 @@ export function buildSettingsExport(sources) {
   };
 }
 
+export const IMPORT_ERROR_MESSAGES = Object.freeze({
+  invalidJson: 'That file is not valid JSON.',
+  settingsObject: 'Settings must be a JSON object.',
+  settingsSchema: 'Settings schema {schema} is newer than this build supports.',
+  stickerObject: 'The emote library must be a JSON object.',
+  usageObject: 'The emote usage counts must be a JSON object.',
+  multistreamObject: 'The multi-stream layouts must be a JSON object.',
+  stickerSchema: 'Emote schema {schema} is newer than this build supports.',
+  empty: 'That file does not contain Kick Focus settings.',
+});
+
 export function validateImportedSettings(jsonText) {
   let parsed;
   try {
     parsed = JSON.parse(String(jsonText));
   } catch {
-    return { ok: false, error: 'That file is not valid JSON.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.invalidJson, errorKey: IMPORT_ERROR_MESSAGES.invalidJson };
   }
-  if (!isRecord(parsed)) return { ok: false, error: 'Settings must be a JSON object.' };
+  if (!isRecord(parsed)) return { ok: false, error: IMPORT_ERROR_MESSAGES.settingsObject, errorKey: IMPORT_ERROR_MESSAGES.settingsObject };
   if (parsed.schema != null && Number(parsed.schema) > SETTINGS_SCHEMA) {
-    return { ok: false, error: `Settings schema ${parsed.schema} is newer than this build supports.` };
+    return {
+      ok: false,
+      error: `Settings schema ${parsed.schema} is newer than this build supports.`,
+      errorKey: IMPORT_ERROR_MESSAGES.settingsSchema,
+      errorValues: { schema: parsed.schema },
+    };
   }
   if (parsed.stickers != null && !isRecord(parsed.stickers)) {
-    return { ok: false, error: 'The emote library must be a JSON object.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.stickerObject, errorKey: IMPORT_ERROR_MESSAGES.stickerObject };
   }
   if (parsed.usage != null && !isRecord(parsed.usage)) {
-    return { ok: false, error: 'The emote usage counts must be a JSON object.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.usageObject, errorKey: IMPORT_ERROR_MESSAGES.usageObject };
   }
   if (parsed.multistream != null && !isRecord(parsed.multistream)) {
-    return { ok: false, error: 'The multi-stream layouts must be a JSON object.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.multistreamObject, errorKey: IMPORT_ERROR_MESSAGES.multistreamObject };
   }
   if (parsed.stickers?.schema != null && Number(parsed.stickers.schema) > STICKER_PREFERENCES_SCHEMA) {
-    return { ok: false, error: `Emote schema ${parsed.stickers.schema} is newer than this build supports.` };
+    return {
+      ok: false,
+      error: `Emote schema ${parsed.stickers.schema} is newer than this build supports.`,
+      errorKey: IMPORT_ERROR_MESSAGES.stickerSchema,
+      errorValues: { schema: parsed.stickers.schema },
+    };
   }
 
   const value = normalizeSettings(parsed);
@@ -3113,7 +3134,7 @@ export function validateImportedSettings(jsonText) {
   if (!hasSettings && !stickers && !usage && !multistream
     && channelLayouts == null && favoriteChannels == null && dismissedChannels == null
     && chatKeywords == null && channelNotes == null && mediaPreferences == null) {
-    return { ok: false, error: 'That file does not contain Kick Focus settings.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.empty, errorKey: IMPORT_ERROR_MESSAGES.empty };
   }
 
   return {
@@ -3822,6 +3843,7 @@ export function describeStorageFailures(registry) {
     labels,
     total: entries.reduce((sum, [, entry]) => sum + (entry.count || 0), 0),
     message: `Kick Focus could not save your ${list}. Browser storage is full or blocked, so those changes exist only until you reload.`,
+    messageKey: 'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.',
   };
 }
 

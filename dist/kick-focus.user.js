@@ -2098,28 +2098,49 @@ function buildSettingsExport(sources) {
   };
 }
 
+const IMPORT_ERROR_MESSAGES = Object.freeze({
+  invalidJson: 'That file is not valid JSON.',
+  settingsObject: 'Settings must be a JSON object.',
+  settingsSchema: 'Settings schema {schema} is newer than this build supports.',
+  stickerObject: 'The emote library must be a JSON object.',
+  usageObject: 'The emote usage counts must be a JSON object.',
+  multistreamObject: 'The multi-stream layouts must be a JSON object.',
+  stickerSchema: 'Emote schema {schema} is newer than this build supports.',
+  empty: 'That file does not contain Kick Focus settings.',
+});
+
 function validateImportedSettings(jsonText) {
   let parsed;
   try {
     parsed = JSON.parse(String(jsonText));
   } catch {
-    return { ok: false, error: 'That file is not valid JSON.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.invalidJson, errorKey: IMPORT_ERROR_MESSAGES.invalidJson };
   }
-  if (!isRecord(parsed)) return { ok: false, error: 'Settings must be a JSON object.' };
+  if (!isRecord(parsed)) return { ok: false, error: IMPORT_ERROR_MESSAGES.settingsObject, errorKey: IMPORT_ERROR_MESSAGES.settingsObject };
   if (parsed.schema != null && Number(parsed.schema) > SETTINGS_SCHEMA) {
-    return { ok: false, error: `Settings schema ${parsed.schema} is newer than this build supports.` };
+    return {
+      ok: false,
+      error: `Settings schema ${parsed.schema} is newer than this build supports.`,
+      errorKey: IMPORT_ERROR_MESSAGES.settingsSchema,
+      errorValues: { schema: parsed.schema },
+    };
   }
   if (parsed.stickers != null && !isRecord(parsed.stickers)) {
-    return { ok: false, error: 'The emote library must be a JSON object.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.stickerObject, errorKey: IMPORT_ERROR_MESSAGES.stickerObject };
   }
   if (parsed.usage != null && !isRecord(parsed.usage)) {
-    return { ok: false, error: 'The emote usage counts must be a JSON object.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.usageObject, errorKey: IMPORT_ERROR_MESSAGES.usageObject };
   }
   if (parsed.multistream != null && !isRecord(parsed.multistream)) {
-    return { ok: false, error: 'The multi-stream layouts must be a JSON object.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.multistreamObject, errorKey: IMPORT_ERROR_MESSAGES.multistreamObject };
   }
   if (parsed.stickers?.schema != null && Number(parsed.stickers.schema) > STICKER_PREFERENCES_SCHEMA) {
-    return { ok: false, error: `Emote schema ${parsed.stickers.schema} is newer than this build supports.` };
+    return {
+      ok: false,
+      error: `Emote schema ${parsed.stickers.schema} is newer than this build supports.`,
+      errorKey: IMPORT_ERROR_MESSAGES.stickerSchema,
+      errorValues: { schema: parsed.stickers.schema },
+    };
   }
 
   const value = normalizeSettings(parsed);
@@ -2202,7 +2223,7 @@ function validateImportedSettings(jsonText) {
   if (!hasSettings && !stickers && !usage && !multistream
     && channelLayouts == null && favoriteChannels == null && dismissedChannels == null
     && chatKeywords == null && channelNotes == null && mediaPreferences == null) {
-    return { ok: false, error: 'That file does not contain Kick Focus settings.' };
+    return { ok: false, error: IMPORT_ERROR_MESSAGES.empty, errorKey: IMPORT_ERROR_MESSAGES.empty };
   }
 
   return {
@@ -2663,6 +2684,7 @@ function describeStorageFailures(registry) {
     labels,
     total: entries.reduce((sum, [, entry]) => sum + (entry.count || 0), 0),
     message: `Kick Focus could not save your ${list}. Browser storage is full or blocked, so those changes exist only until you reload.`,
+    messageKey: 'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.',
   };
 }
 
@@ -5770,7 +5792,7 @@ function publishSettingsState() {
 function setSaveStatus(message, isError = false) {
   const status = state.shadow?.querySelector('[data-kf-save-status]');
   if (!status) return;
-  status.textContent = message;
+  status.textContent = tr(message);
   status.dataset.error = String(isError);
 }
 
@@ -6164,7 +6186,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              783867') || 0;
+const BUNDLE_BYTES = Number('              792327') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -11498,6 +11520,49 @@ const TRANSLATIONS = {
     'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content &amp; Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': 'Esta página lee. La recompensa diaria la sigue reclamando el propio diálogo de Kick, y solo si lo has activado en Contenido y anuncios. Una tarjeta sin lectura lo dice en lugar de mostrar un cero, porque un saldo vacío y uno que no se puede leer no son lo mismo.',
     'Settings': 'Configuración',
     'Autosaved': 'Guardado automático',
+    'Could not save': 'No se pudo guardar',
+    'Imported': 'Importado',
+    'All settings reset': 'Se restablecieron todos los ajustes',
+    'Page reset': 'Se restableció la página',
+    'Shortcuts restored': 'Se restauraron los atajos',
+    'Shortcut saved': 'Atajo guardado',
+    '{preset} preset applied': 'Preajuste {preset} aplicado',
+    'Hidden {channel}': '{channel} oculto',
+    'Showing {channel} again': '{channel} vuelve a mostrarse',
+    'That file is not valid JSON.': 'Ese archivo no contiene JSON válido.',
+    'Settings must be a JSON object.': 'Los ajustes deben ser un objeto JSON.',
+    'Settings schema {schema} is newer than this build supports.': 'El esquema de ajustes {schema} es más reciente que el compatible con esta versión.',
+    'The emote library must be a JSON object.': 'La biblioteca de emotes debe ser un objeto JSON.',
+    'The emote usage counts must be a JSON object.': 'Los recuentos de uso de emotes deben ser un objeto JSON.',
+    'The multi-stream layouts must be a JSON object.': 'Los diseños de multitransmisión deben ser un objeto JSON.',
+    'Emote schema {schema} is newer than this build supports.': 'El esquema de emotes {schema} es más reciente que el compatible con esta versión.',
+    'That file does not contain Kick Focus settings.': 'Ese archivo no contiene ajustes de Kick Focus.',
+    'settings': 'ajustes',
+    'emote library': 'biblioteca de emotes',
+    'emote usage counts': 'recuentos de uso de emotes',
+    'multi-stream layouts': 'diseños de multitransmisión',
+    'per-channel layout': 'diseño por canal',
+    'favorite channels': 'canales favoritos',
+    'not-interested channels': 'canales marcados como no interesantes',
+    'chat keyword filters': 'filtros de palabras clave del chat',
+    'channel notes': 'notas de canales',
+    'volume and quality memory': 'memoria de volumen y calidad',
+    'blocklist cache': 'caché de la lista de bloqueo',
+    'watched this session': 'vistos en esta sesión',
+    'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.': 'Kick Focus no pudo guardar {list}. El almacenamiento del navegador está lleno o bloqueado, por lo que esos cambios solo existirán hasta que recargues.',
+    'The browser reported': 'El navegador informó',
+    'Exporting now is the only way to keep these changes.': 'Exportar ahora es la única forma de conservar estos cambios.',
+    '{items} read from the page': '{items}, leídos de la página',
+    '{items} from Kick’s API': '{items}, desde la API de Kick',
+    '{n} showing an older reading.': '{n} con una lectura anterior.',
+    '{n} could not be built.': 'No se pudieron crear: {n}.',
+    '{shortcut} is already used by {action}.': '{shortcut} ya lo usa {action}.',
+    'Added': 'Añadido',
+    'Removed': 'Eliminado',
+    'Error log copied.': 'Registro de errores copiado.',
+    'Could not copy the error log.': 'No se pudo copiar el registro de errores.',
+    'Diagnostic summary copied.': 'Resumen de diagnóstico copiado.',
+    'Clipboard access was unavailable.': 'El acceso al portapapeles no estaba disponible.',
     'Close settings': 'Cerrar configuración',
     'Reset page': 'Restablecer página',
     'Export settings': 'Exportar configuración',
@@ -12075,6 +12140,49 @@ const TRANSLATIONS = {
     'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content &amp; Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': 'Esta página lê. A recompensa diária continua a ser resgatada pela própria janela da Kick, e só se tiveres ativado isso em Conteúdo e anúncios. Um cartão sem leitura di-lo em vez de mostrar um zero, porque um saldo vazio e um saldo ilegível não são a mesma coisa.',
     'Settings': 'Configurações',
     'Autosaved': 'Salvo automaticamente',
+    'Could not save': 'Não foi possível salvar',
+    'Imported': 'Importado',
+    'All settings reset': 'Todas as configurações foram redefinidas',
+    'Page reset': 'A página foi redefinida',
+    'Shortcuts restored': 'Atalhos restaurados',
+    'Shortcut saved': 'Atalho salvo',
+    '{preset} preset applied': 'Predefinição {preset} aplicada',
+    'Hidden {channel}': '{channel} oculto',
+    'Showing {channel} again': '{channel} voltou a ser exibido',
+    'That file is not valid JSON.': 'Esse arquivo não contém JSON válido.',
+    'Settings must be a JSON object.': 'As configurações devem ser um objeto JSON.',
+    'Settings schema {schema} is newer than this build supports.': 'O esquema de configurações {schema} é mais recente do que esta versão aceita.',
+    'The emote library must be a JSON object.': 'A biblioteca de emotes deve ser um objeto JSON.',
+    'The emote usage counts must be a JSON object.': 'As contagens de uso de emotes devem ser um objeto JSON.',
+    'The multi-stream layouts must be a JSON object.': 'Os layouts de multistream devem ser um objeto JSON.',
+    'Emote schema {schema} is newer than this build supports.': 'O esquema de emotes {schema} é mais recente do que esta versão aceita.',
+    'That file does not contain Kick Focus settings.': 'Esse arquivo não contém configurações do Kick Focus.',
+    'settings': 'configurações',
+    'emote library': 'biblioteca de emotes',
+    'emote usage counts': 'contagens de uso de emotes',
+    'multi-stream layouts': 'layouts de multistream',
+    'per-channel layout': 'layout por canal',
+    'favorite channels': 'canais favoritos',
+    'not-interested channels': 'canais sem interesse',
+    'chat keyword filters': 'filtros de palavras-chave do chat',
+    'channel notes': 'notas de canais',
+    'volume and quality memory': 'memória de volume e qualidade',
+    'blocklist cache': 'cache da lista de bloqueio',
+    'watched this session': 'assistidos nesta sessão',
+    'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.': 'O Kick Focus não conseguiu salvar {list}. O armazenamento do navegador está cheio ou bloqueado, então essas alterações existirão apenas até você recarregar.',
+    'The browser reported': 'O navegador informou',
+    'Exporting now is the only way to keep these changes.': 'Exportar agora é a única forma de manter essas alterações.',
+    '{items} read from the page': '{items}, lidos da página',
+    '{items} from Kick’s API': '{items}, da API da Kick',
+    '{n} showing an older reading.': '{n} com uma leitura anterior.',
+    '{n} could not be built.': 'Não foi possível criar: {n}.',
+    '{shortcut} is already used by {action}.': '{shortcut} já é usado por {action}.',
+    'Added': 'Adicionado',
+    'Removed': 'Removido',
+    'Error log copied.': 'Log de erros copiado.',
+    'Could not copy the error log.': 'Não foi possível copiar o log de erros.',
+    'Diagnostic summary copied.': 'Resumo de diagnóstico copiado.',
+    'Clipboard access was unavailable.': 'O acesso à área de transferência não estava disponível.',
     'Close settings': 'Fechar configurações',
     'Reset page': 'Redefinir página',
     'Export settings': 'Exportar configurações',
@@ -13530,6 +13638,7 @@ function renderAccessibilityPage() {
 function renderStorageHealthPanel() {
   const report = storageDiagnostics();
   const failures = describeStorageFailures(storageHealth.failures);
+  const failureMessage = failures ? localizedStorageFailure(failures) : '';
   const rows = report.breakdown
     .filter((entry) => entry.bytes > 0)
     .map((entry) => `<tr><th>${escapeHtml(entry.label)}</th><td>${escapeHtml(formatBytes(entry.bytes))}</td><td>${storageHealth.failures[entry.key] ? '<strong data-error="true">Not saving</strong>' : 'Saved'}</td></tr>`)
@@ -13538,7 +13647,7 @@ function renderStorageHealthPanel() {
     <section class="kf-subsection">
       <div class="kf-panel">
         <div class="kf-action-row"><div><h3>Local storage</h3><p>${failures
-          ? `${escapeHtml(failures.message)}${storageHealth.lastError ? ` The browser reported <strong>${escapeHtml(storageHealth.lastError)}</strong>.` : ''} Exporting now is the only way to keep these changes.`
+          ? `${escapeHtml(failureMessage)}${storageHealth.lastError ? ` ${escapeHtml(tr('The browser reported'))} <strong>${escapeHtml(storageHealth.lastError)}</strong>.` : ''} ${escapeHtml(tr('Exporting now is the only way to keep these changes.'))}`
           : `Kick Focus is using about ${escapeHtml(formatBytes(report.total))} of browser storage. Nothing has failed to save this session.`}</p></div>${failures ? '<button type="button" class="kf-button kf-button-primary" data-action="export">Export now</button>' : ''}</div>
         ${rows ? `<table class="kf-table"><tbody>${rows}</tbody></table>` : ''}
       </div>
@@ -13672,10 +13781,12 @@ function renderViewerPage() {
 function hubSourceSummary(summary) {
   if (!summary.ready) return 'Nothing has been read yet. Each card above says why.';
   const parts = [];
-  if (summary.fromDom.length) parts.push(`${summary.fromDom.map((id) => tr(VIEWER_HUB_TITLES[id])).join(', ')} read from the page`);
-  if (summary.fromApi.length) parts.push(`${summary.fromApi.map((id) => tr(VIEWER_HUB_TITLES[id])).join(', ')} from Kick’s API`);
-  const stale = summary.stale ? ` ${summary.stale} showing an older reading.` : '';
-  const errors = summary.errors ? ` ${summary.errors} could not be built.` : '';
+  const list = (ids) => new Intl.ListFormat(activeLocale(), { style: 'long', type: 'conjunction' })
+    .format(ids.map((id) => tr(VIEWER_HUB_TITLES[id])));
+  if (summary.fromDom.length) parts.push(trf('{items} read from the page', { items: list(summary.fromDom) }));
+  if (summary.fromApi.length) parts.push(trf('{items} from Kick’s API', { items: list(summary.fromApi) }));
+  const stale = summary.stale ? ` ${trf('{n} showing an older reading.', { n: summary.stale })}` : '';
+  const errors = summary.errors ? ` ${trf('{n} could not be built.', { n: summary.errors })}` : '';
   return `${parts.join('; ')}.${stale}${errors}`;
 }
 
@@ -13984,7 +14095,7 @@ function selectViewingPreset(presetId) {
   const labels = { calm: 'Calm', cinema: 'Cinema', chat: 'Chat First', discovery: 'Discovery' };
   if (!VIEWING_PRESETS[presetId] || !labels[presetId]) return;
   state.settings = applyViewingPreset(state.settings, presetId);
-  saveSettings(`${labels[presetId]} preset applied`);
+  saveSettings(trf('{preset} preset applied', { preset: tr(labels[presetId]) }));
   scheduleApply(0);
   renderSettingsPage();
   renderCommands();
@@ -14199,14 +14310,14 @@ function onInterfaceClick(event) {
     if (current.includes(path)) { showToast('That channel is already hidden.', true); return; }
     if (current.length >= 200) { showToast('Hidden channel list is full (200).', true); return; }
     state.settings.content.hiddenChannels = [...current, path];
-    saveSettings(`Hidden ${path.replace(/^\//, '')}`);
+    saveSettings(trf('Hidden {channel}', { channel: path.replace(/^\//, '') }));
     scheduleApply(0);
     renderSettingsPage();
   } else if (action === 'remove-hidden-channel') {
     const channel = actionTarget?.dataset?.channel;
     if (!channel) return;
     state.settings.content.hiddenChannels = state.settings.content.hiddenChannels.filter((entry) => entry !== channel);
-    saveSettings(`Showing ${channel.replace(/^\//, '')} again`);
+    saveSettings(trf('Showing {channel} again', { channel: channel.replace(/^\//, '') }));
     scheduleApply(0);
     renderSettingsPage();
   }
@@ -14474,7 +14585,7 @@ async function onImportFile(event) {
   try {
     const result = validateImportedSettings(await file.text());
     if (!result.ok) {
-      showToast(result.error, true);
+      showToast(result.errorKey ? trf(result.errorKey, result.errorValues || {}) : result.error, true);
       return;
     }
     const snapshot = currentExportPayload();
@@ -15077,10 +15188,17 @@ function renderStorageWarning() {
   }
   const signature = summary.keys.join('|');
   if (storageHealth.acknowledged === signature) return;
-  alert.querySelector('[data-kf-storage-alert-copy]').textContent = summary.message;
+  const message = localizedStorageFailure(summary);
+  alert.querySelector('[data-kf-storage-alert-copy]').textContent = message;
   alert.dataset.kfStorageSignature = signature;
   alert.hidden = false;
-  announce(summary.message);
+  announce(message);
+}
+
+function localizedStorageFailure(summary) {
+  const labels = summary.labels.map((label) => tr(label));
+  const list = new Intl.ListFormat(activeLocale(), { style: 'long', type: 'conjunction' }).format(labels);
+  return trf(summary.messageKey || summary.message, { list });
 }
 
 function storageDiagnostics() {
@@ -15290,7 +15408,18 @@ function onGlobalKeydown(event) {
     event.stopPropagation();
     const conflictKey = findShortcutConflict(state.settings.shortcuts, state.shortcutCapture, shortcut);
     if (conflictKey) {
-      state.shortcutError = `${shortcut} is already used by ${conflictKey}.`;
+      const labels = {
+        command: 'Open command menu',
+        focus: 'Toggle focus mode',
+        chat: 'Toggle chat',
+        sidebar: 'Toggle sidebar',
+        settings: 'Open settings',
+        mature: 'Reveal mature thumbnails',
+      };
+      state.shortcutError = trf('{shortcut} is already used by {action}.', {
+        shortcut,
+        action: tr(labels[conflictKey] || conflictKey),
+      });
       renderSettingsPage();
       return;
     }

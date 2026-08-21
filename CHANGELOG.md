@@ -7,6 +7,7 @@ All notable changes are documented here. Dates use ISO 8601.
 ### Fixed
 
 - Paused chat now holds the message you were reading in place while Kick adds messages and recycles older rows. If that message has already left the page, the transcript keeps its current position instead of jumping.
+- Spanish and Portuguese now cover import validation, storage failures, save status, shortcut conflicts, and Viewer source notes. The translation gate also catches both branches of a conditional toast instead of missing them.
 
 ## 1.33.0, 2026-08-21
 

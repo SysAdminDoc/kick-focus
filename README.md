@@ -52,6 +52,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - **Starts playback without waiting for blocked ad preflight scripts.** Kick waits on Google PAL, Datazoom, and OM before requesting playback, so blocking them, which this build does, otherwise leaves the player sitting out the full timeout.
 - Can freeze animated emotes and collectibles to a static frame, applied automatically when your system asks for reduced motion.
 - Stores settings locally in the userscript manager, and the emote library in IndexedDB, which holds orders of magnitude more than the ~5MB `localStorage` ceiling a growing library eventually reaches. A small synchronous copy is kept where the page can read it before the first render, so startup is unchanged, and a browser that refuses IndexedDB (a private window, a locked-down profile) keeps working on that copy alone. There is no analytics, network update code, `@require`, or remote executable code. An optional, off-by-default subscription accepts only user-supplied JSON data containing channels, categories, and keywords.
+- Keeps settings controls, save states, import and storage errors, Viewer source notes, and shortcut conflicts readable in English, Spanish, or Portuguese.
 
 ## Install
 

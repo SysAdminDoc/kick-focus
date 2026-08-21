@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DISCOVERY_ROUTE_LABELS, EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
+import { DISCOVERY_ROUTE_LABELS, EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, IMPORT_ERROR_MESSAGES, STORAGE_STORES, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -38,6 +38,8 @@ const SCANNERS = [
   ['tr', new RegExp(`\\btr\\(${STR}`, 'g')],
   ['trf', new RegExp(`\\btrf\\(${STR}`, 'g')],
   ['showToast', new RegExp(`\\bshowToast\\(${STR}`, 'g')],
+  ['showToast ternary', new RegExp(`\\bshowToast\\([^\\n?]+\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
+  ['save status', new RegExp(`\\b(?:saveSettings|setSaveStatus)\\(${STR}`, 'g')],
   ['announce', new RegExp(`\\bannounce\\(${STR}`, 'g')],
   ['toast action label', new RegExp(`\\blabel:\\s*${STR}`, 'g')],
   ['plural form', new RegExp(`\\bplural\\([^,]+,\\s*${STR},\\s*${STR}\\s*\\)`, 'g')],
@@ -94,6 +96,9 @@ async function collect(override = null) {
     ...Object.values(VIEWER_HUB_TITLES),
     ...Object.values(VIEWER_HUB_REASONS),
     ...Object.values(VIEWER_HUB_REWARD_WORDS),
+    ...Object.values(IMPORT_ERROR_MESSAGES),
+    ...STORAGE_STORES.map((store) => store.label),
+    'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.',
     // The earned marker's status, which reaches the accessible name through a
     // lookup and never appears as a literal in runtime.js.
     'Daily reward ready',
@@ -182,5 +187,10 @@ expectFailure('a rendered string with no dictionary entry fails the coverage gat
 
 expectFailure('a settings row with no dictionary entry fails the coverage gate', { tag: 'unit' }, async () => {
   const missing = untranslated(await collect(await sabotaged("  row('An untitled row', 'An undescribed row', control);")));
+  assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
+});
+
+expectFailure('a ternary toast with untranslated literals fails the coverage gate', { tag: 'unit' }, async () => {
+  const missing = untranslated(await collect(await sabotaged("  showToast(ok ? 'An untranslated success' : 'An untranslated failure');")));
   assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });

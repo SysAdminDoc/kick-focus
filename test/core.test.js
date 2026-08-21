@@ -1533,8 +1533,13 @@ test('content labels distinguish casino, mature, promoted, and drops surfaces', 
 });
 
 test('settings import reports malformed and future schemas', { tag: 'unit' }, () => {
-  assert.equal(validateImportedSettings('{oops').ok, false);
-  assert.match(validateImportedSettings('{"schema":99}').error, /newer/);
+  const malformed = validateImportedSettings('{oops');
+  assert.equal(malformed.ok, false);
+  assert.equal(malformed.errorKey, 'That file is not valid JSON.');
+  const future = validateImportedSettings('{"schema":99}');
+  assert.match(future.error, /newer/);
+  assert.equal(future.errorKey, 'Settings schema {schema} is newer than this build supports.');
+  assert.deepEqual(future.errorValues, { schema: 99 });
   assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').value.layout.chatWidth, 410);
   assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').settings.layout.chatWidth, 410);
   assert.equal(validateImportedSettings('{}').ok, false);
@@ -2076,6 +2081,7 @@ test('failed writes are named and recovered writes clear themselves', { tag: 'un
   const both = describeStorageFailures(registry);
   assert.deepEqual(both.labels, ['channel notes', 'emote library']);
   assert.match(both.message, /channel notes and emote library/);
+  assert.equal(both.messageKey, 'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.');
 
   // Recovery retires the entry rather than leaving a stale warning up.
   registry = recordStorageResult(registry, 'kick-focus:sticker-preferences', true, 4);

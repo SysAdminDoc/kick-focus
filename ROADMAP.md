@@ -141,13 +141,6 @@ Incomplete work found in the v1.32.0 audit that was not already R-72–R-91. R-7
 
 ### P2
 
-- [ ] P2 — R-93 — Translate core-originated import and storage errors, and catch ternary toasts
-  Why: es/pt users still see English for import failures, save-status chips, shortcut rebind copy, and Viewer source sentences. `test/i18n-coverage.test.js` only scans `showToast('literal')`, so `showToast(cond ? 'a' : 'b')` and template toasts never enter the dictionary.
-  Evidence: `src/core.mjs` `validateImportedSettings` / `describeStorageFailures`; `src/runtime.js` `onImportFile`, `setSaveStatus`, shortcut rebind; `test/i18n-coverage.test.js` `SCANNERS`.
-  Touches: `TRANSLATIONS` in `src/runtime.js`, the i18n scanner, and a size trade against R-72.
-  Acceptance: every import/reset/save-status string has es and pt entries; the scanner fails if a ternary showToast literal is added without a dictionary key; userscript stays under the 1 MB budget.
-  Complexity: M
-
 - [ ] P2 — R-94 — Live-gate OLED/Slate nested surfaces and the signed-in / Firefox gates
   Why: this audit traced settings, About, import, popup, and all three theme tokens in source, but did not run `verify:extension` against OLED and Slate nested overlays, a signed-in session, or Firefox.
   Evidence: CLAUDE.md live-gate notes; `src/extension/popup.html` is Studio-token only; `npm run verify:firefox` and signed-in journeys.
