@@ -403,11 +403,12 @@ try {
       return { skip: 'the followed-channel rail is hidden on this run' };
     }
     const settle = (ms = 90) => new Promise((done) => setTimeout(done, ms));
-    const nativeMarkers = [...sidebar.querySelectorAll('[data-testid^="sidebar-following-channel-"]')];
+    const nativeMarkers = () => [...sidebar.querySelectorAll('[data-testid^="sidebar-following-channel-"]')];
     let row = await __kfWait(() => sidebar.querySelector('[data-kf-following-preview="true"]'), { timeout: 1200 });
+    const nativeMarkerCount = nativeMarkers().length;
     let synthetic = false;
-    if (!row && nativeMarkers.length) {
-      return { ok: false, why: nativeMarkers.length + ' native followed row(s) rendered but none were tagged' };
+    if (!row && nativeMarkerCount) {
+      return { ok: false, why: nativeMarkerCount + ' native followed row(s) rendered but none were tagged' };
     }
     if (!row) {
       synthetic = true;
@@ -448,7 +449,7 @@ try {
     return {
       ok: true,
       synthetic,
-      nativeMarkers: nativeMarkers.length,
+      nativeMarkers: nativeMarkerCount,
       hoverOpen,
       focusOpen,
       escapePrevented: escape.defaultPrevented,
