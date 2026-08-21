@@ -82,13 +82,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P2
 
-- [ ] P2 — R-82 — Verify the Kick gateway transport when the broker names `KICK`
-  Why: `REALTIME_TRANSPORTS.KICK` is registered `verified: false` and never contacted; kick-core (2026-08-09) treats `wss://websockets.kick.com/viewer/v1/connect?token=` as the current path, and a Pusher Authorized Connections flip would drop anonymous chat.
-  Evidence: `src/api.mjs` `kickGatewaySocketUrl` / `verified: false`; https://github.com/Pkkls/kick-core ; README realtime section.
-  Touches: `src/live.mjs` `connectRealtime`, diagnostics, `scripts/verify-extension.mjs` (skip unless broker returns KICK).
-  Acceptance: when the broker offers only KICK, the build either receives a `ChatMessageEvent` and marks the transport verified, or degrades to DOM and reports `unverified-transport-failed`; Pusher remains preferred when both are offered.
-  Complexity: M
-
 - [ ] P2 — R-83 — Show live duration on discovery cards from data Kick already sent
   Why: sixem/kick-enhancer (v0.1.1, 2026-07-31) shows uptime without opening the stream; Kick Focus only paints uptime on the player (`showUptime`).
   Evidence: https://github.com/sixem/kick-enhancer ; `src/runtime.js` uptime chip vs card taggers.

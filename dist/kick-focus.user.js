@@ -4499,8 +4499,14 @@ function createLive(host) {
       refreshLiveDiagnostics();
       return;
     }
-    if (frame.kind === 'chat-message') onRealtimeChatMessage(frame.payload);
-    else if (frame.kind === 'deletion') onRealtimeDeletion(frame.payload);
+    if (frame.kind === 'chat-message') {
+      if (!state.live.providerVerified) {
+        state.live.providerVerified = true;
+        recordApiDrift('realtime', 'unverified-transport-verified', state.live.provider);
+        refreshLiveDiagnostics();
+      }
+      onRealtimeChatMessage(frame.payload);
+    } else if (frame.kind === 'deletion') onRealtimeDeletion(frame.payload);
   }
 
   function onRealtimeChatMessage(payload) {

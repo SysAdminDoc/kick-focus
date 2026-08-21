@@ -716,8 +716,22 @@ export function createLive(host) {
       refreshLiveDiagnostics();
       return;
     }
-    if (frame.kind === 'chat-message') onRealtimeChatMessage(frame.payload);
-    else if (frame.kind === 'deletion') onRealtimeDeletion(frame.payload);
+    if (frame.kind === 'chat-message') {
+      // A chat frame in the shape this build parses is the only real proof an
+      // unverified transport works. The handshake above proves a socket opened,
+      // which is why it is enough to let one reconnect — but the reason KICK
+      // ships `verified: false` is that nothing here has ever read a message
+      // over it, and this is the moment that stops being true. Recorded in the
+      // drift list rather than flipped silently: Kick moving the whole build
+      // onto a path it had never run against is exactly what somebody reading
+      // diagnostics needs to see.
+      if (!state.live.providerVerified) {
+        state.live.providerVerified = true;
+        recordApiDrift('realtime', 'unverified-transport-verified', state.live.provider);
+        refreshLiveDiagnostics();
+      }
+      onRealtimeChatMessage(frame.payload);
+    } else if (frame.kind === 'deletion') onRealtimeDeletion(frame.payload);
   }
 
   function onRealtimeChatMessage(payload) {

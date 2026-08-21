@@ -11,6 +11,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- If Kick ever moves chat onto its own gateway, the first message this build reads over it marks that transport as working, and diagnostics say so. Until then Pusher is still preferred, and a gateway that opens a socket but never delivers a message still falls back to reading the page.
 - Hiding a Kick control now only ever hides the control you named. The search that finds it has ordered fallbacks, so if Kick dropped a test id it would fall through to a looser selector and hide whatever that reached instead. Each hideable control records which selector is allowed to hide it; anything else leaves the control visible.
 - Nothing in this build can hide Kick's Request Unban control. A banned reader has no other way back into a chat, so both halves are now checked: the classifier Poor mode hides from refuses every spelling of it, and the live gate fails if Kick put the control on the page and it is not visible.
 - Resuming chat left the transcript sitting where it was frozen, which read as Resume doing nothing. It now returns to the newest message.

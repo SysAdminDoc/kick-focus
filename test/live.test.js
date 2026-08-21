@@ -547,6 +547,68 @@ test('an unverified transport that never delivered a frame degrades instead of r
   globalThis.window.setTimeout = (fn, ms) => setTimeout(fn, ms);
 });
 
+test('a chat frame over the Kick gateway is what marks that transport verified', { tag: 'unit' }, async () => {
+  // REALTIME_TRANSPORTS.KICK ships verified: false because nothing in this
+  // project has ever read a message over it. The handshake alone does not
+  // change that — a socket opening proves a socket opened. A frame this build
+  // can parse is the proof, and the transport stops being provisional at
+  // exactly that moment.
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42, id: 7 };
+  host.pageFetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ data: { connections: [{ provider: 'kick', credentials: { token: 't' } }] } }),
+  });
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    await surface.connectRealtime();
+    assert.equal(state.live.provider, 'KICK');
+    assert.equal(state.live.providerVerified, false);
+
+    surface.onRealtimeFrame(frame('App\Events\ChatMessageEvent', {
+      id: 'm-1',
+      sender: { id: 9, username: 'someone', identity: { badges: [] } },
+      content: 'hello',
+    }));
+    assert.equal(state.live.providerVerified, true, 'a parsed chat frame is the proof');
+    assert.equal(state.live.apiDrift.at(-1)?.reason, 'unverified-transport-verified');
+    assert.equal(state.live.apiDrift.at(-1)?.detail, 'KICK', 'the drift entry names which transport was proved');
+    assert.equal(state.live.apiDrift.at(-1)?.endpoint, 'realtime');
+
+    // And now a close is an ordinary reconnect rather than a degrade, because
+    // the transport is no longer unproven.
+    const drifts = state.live.apiDrift.length;
+    state.live.socket.fire('close');
+    assert.notEqual(state.live.socketState, 'unsupported');
+    assert.equal(state.live.apiDrift.length, drifts, 'nothing is reported as failed after it has been proved');
+  });
+});
+
+test('a verified transport is preferred while Kick still offers one', { tag: 'unit' }, async () => {
+  // The migration only takes effect once Kick stops offering the path this
+  // project has actually run against, so a broker answering with both must
+  // still hand back Pusher.
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42, id: 7 };
+  host.pageFetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ data: { connections: [
+      { provider: 'kick', credentials: { token: 't' } },
+      { provider: 'pusher', credentials: { app_key: 'key-1', cluster: 'us2' } },
+    ] } }),
+  });
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    await surface.connectRealtime();
+    assert.equal(state.live.provider, 'PUSHER', 'the offered order must not decide this');
+    assert.equal(state.live.providerVerified, true);
+  });
+});
+
 test('teardown drops the socket so a route change cannot leave two open', { tag: 'unit' }, async () => {
   const { host, state } = makeHost();
   state.live.channel = { chatroomId: 42, id: 7 };

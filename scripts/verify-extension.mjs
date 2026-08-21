@@ -1652,6 +1652,47 @@ try {
       swept.derived === 'ok' ? 'nothing broken' : `resolved but derived nothing: ${swept.derived} (probe:derivedValue)`);
   }
 
+  // R-82: which realtime transport Kick's broker is actually handing out.
+  //
+  // REALTIME_TRANSPORTS.KICK is registered verified: false because nothing in
+  // this project has ever read a message over it, and the build prefers Pusher
+  // while Kick still offers it. That preference is a unit test; what only a
+  // live run can answer is what the broker says today, and whether the day it
+  // stops offering Pusher has arrived. Asserting KICK works would mean
+  // asserting a migration that has not happened, so this reports what was
+  // offered and skips the verification half until it has.
+  const brokerProbe = await evaluate(pageClient, `(async () => {
+    const channel = await fetch('https://kick.com/api/v2/channels/xqc', { credentials: 'include', headers: { accept: 'application/json' } })
+      .then((response) => response.ok ? response.json() : null).catch(() => null);
+    const chatroom = channel?.chatroom?.id;
+    if (!chatroom) return { ok: false, why: 'the channel read did not answer with a chatroom id' };
+    const response = await fetch('https://web.kick.com/api/v1/realtime/chat/' + chatroom + '/client/00000000-0000-4000-8000-000000000000/connection', {
+      credentials: 'include', headers: { accept: 'application/json' },
+    }).catch(() => null);
+    if (!response) return { ok: false, why: 'the realtime broker could not be reached' };
+    if (!response.ok) return { ok: true, status: response.status, offered: [] };
+    const payload = await response.json().catch(() => null);
+    const connections = payload?.data?.connections;
+    return {
+      ok: true,
+      status: response.status,
+      // Provider names only. No token, no app key, nothing from the credentials.
+      offered: Array.isArray(connections) ? connections.map((entry) => String(entry?.provider || 'unknown')) : [],
+      mode: String(payload?.data?.mode || ''),
+    };
+  })()`);
+  const broker = brokerProbe.value || { why: brokerProbe.error || 'the probe returned nothing' };
+  const offered = (broker.offered || []).map((name) => name.toUpperCase());
+  const onlyKick = offered.length > 0 && offered.every((name) => name === 'KICK');
+  recordProbe('the realtime broker still offers the transport this build has run against',
+    onlyKick
+      ? { skip: `the broker now offers only ${offered.join(', ')}, which no run has yet read a chat frame over; connect once against a live chatroom and record whether a ChatMessageEvent arrives before treating that transport as verified` }
+      : {},
+    broker.ok === true && offered.includes('PUSHER'),
+    broker.ok
+      ? `HTTP ${broker.status}, providers offered: ${offered.join(', ') || 'none'}${broker.mode ? ` (mode ${broker.mode})` : ''}`
+      : broker.why);
+
   /**
    * R-74: whether Kick's own CSP would still let the companion inject.
    *
