@@ -8,6 +8,12 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - Paused chat now holds the message you were reading in place while Kick adds messages and recycles older rows. If that message has already left the page, the transcript keeps its current position instead of jumping.
 - Spanish and Portuguese now cover import validation, storage failures, save status, shortcut conflicts, and Viewer source notes. The translation gate also catches both branches of a conditional toast instead of missing them.
+- The companion popup now follows Studio, OLED, Slate, and the selected accent instead of always rendering with Studio colors.
+
+### Changed
+
+- The live browser gate now measures text contrast across OLED and Slate settings, confirmation dialogs, toasts, and the companion popup. It also proves that an anonymous run reports every signed-in journey as a skip. Chromium passes 95 of 95 checks at 1440 by 900, and Firefox passes 8 of 8.
+- Firefox verification now starts an isolated browser process and subscribes only to the network events it asserts, so another Firefox harness or an unused log subscription cannot stall the run.
 
 ## 1.33.0, 2026-08-21
 

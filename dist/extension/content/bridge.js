@@ -41,14 +41,21 @@ function readSettings() {
   }
 }
 
-// Reduce whatever the page announced to the one field the popup reads, so a
+// Reduce whatever the page announced to the fields the popup reads, so a
 // forged settings-changed event cannot write arbitrary data into extension
 // storage or flip a ruleset through an unvalidated payload. The page-world
 // script stays the single source of truth for the settings file itself.
 function sanitizeSettings(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const content = raw.content && typeof raw.content === 'object' ? raw.content : {};
-  return { content: { reduceTelemetry: Boolean(content.reduceTelemetry) } };
+  const appearance = raw.appearance && typeof raw.appearance === 'object' ? raw.appearance : {};
+  const theme = ['studio', 'oled', 'slate'].includes(appearance.theme) ? appearance.theme : 'studio';
+  const accent = ['kick', 'cyan', 'violet', 'gold', 'custom'].includes(appearance.accent) ? appearance.accent : 'kick';
+  const customAccent = /^#[\da-f]{6}$/i.test(appearance.customAccent || '') ? appearance.customAccent : '#FF5CA8';
+  return {
+    appearance: { theme, accent, customAccent },
+    content: { reduceTelemetry: Boolean(content.reduceTelemetry) },
+  };
 }
 
 function publish(settings) {

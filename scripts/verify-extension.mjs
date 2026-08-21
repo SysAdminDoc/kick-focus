@@ -1968,9 +1968,13 @@ try {
     const after = { ...read(), top: Math.round(messages.scrollTop) };
 
     const viewport = messages.getBoundingClientRect();
-    const anchor = [...messages.querySelectorAll('[data-index]')]
+    const indexed = [...messages.querySelectorAll('[data-index]')];
+    const rows = indexed.length
+      ? indexed
+      : [...messages.querySelectorAll('[data-message-id], [data-chat-entry], .group')];
+    const anchor = rows
       .map((node) => ({ node, rect: node.getBoundingClientRect() }))
-      .find(({ rect }) => rect.height > 0 && rect.top >= viewport.top && rect.bottom <= viewport.bottom);
+      .find(({ rect }) => rect.height > 0 && rect.top >= viewport.top && rect.top < viewport.bottom);
     const anchorStart = anchor ? anchor.rect.top - viewport.top : null;
 
     // Five seconds gives a busy channel enough time to append and recycle rows.
@@ -2206,8 +2210,17 @@ try {
       seen.ok === true && seen.mounted === true && missing.length === 0,
       seen.ok
         ? `mounted on ${seen.landed}; ${(seen.counts || []).map(([selector, count]) => `${count}x ${selector}`).join('; ')}`
-        : seen.why);
+      : seen.why);
   }
+  const journeyOutcomes = results
+    .filter((entry) => entry.label.startsWith('signed-in journey:'))
+    .map((entry) => entry.outcome);
+  record('signed-in journey coverage never turns an unavailable session into a pass',
+    journeyOutcomes.length === SIGNED_IN_JOURNEYS.length
+      && (signedIn || journeyOutcomes.every((outcome) => outcome === 'skip')),
+    signedIn
+      ? `${journeyOutcomes.filter((outcome) => outcome === 'pass').length} asserted, ${journeyOutcomes.filter((outcome) => outcome === 'skip').length} redirected or unavailable`
+      : `${journeyOutcomes.filter((outcome) => outcome === 'skip').length}/${SIGNED_IN_JOURNEYS.length} reported as skips`);
 
   // The library provider against Chromium's real IndexedDB. The pure split and
   // merge are covered by node:test with a stub; what only a browser can answer
@@ -3307,6 +3320,122 @@ try {
 
   const popupTelemetry = await evaluate(popupClient, 'document.getElementById("telemetry").checked');
   record('popup reflects the stored telemetry setting', popupTelemetry.value === true, String(popupTelemetry.value));
+
+  // Theme tokens have to reach three separate layers: the page, this build's
+  // shadow-root dialogs, and the extension popup. Source inspection proves the
+  // variables exist but not that nested text resolves against the right
+  // surface, so each non-default theme is measured at runtime.
+  for (const theme of ['oled', 'slate']) {
+    const pageTheme = await evaluate(pageClient, `(async () => {
+      const host = document.getElementById('kick-focus-root');
+      const shadow = await __kfWait(() => host && host.shadowRoot);
+      if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+      const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+      const channels = (value) => (String(value).match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+      const luminance = (value) => channels(value)
+        .map((part) => part / 255)
+        .map((part) => part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4)
+        .reduce((sum, part, index) => sum + part * [0.2126, 0.7152, 0.0722][index], 0);
+      const contrast = (front, back) => {
+        const values = [luminance(front), luminance(back)].sort((a, b) => b - a);
+        return Math.round(((values[0] + 0.05) / (values[1] + 0.05)) * 100) / 100;
+      };
+      const measure = (textNode, surfaceNode) => {
+        if (!textNode || !surfaceNode) return null;
+        const textStyle = getComputedStyle(textNode);
+        const surfaceStyle = getComputedStyle(surfaceNode);
+        const box = surfaceNode.getBoundingClientRect();
+        return {
+          ratio: contrast(textStyle.color, surfaceStyle.backgroundColor),
+          color: textStyle.color,
+          background: surfaceStyle.backgroundColor,
+          visible: box.width > 0 && box.height > 0 && box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight,
+        };
+      };
+      document.dispatchEvent(new CustomEvent('kick-focus:open-settings'));
+      await settle();
+      shadow.querySelector('[data-page="appearance"]')?.click();
+      await settle();
+      const choice = shadow.querySelector('[data-set="appearance.theme"][data-value="${theme}"]');
+      if (!choice) return { ok: false, why: 'the ${theme} theme control was not rendered' };
+      choice.click();
+      await settle(700);
+      const shell = shadow.querySelector('[data-kf-settings-shell]');
+      const heading = shadow.querySelector('.kf-page-header h2');
+      const shellMetric = measure(heading, shell);
+      shadow.querySelector('[data-action="reset-page"]')?.click();
+      await settle(250);
+      const confirm = shadow.querySelector('.kf-confirm-card');
+      const title = confirm?.querySelector('h2');
+      const copy = confirm?.querySelector('p');
+      const dialogTitle = measure(title, confirm);
+      const dialogCopy = measure(copy, confirm);
+      shadow.querySelector('[data-action="cancel-reset"]')?.click();
+      shadow.querySelector('[data-page="content"]')?.click();
+      await settle();
+      shadow.querySelector('[data-action="clear-favorites"]')?.click();
+      await settle(250);
+      const toast = shadow.querySelector('[data-kf-toast]');
+      return {
+        ok: true,
+        theme: document.documentElement.dataset.kfTheme,
+        shell: shellMetric,
+        dialogTitle,
+        dialogCopy,
+        toast: measure(toast?.querySelector('.kf-toast-text'), toast),
+      };
+    })()`);
+    await sleep(500);
+    const popupTheme = await evaluate(popupClient, `(async () => {
+      await render();
+      const channels = (value) => (String(value).match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+      const luminance = (value) => channels(value)
+        .map((part) => part / 255)
+        .map((part) => part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4)
+        .reduce((sum, part, index) => sum + part * [0.2126, 0.7152, 0.0722][index], 0);
+      const contrast = (front, back) => {
+        const values = [luminance(front), luminance(back)].sort((a, b) => b - a);
+        return Math.round(((values[0] + 0.05) / (values[1] + 0.05)) * 100) / 100;
+      };
+      const measure = (textNode, surfaceNode) => {
+        const textStyle = getComputedStyle(textNode);
+        const surfaceStyle = getComputedStyle(surfaceNode);
+        return contrast(textStyle.color, surfaceStyle.backgroundColor);
+      };
+      const title = document.getElementById('network-title');
+      const card = title.closest('.card');
+      const note = document.getElementById('note');
+      const button = document.getElementById('open-settings');
+      return {
+        theme: document.documentElement.dataset.theme,
+        title: measure(title, card),
+        note: measure(note, document.body),
+        button: measure(button, button),
+      };
+    })()`);
+    const pageSample = pageTheme.value || {};
+    const popupSample = popupTheme.value || {};
+    const pageMetrics = [pageSample.shell, pageSample.dialogTitle, pageSample.dialogCopy, pageSample.toast];
+    record(`${theme === 'oled' ? 'OLED' : 'Slate'} keeps settings, nested dialogs, toasts, and the popup readable`,
+      pageSample.ok === true
+        && pageSample.theme === theme
+        && pageMetrics.every((metric) => metric?.ratio >= 4.5 && metric.visible === true)
+        && popupSample.theme === theme
+        && popupSample.title >= 4.5 && popupSample.note >= 4.5 && popupSample.button >= 4.5,
+      pageSample.ok
+        ? `page contrast ${pageMetrics.map((metric) => metric?.ratio).join('/')}; popup contrast ${popupSample.title}/${popupSample.note}/${popupSample.button}; popup theme=${popupSample.theme}`
+        : pageSample.why);
+  }
+  await evaluate(pageClient, `(async () => {
+    const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+    shadow?.querySelector('[data-page="appearance"]')?.click();
+    await new Promise((done) => setTimeout(done, 400));
+    shadow?.querySelector('[data-set="appearance.theme"][data-value="studio"]')?.click();
+    await new Promise((done) => setTimeout(done, 500));
+    shadow?.querySelector('[data-action="close-settings"]')?.click();
+  })()`);
+  await sleep(300);
+  await evaluate(popupClient, 'render()');
 
   const popupErrors = popupClient.events
     .filter((e) => e.method === 'Runtime.exceptionThrown')

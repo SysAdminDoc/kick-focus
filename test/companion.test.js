@@ -89,7 +89,10 @@ function makeEnvironment() {
 async function runBridge(file, pageFirst) {
   const source = await readFile(resolve(root, file), 'utf8');
   const env = makeEnvironment();
-  const settings = JSON.stringify({ content: { reduceTelemetry: true } });
+  const settings = JSON.stringify({
+    appearance: { theme: 'oled', accent: 'custom', customAccent: '#123ABC' },
+    content: { reduceTelemetry: true },
+  });
   const respondToRequest = () => env.document.dispatchEvent(new CustomEventStub('kick-focus:settings-changed', {
     detail: { settings },
   }));
@@ -182,6 +185,10 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
 
     for (const result of [pageFirst, bridgeFirst]) {
       assert.equal(result.published.at(-1)?.settings?.content?.reduceTelemetry, true);
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(result.published.at(-1)?.settings?.appearance)),
+        { theme: 'oled', accent: 'custom', customAccent: '#123ABC' },
+      );
       assert.equal(result.messages.at(-1)?.type, 'kick-focus:telemetry-preference');
       assert.equal(result.messages.at(-1)?.enabled, true);
     }
@@ -212,10 +219,20 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     const env = makeEnvironment();
     vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
     env.document.dispatchEvent(new CustomEventStub('kick-focus:settings-changed', {
-      detail: { settings: JSON.stringify({ content: { reduceTelemetry: true, secret: 'x' }, evil: { drop: 1 } }) },
+      detail: { settings: JSON.stringify({
+        appearance: { theme: 'slate', accent: 'violet', customAccent: '#ABCDEF', secret: 'x' },
+        content: { reduceTelemetry: true, secret: 'x' },
+        evil: { drop: 1 },
+      }) },
     }));
     const stored = env.published.at(-1)?.settings;
-    assert.deepEqual(Object.keys(stored), ['content']);
+    assert.deepEqual(Object.keys(stored), ['appearance', 'content']);
+    assert.deepEqual(Object.keys(stored.appearance), ['theme', 'accent', 'customAccent']);
+    assert.deepEqual(JSON.parse(JSON.stringify(stored.appearance)), {
+      theme: 'slate',
+      accent: 'violet',
+      customAccent: '#ABCDEF',
+    });
     assert.deepEqual(Object.keys(stored.content), ['reduceTelemetry']);
     assert.equal(stored.content.reduceTelemetry, true);
   });

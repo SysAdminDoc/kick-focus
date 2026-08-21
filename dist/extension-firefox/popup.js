@@ -20,12 +20,44 @@ const els = {
 };
 
 const KICK_HOST = /^https:\/\/(www\.)?kick\.com\//;
+const ACCENTS = Object.freeze({
+  kick: ['#7cff2b', '124, 255, 43'],
+  cyan: ['#38d7d0', '56, 215, 208'],
+  violet: ['#9667ff', '150, 103, 255'],
+  gold: ['#ffbe2e', '255, 190, 46'],
+});
 
 // Firefox exposes the promise-based `browser`; Chromium MV3 promisifies its own
 // namespace. Either way this uses promises. Without the shim the Firefox popup
 // queried tabs callback-style, got `undefined`, and rendered static defaults
 // forever.
 const api = globalThis.browser || globalThis.chrome;
+
+function accentInk(hex) {
+  const channels = String(hex).match(/[\da-f]{2}/gi)?.map((value) => Number.parseInt(value, 16) / 255);
+  if (!channels || channels.length !== 3) return '#071004';
+  const luminance = channels
+    .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  return luminance > 0.18 ? '#071004' : '#ffffff';
+}
+
+function applyAppearance(settings) {
+  const appearance = settings?.appearance || {};
+  const theme = ['studio', 'oled', 'slate'].includes(appearance.theme) ? appearance.theme : 'studio';
+  const preset = ACCENTS[appearance.accent] || ACCENTS.kick;
+  const custom = appearance.accent === 'custom' && /^#[\da-f]{6}$/i.test(appearance.customAccent || '')
+    ? appearance.customAccent
+    : '';
+  const hex = custom || preset[0];
+  const rgb = custom
+    ? String(custom).match(/[\da-f]{2}/gi).map((value) => Number.parseInt(value, 16)).join(', ')
+    : preset[1];
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.setProperty('--accent', hex);
+  document.documentElement.style.setProperty('--accent-rgb', rgb);
+  document.documentElement.style.setProperty('--on-accent', accentInk(hex));
+}
 
 function renderUnavailable() {
   els.version.textContent = '';
@@ -71,6 +103,8 @@ async function render() {
     renderUnavailable();
     return;
   }
+
+  applyAppearance(status.settings);
 
   els.version.textContent = `v${status?.version ?? ''}`;
   els.rulesets.textContent = String(status?.rulesets?.length ?? 0);

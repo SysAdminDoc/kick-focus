@@ -73,6 +73,7 @@ if (!FIREFOX) {
 const profile = await mkdtemp(join(tmpdir(), 'kick-focus-firefox-'));
 const child = spawn(FIREFOX, [
   '--profile', profile,
+  '--no-remote',
   '--remote-debugging-port', String(PORT),
   '--headless',
   'about:blank',
@@ -152,7 +153,7 @@ try {
   await client.ready;
 
   await client.send('session.new', { capabilities: { alwaysMatch: {} } });
-  await client.send('session.subscribe', { events: ['log.entryAdded', 'network.beforeRequestSent', 'network.responseCompleted', 'network.fetchError'] });
+  await client.send('session.subscribe', { events: ['network.beforeRequestSent', 'network.responseCompleted', 'network.fetchError'] });
   record('Firefox WebDriver BiDi session established', true, url);
 
   // An unsigned MV2 package installs as a *temporary* add-on, which is the only

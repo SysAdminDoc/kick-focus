@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="studio">
 <head>
 <meta charset="utf-8">
 <title>Kick Focus</title>
@@ -14,17 +14,40 @@
     --text-secondary: #cbd3ce;
     --text-muted: #a4afa7;
     --accent: #7cff2b;
+    --accent-rgb: 124, 255, 43;
     --on-accent: #071004;
     --border: #2c382f;
     --border-control: #46564b;
     --radius: 8px;
+  }
+  :root[data-theme="oled"] {
+    --surface-base: #000;
+    --surface-high: #080a09;
+    --surface-low: #030404;
+    --surface-hover: #111613;
+    --text: #f8faf9;
+    --text-secondary: #d2d7d4;
+    --text-muted: #a9b0ac;
+    --border: #191f1b;
+    --border-control: #38423c;
+  }
+  :root[data-theme="slate"] {
+    --surface-base: #090e13;
+    --surface-high: #151f28;
+    --surface-low: #0f161d;
+    --surface-hover: #263544;
+    --text: #f3f7fa;
+    --text-secondary: #cbd6df;
+    --text-muted: #a6b5c2;
+    --border: #253541;
+    --border-control: #496072;
   }
   * { box-sizing: border-box; }
   body {
     width: 360px;
     margin: 0;
     padding: 18px;
-    background: radial-gradient(circle at 15% -8%, rgba(124,255,43,.1), transparent 32%), var(--surface-base);
+    background: radial-gradient(circle at 15% -8%, rgba(var(--accent-rgb),.1), transparent 32%), var(--surface-base);
     color: var(--text);
     font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
@@ -72,7 +95,7 @@
     cursor: pointer;
     transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
   }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 10px 26px rgba(124,255,43,.12); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 10px 26px rgba(var(--accent-rgb),.12); }
   button:hover { border-color: var(--border-control); background: var(--surface-hover); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,.2); }
   button.primary:hover { border-color: var(--accent); background: var(--accent); filter: brightness(1.08); }
   button:active { transform: translateY(0); }

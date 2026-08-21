@@ -126,24 +126,3 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
   Touches: `src/core.mjs` Viewer Hub card registry, `src/runtime.js`, i18n.
   Acceptance: the card says it is this browser session’s timer; it resets on reload; it never writes a Kick level; signed-out still explains itself.
   Complexity: S
-
-## Research-Driven Additions, 2026-08-21 (v1.31.0 differential)
-
-Added from the differential research recorded in [RESEARCH.md](RESEARCH.md), run against unchanged v1.31.0 one day after the 2026-08-20 pass. Continues the R-NN scheme from R-89. Does not duplicate R-72–R-89; see inline notes on R-72 and R-74 above.
-
-### P1
-
-### P2
-
-## Audit leftovers, 2026-08-21
-
-Incomplete work found in the v1.32.0 audit that was not already R-72–R-91. R-73 (README ads copy) and R-92 (diagnostic settingsDiff + probes) shipped in that pass and were removed from the incomplete list.
-
-### P2
-
-- [ ] P2 — R-94 — Live-gate OLED/Slate nested surfaces and the signed-in / Firefox gates
-  Why: this audit traced settings, About, import, popup, and all three theme tokens in source, but did not run `verify:extension` against OLED and Slate nested overlays, a signed-in session, or Firefox.
-  Evidence: CLAUDE.md live-gate notes; `src/extension/popup.html` is Studio-token only; `npm run verify:firefox` and signed-in journeys.
-  Touches: `scripts/verify-extension.mjs` optional theme sweep, `scripts/verify-firefox.mjs`, signed-in matrix.
-  Acceptance: OLED and Slate settings dialogs, toasts, and the companion popup remain readable at 1440x900; Firefox 8/8 still holds; signed-in skips stay skips rather than false passes.
-  Complexity: M

@@ -6166,7 +6166,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              792327') || 0;
+const BUNDLE_BYTES = Number('              793286') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -8243,13 +8243,41 @@ function restorePausedChatPosition(messages) {
   state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
 }
 
+function schedulePausedChatRestore(messages) {
+  if (state.runtime.chatScrollRestorePending) return;
+  const restore = () => {
+    state.runtime.chatScrollRestorePending = null;
+    if (!state.runtime.chatPaused || state.runtime.chatPauseNode !== messages) return;
+    restorePausedChatPosition(messages);
+    state.runtime.chatScrollLastTop = messages.scrollTop;
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    state.runtime.chatScrollRestorePending = requestAnimationFrame(() => {
+      state.runtime.chatScrollRestorePending = requestAnimationFrame(restore);
+    });
+  } else {
+    state.runtime.chatScrollRestorePending = setTimeout(restore, 0);
+  }
+}
+
 function armChatScrollPause(messages) {
   if (state.runtime.chatScrollNode === messages) return;
   releaseChatScrollPause();
   state.runtime.chatScrollLastTop = messages.scrollTop;
   const handler = () => {
     const top = messages.scrollTop;
-    const movedUp = top < state.runtime.chatScrollLastTop - 2;
+    const previousTop = state.runtime.chatScrollLastTop;
+    const movedUp = top < previousTop - 2;
+
+    if (state.runtime.chatPaused) {
+      if (movedUp) {
+        state.runtime.chatScrollTop = top;
+        state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
+      }
+      state.runtime.chatScrollLastTop = top;
+      return;
+    }
+
     state.runtime.chatScrollLastTop = top;
     if (!movedUp) return;
     if (!state.settings.content.stickyChatPause) return;
@@ -8332,7 +8360,7 @@ function applyChatPause() {
     if (!state.observers.chat) {
       state.runtime.chatScrollTop = messages.scrollTop;
       state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
-      state.observers.chat = new MutationObserver(() => restorePausedChatPosition(messages));
+      state.observers.chat = new MutationObserver(() => schedulePausedChatRestore(messages));
       state.observers.chat.observe(messages, { childList: true, subtree: true, characterData: true });
     }
     messages.setAttribute('aria-live', 'off');

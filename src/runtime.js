@@ -3344,6 +3344,31 @@ function restorePausedChatPosition(messages) {
 }
 
 /**
+ * Restore after Kick's virtualiser has finished its own frame work.
+ *
+ * A MutationObserver runs before requestAnimationFrame. Restoring directly in
+ * the observer lets Kick's queued live-edge scroll win later in the same frame.
+ * Two frames put this correction after that work, while coalescing a burst of
+ * message mutations into one layout read and one possible scroll write.
+ */
+function schedulePausedChatRestore(messages) {
+  if (state.runtime.chatScrollRestorePending) return;
+  const restore = () => {
+    state.runtime.chatScrollRestorePending = null;
+    if (!state.runtime.chatPaused || state.runtime.chatPauseNode !== messages) return;
+    restorePausedChatPosition(messages);
+    state.runtime.chatScrollLastTop = messages.scrollTop;
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    state.runtime.chatScrollRestorePending = requestAnimationFrame(() => {
+      state.runtime.chatScrollRestorePending = requestAnimationFrame(restore);
+    });
+  } else {
+    state.runtime.chatScrollRestorePending = setTimeout(restore, 0);
+  }
+}
+
+/**
  * Arm the existing paused state when the reader scrolls the transcript up.
  *
  * Kick's own pause-on-scroll is reported broken, and this build already has the
@@ -3365,13 +3390,29 @@ function armChatScrollPause(messages) {
     // re-armed the pause seconds after Resume. A reader scrolling back is the
     // only thing that moves scrollTop *up*.
     const top = messages.scrollTop;
+    const previousTop = state.runtime.chatScrollLastTop;
     // Held on `state.runtime`, not in this closure. Kick can reconcile the
     // transcript node across a channel-to-channel navigation rather than
     // remounting it, and the identity guard above then never re-runs — so a
     // closure variable would still hold the previous channel's position, and
     // the new channel's list loading in below it would read as the reader
     // scrolling back on a page they just opened.
-    const movedUp = top < state.runtime.chatScrollLastTop - 2;
+    const movedUp = top < previousTop - 2;
+
+    // An upward movement while paused is the reader continuing farther into
+    // history, so it becomes the new anchor instead of being undone. Downward
+    // movement is left to the coalesced post-render restore below. Correcting
+    // it synchronously from this event creates a feedback loop with Kick's own
+    // virtualiser on busy channels.
+    if (state.runtime.chatPaused) {
+      if (movedUp) {
+        state.runtime.chatScrollTop = top;
+        state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
+      }
+      state.runtime.chatScrollLastTop = top;
+      return;
+    }
+
     state.runtime.chatScrollLastTop = top;
     if (!movedUp) return;
     if (!state.settings.content.stickyChatPause) return;
@@ -3466,7 +3507,7 @@ function applyChatPause() {
     if (!state.observers.chat) {
       state.runtime.chatScrollTop = messages.scrollTop;
       state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
-      state.observers.chat = new MutationObserver(() => restorePausedChatPosition(messages));
+      state.observers.chat = new MutationObserver(() => schedulePausedChatRestore(messages));
       state.observers.chat.observe(messages, { childList: true, subtree: true, characterData: true });
     }
     messages.setAttribute('aria-live', 'off');
