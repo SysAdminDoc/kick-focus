@@ -82,13 +82,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P2
 
-- [ ] P2 — R-80 — Use Node 24.19 `expectFailure` for red-proofs
-  Why: engines already require ≥24.19; CLAUDE.md records losing uncommitted work to `git checkout --` while proving a gate red.
-  Evidence: https://nodejs.org/docs/latest-v24.x/api/test.html (`expectFailure`); `package.json` `engines`; CLAUDE.md 2026-08-16 i18n red-proof note.
-  Touches: `test/*.test.js` and any `scripts/check.mjs` parser tests that currently sabotage a copy.
-  Acceptance: at least the i18n-coverage and one `check.mjs` red probe use `expectFailure` (or an equivalent in-process sabotage) and no test instructions tell an agent to `git checkout` a dirty file.
-  Complexity: S
-
 - [ ] P2 — R-84 — Use CSS `contrast-color()` as a fallback next to the existing JS accent check
   Why: `contrast-color()` is Baseline 2026; Kick Focus already rejects too-dark custom accents in JS because MDN documents mid-tone failures, so CSS can mirror the safe pair without replacing the 3:1 gate.
   Evidence: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/contrast-color ; `src/core.mjs` custom-accent contrast helpers.

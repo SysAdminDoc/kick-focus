@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { expectFailure } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -60,8 +60,8 @@ const EXEMPT = new Set([
   'https://example.com/kick-focus-blocklist.json', // An example URL, not prose.
 ]);
 
-async function collect() {
-  const src = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+async function collect(override = null) {
+  const src = override === null ? await readFile(resolve(root, 'src/runtime.js'), 'utf8') : override;
   const start = src.indexOf('const TRANSLATIONS = {');
   assert.notEqual(start, -1, 'TRANSLATIONS literal not found');
   const block = src.slice(start, src.indexOf('\n};', start));
@@ -143,13 +143,44 @@ test('each scanner still matches its own surface, so none can silently go blind'
   assert.deepEqual(markupHits, ['Real copy'], 'markup attributes must be scanned as copy');
 });
 
-test('every rendered string has an entry in every locale', { tag: 'unit' }, async () => {
-  const { locales, rendered } = await collect();
+const untranslated = ({ locales, rendered }) => {
   const names = Object.keys(locales);
-  const missing = [...rendered].filter((s) => names.some((n) => !locales[n].has(s)));
+  return [...rendered].filter((value) => names.some((name) => !locales[name].has(value)));
+};
+
+test('every rendered string has an entry in every locale', { tag: 'unit' }, async () => {
+  const missing = untranslated(await collect());
   assert.deepEqual(
     missing,
     [],
     `${missing.length} rendered string(s) have no dictionary entry, starting with: ${missing.slice(0, 3).map((s) => JSON.stringify(s.slice(0, 60))).join(' | ')}`,
   );
+});
+
+/**
+ * The gate, proved red without touching the working tree.
+ *
+ * A coverage gate that has never been seen to fail is indistinguishable from
+ * one whose parser quietly stopped matching, and the way this used to be
+ * checked was to edit `src/runtime.js`, watch it go red, and put the file back
+ * — which is how uncommitted work was lost to a `git checkout --` once already.
+ * `expectFailure` inverts the verdict instead: the assertion below genuinely
+ * fails, and the run is green because of it. The day the parser goes blind, the
+ * assertion starts passing and the runner reports an unexpected pass.
+ */
+async function sabotaged(insert) {
+  const src = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const marker = 'const TRANSLATIONS = {';
+  return src.replace(marker, `${insert}
+${marker}`);
+}
+
+expectFailure('a rendered string with no dictionary entry fails the coverage gate', { tag: 'unit' }, async () => {
+  const missing = untranslated(await collect(await sabotaged("  tr('An untranslated sentence this build would render');")));
+  assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
+});
+
+expectFailure('a settings row with no dictionary entry fails the coverage gate', { tag: 'unit' }, async () => {
+  const missing = untranslated(await collect(await sabotaged("  row('An untitled row', 'An undescribed row', control);")));
+  assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });
