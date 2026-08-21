@@ -1,4 +1,4 @@
-export const VERSION = '1.32.0';
+export const VERSION = '1.33.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -49,6 +49,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.32.0': Object.freeze({
     summary: 'Hidden channels, favorites, and volume now match Kick card links that carry a trailing slash. A stickers-only import no longer resets the rest of the profile. Copied diagnostics include a settings diff without channel names.',
+    defaults: Object.freeze([]),
+  }),
+  '1.33.0': Object.freeze({
+    summary: 'Scrolling chat up freezes it, every settings page offers help in the same place, and the build is 200 KB smaller so a userscript manager still injects it at page start.',
     defaults: Object.freeze([]),
   }),
   '1.31.0': Object.freeze({
