@@ -9,7 +9,7 @@ import { createZip } from './zip.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative) => readFile(resolve(root, relative), 'utf8');
 
-const [metadata, core, api, compatibility, storage, live, multistream, runtime, appearancePreview] = await Promise.all([
+const [metadata, core, api, compatibility, storage, live, multistream, settings, runtime, appearancePreview] = await Promise.all([
   read('src/metadata.txt'),
   read('src/core.mjs'),
   read('src/api.mjs'),
@@ -17,6 +17,7 @@ const [metadata, core, api, compatibility, storage, live, multistream, runtime, 
   read('src/storage.mjs'),
   read('src/live.mjs'),
   read('src/multistream.mjs'),
+  read('src/settings.mjs'),
   read('src/runtime.js'),
   readFile(resolve(root, 'src/assets/appearance-preview.jpg')),
 ]);
@@ -51,14 +52,17 @@ const bundledCompatibility = bundled(compatibility);
 const bundledStorage = bundled(storage);
 const bundledLive = bundled(live);
 const iconData = `data:image/png;base64,${renderIcon(32).toString('base64')}`;
+const previewData = `data:image/jpeg;base64,${appearancePreview.toString('base64')}`;
 const bundledMultistream = bundled(multistream)
   .replaceAll('__KICK_FOCUS_ICON__', iconData);
+const bundledSettings = bundled(settings)
+  .replaceAll('__KICK_FOCUS_PREVIEW__', previewData);
 const bundledRuntime = stripComments(runtime)
   .replaceAll('__KICK_FOCUS_ICON__', iconData)
-  .replaceAll('__KICK_FOCUS_PREVIEW__', `data:image/jpeg;base64,${appearancePreview.toString('base64')}`);
+  .replaceAll('__KICK_FOCUS_PREVIEW__', previewData);
 // Concat order is the dependency order: everything a module imports must have
 // been declared by an earlier entry in this list.
-const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledStorage}\n${bundledLive}\n${bundledMultistream}\n${bundledRuntime}\n})();\n`;
+const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledStorage}\n${bundledLive}\n${bundledMultistream}\n${bundledSettings}\n${bundledRuntime}\n})();\n`;
 
 await mkdir(resolve(root, 'dist'), { recursive: true });
 /**

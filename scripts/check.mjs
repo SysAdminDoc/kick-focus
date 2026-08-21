@@ -88,6 +88,8 @@ const bundleTargets = [['dist/kick-focus.user.js', source], ['dist/extension/con
 const moduleFiles = (await readdir(resolve('src')))
   .filter((name) => name.endsWith('.mjs'))
   .map((name) => `src/${name}`);
+const settingsModuleSource = await read('src/settings.mjs');
+const runtimeModuleSource = await read('src/runtime.js');
 const bundleGaps = [];
 for (const [bundleName, bundleSource] of bundleTargets) {
   for (const moduleFile of moduleFiles) {
@@ -698,6 +700,13 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  ['settings page composition lives behind an explicit factory instead of runtime wrappers',
+    settingsModuleSource.includes('export function createSettings(host)')
+    && ['renderLayoutPage', 'renderAppearancePage', 'renderContentPage', 'renderAccessibilityPage', 'renderViewerPage', 'renderAboutPage']
+      .every((name) => settingsModuleSource.includes(`function ${name}(`))
+    && !/^function render[A-Za-z]+Page\b/m.test(runtimeModuleSource)
+    && !/^const NAV_ITEMS\b/m.test(runtimeModuleSource)
+    && runtimeModuleSource.includes('const settingsSurface = createSettings({')],
   // Constructed sheets are parsed once and adopted by reference; a <style>
   // written into a shadow root's innerHTML is re-tokenised and re-parsed on
   // every rebuild. The template must not carry the sheet, and every root must

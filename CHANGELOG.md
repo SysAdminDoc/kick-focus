@@ -16,6 +16,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Changed
 
+- Settings page composition now lives in its own module behind an explicit host boundary. The shipped interface is unchanged, while the page renderers, navigation model, settings search, and their dependencies can now be checked without keeping them inside the main DOM runtime.
 - The live browser gate now measures text contrast across OLED and Slate settings, confirmation dialogs, toasts, and the companion popup without writing test settings into a retained browser profile. It also proves that an anonymous run reports every signed-in journey as a skip. Chromium passes 95 of 95 checks at 1440 by 900, and Firefox passes 8 of 8.
 - Firefox verification now starts an isolated browser process, subscribes only to the network events it asserts, gives loaded-machine commands a bounded 90 seconds to answer, and retries a transient navigation refusal. Another Firefox harness or an unused log subscription can no longer stall the run.
 

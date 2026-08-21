@@ -97,6 +97,7 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
   Touches: new `src/settings.mjs` (or similar), `scripts/build.mjs` concat order, `scripts/check.mjs` symbol-definition gate, `test/boot.test.js`.
   Acceptance: settings pages still render in the live gate; bundle `node --check` passes; no duplicate top-level names; `runtime.js` loses the `render*Page` / `NAV_ITEMS` block rather than gaining a wrapper.
   Complexity: L
+  Implementation note (2026-08-21): settings page composition now lives in `src/settings.mjs` behind an explicit `createSettings(host)` boundary. `runtime.js` no longer declares `NAV_ITEMS` or any top-level `render*Page` function, the build and i18n scanner cover the new module, and the offline gate passes 359/359 with 184 artifact checks and 80 red probes. The checkbox remains open until the settings-page live gate can run; outbound TCP is currently blocked machine-wide.
 
 - [ ] P2 — R-79 — Add `layout.chat = 'left'` without breaking the theater separator
   Why: `layout.chat` only allows `right|docked|hidden` (`src/core.mjs`); 7TV #914, Left Kick, and uKick all ship chat-left, and Kick Focus just finished right-side theater geometry in v1.28.0/v1.31.0.

@@ -64,8 +64,16 @@ const EXEMPT = new Set([
   'https://example.com/kick-focus-blocklist.json', // An example URL, not prose.
 ]);
 
+async function interfaceSource() {
+  const [runtime, settings] = await Promise.all([
+    readFile(resolve(root, 'src/runtime.js'), 'utf8'),
+    readFile(resolve(root, 'src/settings.mjs'), 'utf8'),
+  ]);
+  return `${runtime}\n${settings}`;
+}
+
 async function collect(override = null) {
-  const src = override === null ? await readFile(resolve(root, 'src/runtime.js'), 'utf8') : override;
+  const src = override === null ? await interfaceSource() : override;
   const start = src.indexOf('const TRANSLATIONS = {');
   assert.notEqual(start, -1, 'TRANSLATIONS literal not found');
   const block = src.slice(start, src.indexOf('\n};', start));
@@ -80,8 +88,8 @@ async function collect(override = null) {
     if (keyMatch) locales[current].add(keyMatch[1]);
   }
 
-  // Copy that reaches the screen from core.mjs rather than from runtime.js.
-  // The scanners read runtime.js, so a string composed in core would otherwise
+  // Copy that reaches the screen from core.mjs rather than from the interface sources.
+  // The scanners read runtime.js and settings.mjs, so a string composed in core would otherwise
   // be invisible to this gate — named explicitly instead of widening the scan
   // to a module that is mostly not user-facing prose.
   const rendered = new Set([
@@ -138,7 +146,7 @@ test('each scanner still matches its own surface, so none can silently go blind'
   // A scanner whose regex stops matching contributes nothing and takes the
   // strings it used to cover out of the gate without failing anything. Every
   // one of them must find something in the real source.
-  const src = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const src = await interfaceSource();
   for (const [name, pattern] of SCANNERS) {
     const hits = [...src.matchAll(pattern)].length;
     assert.ok(hits > 0, `the ${name} scanner matched nothing — suspect the regex, not the source`);
