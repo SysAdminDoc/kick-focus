@@ -5439,6 +5439,8 @@ const state = {
     sidebarHidden: false,
     matureVisible: false,
     chatPaused: false,
+    chatScrollNode: null,
+    chatScrollHandler: null,
     suspended: false,
     routeSource: '',
     layoutRoute: '',
@@ -8095,6 +8097,38 @@ function applyPlayerResilience() {
   if (main) main.dataset.kfPlayerResizeReady = 'true';
 }
 
+const CHAT_SCROLL_PAUSE_DISTANCE = 64;
+
+function armChatScrollPause(messages) {
+  if (state.runtime.chatScrollNode === messages) return;
+  releaseChatScrollPause();
+  let lastTop = messages.scrollTop;
+  const handler = () => {
+    const top = messages.scrollTop;
+    const movedUp = top < lastTop - 2;
+    lastTop = top;
+    if (!movedUp) return;
+    if (!state.settings.content.stickyChatPause) return;
+    if (state.runtime.chatPaused) return;
+    const distance = messages.scrollHeight - messages.scrollTop - messages.clientHeight;
+    if (!(distance > CHAT_SCROLL_PAUSE_DISTANCE)) return;
+    state.runtime.chatPaused = true;
+    applySettingsAttributes();
+    applyChatPause();
+    announce('Chat updates paused');
+  };
+  messages.addEventListener('scroll', handler, { passive: true });
+  state.runtime.chatScrollNode = messages;
+  state.runtime.chatScrollHandler = handler;
+}
+
+function releaseChatScrollPause() {
+  const { chatScrollNode, chatScrollHandler } = state.runtime;
+  if (chatScrollNode && chatScrollHandler) chatScrollNode.removeEventListener('scroll', chatScrollHandler);
+  state.runtime.chatScrollNode = null;
+  state.runtime.chatScrollHandler = null;
+}
+
 function applyChatPause() {
   const panel = findProbe(document, 'chatPanel').element;
   const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
@@ -8111,6 +8145,7 @@ function applyChatPause() {
   if (!state.settings.content.stickyChatPause && button) button.remove();
   if (!state.settings.content.stickyChatPause) {
     state.runtime.chatPaused = false;
+    releaseChatScrollPause();
     state.observers.chat?.disconnect?.();
     state.observers.chat = null;
     const previousAriaLive = messages.dataset.kfPreviousAriaLive;
@@ -8121,6 +8156,7 @@ function applyChatPause() {
     delete messages.dataset.kfChatPaused;
     return;
   }
+  armChatScrollPause(messages);
   button.textContent = state.runtime.chatPaused ? 'Resume chat' : 'Pause chat';
   button.setAttribute('aria-pressed', String(state.runtime.chatPaused));
   button.setAttribute('aria-label', state.runtime.chatPaused ? 'Resume chat updates' : 'Pause chat updates');
@@ -10006,6 +10042,10 @@ function installRuntimeInteractions() {
     state.runtime.chatPaused = !state.runtime.chatPaused;
     applySettingsAttributes();
     applyChatPause();
+    if (!state.runtime.chatPaused) {
+      const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
+      if (messages) messages.scrollTop = messages.scrollHeight;
+    }
     announce(state.runtime.chatPaused ? 'Chat updates paused' : 'Chat updates resumed');
   }, true);
   const refreshPlayer = () => {
@@ -11617,7 +11657,9 @@ const TRANSLATIONS = {
     'Remember VOD position locally': 'Recordar la posición del VOD localmente',
     'Resume finite VODs from the last local playback position.': 'Reanuda los VOD finitos desde la última posición de reproducción local.',
     'Pause chat updates': 'Pausar las actualizaciones del chat',
-    'Freeze the visible chat scroll with an accessible resume control.': 'Congela el desplazamiento visible del chat con un control accesible para reanudarlo.',
+    'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Desplazarte hacia arriba en el chat lo congela, igual que el botón. Reanudar siempre está a un control de distancia.',
+    'Chat updates paused': 'Actualizaciones del chat en pausa',
+    'Chat updates resumed': 'Actualizaciones del chat reanudadas',
     'Organize chat emotes': 'Organizar los emotes del chat',
     'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente los emotes del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.',
     'Click chat emotes to save': 'Haz clic en los emotes del chat para guardarlos',
@@ -12189,7 +12231,9 @@ const TRANSLATIONS = {
     'Remember VOD position locally': 'Lembrar a posição do VOD localmente',
     'Resume finite VODs from the last local playback position.': 'Retoma os VODs finitos a partir da última posição de reprodução local.',
     'Pause chat updates': 'Pausar as atualizações do chat',
-    'Freeze the visible chat scroll with an accessible resume control.': 'Congela a rolagem visível do chat com um controle acessível para retomá-la.',
+    'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Rolar a transcrição para cima congela o chat, assim como o botão. Retomar está sempre a um controle de distância.',
+    'Chat updates paused': 'Atualizações do chat pausadas',
+    'Chat updates resumed': 'Atualizações do chat retomadas',
     'Organize chat emotes': 'Organizar os emotes do chat',
     'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente os emotes do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.',
     'Click chat emotes to save': 'Clique nos emotes do chat para salvar',
@@ -13249,7 +13293,7 @@ function renderContentPage() {
         ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
         ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.', toggle('content.showUptime', value.showUptime, { label: 'Show stream uptime' }))}
         ${row('Show how long Kick keeps this recording', 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.', toggle('content.showVodExpiry', value.showVodExpiry, { label: 'Show VOD expiry' }))}
-        ${row('Pause chat updates', 'Freeze the visible chat scroll with an accessible resume control.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
+        ${row('Pause chat updates', 'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
         ${row('Show message times', 'Reveals the timestamp Kick already renders on every message and keeps hidden. It is Kick’s own value, so scrolling back shows when a message was sent rather than when this build first saw it.', toggle('content.chatTimestamps', value.chatTimestamps, { label: 'Show message times' }))}
         ${row('People worth noticing', 'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.', `<input class="kf-text" type="text" data-set="content.chatPriorityPeople" value="${escapeHtml((value.chatPriorityPeople || []).join(', '))}" placeholder="name, name" aria-label="People worth noticing">`)}
         ${row('Sound on a mention', 'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.', toggle('content.chatMentionSound', value.chatMentionSound, { label: 'Sound on a mention' }))}
@@ -14804,6 +14848,7 @@ function clearEnhancedPage() {
   state.observers.body?.disconnect?.();
   state.observers.chat?.disconnect?.();
   state.observers.stickers?.disconnect?.();
+  releaseChatScrollPause();
   state.observers.document = null;
   state.observers.body = null;
   state.observers.chat = null;

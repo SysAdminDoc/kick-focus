@@ -1747,6 +1747,112 @@ try {
       ? `${bench.on}/4 switches on; ${bench.marked} rows marked and ${bench.hideControls} dismiss controls added; recent avg ${bench.recentAvgMs} ms, wall ${bench.wallMs} ms`
       : bench.why);
 
+  // R-75: scrolling the transcript up enters the paused state the button owns.
+  //
+  // Only a browser can answer this. The trigger is a real scroll event on
+  // Kick's own list, the arming decision is made from that list's measured
+  // distance from the bottom, and the thing being asserted is that the position
+  // the reader scrolled to is still there afterwards — which is the whole point
+  // of pausing and the part a unit test cannot see, because it needs layout.
+  const scrollPause = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+    const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
+    if (!messages) return { skip: 'Kick rendered no chat message list on this route; run the gate against a channel URL to assert pause-on-scroll' };
+
+    const setSwitch = async (path, on) => {
+      shadow.querySelector('[data-kf-quick]').click();
+      shadow.querySelector('[data-action="command:settings"]').click();
+      shadow.querySelector('[data-page="content"]').click();
+      await settle();
+      const control = shadow.querySelector('[data-set="' + path + '"]');
+      if (control && (control.getAttribute('aria-checked') === 'true') !== on) control.click();
+      await settle(300);
+      const now = shadow.querySelector('[data-set="' + path + '"]')?.getAttribute('aria-checked');
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      await settle(300);
+      return now;
+    };
+    const armed = await setSwitch('content.stickyChatPause', true);
+    if (armed !== 'true') return { ok: false, why: 'the Pause chat updates switch would not go on' };
+
+    // Kick's own transcript, unmodified, and that is deliberate. It is a
+    // virtualised list: 26 rows in the DOM against a scroll height of several
+    // thousand pixels, overflow-y hidden, and Kick's virtualiser owning
+    // scrollTop. Appending rows to it — which an earlier version of this probe
+    // did, to guarantee something to scroll — breaks the spacer arithmetic, and
+    // the virtualiser then fights every scroll assignment for the rest of the
+    // run. Whatever backlog the live channel has is what gets scrolled.
+    await settle(900);
+    // The control the mod appends, and the element it hangs it on. Read from
+    // the document rather than guessed at, so this cannot drift from whatever
+    // the runtime decided the chat owner was.
+    const control = () => document.querySelector('[data-kf-chat-pause]');
+    const read = () => ({
+      paused: control()?.parentElement?.dataset.kfChatPaused,
+      label: String(control()?.textContent || ''),
+    });
+    if (!await __kfWait(() => control())) {
+      await setSwitch('content.stickyChatPause', false);
+      return { skip: 'the chat panel probe resolved nothing on this route, so no pause control was mounted; run the gate against a channel URL to assert pause-on-scroll' };
+    }
+    const scrollable = messages.scrollHeight - messages.clientHeight;
+    if (scrollable < 400) {
+      await setSwitch('content.stickyChatPause', false);
+      return { skip: 'Kick chat on this route has no backlog to scroll back through, only ' + scrollable + 'px of range; run the gate against a busier channel to assert pause-on-scroll' };
+    }
+
+    // Land at the bottom, live and unpaused, which is where a reader starts.
+    // A transcript already scrolled back is the condition under test, so it has
+    // to be ruled out before the scroll that is supposed to cause it.
+    for (let attempt = 0; attempt < 3 && read().paused !== 'false'; attempt += 1) {
+      if (read().paused === 'true') { control().click(); await settle(600); }
+      messages.scrollTop = messages.scrollHeight;
+      await settle(600);
+    }
+    const before = read();
+
+    // A real scroll: assigning scrollTop dispatches the same event a wheel does.
+    const landed = scrollable - 300;
+    messages.scrollTop = landed;
+    await settle(900);
+    const after = { ...read(), top: Math.round(messages.scrollTop) };
+
+    // Reported, not asserted. What this build owns is the state machine: the
+    // scroll-up arms it, the label changes, Resume leaves it. Where the
+    // transcript ends up afterwards is the pre-existing pixel pin, and on a
+    // virtualised list that recycles rows it drifts toward the live edge — see
+    // the pause-anchor item in ROADMAP.md, which this number is the evidence
+    // for. Asserting it here would either fail on shipped behaviour or bless a
+    // tolerance loose enough to mean nothing.
+    await settle(1500);
+    const held = Math.round(messages.scrollTop);
+    const heldDistance = Math.round(messages.scrollHeight - messages.scrollTop - messages.clientHeight);
+
+    control()?.click();
+    await settle(700);
+    const resumed = read();
+
+    const off = await setSwitch('content.stickyChatPause', false);
+    await settle(400);
+    const cleared = { button: Boolean(control()) };
+    return { ok: true, before, after, held, heldDistance, landed: Math.round(landed), resumed, off, cleared };
+  })()`);
+  const scroll = scrollPause.value || { why: scrollPause.error || 'the probe returned nothing' };
+  recordProbe('scrolling chat up enters the paused state, and Resume leaves it',
+    scroll,
+    scroll.ok === true
+      && scroll.before?.paused === 'false'
+      && scroll.after?.paused === 'true'
+      && /Resume chat/.test(scroll.after?.label || '')
+      && scroll.resumed?.paused === 'false'
+      && /Pause chat/.test(scroll.resumed?.label || '')
+      && scroll.cleared?.button === false,
+    scroll.ok
+      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
+      : scroll.why);
+
   // The viewer hub, on the one thing only a browser can answer: that an absent
   // reading reaches the screen as words rather than as a number.
   //

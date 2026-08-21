@@ -80,13 +80,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P1
 
-- [ ] P1 — R-75 — Enter the existing chat-pause state when the user scrolls the transcript up
-  Why: Kick’s native pause-on-scroll is reported broken (NipahTV #232); Kick Focus already freezes the list with a button and a MutationObserver in `applyChatPause`, so scroll-up should arm that same paused state instead of rewriting chat.
-  Evidence: `src/runtime.js` `applyChatPause`; https://github.com/Xzensi/NipahTV/issues/232 ; Kick Augmenter CWS “sticky ALT chat pause”.
-  Touches: `src/runtime.js` `applyChatPause` and the Content row for `content.stickyChatPause`, i18n, `scripts/verify-extension.mjs`.
-  Acceptance: with Pause chat updates on, scrolling the message list up sets paused, shows Resume chat, and keeps scroll position; Resume restores live updates; the setting off leaves Kick alone; a live probe covers pause and resume.
-  Complexity: M
-
 - [ ] P1 — R-76 — Keep Kick’s Request Unban control reachable under Kick Focus CSS
   Why: Kick shipped Unban Request around 2026-08-07; the May 2026 viewer-chat help still omits it; this build restyles chat chrome and Poor mode hides tagged controls, and nothing asserts the banned composer’s Request Unban stays visible.
   Evidence: https://help.kick.com/en/articles/16010467-how-to-request-an-unban-from-a-channel-s-chat ; https://win.gg/kick-rolls-out-updates-including-chat-ban-appeals/ ; `src/runtime.js` chat `SITE_CSS` and `monetizationKind`.
@@ -194,6 +187,13 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 Added from the differential research recorded in [RESEARCH.md](RESEARCH.md), run against unchanged v1.31.0 one day after the 2026-08-20 pass. Continues the R-NN scheme from R-89. Does not duplicate R-72–R-89; see inline notes on R-72 and R-74 above.
 
 ### P1
+
+- [ ] P1 — R-96 — Hold a paused transcript with a row anchor instead of a pixel
+  Why: `applyChatPause` pins `messages.scrollTop` to one number and restores it from a MutationObserver. Kick's transcript is virtualised and recycles rows out of the top, so the browser's scroll anchoring adjusts `scrollTop` under the pin and the restored number points further down the shortened list each time. Measured on kick.com 2026-08-21 across five live runs: a transcript paused 300px back reached the live edge within 1.5 seconds every time, with the Resume control still showing.
+  Evidence: `scripts/verify-extension.mjs` "scrolling chat up enters the paused state" detail line, which reports the held pixel and the distance off the live edge on every run; `src/runtime.js` `applyChatPause` `restoreScroll`; DOM measurement of `#chatroom-messages` (26 rows in the DOM against a scroll height of several thousand pixels, `overflow-y: hidden`, Kick owning `scrollTop`).
+  Touches: `src/runtime.js` `applyChatPause` (capture an anchor row from `[data-index]` plus its offset within the viewport rather than a scroll offset, and restore against that row while it is still in the DOM), the live probe's reported numbers, which become assertable once a row anchor holds.
+  Acceptance: WHEN chat is paused 300px back on a live channel, THEN after 5 seconds of incoming messages the anchored row SHALL still be within 8px of where it was, and the transcript SHALL still be more than 64px off the live edge; the live probe asserts both instead of only reporting them; when the anchor row is itself recycled out, the pause falls back to the current pixel pin rather than jumping.
+  Complexity: M
 
 - [ ] P1 — R-90 — Skip hideable tagging when the winning probe is not the recorded winner for this route
   Why: `tagHideableElements` stamps `data-kf-element` on whatever `findAllProbe` returns, and `findAllProbe` takes the first probe that matches any node, so a dropped Kick test id can fall through to a looser selector and `display:none` the wrong control.
