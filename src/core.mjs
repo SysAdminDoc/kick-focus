@@ -1,4 +1,4 @@
-export const VERSION = '1.33.0';
+export const VERSION = '1.34.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -53,6 +53,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.33.0': Object.freeze({
     summary: 'Scrolling chat up freezes it, every settings page offers help in the same place, and the build is 200 KB smaller so a userscript manager still injects it at page start.',
+    defaults: Object.freeze([]),
+  }),
+  '1.34.0': Object.freeze({
+    summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
     defaults: Object.freeze([]),
   }),
   '1.31.0': Object.freeze({

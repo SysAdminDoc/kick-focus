@@ -4,6 +4,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.34.0, 2026-08-21
+
 ### Added
 
 - Live discovery cards now show elapsed stream time beside Kick's own LIVE marker when the page's existing discovery response includes a trustworthy `start_time`. The card stays unchanged when that value is missing or invalid, and Kick Focus makes no extra request to fill it.

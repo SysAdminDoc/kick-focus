@@ -1,9 +1,9 @@
-/* Kick Focus 1.33.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.34.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.33.0';
+const VERSION = '1.34.0';
 const SETTINGS_SCHEMA = 5;
 
 const VERSION_NOTES = Object.freeze({
@@ -49,6 +49,10 @@ const VERSION_NOTES = Object.freeze({
   }),
   '1.33.0': Object.freeze({
     summary: 'Scrolling chat up freezes it, every settings page offers help in the same place, and the build is 200 KB smaller so a userscript manager still injects it at page start.',
+    defaults: Object.freeze([]),
+  }),
+  '1.34.0': Object.freeze({
+    summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
     defaults: Object.freeze([]),
   }),
   '1.31.0': Object.freeze({
@@ -7268,7 +7272,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              839776') || 0;
+const BUNDLE_BYTES = Number('              840047') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
