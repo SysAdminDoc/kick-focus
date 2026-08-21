@@ -3599,6 +3599,32 @@ function findAllProbe(root, name) {
   return { elements: [], probe: null };
 }
 
+const HIDEABLE_PROBE_WINNERS = Object.freeze({
+  playerPip: 'pip-testid',
+  playerClip: 'clip-testid',
+  playerTheatre: 'theatre-testid',
+  playerFullscreen: 'fullscreen-testid',
+  playerQuality: 'quality-icon',
+  playerVolume: 'volume-group',
+  playerShare: 'share-icon',
+  playerReport: 'report-icon',
+  sidebarHome: 'sidebar-home-item',
+  sidebarBrowse: 'sidebar-browse-item',
+  sidebarFollowing: 'sidebar-following-item',
+  sidebarDrops: 'sidebar-drops-item',
+  sidebarFollowedChannels: 'sidebar-followed-section',
+  sidebarRecommendedChannels: 'sidebar-recommended-section',
+});
+
+function findHideableElements(root, name) {
+  const { elements, probe } = findAllProbe(root, name);
+  const recorded = HIDEABLE_PROBE_WINNERS[name] || null;
+  if (!recorded) return { elements: [], probe, recorded, declined: 'unrecorded' };
+  if (!probe) return { elements: [], probe, recorded, declined: 'absent' };
+  if (probe !== recorded) return { elements: [], probe, recorded, declined: 'fell-through' };
+  return { elements, probe, recorded, declined: '' };
+}
+
 function ownerFromChild(element, fallbackSelector) {
   return safeClosest(element, fallbackSelector) || element.parentElement || element;
 }
@@ -7284,7 +7310,7 @@ function tagHideableElements() {
   if (!hidden.length) return;
   for (const entry of HIDEABLE_ELEMENTS) {
     if (!hidden.includes(entry.id)) continue;
-    const { elements } = findAllProbe(document, entry.probe);
+    const { elements } = findHideableElements(document, entry.probe);
     if (elements.length === 0 || elements.length > 4) continue;
     for (const element of elements) {
       if (state.root?.contains(element)) continue;

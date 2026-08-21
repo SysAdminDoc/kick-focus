@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compatibilitySnapshot, compatibilitySummary, derivedSnapshot, DERIVED_EXPECTATIONS, findAllProbe, LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { compatibilitySnapshot, compatibilitySummary, derivedSnapshot, DERIVED_EXPECTATIONS, findAllProbe, findHideableElements, HIDEABLE_PROBE_WINNERS, LOCATOR_PROBES } from '../src/compatibility.mjs';
 import { HIDEABLE_ELEMENTS } from '../src/core.mjs';
 
 class FakeNode {
@@ -112,6 +112,64 @@ test('a hideable probe resolves through its ordered fallbacks', { tag: 'unit' },
 
   // Nothing on the route: no element, and no throw either.
   assert.deepEqual(findAllProbe(new FakeNode(), 'playerPip'), { elements: [], probe: null });
+});
+
+
+test('hiding declines a probe that is not the recorded winner for the hook', { tag: 'unit' }, () => {
+  const button = new FakeNode();
+  const fallback = new FakeNode();
+
+  // The recorded probe won: this is the one case that may hide anything.
+  const current = new FakeNode({ all: {
+    '[data-testid="video-player-pip"]': [button],
+    'button:has(> svg[data-ds-icon="ViewMiniplayer"])': [fallback],
+  } });
+  const allowed = findHideableElements(current, 'playerPip');
+  assert.deepEqual(allowed.elements, [button]);
+  assert.equal(allowed.declined, '');
+
+  // Kick drops the test id and the icon probe matches something instead. The
+  // ordered search still finds it — that is what the live gate reads to see the
+  // drift — but nothing is handed back to be hidden, because the node the
+  // looser selector reached is not known to be the control the user named.
+  const drifted = new FakeNode({ all: {
+    'button:has(> svg[data-ds-icon="ViewMiniplayer"])': [fallback],
+  } });
+  assert.deepEqual(findAllProbe(drifted, 'playerPip').elements, [fallback], 'the drift signal is unchanged');
+  const declined = findHideableElements(drifted, 'playerPip');
+  assert.deepEqual(declined.elements, []);
+  assert.equal(declined.declined, 'fell-through');
+  assert.equal(declined.probe, 'pip-icon');
+  assert.equal(declined.recorded, 'pip-testid');
+
+  // Absent on this route: nothing to hide and nothing to report as drift.
+  const missing = findHideableElements(new FakeNode(), 'playerPip');
+  assert.deepEqual(missing.elements, []);
+  assert.equal(missing.declined, 'absent');
+
+  // A hook with no recorded winner fails closed rather than hiding on a guess.
+  const unrecorded = findHideableElements(new FakeNode({ all: { '#channel-chatroom': [button] } }), 'chatPanel');
+  assert.deepEqual(unrecorded.elements, []);
+  assert.equal(unrecorded.declined, 'unrecorded');
+});
+
+test('every hideable hook records a winner that is one of its own probes', { tag: 'unit' }, () => {
+  for (const entry of HIDEABLE_ELEMENTS) {
+    const recorded = HIDEABLE_PROBE_WINNERS[entry.probe];
+    assert.ok(recorded, `${entry.id} has no recorded winning probe, so it can never hide anything`);
+    const ids = LOCATOR_PROBES[entry.probe].map((probe) => probe.id);
+    assert.ok(ids.includes(recorded), `${entry.probe} records ${recorded}, which is not one of ${ids.join(', ')}`);
+    // Recorded winners are the stable hook, which is the first probe. A new
+    // probe inserted ahead of one is exactly the change that should stop
+    // hiding until somebody measures which of the two Kick now serves.
+    assert.equal(ids[0], recorded, `${entry.probe} records ${recorded} but ${ids[0]} would win first`);
+  }
+  // Only hideables. Recording a winner for a shell hook would imply the shell
+  // search is gated the same way, and it is not — nothing hides the shell.
+  const hideable = new Set(HIDEABLE_ELEMENTS.map((entry) => entry.probe));
+  for (const hook of Object.keys(HIDEABLE_PROBE_WINNERS)) {
+    assert.ok(hideable.has(hook), `${hook} records a hiding winner but no hideable element names it`);
+  }
 });
 
 

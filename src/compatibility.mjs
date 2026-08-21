@@ -230,6 +230,67 @@ export function findAllProbe(root, name) {
   return { elements: [], probe: null };
 }
 
+/**
+ * Which probe is allowed to hand a hideable control to `display: none`.
+ *
+ * `findAllProbe` returns the first probe that matches anything, which is right
+ * for reading the shell and wrong for hiding: if Kick drops a test id, the
+ * search falls through to the looser selector beside it — an icon name, an
+ * `aria-label` substring — and whatever that happens to match gets hidden
+ * instead. The user asked for one control to go away and a different one does,
+ * with nothing anywhere saying so.
+ *
+ * So each hook records the probe that is actually supposed to win, and tagging
+ * is skipped when a different one did. The fallbacks stay in `LOCATOR_PROBES`
+ * because they are still what the live gate measures drift against; they are
+ * just not licensed to hide anything until somebody records that they should.
+ *
+ * Every entry below is the hook's stable selector — Kick's own `data-testid`,
+ * or for the four player controls that carry none, the design system's
+ * language-independent `data-ds-icon`. Measured anonymously on kick.com/ and
+ * kick.com/xqc, 2026-08-21: every hook that resolved at all resolved through
+ * exactly this probe, on both routes. `playerReport`, `sidebarDrops` and
+ * `sidebarFollowedChannels` resolved on neither, so their entry is the stable
+ * selector rather than an observation — which fails closed, not open.
+ *
+ * A hook that legitimately resolves differently on one route belongs here as a
+ * per-route exception. None does today, and inventing the shape before there is
+ * a second case to put in it would be recording a guess.
+ */
+export const HIDEABLE_PROBE_WINNERS = Object.freeze({
+  playerPip: 'pip-testid',
+  playerClip: 'clip-testid',
+  playerTheatre: 'theatre-testid',
+  playerFullscreen: 'fullscreen-testid',
+  playerQuality: 'quality-icon',
+  playerVolume: 'volume-group',
+  playerShare: 'share-icon',
+  playerReport: 'report-icon',
+  sidebarHome: 'sidebar-home-item',
+  sidebarBrowse: 'sidebar-browse-item',
+  sidebarFollowing: 'sidebar-following-item',
+  sidebarDrops: 'sidebar-drops-item',
+  sidebarFollowedChannels: 'sidebar-followed-section',
+  sidebarRecommendedChannels: 'sidebar-recommended-section',
+});
+
+/**
+ * The elements a hideable id may hide, which is none unless the recorded probe
+ * is the one that won.
+ *
+ * Returns why it declined rather than an empty result, so a fall-through is
+ * something the diagnostics can report instead of a feature that quietly stops
+ * working.
+ */
+export function findHideableElements(root, name) {
+  const { elements, probe } = findAllProbe(root, name);
+  const recorded = HIDEABLE_PROBE_WINNERS[name] || null;
+  if (!recorded) return { elements: [], probe, recorded, declined: 'unrecorded' };
+  if (!probe) return { elements: [], probe, recorded, declined: 'absent' };
+  if (probe !== recorded) return { elements: [], probe, recorded, declined: 'fell-through' };
+  return { elements, probe, recorded, declined: '' };
+}
+
 function ownerFromChild(element, fallbackSelector) {
   return safeClosest(element, fallbackSelector) || element.parentElement || element;
 }

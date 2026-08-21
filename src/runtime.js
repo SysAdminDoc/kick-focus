@@ -2167,7 +2167,12 @@ function tagHideableElements() {
   if (!hidden.length) return;
   for (const entry of HIDEABLE_ELEMENTS) {
     if (!hidden.includes(entry.id)) continue;
-    const { elements } = findAllProbe(document, entry.probe);
+    // Not `findAllProbe`: hiding is the one thing a fall-through must not be
+    // allowed to do. `findHideableElements` hands back nothing unless the probe
+    // recorded for this hook is the one that won, so a dropped Kick test id
+    // leaves the control visible instead of hiding whatever the looser
+    // selector beside it happened to reach.
+    const { elements } = findHideableElements(document, entry.probe);
     // Each hideable id is one control or one list container. A fallback
     // selector that matches a crowd is the wrong node, and hiding it would
     // take Kick's chrome with it.
