@@ -80,13 +80,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P1
 
-- [ ] P1 — R-77 — Recapture `test/fixtures` after Chrome 153 stable (2026-09-08)
-  Why: Chrome’s stable cadence becomes two weeks starting with 153; Kick already drifted `#main-container` off channel pages while a home-only gate stayed green.
-  Evidence: https://developer.chrome.com/blog/chrome-two-week-release ; `scripts/capture-fixture.mjs`; `scripts/fixture-contract.mjs`.
-  Touches: `scripts/capture-fixture.mjs` (refuse silently stale fixtures or stamp the capture date), `test/fixtures/*.html`, `scripts/fixture-contract.mjs` if a probe winner changed.
-  Acceptance: after 2026-09-08, `node scripts/capture-fixture.mjs --write` against live Kick; `test/fixtures.test.js` and `npm run verify` green; any probe-winner change is recorded in the contract with the route it affects.
-  Complexity: S
-
 ### P2
 
 - [ ] P2 — R-80 — Use Node 24.19 `expectFailure` for red-proofs
@@ -195,13 +188,6 @@ Added from the differential research recorded in [RESEARCH.md](RESEARCH.md), run
   Acceptance: if the recorded probe for that hideable id on this route is absent or a different probe won, the node is left visible and untagged; a synthetic fixture with a fallback match fails the test unless tagging is skipped; default `layout.hidden` still queries nothing.
   Complexity: M
   Note (2026-08-21 audit): tagging now skips when a hideable probe matches 0 or more than 4 nodes, which stops a crowd match. The recorded-winner map this item asked for is still missing.
-
-- [ ] P1 — R-91 — Fail `npm run check` when userscript bytes plus a 400-entry library seed exceed 1,000,000
-  Why: `SIZE_BUDGETS` only measures `dist/kick-focus.user.js`; Violentmonkey Alternative page mode’s advisory is injected script plus storage/resources, and `LIBRARY_SEED_LIMIT` is 400, so a file cut that lands at 849 KB can still blow the ceiling once the seed is serialized.
-  Evidence: `scripts/check.mjs` `SIZE_BUDGETS`; `src/storage.mjs` `LIBRARY_SEED_LIMIT` / `planLibraryPersist`; Violentmonkey v2.46.0 notes (still in v2.48.0); RESEARCH.md 2026-08-21.
-  Touches: `scripts/check.mjs` (JSON.stringify a 400-entry worst-case seed from the library record shape in `src/core.mjs`, add its byte length to the userscript length), optionally lower `LIBRARY_SEED_LIMIT` if that sum cannot fit after R-72.
-  Acceptance: `npm run check` fails when `userscript.length + seedJson.length > 1_000_000`; a unit fixture with a tiny fake userscript and an oversized seed fails the same way; About/R-89 may show the combined figure but is not required to close this item.
-  Complexity: S
 
 ### P2
 

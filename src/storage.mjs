@@ -32,6 +32,20 @@ export const BLOB_STORE = 'blobs';
 export const LIBRARY_SEED_LIMIT = 400;
 
 /**
+ * How many bytes of JSON the seed may occupy, whatever the entry count.
+ *
+ * A count is not a size. Every field of a library record is length-bounded on
+ * its own, but at all of those ceilings at once a single entry serialises to
+ * about 3.4 KB — so 400 of them is 1.3 MB, and Violentmonkey's Alternative page
+ * mode advisory is injected script *plus* storage. The count stays as the
+ * ordinary cap; this is the one that holds under a crafted or pathological
+ * library, and it is what `scripts/check.mjs` adds to the userscript's own
+ * length. Sized against a realistic Kick record (~290 B), so a normal library
+ * of several hundred emotes never reaches it.
+ */
+export const LIBRARY_SEED_BYTES = 150_000;
+
+/**
  * Providers are scored, and the highest available one wins. `localStorage`
  * scores far below anything else because it is the floor: always present,
  * always last, never chosen over a real database.
@@ -59,15 +73,33 @@ function withoutMarker(value) {
  * the ones least likely to be reached for in the moment before the full record
  * loads — not an arbitrary prefix of whatever order it happened to be in.
  */
-export function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT } = {}) {
+export function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT, seedBytes = LIBRARY_SEED_BYTES } = {}) {
   const source = isStoredRecord(value) ? withoutMarker(value) : {};
   const library = Array.isArray(source.library) ? source.library : [];
   const limit = Math.max(0, Math.floor(Number(seedLimit)) || 0);
   const ordered = [...library].sort((a, b) => (Number(b?.lastSeen) || 0) - (Number(a?.lastSeen) || 0));
+  const budget = Math.max(0, Math.floor(Number(seedBytes)) || 0);
+  const build = (count) => ({ ...source, library: ordered.slice(0, count), [SEED_MARKER]: library.length });
+  // Drop from the oldest end until the serialised seed fits. Halving rather
+  // than stepping so a library of oversized entries costs a handful of
+  // stringify calls instead of one per entry, and the last accepted count is
+  // then walked back up — the result is the same count a linear scan would
+  // reach, without the linear scan.
+  let count = Math.min(limit, ordered.length);
+  if (budget && JSON.stringify(build(count)).length > budget) {
+    let low = 0;
+    let high = count;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (JSON.stringify(build(middle)).length > budget) high = middle - 1;
+      else low = middle;
+    }
+    count = low;
+  }
   return {
     full: { ...source, library },
-    seed: { ...source, library: ordered.slice(0, limit), [SEED_MARKER]: library.length },
-    truncated: Math.max(0, library.length - limit),
+    seed: build(count),
+    truncated: Math.max(0, library.length - count),
   };
 }
 

@@ -3748,6 +3748,8 @@ const BLOB_STORE = 'blobs';
 
 const LIBRARY_SEED_LIMIT = 400;
 
+const LIBRARY_SEED_BYTES = 150_000;
+
 const PROVIDER_SCORES = Object.freeze({ indexeddb: 100, localstorage: -1000 });
 
 const isStoredRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -3760,15 +3762,28 @@ function withoutMarker(value) {
   return copy;
 }
 
-function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT } = {}) {
+function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT, seedBytes = LIBRARY_SEED_BYTES } = {}) {
   const source = isStoredRecord(value) ? withoutMarker(value) : {};
   const library = Array.isArray(source.library) ? source.library : [];
   const limit = Math.max(0, Math.floor(Number(seedLimit)) || 0);
   const ordered = [...library].sort((a, b) => (Number(b?.lastSeen) || 0) - (Number(a?.lastSeen) || 0));
+  const budget = Math.max(0, Math.floor(Number(seedBytes)) || 0);
+  const build = (count) => ({ ...source, library: ordered.slice(0, count), [SEED_MARKER]: library.length });
+  let count = Math.min(limit, ordered.length);
+  if (budget && JSON.stringify(build(count)).length > budget) {
+    let low = 0;
+    let high = count;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (JSON.stringify(build(middle)).length > budget) high = middle - 1;
+      else low = middle;
+    }
+    count = low;
+  }
   return {
     full: { ...source, library },
-    seed: { ...source, library: ordered.slice(0, limit), [SEED_MARKER]: library.length },
-    truncated: Math.max(0, library.length - limit),
+    seed: build(count),
+    truncated: Math.max(0, library.length - count),
   };
 }
 

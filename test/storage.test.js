@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   BLOB_STORE,
+  LIBRARY_SEED_BYTES,
   LIBRARY_SEED_LIMIT,
   LIBRARY_STORE,
   PROVIDER_SCORES,
@@ -96,6 +97,50 @@ test('the seed carries everything small and the newest slice of the library', { 
   }
   assert.equal(isSeedPartial(plan.seed), true);
   assert.equal(isSeedPartial(plan.full), false);
+});
+
+test('an oversized library is trimmed by bytes, not only by entry count', { tag: 'unit' }, () => {
+  // Every field of a library record is length-bounded on its own, and at all of
+  // those ceilings at once one entry serialises to about 3.4 KB — so the 400
+  // the count allows is 1.3 MB of localStorage sitting beside an injected
+  // userscript that has its own ~1 MB ceiling. The count is the ordinary cap;
+  // this is the one that holds when the entries are not ordinary.
+  const fat = Array.from({ length: 400 }, (_v, index) => ({
+    key: `kick:name:${'k'.repeat(340)}${index}`,
+    id: 'i'.repeat(120),
+    name: 'n'.repeat(80),
+    src: `https://files.kick.com/emotes/${'s'.repeat(440)}${index}`,
+    nativeGroups: Array.from({ length: 20 }, (_g, group) => `${group}`.padEnd(80, 'g')),
+    access: 'available',
+    wasName: 'w'.repeat(80),
+    wasSrc: `https://files.kick.com/emotes/${'q'.repeat(440)}${index}`,
+    lastSeen: index,
+  }));
+  const plan = planLibraryPersist(preferences(fat));
+  const bytes = JSON.stringify(plan.seed).length;
+  assert.ok(bytes <= LIBRARY_SEED_BYTES, `seed is ${bytes} B, over the ${LIBRARY_SEED_BYTES} B budget`);
+  assert.ok(plan.seed.library.length > 0, 'the budget trimmed the seed to nothing');
+  assert.ok(plan.seed.library.length < 400, 'the byte budget did not trim anything');
+  // Still the newest entries, and still reported as partial.
+  assert.equal(plan.seed.library[0].lastSeen, 399);
+  assert.equal(isSeedPartial(plan.seed), true);
+  assert.equal(plan.truncated, 400 - plan.seed.library.length);
+  // The full record is untouched: only the synchronous seed is bounded.
+  assert.equal(plan.full.library.length, 400);
+  assert.deepEqual(mergeHydratedLibrary(plan.seed, plan.full).library.length, 400);
+
+  // One entry too big for the budget on its own leaves an empty seed rather
+  // than an oversized one, and the database still holds the record.
+  const huge = planLibraryPersist(preferences([{ ...fat[0], name: 'x'.repeat(80), src: `https://files.kick.com/emotes/${'z'.repeat(460)}` }]), { seedBytes: 200 });
+  assert.equal(huge.seed.library.length, 0);
+  assert.equal(huge.full.library.length, 1);
+});
+
+test('a normal library never reaches the byte budget', { tag: 'unit' }, () => {
+  const plan = planLibraryPersist(preferences(libraryOf(LIBRARY_SEED_LIMIT)));
+  assert.equal(plan.seed.library.length, LIBRARY_SEED_LIMIT);
+  assert.ok(JSON.stringify(plan.seed).length < LIBRARY_SEED_BYTES / 2,
+    'a realistic library should sit well under the budget, or the budget is mis-sized');
 });
 
 test('a library that fits leaves nothing behind and is not marked partial', { tag: 'unit' }, () => {

@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, VERSION } from '../src/core.mjs';
+import { LIBRARY_SEED_BYTES } from '../src/storage.mjs';
 import { ONLY_ACCOUNT_WRITE, SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
 const exportProbe = buildSettingsExport({
@@ -588,6 +589,23 @@ for (const [name, text, budget] of SIZE_BUDGETS) {
     console.log(`WARN ${name} is at ${Math.round(used * 100)}% of its ${budget} B budget`);
   }
 }
+
+/**
+ * The userscript plus what it will put in storage, against the same ceiling.
+ *
+ * Violentmonkey's Alternative page mode advisory is injected script *and*
+ * storage, not the file alone — so a file cut that lands comfortably under a
+ * megabyte can still cross the line once the emote library's synchronous seed
+ * is written beside it. `LIBRARY_SEED_BYTES` is what makes this exact rather
+ * than an estimate: `planLibraryPersist` trims the seed until its JSON fits
+ * that budget, so it is a ceiling the runtime enforces, not a guess about how
+ * big a library gets.
+ */
+const INJECTION_CEILING = 1_000_000;
+const injectionFootprint = (userscript, seedBudget) => userscript.length + seedBudget;
+const overInjectionCeiling = (userscript, seedBudget) => injectionFootprint(userscript, seedBudget) > INJECTION_CEILING;
+const footprint = injectionFootprint(source, LIBRARY_SEED_BYTES);
+console.log(`INFO userscript ${source.length.toLocaleString('en-US')} B + library seed budget ${LIBRARY_SEED_BYTES.toLocaleString('en-US')} B = ${footprint.toLocaleString('en-US')} B of the ${INJECTION_CEILING.toLocaleString('en-US')} B injection ceiling`);
 
 const sourceFiles = await Promise.all(
   [...moduleFiles, 'src/runtime.js', 'scripts/check.mjs', 'scripts/build.mjs', 'scripts/verify-extension.mjs', 'scripts/verify-firefox.mjs']
@@ -1252,6 +1270,17 @@ const redProbes = [
   ['size budget accepts an artifact exactly at its budget',
     overBudgetIn([['a.js', 'x'.repeat(10), 10, 'test']]).length === 0],
   ['size budget accepts the real artifacts', overBudgetIn(SIZE_BUDGETS).length === 0],
+  // Both halves of the sum, because either one alone is the blind spot the
+  // gate exists to close: a file that fits until its storage is counted, and a
+  // seed budget nobody would notice growing beside a small file.
+  ['injection ceiling would catch a userscript that only fits without its storage',
+    overInjectionCeiling({ length: 900_000 }, 150_000)],
+  ['injection ceiling would catch an oversized seed beside a tiny userscript',
+    overInjectionCeiling({ length: 2_000 }, 1_200_000)],
+  ['injection ceiling accepts a userscript and seed that fit together',
+    !overInjectionCeiling({ length: 800_000 }, 150_000)],
+  ['injection ceiling accepts the userscript plus its library seed budget',
+    !overInjectionCeiling(source, LIBRARY_SEED_BYTES)],
   ['sender gate would catch a handler that acts before checking',
     !everyMessageChecksSender([
       "if (message?.type === 'a') {", '    if (!fromKickPage(sender)) { return; }',
