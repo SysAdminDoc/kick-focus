@@ -318,6 +318,73 @@ export function parseKickTimestamp(value) {
 }
 
 /**
+ * Whether a request is one of Kick's discovery livestream feeds.
+ *
+ * The runtime uses this only to observe a response the page already requested.
+ * Keeping the boundary here prevents a channel read, VOD list, or third-party
+ * URL that happens to contain "livestreams" from becoming discovery metadata.
+ */
+export function isDiscoveryLivestreamUrl(value, base = KICK_ORIGIN) {
+  try {
+    const url = new URL(String(value ?? ''), base);
+    if (!/(^|\.)kick\.com$/i.test(url.hostname)) return false;
+    return /^\/api\/v\d+\/livestreams(?:\/|$)/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Live start times keyed by channel slug from a discovery response.
+ *
+ * Only `start_time` counts. A row's `created_at` can describe the record rather
+ * than the current broadcast, so falling back to it would put a confident but
+ * wrong clock on a card. Traversal is limited to Kick's known envelope names
+ * and capped, making a changed or hostile response cheap to ignore.
+ */
+export function normalizeDiscoveryLiveStarts(payload, limit = 500) {
+  const cap = Math.max(1, Math.min(500, Number.isFinite(limit) ? Math.floor(limit) : 500));
+  const starts = new Map();
+  const queue = [payload];
+  const seen = new Set();
+  const maxVisits = Math.max(32, cap * 4);
+  let visits = 0;
+
+  while (queue.length && visits < maxVisits && starts.size < cap) {
+    const value = queue.shift();
+    if (!value || typeof value !== 'object' || seen.has(value)) continue;
+    seen.add(value);
+    visits += 1;
+
+    if (Array.isArray(value)) {
+      for (const entry of value.slice(0, cap)) {
+        if (queue.length + seen.size >= maxVisits) break;
+        queue.push(entry);
+      }
+      continue;
+    }
+
+    const slug = value.channel?.slug
+      || value.channel?.username
+      || value.channel?.user?.username
+      || value.channel_slug
+      || value.slug;
+    const startedAt = parseKickTimestamp(value.start_time);
+    if (isValidSlug(slug) && startedAt) {
+      const key = slug.toLowerCase();
+      starts.set(key, Math.max(starts.get(key) || 0, startedAt));
+    }
+
+    for (const key of ['data', 'livestreams', 'streams', 'featured', 'results', 'items']) {
+      if (queue.length + seen.size >= maxVisits) break;
+      if (value[key] && typeof value[key] === 'object') queue.push(value[key]);
+    }
+  }
+
+  return starts;
+}
+
+/**
  * A live stream's start time out of the page's own structured data.
  *
  * Kick ships a schema.org `VideoObject` whose `uploadDate` is the stream start,

@@ -7,7 +7,9 @@ import {
   joinCollectibleRarity,
   normalizeChannel,
   normalizeChannelVideos,
+  normalizeDiscoveryLiveStarts,
   findChannelVideo,
+  isDiscoveryLivestreamUrl,
   parseKickTimestamp,
   streamStartFromLinkedData,
   normalizeChatMessage,
@@ -118,6 +120,41 @@ test('a second realtime transport is an added entry, not a rewrite', { tag: 'uni
     normalizeRealtimeConnection({ data: { connections: [{ provider: 'KICK', credentials: {} }] } }).reason,
     'incomplete-credentials',
   );
+});
+
+test('only Kick discovery livestream feeds are observed', { tag: 'unit' }, () => {
+  assert.equal(isDiscoveryLivestreamUrl('https://web.kick.com/api/v1/livestreams/featured?language=en'), true);
+  assert.equal(isDiscoveryLivestreamUrl('/api/v2/livestreams', 'https://kick.com/browse'), true);
+  assert.equal(isDiscoveryLivestreamUrl('https://kick.com/api/v2/channels/xqc'), false);
+  assert.equal(isDiscoveryLivestreamUrl('https://kick.com/api/v1/channels/1/videos'), false);
+  assert.equal(isDiscoveryLivestreamUrl('https://example.com/api/v1/livestreams'), false);
+  assert.equal(isDiscoveryLivestreamUrl('not a url', 'not a base'), false);
+});
+
+test('discovery starts are bounded, slug-keyed, and never inferred from created_at', { tag: 'unit' }, () => {
+  const payload = {
+    data: {
+      featured: [
+        { start_time: '2026-08-20 12:00:00', channel: { slug: 'XQC' } },
+        { start_time: '2026-08-20 12:05:00', channel: { slug: 'xqc' } },
+        { created_at: '2026-08-20 12:00:00', channel: { slug: 'record-only' } },
+        { start_time: 'invalid', channel: { slug: 'bad-time' } },
+        { start_time: '2026-08-20 13:00:00', channel: { slug: '../bad' } },
+      ],
+      results: [{ start_time: '2026-08-20T14:00:00Z', channel_slug: 'Chessbrah' }],
+    },
+  };
+  const starts = normalizeDiscoveryLiveStarts(payload);
+  assert.deepEqual([...starts], [
+    ['xqc', Date.UTC(2026, 7, 20, 12, 5)],
+    ['chessbrah', Date.UTC(2026, 7, 20, 14, 0)],
+  ]);
+  assert.equal(starts.has('record-only'), false);
+  assert.equal(normalizeDiscoveryLiveStarts(payload, 1).size, 1);
+
+  const cyclic = { items: [] };
+  cyclic.items.push(cyclic);
+  assert.deepEqual([...normalizeDiscoveryLiveStarts(cyclic)], []);
 });
 
 test('frame parsing is shared by every transport and classifies by kind', { tag: 'unit' }, () => {

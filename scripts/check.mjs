@@ -1005,6 +1005,11 @@ const checks = [
   ['discovery cards carry a multi chip, only where the card is a channel',
     source.includes('data-kf-card-action="multi"') && source.includes('cardSlugFromPath(path)')
     && source.includes('function syncCardMultiState')],
+  ['discovery card uptime observes Kick’s existing feed without making another request',
+    /const request = nativeFetch\(input, init\);[\s\S]{0,500}?isDiscoveryLivestreamUrl\(rawUrl[\s\S]{0,500}?response\.clone\(\)\.json\(\)[\s\S]{0,500}?return request;/.test(source)
+    && source.includes('normalizeDiscoveryLiveStarts(payload)')
+    && source.includes('data-kf-card-uptime')
+    && source.includes(".trim().toLowerCase() === 'live'")],
   ['cross-tab convergence re-reads the store rather than trusting the wire', convergenceRereads(source)],
   ['a tab applying another tab’s change never writes back or re-broadcasts', remoteApplyNeverWrites(source)],
   ['a shared link says what it replaced and offers it back',

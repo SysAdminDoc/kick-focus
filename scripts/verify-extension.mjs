@@ -391,6 +391,80 @@ try {
   const waiterReady = await evaluate(pageClient, 'window.__kfWaitInstalled === true');
   record('the probe waiter is installed in the page', waiterReady.value === true);
 
+  // R-83: a discovery clock is useful only if it comes from data Kick already
+  // sent, stays paired with Kick's own LIVE marker, and fits the card. The
+  // source boundary is proved offline. This live half proves the derived value
+  // and its geometry at the exact desktop viewport established above.
+  const discoveryUptimeProbe = await evaluate(pageClient, `(async () => {
+    if (location.pathname !== '/') return { skip: 'this run did not target the home discovery route' };
+    const feedReads = performance.getEntriesByType('resource').filter((entry) => {
+      const parts = new URL(entry.name, location.origin).pathname.split('/').filter(Boolean);
+      return parts[0] === 'api' && /^v[0-9]+$/i.test(parts[1] || '') && parts[2] === 'livestreams';
+    });
+    const cardSelector = '[data-testid="livestream-results-card"], [data-testid="stream-card"], [class*="group/card"]';
+    const exactLive = (card) => [...card.querySelectorAll('span, [class*="badge"], [data-testid*="badge"], [data-testid*="live"]')]
+      .find((node) => !node.closest('[data-kf-card-uptime]') && (node.textContent || '').trim().toLowerCase() === 'live');
+    const eligible = () => [...document.querySelectorAll(cardSelector)].filter((card) => {
+      const href = card.querySelector('a[href]')?.getAttribute('href') || '';
+      let url = null;
+      try { url = new URL(href, location.origin); } catch { return false; }
+      const parts = url.pathname.split('/').filter(Boolean);
+      const host = url.hostname.toLowerCase();
+      return (host === 'kick.com' || host.endsWith('.kick.com')) && parts.length === 1 && exactLive(card);
+    });
+    const chip = await __kfWait(() => document.querySelector('[data-kf-card-uptime]'), { timeout: 10000 });
+    if (!feedReads.length) return { skip: 'Kick did not issue a discovery livestream feed on the home route' };
+    if (!eligible().length) return { skip: 'Kick rendered no live discovery card with a channel destination' };
+    if (!chip) return { ok: false, why: 'Kick issued a live discovery feed and rendered live cards, but no duration appeared' };
+
+    const card = chip.closest('[data-kf-card-uptime-owner]');
+    const liveBadge = card && exactLive(card);
+    const shownParts = String(chip.textContent || '').split(':').map(Number);
+    const shownSeconds = shownParts.length === 3
+      ? shownParts[0] * 3600 + shownParts[1] * 60 + shownParts[2]
+      : shownParts[0] * 60 + shownParts[1];
+    const startedAt = Number(chip.dataset.kfCardUptimeStart);
+    const expectedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+    const chipBox = chip.getBoundingClientRect();
+    const cardBox = card?.getBoundingClientRect();
+    const style = getComputedStyle(chip);
+    const contained = Boolean(cardBox)
+      && chipBox.left >= cardBox.left - 1 && chipBox.right <= cardBox.right + 1
+      && chipBox.top >= cardBox.top - 1 && chipBox.bottom <= cardBox.bottom + 1;
+    const pageFits = document.documentElement.scrollWidth <= window.innerWidth + 1;
+    return {
+      ok: true,
+      text: chip.textContent,
+      slug: chip.dataset.kfCardUptimeSlug || '',
+      startedAt,
+      shownSeconds,
+      expectedSeconds,
+      hasLiveBadge: Boolean(liveBadge),
+      adjacent: chip.previousElementSibling === liveBadge,
+      width: Math.round(chipBox.width),
+      height: Math.round(chipBox.height),
+      fontSize: parseFloat(style.fontSize),
+      contained,
+      pageFits,
+      feedReads: feedReads.length,
+      eligible: eligible().length,
+    };
+  })()`);
+  const discoveryUptime = discoveryUptimeProbe.value || {};
+  recordProbe('live discovery cards show a feed-backed duration without overflowing at 1440x900', discoveryUptime,
+    discoveryUptime.ok === true
+      && discoveryUptime.slug
+      && Number.isFinite(discoveryUptime.startedAt) && discoveryUptime.startedAt > 0
+      && Number.isFinite(discoveryUptime.shownSeconds)
+      && Math.abs(discoveryUptime.shownSeconds - discoveryUptime.expectedSeconds) <= 65
+      && discoveryUptime.hasLiveBadge === true && discoveryUptime.adjacent === true
+      && discoveryUptime.width > 0 && discoveryUptime.height >= 16 && discoveryUptime.height <= 22
+      && discoveryUptime.fontSize >= 11
+      && discoveryUptime.contained === true && discoveryUptime.pageFits === true,
+    discoveryUptime.ok
+      ? `${discoveryUptime.slug} reads ${discoveryUptime.text}, ${Math.abs(discoveryUptime.shownSeconds - discoveryUptime.expectedSeconds)}s from its observed start; ${discoveryUptime.width}x${discoveryUptime.height}px at ${discoveryUptime.fontSize}px; ${discoveryUptime.feedReads} feed read(s), ${discoveryUptime.eligible} eligible card(s), contained=${discoveryUptime.contained}, page fits=${discoveryUptime.pageFits}`
+      : discoveryUptime.why);
+
   // The accessibility settings and the modal focus ladder are about this mod's
   // own chrome, not Kick's markup, so they are proven by driving the real UI
   // rather than by reading source. Both were defects a green offline build

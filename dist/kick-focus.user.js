@@ -2975,6 +2975,58 @@ function parseKickTimestamp(value) {
   return Number.isFinite(at) ? at : 0;
 }
 
+function isDiscoveryLivestreamUrl(value, base = KICK_ORIGIN) {
+  try {
+    const url = new URL(String(value ?? ''), base);
+    if (!/(^|\.)kick\.com$/i.test(url.hostname)) return false;
+    return /^\/api\/v\d+\/livestreams(?:\/|$)/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function normalizeDiscoveryLiveStarts(payload, limit = 500) {
+  const cap = Math.max(1, Math.min(500, Number.isFinite(limit) ? Math.floor(limit) : 500));
+  const starts = new Map();
+  const queue = [payload];
+  const seen = new Set();
+  const maxVisits = Math.max(32, cap * 4);
+  let visits = 0;
+
+  while (queue.length && visits < maxVisits && starts.size < cap) {
+    const value = queue.shift();
+    if (!value || typeof value !== 'object' || seen.has(value)) continue;
+    seen.add(value);
+    visits += 1;
+
+    if (Array.isArray(value)) {
+      for (const entry of value.slice(0, cap)) {
+        if (queue.length + seen.size >= maxVisits) break;
+        queue.push(entry);
+      }
+      continue;
+    }
+
+    const slug = value.channel?.slug
+      || value.channel?.username
+      || value.channel?.user?.username
+      || value.channel_slug
+      || value.slug;
+    const startedAt = parseKickTimestamp(value.start_time);
+    if (isValidSlug(slug) && startedAt) {
+      const key = slug.toLowerCase();
+      starts.set(key, Math.max(starts.get(key) || 0, startedAt));
+    }
+
+    for (const key of ['data', 'livestreams', 'streams', 'featured', 'results', 'items']) {
+      if (queue.length + seen.size >= maxVisits) break;
+      if (value[key] && typeof value[key] === 'object') queue.push(value[key]);
+    }
+  }
+
+  return starts;
+}
+
 function streamStartFromLinkedData(texts) {
   if (!Array.isArray(texts)) return 0;
   for (const text of texts) {
@@ -5622,6 +5674,7 @@ const state = {
     stickerPickerTarget: null,
     stickerChatTarget: null,
     stickerCatalogDirty: true,
+    discoveryStarts: new Map(),
   },
   diagnostics: {
     blocked: 0,
@@ -5723,6 +5776,7 @@ const state = {
   mediaSaveTimers: new WeakMap(),
   playbackDiagnosticsTimer: 0,
   uptimeTimer: 0,
+  discoveryUptimeTimer: 0,
   remoteSyncTimer: 0,
   remoteSyncInFlight: false,
 };
@@ -6084,6 +6138,21 @@ function installPlayerLoadingFix() {
   }, true);
 }
 
+function noteDiscoveryLiveStarts(payload) {
+  const observed = normalizeDiscoveryLiveStarts(payload);
+  if (!observed.size) return;
+  let changed = false;
+  for (const [slug, startedAt] of observed) {
+    if (state.runtime.discoveryStarts.get(slug) === startedAt) continue;
+    state.runtime.discoveryStarts.set(slug, startedAt);
+    changed = true;
+  }
+  while (state.runtime.discoveryStarts.size > 500) {
+    state.runtime.discoveryStarts.delete(state.runtime.discoveryStarts.keys().next().value);
+  }
+  if (changed) scheduleApply(0);
+}
+
 function installNetworkDefense() {
   const marker = '__kickFocusNetworkDefenseV1';
   if (pageWindow[marker]) return;
@@ -6118,9 +6187,16 @@ function installNetworkDefense() {
           report('Fetch', result);
           return blockedResponse(pageWindow);
         }
-        if (!isPlaybackUrl(rawUrl)) return nativeFetch(input, init);
+        const request = nativeFetch(input, init);
+        if (isDiscoveryLivestreamUrl(rawUrl, location.origin)) {
+          request.then((response) => {
+            if (!response?.ok) return;
+            response.clone().json().then(noteDiscoveryLiveStarts).catch(() => {});
+          }).catch(() => {});
+        }
+        if (!isPlaybackUrl(rawUrl)) return request;
 
-        return nativeFetch(input, init).then((response) => {
+        return request.then((response) => {
           if (!response?.ok) return response;
           return response.clone().text().then((body) => {
             notePlaybackShape(body);
@@ -6153,10 +6229,23 @@ function installNetworkDefense() {
       xhrPrototype.open = disguise(function kickFocusOpen(method, url, ...rest) {
         this.__kfRequest = state.runtime.suspended ? { blocked: false } : classify(url);
         this.__kfPlayback = !state.runtime.suspended && isPlaybackUrl(url);
+        this.__kfDiscovery = !state.runtime.suspended && isDiscoveryLivestreamUrl(url, location.origin);
         return nativeOpen.call(this, method, url, ...rest);
       }, nativeOpen, 'open');
       xhrPrototype.send = disguise(function kickFocusSend(...args) {
         if (this.__kfPlayback && nativeText?.get) installPlaybackRewrite(this, nativeText, nativeResponse, report);
+        if (this.__kfDiscovery) {
+          this.addEventListener('loadend', () => {
+            try {
+              if (this.status < 200 || this.status >= 300) return;
+              const payload = this.responseType === 'json'
+                ? (nativeResponse?.get ? nativeResponse.get.call(this) : this.response)
+                : JSON.parse(nativeText?.get ? nativeText.get.call(this) : this.responseText);
+              noteDiscoveryLiveStarts(payload);
+            } catch {
+            }
+          }, { once: true });
+        }
         if (!this.__kfRequest?.blocked) return nativeSend.apply(this, args);
         report('XHR', this.__kfRequest);
         queueMicrotask(() => {
@@ -6252,7 +6341,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              803580') || 0;
+const BUNDLE_BYTES = Number('              809501') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -6873,6 +6962,25 @@ const SITE_CSS = `
 
     [data-kf-card-actions] button:hover,
     [data-kf-card-actions] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
+
+    [data-kf-card-uptime] {
+      display: inline-flex !important;
+      align-items: center !important;
+      min-height: 18px !important;
+      margin-left: 5px !important;
+      padding: 0 5px !important;
+      border: 0 !important;
+      border-radius: 3px !important;
+      background: rgba(10, 12, 11, .82) !important;
+      color: #fff !important;
+      font-size: 11px !important;
+      font-weight: 720 !important;
+      font-variant-numeric: tabular-nums !important;
+      line-height: 18px !important;
+      letter-spacing: .01em !important;
+      white-space: nowrap !important;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, .28) !important;
+    }
 
     [data-kf-highlighted="true"] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .07) !important; }
     /* The matched words, painted from the Custom Highlight registry — no node
@@ -7864,6 +7972,53 @@ function cardLabel(node) {
   const image = node.querySelector?.('img[alt]');
   const label = image?.getAttribute?.('alt') || node.querySelector?.('a[href]')?.textContent || '';
   return String(label).replace(/\s+/g, ' ').trim().slice(0, 80) || 'this channel';
+}
+
+function cardLiveBadge(node) {
+  for (const element of node.querySelectorAll?.('span, [class*="badge"], [data-testid*="badge"], [data-testid*="live"]') || []) {
+    if (element.closest?.('[data-kf-card-uptime]')) continue;
+    if ((element.textContent || '').trim().toLowerCase() === 'live') return element;
+  }
+  return null;
+}
+
+function applyCardUptime(node, now = Date.now()) {
+  const existing = node.querySelector?.('[data-kf-card-uptime]');
+  const slug = cardSlugFromPath(cardPath(node)).toLowerCase();
+  const startedAt = slug ? state.runtime.discoveryStarts.get(slug) : 0;
+  const liveBadge = state.settings.content.showUptime ? cardLiveBadge(node) : null;
+  const duration = liveBadge ? formatUptime(startedAt, now) : '';
+  if (!duration) {
+    existing?.remove();
+    if (node.dataset.kfCardUptimeOwner) delete node.dataset.kfCardUptimeOwner;
+    return false;
+  }
+
+  let chip = existing;
+  if (!chip) {
+    chip = document.createElement('span');
+    chip.dataset.kfCardUptime = 'true';
+  }
+  if (chip.previousElementSibling !== liveBadge) liveBadge.insertAdjacentElement('afterend', chip);
+  node.dataset.kfCardUptimeOwner = 'true';
+  if (chip.textContent !== duration) chip.textContent = duration;
+  chip.dataset.kfCardUptimeSlug = slug;
+  chip.dataset.kfCardUptimeStart = String(startedAt);
+  const label = trf('Live for {duration}', { duration });
+  chip.setAttribute('aria-label', label);
+  chip.title = label;
+  return true;
+}
+
+function applyDiscoveryCardUptimes(nodes = mainCardCandidates()) {
+  let active = 0;
+  for (const node of nodes) if (applyCardUptime(node)) active += 1;
+  if (active && !state.discoveryUptimeTimer) {
+    state.discoveryUptimeTimer = window.setInterval(() => applyDiscoveryCardUptimes(), 60 * 1000);
+  } else if (!active && state.discoveryUptimeTimer) {
+    clearInterval(state.discoveryUptimeTimer);
+    state.discoveryUptimeTimer = 0;
+  }
 }
 
 function applyCardActions(node) {
@@ -10159,7 +10314,9 @@ function installRemoteBlocklistTimer() {
 
 function applyContentFilters() {
   const settings = state.settings.content;
-  for (const node of mainCardCandidates()) applyCardActions(node);
+  const mainCards = mainCardCandidates();
+  for (const node of mainCards) applyCardActions(node);
+  applyDiscoveryCardUptimes(mainCards);
 
   const scored = [];
   for (const node of cardCandidates()) {
@@ -15339,8 +15496,8 @@ function clearEnhancedPage() {
   for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
     root.style.removeProperty(property);
   }
-  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization]')) {
-    if (node.matches?.('[data-kf-card-actions], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization]')) {
+    if (node.matches?.('[data-kf-card-actions], [data-kf-card-uptime], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
     else {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
     }
@@ -15351,6 +15508,8 @@ function clearEnhancedPage() {
   state.applyTimer = 0;
   clearInterval(state.playbackDiagnosticsTimer);
   state.playbackDiagnosticsTimer = 0;
+  clearInterval(state.discoveryUptimeTimer);
+  state.discoveryUptimeTimer = 0;
   state.observers.document?.disconnect?.();
   state.observers.body?.disconnect?.();
   state.observers.chat?.disconnect?.();
