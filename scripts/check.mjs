@@ -700,6 +700,11 @@ const checks = [
   ['targets Kick HTTPS', source.includes('// @match        https://kick.com/*')],
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
+  ['chat-left is a first-class setting with mirrored separator geometry',
+    source.includes("chat: enumValue(layout.chat, ['right', 'left', 'docked', 'hidden']")
+    && source.includes("['left','Left']")
+    && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
+    && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
   ['settings page composition lives behind an explicit factory instead of runtime wrappers',
     settingsModuleSource.includes('export function createSettings(host)')
     && ['renderLayoutPage', 'renderAppearancePage', 'renderContentPage', 'renderAccessibilityPage', 'renderViewerPage', 'renderAboutPage']

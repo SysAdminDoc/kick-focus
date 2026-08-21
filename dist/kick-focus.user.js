@@ -1201,7 +1201,7 @@ function normalizeSettings(input) {
     lastSeenVersion: normalizeVersion(source.lastSeenVersion),
     layout: {
       sidebar,
-      chat: enumValue(layout.chat, ['right', 'docked', 'hidden'], defaults.layout.chat),
+      chat: enumValue(layout.chat, ['right', 'left', 'docked', 'hidden'], defaults.layout.chat),
       chatWidth,
       density: enumValue(layout.density, ['comfortable', 'compact'], defaults.layout.density),
       streamStart: enumValue(layout.streamStart, ['standard', 'theater', 'focus'], defaults.layout.streamStart),
@@ -1286,6 +1286,16 @@ function normalizeSettings(input) {
       normalizeShortcut(shortcuts[key], fallback),
     ])),
   };
+}
+
+function chatWidthAfterDrag(side, startWidth, startX, currentX) {
+  const direction = side === 'left' ? 1 : -1;
+  return Math.round(clamp(
+    Number(startWidth) + ((Number(currentX) - Number(startX)) * direction),
+    320,
+    520,
+    DEFAULT_SETTINGS.layout.chatWidth,
+  ));
 }
 
 function applyViewingPreset(settings, presetId) {
@@ -5743,7 +5753,7 @@ function createSettings(host) {
       ${pageHeader('Layout', 'Control how Kick is arranged across your desktop.', 'Current setup', `${value.sidebar} sidebar · ${value.chat} chat`)}
       <section class="kf-panel">
         ${row('Sidebar mode', 'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.', segmented('layout.sidebar', value.sidebar, [['auto','Auto'],['compact','Compact'],['dropdown','Dropdown'],['hidden','Hidden']]))}
-        ${row('Chat layout', 'Keep chat on the right, float it as a dock, or hide it.', segmented('layout.chat', value.chat, [['right','Right'],['docked','Docked'],['hidden','Hidden']]))}
+        ${row('Chat layout', 'Place chat on either side, float it as a dock, or hide it.', segmented('layout.chat', value.chat, [['right','Right'],['left','Left'],['docked','Docked'],['hidden','Hidden']]))}
         ${row('Chat width', 'Set the width of the live chat column.', range('layout.chatWidth', value.chatWidth, 320, 520, '320 px', '520 px', ' px'), { wide: true })}
         ${row('Content density', 'Adjust spacing and padding across discovery pages.', segmented('layout.density', value.density, [['comfortable','Comfortable'],['compact','Compact']]))}
         ${row('Stream start behavior', 'Choose how each channel opens.', segmented('layout.streamStart', value.streamStart, [['standard','Standard'],['theater','Theater'],['focus','Focus']]))}
@@ -7165,7 +7175,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              813847') || 0;
+const BUNDLE_BYTES = Number('              815196') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -7627,7 +7637,31 @@ const SITE_CSS = `
     html[data-kf-focus="true"] [data-kf-chat-panel],
     html[data-kf-focus="true"] [data-kf-chat-separator] { display: none !important; }
 
-    html[data-kf-chat="right"] [data-kf-chat-panel] {
+    html[data-kf-chat="left"] [data-kf-chat-panel] {
+      order: -1 !important;
+      border-left: 0 !important;
+      border-right: 1px solid var(--kf-border) !important;
+    }
+
+    html[data-kf-chat="left"] #channel-chatroom {
+      border-left: 0 !important;
+      border-right: 1px solid var(--kf-border) !important;
+    }
+
+    html[data-kf-chat="left"] [data-kf-chat-split] {
+      display: flex !important;
+      flex-direction: row-reverse !important;
+      width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    html[data-kf-chat="left"] [data-kf-chat-split] > :is(#channel-chatroom, [data-testid="chatroom"]) {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+    }
+
+    html[data-kf-chat="right"] [data-kf-chat-panel],
+    html[data-kf-chat="left"] [data-kf-chat-panel] {
       flex: 0 0 var(--kf-chat-width) !important;
       width: var(--kf-chat-width) !important;
       min-width: 320px !important;
@@ -7640,7 +7674,8 @@ const SITE_CSS = `
       max-width: 100% !important;
     }
 
-    html[data-kf-chat="right"] [data-kf-chat-panel][data-kf-chat-resizing="true"] {
+    html[data-kf-chat="right"] [data-kf-chat-panel][data-kf-chat-resizing="true"],
+    html[data-kf-chat="left"] [data-kf-chat-panel][data-kf-chat-resizing="true"] {
       transition: none !important;
     }
 
@@ -8423,7 +8458,7 @@ function bindChatResizer(separator) {
   if (separator.dataset.kfChatResizeBound === 'true') return;
   separator.dataset.kfChatResizeBound = 'true';
   separator.addEventListener('pointerdown', guard('chat resize', (event) => {
-    if (event.button !== 0 || event.isPrimary === false || state.settings.layout.chat !== 'right') return;
+    if (event.button !== 0 || event.isPrimary === false || !['right', 'left'].includes(state.settings.layout.chat)) return;
     const panel = separator.nextElementSibling || findProbe(document, 'chatPanel').element;
     const owner = chatLayoutOwner(separator, panel);
     if (!owner) return;
@@ -8437,7 +8472,7 @@ function bindChatResizer(separator) {
 
     const move = (moveEvent) => {
       if (moveEvent.pointerId !== event.pointerId) return;
-      nextWidth = Math.round(clamp(startWidth + startX - moveEvent.clientX, 320, 520, startWidth));
+      nextWidth = chatWidthAfterDrag(state.settings.layout.chat, startWidth, startX, moveEvent.clientX);
       state.settings.layout.chatWidth = nextWidth;
       document.documentElement.style.setProperty('--kf-chat-width', `${nextWidth}px`);
       separator.setAttribute('aria-valuenow', String(nextWidth));
@@ -8468,6 +8503,8 @@ function tagChatPanel() {
   const separator = findProbe(document, 'chatSeparator').element;
   if (!separator) return;
   separator.dataset.kfChatSeparator = 'true';
+  const split = separator.parentElement;
+  if (split && split !== document.body) split.dataset.kfChatSplit = 'true';
   let panel = separator.nextElementSibling;
   if (!panel || panel === separator) {
     panel = findProbe(document, 'chatPanel').element;
@@ -12744,6 +12781,7 @@ const TRANSLATIONS = {
     'Choose the language for Kick Focus settings and commands.': 'Elige el idioma de la configuración y los comandos de Kick Focus.',
     'Auto': 'Automático',
     'Sidebar mode': 'Modo de barra lateral',
+    'Left': 'Izquierda',
     'Chat layout': 'Diseño del chat',
     'Chat width': 'Ancho del chat',
     'Chat width saved': 'Ancho del chat guardado',
@@ -12896,7 +12934,7 @@ const TRANSLATIONS = {
     'Customize layout, appearance, content, and access': 'Personaliza el diseño, la apariencia, el contenido y el acceso',
     'No matching commands.': 'No hay comandos coincidentes.',
     'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.': 'Elige cómo se comporta la barra de descubrimiento izquierda. Desplegable la reduce a una pestaña que se expande al pasar el cursor, dando a la cuadrícula todo el ancho. Solo en anchos de escritorio.',
-    'Keep chat on the right, float it as a dock, or hide it.': 'Mantén el chat a la derecha, flotante como panel, u ocúltalo.',
+    'Place chat on either side, float it as a dock, or hide it.': 'Coloca el chat a cualquier lado, como panel flotante, u ocúltalo.',
     'Set the width of the live chat column.': 'Define el ancho de la columna del chat en vivo.',
     'Adjust spacing and padding across discovery pages.': 'Ajusta el espaciado y el relleno en las páginas de descubrimiento.',
     'Choose how each channel opens.': 'Elige cómo se abre cada canal.',
@@ -13385,6 +13423,7 @@ const TRANSLATIONS = {
     'Choose the language for Kick Focus settings and commands.': 'Escolha o idioma das configurações e comandos do Kick Focus.',
     'Auto': 'Automático',
     'Sidebar mode': 'Modo da barra lateral',
+    'Left': 'Esquerda',
     'Chat layout': 'Layout do chat',
     'Chat width': 'Largura do chat',
     'Chat width saved': 'Largura do chat salva',
@@ -13537,7 +13576,7 @@ const TRANSLATIONS = {
     'Customize layout, appearance, content, and access': 'Personalize layout, aparência, conteúdo e acesso',
     'No matching commands.': 'Nenhum comando correspondente.',
     'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.': 'Escolha como a barra lateral de descoberta se comporta. Suspensa reduz a barra a uma aba que se expande ao passar o cursor, dando à grade toda a largura. Apenas em larguras de desktop.',
-    'Keep chat on the right, float it as a dock, or hide it.': 'Mantenha o chat à direita, flutuante como painel, ou oculte-o.',
+    'Place chat on either side, float it as a dock, or hide it.': 'Coloque o chat em qualquer lado, como painel flutuante, ou oculte-o.',
     'Set the width of the live chat column.': 'Defina a largura da coluna do chat ao vivo.',
     'Adjust spacing and padding across discovery pages.': 'Ajuste o espaçamento e o preenchimento nas páginas de descoberta.',
     'Choose how each channel opens.': 'Escolha como cada canal abre.',

@@ -60,6 +60,7 @@ import {
   evictStickerLibrary,
   STICKER_LIBRARY_LIMIT,
   normalizeSettings,
+  chatWidthAfterDrag,
   applyViewingPreset,
   colorContrastRatio,
   customAccentTokens,
@@ -1078,6 +1079,15 @@ test('normalization clamps values and keeps core ad defense enabled', { tag: 'un
   assert.equal(value.appearance.language, 'auto');
   assert.equal(normalizeSettings({ appearance: { language: 'xx' } }).appearance.language, 'auto');
   assert.equal(value.accessibility.captionOpacity, 0);
+  assert.equal(normalizeSettings({ layout: { chat: 'left' } }).layout.chat, 'left');
+  assert.equal(normalizeSettings({ layout: { chat: 'upside-down' } }).layout.chat, 'right');
+});
+
+test('chat separator drag grows away from the player on either side', { tag: 'unit' }, () => {
+  assert.equal(chatWidthAfterDrag('right', 410, 900, 830), 480);
+  assert.equal(chatWidthAfterDrag('left', 410, 340, 410), 480);
+  assert.equal(chatWidthAfterDrag('right', 500, 900, 700), 520);
+  assert.equal(chatWidthAfterDrag('left', 340, 340, 200), 320);
 });
 
 test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {

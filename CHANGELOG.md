@@ -7,6 +7,7 @@ All notable changes are documented here. Dates use ISO 8601.
 ### Added
 
 - Live discovery cards now show elapsed stream time beside Kick's own LIVE marker when the page's existing discovery response includes a trustworthy `start_time`. The card stays unchanged when that value is missing or invalid, and Kick Focus makes no extra request to fill it.
+- Chat can now sit on the left side of the player. The existing separator stays on the player-facing edge, drags in the expected direction from 320 to 520 px, and switching back to Right restores the original order.
 
 ### Fixed
 

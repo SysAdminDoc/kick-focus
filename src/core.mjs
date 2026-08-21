@@ -1844,7 +1844,7 @@ export function normalizeSettings(input) {
     lastSeenVersion: normalizeVersion(source.lastSeenVersion),
     layout: {
       sidebar,
-      chat: enumValue(layout.chat, ['right', 'docked', 'hidden'], defaults.layout.chat),
+      chat: enumValue(layout.chat, ['right', 'left', 'docked', 'hidden'], defaults.layout.chat),
       chatWidth,
       density: enumValue(layout.density, ['comfortable', 'compact'], defaults.layout.density),
       streamStart: enumValue(layout.streamStart, ['standard', 'theater', 'focus'], defaults.layout.streamStart),
@@ -1933,6 +1933,17 @@ export function normalizeSettings(input) {
       normalizeShortcut(shortcuts[key], fallback),
     ])),
   };
+}
+
+/** Convert a horizontal separator drag into a bounded chat-column width. */
+export function chatWidthAfterDrag(side, startWidth, startX, currentX) {
+  const direction = side === 'left' ? 1 : -1;
+  return Math.round(clamp(
+    Number(startWidth) + ((Number(currentX) - Number(startX)) * direction),
+    320,
+    520,
+    DEFAULT_SETTINGS.layout.chatWidth,
+  ));
 }
 
 export function applyViewingPreset(settings, presetId) {

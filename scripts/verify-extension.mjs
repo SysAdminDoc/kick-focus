@@ -1382,6 +1382,21 @@ try {
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const beforeUrl = location.pathname + location.search + location.hash;
     const beforeState = history.state;
+    const originalChat = (JSON.parse(localStorage.getItem('kick-focus:settings') || '{}').layout || {}).chat || 'right';
+    const setChat = async (value) => {
+      shadow.querySelector('[data-action="open-settings"]')?.click();
+      await settle(180);
+      shadow.querySelector('[data-page="layout"]')?.click();
+      await settle(180);
+      const control = shadow.querySelector('[data-set="layout.chat"][data-value="' + value + '"]');
+      if (!control) return false;
+      control.click();
+      await settle();
+      const selected = shadow.querySelector('[data-set="layout.chat"][data-value="' + value + '"]')?.getAttribute('aria-pressed') === 'true';
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      await settle(180);
+      return selected && document.documentElement.dataset.kfChat === value;
+    };
     const row = document.createElement('div');
     const player = document.createElement('main');
     const outer = document.createElement('div');
@@ -1407,6 +1422,9 @@ try {
     let initialWidth = 410;
     let initialTheater = false;
     try {
+      const leftSelected = await setChat('left');
+      if (!leftSelected) return { ok: false, why: 'Left was not selectable from the Layout page' };
+      const leftStored = (JSON.parse(localStorage.getItem('kick-focus:settings') || '{}').layout || {}).chat === 'left';
       history.pushState({}, '', '/kf-layout-probe');
       window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
       await settle();
@@ -1415,7 +1433,16 @@ try {
       const ownerTagged = outer.dataset.kfChatPanel === 'true';
       const innerTagged = panel.dataset.kfChatPanel === 'true';
       const bound = separator.dataset.kfChatResizeBound === 'true';
+      const splitTagged = split.dataset.kfChatSplit === 'true';
       const before = { owner: outer.getBoundingClientRect().width, inner: panel.getBoundingClientRect().width };
+      const leftRects = {
+        owner: outer.getBoundingClientRect(),
+        player: player.getBoundingClientRect(),
+        separator: separator.getBoundingClientRect(),
+        panel: panel.getBoundingClientRect(),
+      };
+      const placedLeft = leftRects.owner.right <= leftRects.player.left + 1;
+      const separatorOnPlayerEdge = leftRects.separator.left >= leftRects.panel.right - 2;
 
       if (!initialTheater) {
         shadow.querySelector('[data-kf-quick]')?.click();
@@ -1426,8 +1453,8 @@ try {
       const expected = Math.min(520, initialWidth + 70);
       const startX = separator.getBoundingClientRect().left;
       separator.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX }));
-      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX - 70 }));
-      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX - 70 }));
+      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX + 70 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 91, isPrimary: true, button: 0, clientX: startX + 70 }));
       await settle(180);
       const dragged = {
         owner: Math.round(outer.getBoundingClientRect().width),
@@ -1439,15 +1466,22 @@ try {
 
       const restoreX = separator.getBoundingClientRect().left;
       separator.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX }));
-      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX + expected - initialWidth }));
-      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX + expected - initialWidth }));
+      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX - (expected - initialWidth) }));
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 92, isPrimary: true, button: 0, clientX: restoreX - (expected - initialWidth) }));
+      const rightSelected = await setChat('right');
+      const rightRects = { owner: outer.getBoundingClientRect(), player: player.getBoundingClientRect() };
+      const restoredRight = rightSelected && rightRects.owner.left >= rightRects.player.right - 1;
       if (!initialTheater) {
         shadow.querySelector('[data-kf-quick]')?.click();
         shadow.querySelector('[data-action="command:theater"]')?.click();
       }
       await settle(180);
-      return { ok: true, ownerTagged, innerTagged, bound, before, theater, expected, dragged, bounded };
+      return {
+        ok: true, leftSelected, leftStored, ownerTagged, innerTagged, splitTagged, bound,
+        placedLeft, separatorOnPlayerEdge, restoredRight, before, theater, expected, dragged, bounded,
+      };
     } finally {
+      await setChat(originalChat);
       row.remove();
       history.replaceState(beforeState, '', beforeUrl);
       window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
@@ -1455,9 +1489,12 @@ try {
     }
   })()`);
   const chatLayout = chatLayoutProbe.value || {};
-  record('Theater mode keeps the player/chat row bounded and the visible separator resizes both chat layers',
+  record('Left chat is selectable, reversible, and keeps Theater resize geometry bounded',
     chatLayout.ok === true
-      && chatLayout.ownerTagged === true && chatLayout.innerTagged === false && chatLayout.bound === true
+      && chatLayout.leftSelected === true && chatLayout.leftStored === true
+      && chatLayout.ownerTagged === true && chatLayout.innerTagged === false && chatLayout.splitTagged === true
+      && chatLayout.bound === true && chatLayout.placedLeft === true
+      && chatLayout.separatorOnPlayerEdge === true && chatLayout.restoredRight === true
       && chatLayout.theater === true && chatLayout.bounded === true
       && Math.abs(chatLayout.before?.owner - chatLayout.before?.inner) <= 1
       && Math.abs(chatLayout.dragged?.owner - chatLayout.expected) <= 1
@@ -1465,7 +1502,7 @@ try {
       && chatLayout.dragged?.aria === chatLayout.expected
       && chatLayout.dragged?.css === chatLayout.expected,
     chatLayout.ok
-      ? `owner ${chatLayout.before?.owner}px / inner ${chatLayout.before?.inner}px; dragged both to ${chatLayout.dragged?.owner}px (aria ${chatLayout.dragged?.aria}, css ${chatLayout.dragged?.css}); bounded=${chatLayout.bounded}`
+      ? `left selected/stored=${chatLayout.leftSelected}/${chatLayout.leftStored}; owner ${chatLayout.before?.owner}px / inner ${chatLayout.before?.inner}px; dragged both to ${chatLayout.dragged?.owner}px (aria ${chatLayout.dragged?.aria}, css ${chatLayout.dragged?.css}); left=${chatLayout.placedLeft}, separator edge=${chatLayout.separatorOnPlayerEdge}, restored right=${chatLayout.restoredRight}, bounded=${chatLayout.bounded}`
       : chatLayout.why);
 
   // StreamerStats refuses framing with X-Frame-Options: DENY, so the profile

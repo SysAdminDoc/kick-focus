@@ -105,6 +105,7 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
   Touches: `src/core.mjs` `DEFAULT_SETTINGS` + `normalizeSettings` + `VIEWING_PRESETS`, `src/runtime.js` chat layout CSS and Layout page segmented control, i18n, `scripts/verify-extension.mjs` theater+drag probes at left.
   Acceptance: Left is selectable, persists, and is reversible; theater still keeps player+chat in viewport; separator drag 320–520 px updates both layers; 1440×900 live theater check passes with chat on the left.
   Complexity: L
+  Implementation note (2026-08-21): Left is a normalized, persisted Layout option with Spanish and Portuguese labels. The chat owner moves before the player, its split reverses so the separator stays on the player-facing edge, and shared drag math grows the column in the correct direction on either side while preserving the 320–520 px bounds. The live probe now selects Left through the UI, checks persistence, Theater containment, both rendered chat layers, drag state, and reversal to Right. Offline verification passes 360/360 with 185 artifact checks and 80 red probes. The checkbox remains open until the 1440×900 live gate can run; outbound TCP is currently blocked machine-wide.
 
 ### P3
 
