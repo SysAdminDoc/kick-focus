@@ -594,6 +594,71 @@ try {
   record('the interface reflows at 200% zoom without a horizontal scrollbar',
     zoom.documentOverflow <= 0 && zoom.shellOverflow !== null && zoom.shellOverflow <= 0,
     `at ${zoom.viewport}px CSS width: document overflow ${zoom.documentOverflow}px, settings shell overflow ${zoom.shellOverflow}px`);
+  // R-85, WCAG 2.2 3.2.6 Consistent Help: the same help mechanism, in the same
+  // relative place, on every settings page — measured at 680px CSS width, where
+  // the footer has the least room to keep four controls on one row. Search
+  // results are included on purpose: a result list is a page a reader can get
+  // stuck on, and it is the one that used to have no way out but the nav.
+  await pageClient.send('Emulation.setDeviceMetricsOverride', {
+    width: 680, height: VIEWPORT_HEIGHT, deviceScaleFactor: 1, mobile: false,
+  });
+  const helpProbe = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = (ms = 400) => new Promise((done) => setTimeout(done, ms));
+    shadow.querySelector('[data-kf-quick]').click();
+    shadow.querySelector('[data-action="command:settings"]').click();
+    await settle();
+    const shell = shadow.querySelector('[data-kf-settings-shell]');
+    const pages = [...shadow.querySelectorAll('.kf-nav [data-page]')].map((button) => button.dataset.page);
+    const seen = [];
+    const measure = (where) => {
+      const help = shadow.querySelector('[data-action="help"]');
+      const exportControl = shadow.querySelector('[data-action="export"]');
+      const rect = help?.getBoundingClientRect();
+      const shellRect = shell.getBoundingClientRect();
+      seen.push({
+        where,
+        help: Boolean(help),
+        export: Boolean(exportControl),
+        // Same relative place: both live in the footer's left group, and help
+        // follows export. Order is what 3.2.6 is actually about.
+        slot: help?.parentElement?.className || '',
+        after: help && exportControl ? (exportControl.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING) > 0 : false,
+        clipped: rect ? Math.round(rect.right - shellRect.right) > 0 || Math.round(rect.width) === 0 : true,
+      });
+    };
+    for (const page of pages) {
+      shadow.querySelector('[data-page="' + page + '"]').click();
+      await settle();
+      measure(page);
+    }
+    // And the search results page, which is not in the nav.
+    const search = shadow.querySelector('[data-kf-settings-search]');
+    search.value = 'chat';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle(700);
+    measure('search-results');
+    // The control has to work from there, not merely be present.
+    shadow.querySelector('[data-action="help"]').click();
+    await settle(600);
+    const landed = shadow.querySelector('[data-kf-settings-shell]')?.dataset.kfCurrentPage || '';
+    const queryCleared = String(shadow.querySelector('[data-kf-settings-search]')?.value || '') === '';
+    shadow.querySelector('[data-action="close-settings"]')?.click();
+    return { ok: true, seen, landed, queryCleared };
+  })()`);
+  const help = helpProbe.value || { why: helpProbe.error || 'the probe returned nothing' };
+  const helpGaps = (help.seen || []).filter((entry) => !entry.help || !entry.export || !entry.after || entry.clipped);
+  record('every settings page offers the same help control, in the same place, at 680px',
+    help.ok === true
+      && (help.seen || []).length > 3
+      && helpGaps.length === 0
+      && help.landed === 'about'
+      && help.queryCleared === true,
+    help.ok
+      ? `${help.seen.length} pages measured, ${helpGaps.length} without it${helpGaps.length ? ': ' + helpGaps.map((entry) => entry.where).join(', ') : ''}; from search results it lands on ${help.landed} and clears the query=${help.queryCleared}`
+      : help.why);
+
   await pageClient.send('Emulation.setDeviceMetricsOverride', {
     width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, deviceScaleFactor: 1, mobile: false,
   });

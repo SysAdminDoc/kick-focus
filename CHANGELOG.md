@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Added
 
+- Every settings page now has a Help control in the footer, next to Export settings, including the search results view. The recovery and troubleshooting copy it opens has always been on the About page, but you had to already know that to find it.
 - Scrolling the chat transcript up now freezes it, the same freeze the Pause chat button has always applied. Resume puts you back at the live edge. Kick's own pause-on-scroll has been broken for a while, and this is the setting you already had, reached the way you would expect to reach it.
 
 ### Fixed

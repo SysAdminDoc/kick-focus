@@ -82,13 +82,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P2
 
-- [ ] P2 — R-85 — Repeat Export / README help on every settings page (WCAG 2.2 3.2.6)
-  Why: export, panic, and install-recovery copy live only on About (`renderAboutPage`); 3.2.6 Consistent Help wants the same help mechanism in the same relative place on every settings page.
-  Evidence: https://www.w3.org/WAI/WCAG22/Understanding/consistent-help ; `NAV_ITEMS` + `renderAboutPage` in `src/runtime.js`.
-  Touches: settings shell in `src/runtime.js` (footer or header action, not a new page), i18n, a live assert that Layout and About both expose the same help/export control.
-  Acceptance: every settings page, including search results, shows the same help or export control in the same shell slot; 680-px width does not clip it.
-  Complexity: S
-
 - [ ] P2 — R-81 — Read-only active-chatters card from the endpoint Kick’s page already calls
   Why: Kick’s mobile viewer app advertised an active-chatters list in 2026-08-07 press; `web.kick.com/api/v1/channels/{id}/chat/active-chatters` was captured 2026-08-15 as a same-origin GET; Viewer Hub still has no chatters card.
   Evidence: vault Kick API note 2026-08-15; https://win.gg/kick-rolls-out-updates-including-chat-ban-appeals/ ; `src/core.mjs` `VIEWER_HUB_CARDS`.

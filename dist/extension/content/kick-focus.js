@@ -11720,6 +11720,8 @@ const TRANSLATIONS = {
     'Pause chat updates': 'Pausar las actualizaciones del chat',
     'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Desplazarte hacia arriba en el chat lo congela, igual que el botón. Reanudar siempre está a un control de distancia.',
     'Chat updates paused': 'Actualizaciones del chat en pausa',
+    'Help': 'Ayuda',
+    'Open help and recovery': 'Abrir ayuda y recuperación',
     'Chat updates resumed': 'Actualizaciones del chat reanudadas',
     'Organize chat emotes': 'Organizar los emotes del chat',
     'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente los emotes del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.',
@@ -12294,6 +12296,8 @@ const TRANSLATIONS = {
     'Pause chat updates': 'Pausar as atualizações do chat',
     'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Rolar a transcrição para cima congela o chat, assim como o botão. Retomar está sempre a um controle de distância.',
     'Chat updates paused': 'Atualizações do chat pausadas',
+    'Help': 'Ajuda',
+    'Open help and recovery': 'Abrir ajuda e recuperação',
     'Chat updates resumed': 'Atualizações do chat retomadas',
     'Organize chat emotes': 'Organizar os emotes do chat',
     'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': 'Registra continuamente os emotes do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.',
@@ -12567,6 +12571,7 @@ function buildInterface() {
           <div class="kf-footer-left">
             <button type="button" class="kf-button" data-action="reset-page">${uiIcon('reset')}Reset page</button>
             <button type="button" class="kf-button" data-action="export">${uiIcon('export')}Export settings</button>
+            <button type="button" class="kf-button" data-action="help" aria-label="Open help and recovery">${uiIcon('info')}Help</button>
           </div>
           <div class="kf-footer-right"><button type="button" class="kf-button kf-button-primary" data-action="close-settings">${uiIcon('check')}Done</button></div>
         </footer>
@@ -13944,6 +13949,14 @@ function onInterfaceClick(event) {
   else if (action === 'cancel-reset') closeResetConfirmation();
   else if (action === 'confirm-reset') confirmReset();
   else if (action === 'export') exportSettings();
+  else if (action === 'help') {
+    state.settingsQuery = '';
+    const search = state.shadow?.querySelector('[data-kf-settings-search]');
+    if (search) search.value = '';
+    state.currentPage = 'about';
+    renderSettingsPage();
+    state.shadow?.querySelector('[data-kf-page]')?.focus();
+  }
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
   else if (action === 'undo-import') undoImport();
   else if (action === 'copy-sticker-name') copyStickerName(actionTarget);
