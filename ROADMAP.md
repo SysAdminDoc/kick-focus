@@ -80,13 +80,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P1
 
-- [ ] P1 — R-76 — Keep Kick’s Request Unban control reachable under Kick Focus CSS
-  Why: Kick shipped Unban Request around 2026-08-07; the May 2026 viewer-chat help still omits it; this build restyles chat chrome and Poor mode hides tagged controls, and nothing asserts the banned composer’s Request Unban stays visible.
-  Evidence: https://help.kick.com/en/articles/16010467-how-to-request-an-unban-from-a-channel-s-chat ; https://win.gg/kick-rolls-out-updates-including-chat-ban-appeals/ ; `src/runtime.js` chat `SITE_CSS` and `monetizationKind`.
-  Touches: `src/runtime.js` chat/Poor-mode CSS, `scripts/signed-in-journeys.mjs` (skip when not banned, assert selector when the banned composer is present), `scripts/verify-extension.mjs`.
-  Acceptance: Kick Focus CSS does not `display:none` the Request Unban control; a live or fixture check fails if that control is present in the document and not visible; anonymous runs skip and name the selector.
-  Complexity: S
-
 - [ ] P1 — R-77 — Recapture `test/fixtures` after Chrome 153 stable (2026-09-08)
   Why: Chrome’s stable cadence becomes two weeks starting with 153; Kick already drifted `#main-container` off channel pages while a home-only gate stayed green.
   Evidence: https://developer.chrome.com/blog/chrome-two-week-release ; `scripts/capture-fixture.mjs`; `scripts/fixture-contract.mjs`.

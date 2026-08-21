@@ -10,6 +10,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Nothing in this build can hide Kick's Request Unban control. A banned reader has no other way back into a chat, so both halves are now checked: the classifier Poor mode hides from refuses every spelling of it, and the live gate fails if Kick put the control on the page and it is not visible.
 - Resuming chat left the transcript sitting where it was frozen, which read as Resume doing nothing. It now returns to the newest message.
 - The channel fixture and the shell contract said a channel page renders stream cards. It renders none, under any of the three probe shapes. Kick's React payload still serialises the card test id 22 times as script text, which is why the capture script had been calling it a reduction bug rather than drift; the capture now reads markers from the markup and not from inline script.
 

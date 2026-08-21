@@ -1153,6 +1153,14 @@ test('Poor mode is opt-in and identifies only spending controls', { tag: 'unit' 
   // chat sentence just because it happens to mention a purchase word.
   assert.equal(monetizationKind({ text: 'Follow', testId: 'follow-button' }), '');
   assert.equal(monetizationKind({ text: 'Claim Your Daily Reward' }), '');
+  // Kick shipped Unban Request around 2026-08-07: a banned reader's composer is
+  // replaced by this control, and it is the only way back into that chat. Poor
+  // mode hides exactly what this classifier tags, so the whole guarantee that
+  // Kick Focus cannot take it away is that none of its spellings classify.
+  assert.equal(monetizationKind({ text: 'Request Unban' }), '');
+  assert.equal(monetizationKind({ text: 'Request unban', testId: 'request-unban-button' }), '');
+  assert.equal(monetizationKind({ ariaLabel: 'Request an unban from this channel' }), '');
+  assert.equal(monetizationKind({ text: 'Send unban request' }), '');
   assert.equal(monetizationKind({ text: 'Someone gifted five subs in chat' }), '');
   assert.equal(monetizationKind({ text: 'Subscription settings' }), '');
 });

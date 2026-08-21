@@ -1853,6 +1853,58 @@ try {
       ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
       : scroll.why);
 
+  // R-76: a banned reader's way back into a chat, still on screen.
+  //
+  // Kick shipped Unban Request around 2026-08-07. It replaces the composer for
+  // someone who has been banned, and it is the only route back — so it is the
+  // one chat control where "this build restyled it into invisibility" would
+  // cost somebody their access rather than annoy them. Poor mode hides what the
+  // monetization classifier tags, and `test/core.test.js` proves none of the
+  // unban spellings classify; this is the other half, measured rather than
+  // reasoned: if Kick put the control in this document, it is visible.
+  //
+  // A run against a chat this account is not banned in has nothing to assert,
+  // and says so with the selector, rather than passing quietly.
+  const unbanProbe = await evaluate(pageClient, `(() => {
+    const selector = '[data-testid*="unban" i], [data-testid*="ban-request" i]';
+    // Copy has to *ask* for an unban, not merely contain the word. A channel
+    // titled "EVERYONE UNBANNED" put the substring into this build's own card
+    // chips, and an earlier version of this probe reported three of them as
+    // Kick's control — a check that matches the wrong node passes for the wrong
+    // reason, which is worse than not having it.
+    const ASKS = /\\b(request|appeal|submit)\\b[^.]{0,24}\\bunban\\b|\\bunban\\b[^.]{0,24}\\b(request|appeal)\\b/i;
+    const ours = (node) => Boolean(node.closest('[data-kf-card-actions]')) || node.closest('#kick-focus-root') !== null;
+    const byAttribute = [...document.querySelectorAll(selector)];
+    const byCopy = [...document.querySelectorAll('button, a, [role="button"]')]
+      .filter((node) => ASKS.test(String(node.textContent || '').replace(/\\s+/g, ' '))
+        || ASKS.test(String(node.getAttribute('aria-label') || '')));
+    const found = [...new Set([...byAttribute, ...byCopy])].filter((node) => !ours(node));
+    if (!found.length) return { skip: 'this account is not banned in the chat on this route, so Kick rendered no unban control to keep reachable; the check asserts ' + selector + ' and any control whose copy asks for an unban' };
+    const seen = found.map((node) => {
+      const style = getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return {
+        how: node.dataset.testid || node.getAttribute('aria-label') || String(node.textContent || '').trim().slice(0, 40),
+        display: style.display,
+        visibility: style.visibility,
+        opacity: Number(style.opacity),
+        area: Math.round(rect.width) * Math.round(rect.height),
+        // The tag Poor mode keys its display:none off. Present here would mean
+        // the classifier reached a control it must never reach.
+        monetization: node.closest('[data-kf-monetization]') ? 'tagged' : '',
+      };
+    });
+    return { ok: true, seen };
+  })()`);
+  const unban = unbanProbe.value || { why: unbanProbe.error || 'the probe returned nothing' };
+  const unbanHidden = (unban.seen || []).filter((node) => node.display === 'none' || node.visibility === 'hidden' || node.opacity === 0 || node.area === 0 || node.monetization);
+  recordProbe("Kick's Request Unban control is still reachable under this build's CSS",
+    unban,
+    unban.ok === true && unbanHidden.length === 0,
+    unban.ok
+      ? `${unban.seen.length} unban control(s): ${unban.seen.map((node) => `"${node.how}" display=${node.display} area=${node.area}px²${node.monetization ? ' MONETIZATION-TAGGED' : ''}`).join('; ')}`
+      : unban.why);
+
   // The viewer hub, on the one thing only a browser can answer: that an absent
   // reading reaches the screen as words rather than as a number.
   //
