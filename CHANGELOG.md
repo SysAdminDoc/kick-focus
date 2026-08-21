@@ -2,6 +2,21 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## 1.32.0, 2026-08-21
+
+### Fixed
+
+- Hidden channels, favorites, watched cards, remote blocklists, per-channel layouts, notes, keyword lists, and volume memory now use the same canonical Kick path, so a card whose href is `/xqc/` still matches a stored `/xqc`.
+- Importing a stickers-only file no longer resets every other setting to defaults. An empty file is refused. A failed import no longer leaves an Undo button. Factory reset now deletes the pre-import backup.
+- Unreadable Kick JSON is reported as a parse failure instead of a network failure, and the catalog status line says so in words.
+- Hideable Kick controls are left alone when a fallback selector matches a crowd of nodes instead of one control.
+- Copied diagnostics include a settings diff and probe winners. Hidden channel lists appear as counts, not names.
+- The emote picker search field and catalog error text follow theme tokens. The About error log empty row uses muted text. The companion Open settings button meets a 44px minimum height.
+
+### Changed
+
+- README now states that Kick's own help disagrees with itself on whether a channel subscription skips in-stream ads, and that this build cannot verify skip.
+
 ## 1.31.0, 2026-08-20
 
 ### Changed

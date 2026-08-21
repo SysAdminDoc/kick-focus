@@ -1,9 +1,9 @@
-/* Kick Focus 1.31.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.32.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.31.0';
+const VERSION = '1.32.0';
 const SETTINGS_SCHEMA = 5;
 
 /**
@@ -52,6 +52,10 @@ const VERSION_NOTES = Object.freeze({
     summary: 'Studio, OLED, and Slate now change the full surface hierarchy. Settings boards, multi-stream, and the companion popup have clearer structure and less visual noise.',
     defaults: Object.freeze([]),
   }),
+  '1.32.0': Object.freeze({
+    summary: 'Hidden channels, favorites, and volume now match Kick card links that carry a trailing slash. A stickers-only import no longer resets the rest of the profile. Copied diagnostics include a settings diff without channel names.',
+    defaults: Object.freeze([]),
+  }),
   '1.31.0': Object.freeze({
     summary: 'The main Kick theme now uses clearer type, quieter borders, tighter spacing, flatter content cards, and more compact route controls.',
     defaults: Object.freeze([]),
@@ -83,6 +87,35 @@ function updateNotice(lastSeen, current = VERSION, notes = VERSION_NOTES) {
     summary: note?.summary || '',
     defaults: Array.isArray(note?.defaults) ? [...note.defaults] : [],
   };
+}
+
+/**
+ * What a pasted diagnostic dump may include: only keys that differ from
+ * defaults, with channel lists and URLs reduced to counts so a shared
+ * summary does not name the user's hidden channels.
+ */
+function diagnosticSettingsDiff(settings) {
+  const current = normalizeSettings(settings);
+  const defaults = DEFAULT_SETTINGS;
+  const diff = {};
+  for (const section of ['layout', 'appearance', 'content', 'accessibility', 'shortcuts']) {
+    const now = current[section];
+    const base = defaults[section];
+    const changed = {};
+    for (const key of Object.keys(base)) {
+      if (key === 'hiddenChannels') {
+        if (now.hiddenChannels.length) changed.hiddenChannels = now.hiddenChannels.length;
+        continue;
+      }
+      if (key === 'blocklistUrl') {
+        if (now.blocklistUrl) changed.blocklistUrl = true;
+        continue;
+      }
+      if (JSON.stringify(now[key]) !== JSON.stringify(base[key])) changed[key] = now[key];
+    }
+    if (Object.keys(changed).length) diff[section] = changed;
+  }
+  return diff;
 }
 
 /**
@@ -2785,6 +2818,17 @@ function normalizeChannelPath(value) {
   }
 }
 
+/**
+ * A Kick pathname as the rest of this build stores it: lowercased, no
+ * trailing slash, empty for home. Card hrefs, hide lists, favorites, and
+ * layout keys all have to agree on this or a `/xqc/` link misses a `/xqc`
+ * store entry.
+ */
+function observedChannelPath(value) {
+  const path = normalizeChannelPath(value);
+  return path && path !== '/' ? path : '';
+}
+
 function normalizeBlocklistPayload(payload) {
   const source = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   return {
@@ -2911,8 +2955,19 @@ function normalizeMediaPreferences(input, limit = 240) {
   for (const [key, value] of Object.entries(input)) {
     if (POLLUTION_KEYS.has(key)) continue;
     if (!/^[a-z]+:.+/.test(key) || key.length > 200) continue;
-    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') continue;
-    out[key] = value;
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean'
+      && !(isRecord(value) && Number.isFinite(value.volume))) continue;
+    const split = key.indexOf(':');
+    const kind = key.slice(0, split);
+    const rest = key.slice(split + 1);
+    let nextKey = key;
+    if (kind === 'volume' || kind === 'quality' || kind === 'position') {
+      const path = observedChannelPath(rest);
+      if (!path) continue;
+      nextKey = `${kind}:${path}`;
+    }
+    if (Object.hasOwn(out, nextKey)) continue;
+    out[nextKey] = value;
     if (++count >= limit) break;
   }
   return out;
@@ -2967,6 +3022,7 @@ function validateImportedSettings(jsonText) {
   const stickers = parsed.stickers == null ? null : normalizeStickerPreferences(parsed.stickers);
   const notes = [];
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
+  const hasSettings = sections.some((section) => isRecord(parsed[section]));
   const known = new Set(['schema', 'stickers', 'usage', 'multistream', 'channelLayouts',
     'favoriteChannels', 'dismissedChannels', 'chatKeywords', 'channelNotes', 'mediaPreferences']);
 
@@ -3055,8 +3111,17 @@ function validateImportedSettings(jsonText) {
   const channelNotes = parsed.channelNotes == null ? null : normalizeChannelNotes(parsed.channelNotes);
   const mediaPreferences = parsed.mediaPreferences == null ? null : normalizeMediaPreferences(parsed.mediaPreferences);
 
+  if (!hasSettings && !stickers && !usage && !multistream
+    && channelLayouts == null && favoriteChannels == null && dismissedChannels == null
+    && chatKeywords == null && channelNotes == null && mediaPreferences == null) {
+    return { ok: false, error: 'That file does not contain Kick Focus settings.' };
+  }
+
   return {
-    ok: true, value, stickers, usage, multistream,
+    ok: true,
+    value,
+    settings: hasSettings ? value : null,
+    stickers, usage, multistream,
     channelLayouts, favoriteChannels, dismissedChannels, chatKeywords, channelNotes, mediaPreferences,
     notes,
   };
@@ -5724,6 +5789,14 @@ function createLive(host) {
     }
   }
 
+  function describeKickFetchFailure(status) {
+    if (status === 'parse') return 'returned data this build could not read';
+    if (status === 'timeout') return 'timed out';
+    if (status === 'network') return 'could not be reached';
+    if (status === 'oversized') return 'returned more data than this build will read';
+    return `answered ${status}`;
+  }
+
   /**
    * Same-origin JSON with a deadline and a size ceiling.
    *
@@ -5748,7 +5821,11 @@ function createLive(host) {
       if (!response.ok) return { ok: false, status: response.status };
       const text = await response.text();
       if (text.length > LIVE_MAX_BYTES) return { ok: false, status: 'oversized' };
-      return { ok: true, status: response.status, body: JSON.parse(text) };
+      try {
+        return { ok: true, status: response.status, body: JSON.parse(text) };
+      } catch {
+        return { ok: false, status: 'parse' };
+      }
     } catch (error) {
       return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network' };
     } finally {
@@ -5840,7 +5917,7 @@ function createLive(host) {
     const channelResponse = await kickFetchJson(endpoints.channel(slug));
     if (state.live.slug !== slug) return; // navigated away mid-flight
     if (!channelResponse.ok) {
-      state.live.catalogError = `Kick's channel API answered ${channelResponse.status}.`;
+      state.live.catalogError = `Kick's channel API ${describeKickFetchFailure(channelResponse.status)}.`;
       refreshLiveDiagnostics();
       return;
     }
@@ -5930,7 +6007,7 @@ function createLive(host) {
     if (state.live.slug !== slug) return;
     state.live.standing = standing;
     if (!response.ok) {
-      state.live.catalogError = `Kick's emote API answered ${response.status}; using the picker instead.`;
+      state.live.catalogError = `Kick's emote API ${describeKickFetchFailure(response.status)}; using the picker instead.`;
       refreshLiveDiagnostics();
       return;
     }
@@ -7618,12 +7695,12 @@ const state = {
   resetOpener: null,
   chatEmoteTooltip: null,
   companion: { active: false, version: '' },
-  watched: new Set(readSessionArray(WATCHED_KEY)),
-  favorites: new Set(readPersistentArray(FAVORITES_KEY)),
-  dismissed: new Set(readPersistentArray(DISMISSED_KEY)),
-  mediaPreferences: readPersistentRecord(MEDIA_PREFERENCES_KEY),
-  chatKeywords: readPersistentRecord(CHAT_KEYWORDS_KEY),
-  channelNotes: readPersistentRecord(CHANNEL_NOTES_KEY),
+  watched: new Set(normalizeChannelList(readSessionArray(WATCHED_KEY))),
+  favorites: new Set(normalizeChannelList(readPersistentArray(FAVORITES_KEY))),
+  dismissed: new Set(normalizeChannelList(readPersistentArray(DISMISSED_KEY))),
+  mediaPreferences: normalizeMediaPreferences(readPersistentRecord(MEDIA_PREFERENCES_KEY)),
+  chatKeywords: normalizeChatKeywords(readPersistentRecord(CHAT_KEYWORDS_KEY)),
+  channelNotes: normalizeChannelNotes(readPersistentRecord(CHANNEL_NOTES_KEY)),
   stickerPreferences: readStickerPreferences(),
   stickerCatalog: new Map(),
   remoteBlocklist: readRemoteBlocklist(),
@@ -9136,7 +9213,7 @@ const SITE_CSS = `
       box-shadow: 0 -18px 48px rgba(0,0,0,.42) !important;
     }
 
-    #chat-emotes-picker-panel #search-emotes-input { min-height: 40px !important; border-color: var(--kf-border-strong) !important; border-radius: 8px !important; background: #080c09 !important; }
+    #chat-emotes-picker-panel #search-emotes-input { min-height: 40px !important; border-color: var(--kf-border-strong) !important; border-radius: 8px !important; background: var(--kf-canvas) !important; }
 
     [data-kf-sticker-topline] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 10px !important; margin-bottom: 8px !important; }
     [data-kf-sticker-topline] > div { display: flex !important; align-items: baseline !important; flex-wrap: wrap !important; gap: 6px !important; }
@@ -9153,7 +9230,7 @@ const SITE_CSS = `
       font-size: 13px !important;
     }
 
-    [data-kf-sticker-count], [data-kf-sticker-note], [data-kf-sticker-locked] { color: rgba(247,249,250,.62) !important; }
+    [data-kf-sticker-count], [data-kf-sticker-note], [data-kf-sticker-locked] { color: var(--kf-text-muted) !important; }
     [data-kf-sticker-toolbar] button {
       min-height: 32px !important;
       padding: 0 8px !important;
@@ -9611,7 +9688,12 @@ function tagHideableElements() {
   if (!hidden.length) return;
   for (const entry of HIDEABLE_ELEMENTS) {
     if (!hidden.includes(entry.id)) continue;
-    for (const element of findAllProbe(document, entry.probe).elements) {
+    const { elements } = findAllProbe(document, entry.probe);
+    // Each hideable id is one control or one list container. A fallback
+    // selector that matches a crowd is the wrong node, and hiding it would
+    // take Kick's chrome with it.
+    if (elements.length === 0 || elements.length > 4) continue;
+    for (const element of elements) {
       if (state.root?.contains(element)) continue;
       if (element.dataset.kfElement !== entry.id) element.dataset.kfElement = entry.id;
     }
@@ -9976,18 +10058,17 @@ function readRemoteBlocklist() {
 }
 
 function persistSet(key, value) {
-  gmSet(key, [...value].filter((item) => typeof item === 'string').slice(-200));
+  gmSet(key, normalizeChannelList([...value]));
 }
 
 function channelPath() {
-  return state.route === 'channel' ? location.pathname.split(/[?#]/, 1)[0] : '';
+  return state.route === 'channel' ? observedChannelPath(location.pathname) : '';
 }
 
 function cardPath(node) {
   const link = node?.matches?.('a[href]') ? node : node?.querySelector?.('a[href]');
   try {
-    const path = link ? new URL(link.href, location.origin).pathname : '';
-    return path && path !== '/' ? path : '';
+    return observedChannelPath(link ? new URL(link.href, location.origin).pathname : '');
   } catch {
     return '';
   }
@@ -12506,18 +12587,17 @@ function applyPlaybackDiagnostics() {
 }
 
 function localChannelBlocked(path) {
-  if (!path) return false;
-  const channels = state.settings.content.hiddenChannels;
-  if (!channels.length) return false;
-  const normalized = path.toLowerCase();
-  return channels.some((entry) => normalized === entry);
+  const normalized = observedChannelPath(path);
+  if (!normalized) return false;
+  return state.settings.content.hiddenChannels.includes(normalized);
 }
 
 function remoteBlocklistMatches(path, labels, text) {
   const remote = state.remoteBlocklist;
   if (remote.status !== 'ready') return false;
   const normalized = String(text || '').toLowerCase();
-  return (path && remote.channels.has(path.toLowerCase()))
+  const channel = observedChannelPath(path);
+  return (channel && remote.channels.has(channel))
     || labels.categories?.some?.((category) => remote.categories.has(category.toLowerCase()))
     || [...remote.keywords].some((keyword) => normalized.includes(keyword));
 }
@@ -12688,7 +12768,7 @@ function applyContentFilters() {
     const labels = detectContentLabels(node.textContent, context);
     const link = node.matches?.('a[href]') ? node : node.querySelector?.('a[href]');
     let path = '';
-    try { path = link ? new URL(link.href, location.origin).pathname : ''; } catch { /* noop */ }
+    try { path = observedChannelPath(link ? new URL(link.href, location.origin).pathname : ''); } catch { /* noop */ }
     if (labels.casino && path) state.casinoPaths.add(path);
     if (path && state.casinoPaths.has(path)) labels.casino = true;
     node.dataset.kfWatched = String(Boolean(path && state.watched.has(path)));
@@ -12820,7 +12900,7 @@ async function runApplyCycle() {
   let started = performance.now();
   try {
     state.applyPendingSince = 0;
-    const currentPath = location.pathname;
+    const currentPath = observedChannelPath(location.pathname) || location.pathname.replace(/\/$/, '') || '/';
     state.route = routeKind(location.href);
     if (state.lastPath !== currentPath) {
       state.lastPath = currentPath;
@@ -12978,8 +13058,8 @@ function rememberWatchedCard(event) {
   if (!link || (main && !main.contains(link) && sidebar && !sidebar.contains(link))) return;
   if (!link) return;
   try {
-    const path = new URL(link.href, location.origin).pathname;
-    if (!path || path === '/') return;
+    const path = observedChannelPath(new URL(link.href, location.origin).pathname);
+    if (!path) return;
     state.watched.add(path);
     const values = [...state.watched].slice(-200);
     sessionStorage.setItem(WATCHED_KEY, JSON.stringify(values));
@@ -12989,13 +13069,13 @@ function rememberWatchedCard(event) {
 }
 
 function channelLayoutMap() {
-  const value = gmGet(CHANNEL_LAYOUT_KEY, {});
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return normalizeChannelLayouts(gmGet(CHANNEL_LAYOUT_KEY, {}));
 }
 
 function restoreChannelLayout(path) {
   if (!state.settings.layout.rememberPerChannel) return false;
-  const saved = channelLayoutMap()[path];
+  const canonical = observedChannelPath(path);
+  const saved = channelLayoutMap()[canonical];
   if (!saved || typeof saved !== 'object') return false;
   state.runtime.focus = Boolean(saved.focus);
   state.runtime.theater = Boolean(saved.theater);
@@ -13006,8 +13086,10 @@ function restoreChannelLayout(path) {
 
 function saveChannelLayout() {
   if (state.route !== 'channel' || !state.settings.layout.rememberPerChannel) return;
+  const path = channelPath();
+  if (!path) return;
   const map = channelLayoutMap();
-  map[location.pathname] = {
+  map[path] = {
     focus: state.runtime.focus,
     theater: state.runtime.theater,
     chatHidden: state.runtime.chatHidden,
@@ -13593,7 +13675,7 @@ const UI_CSS = `
   .kf-emote-catalog-browser h4 { margin: 0; color: var(--text); font-size: 12px; }
   .kf-emote-catalog-browser p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
   .kf-emote-catalog-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
-  .kf-emote-catalog-status[data-error="true"] { color: #ff8d86; }
+  .kf-emote-catalog-status[data-error="true"] { color: var(--danger-text); }
   /* Kick edits emotes users already pulled; the local record is the only copy
      that can prove it, so a changed entry is called out rather than quietly
      overwritten. */
@@ -13614,6 +13696,7 @@ const UI_CSS = `
   .kf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .kf-table th, .kf-table td { padding: 11px 9px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; }
   .kf-table th { color: var(--text-secondary); background: transparent; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+  .kf-table .kf-muted { color: var(--muted); }
   .kf-table tr:last-child td { border-bottom: 0; }
   .kf-table .kf-table-actions { text-align: right; }
   .kf-shortcut { display: inline-flex; min-width: 62px; justify-content: center; padding: 4px 8px; border: 1px solid #434a45; border-radius: 3px; background: #171b18; font-weight: 700; }
@@ -17421,6 +17504,7 @@ function clearPrivateData() {
   gmDelete(MEDIA_PREFERENCES_KEY);
   state.reward = { ...state.reward, lastClaimAt: 0, claims: 0, minutesRemaining: null, lastMessage: '' };
   gmDelete(REWARD_STATE_KEY);
+  gmDelete(PRE_IMPORT_BACKUP_KEY);
 }
 
 function confirmReset() {
@@ -17496,8 +17580,8 @@ function exportSettings() {
  * configuration instead of a half-imported mixture of the two.
  */
 function applyImportedStores(result) {
-  const trimmedSet = (values) => [...new Set(values)].filter((item) => typeof item === 'string').slice(-200);
-  const entries = [[STORAGE_KEY, result.value]];
+  const entries = [];
+  if (result.settings) entries.push([STORAGE_KEY, result.settings]);
   // The transaction has to stay one sized write, so what it commits is the
   // bounded seed; the complete library follows into the database once the
   // commit succeeds. Pushing the whole library through here instead would both
@@ -17507,16 +17591,19 @@ function applyImportedStores(result) {
   if (result.usage) entries.push([EMOTE_USAGE_KEY, result.usage]);
   if (result.multistream) entries.push([MULTISTREAM_KEY, result.multistream]);
   if (result.channelLayouts) entries.push([CHANNEL_LAYOUT_KEY, result.channelLayouts]);
-  if (result.favoriteChannels) entries.push([FAVORITES_KEY, trimmedSet(result.favoriteChannels)]);
-  if (result.dismissedChannels) entries.push([DISMISSED_KEY, trimmedSet(result.dismissedChannels)]);
+  if (result.favoriteChannels) entries.push([FAVORITES_KEY, normalizeChannelList(result.favoriteChannels)]);
+  if (result.dismissedChannels) entries.push([DISMISSED_KEY, normalizeChannelList(result.dismissedChannels)]);
   if (result.chatKeywords) entries.push([CHAT_KEYWORDS_KEY, result.chatKeywords]);
   if (result.channelNotes) entries.push([CHANNEL_NOTES_KEY, result.channelNotes]);
   if (result.mediaPreferences) entries.push([MEDIA_PREFERENCES_KEY, result.mediaPreferences]);
 
+  if (!entries.length) return { ok: false, reason: 'empty' };
+
   const commit = gmSetMany(entries);
   if (!commit.ok) return commit;
 
-  state.settings = result.value;
+  if (result.settings) state.settings = result.settings;
+  state.settingsIndex = null;
   if (result.stickers) {
     libraryStore.write(result.stickers);
     state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
@@ -17529,8 +17616,8 @@ function applyImportedStores(result) {
     state.multistream = result.multistream;
     if (multistreamOpen()) renderMultistream();
   }
-  if (result.favoriteChannels) state.favorites = new Set(trimmedSet(result.favoriteChannels));
-  if (result.dismissedChannels) state.dismissed = new Set(trimmedSet(result.dismissedChannels));
+  if (result.favoriteChannels) state.favorites = new Set(normalizeChannelList(result.favoriteChannels));
+  if (result.dismissedChannels) state.dismissed = new Set(normalizeChannelList(result.dismissedChannels));
   if (result.chatKeywords) state.chatKeywords = result.chatKeywords;
   if (result.channelNotes) state.channelNotes = result.channelNotes;
   if (result.mediaPreferences) state.mediaPreferences = result.mediaPreferences;
@@ -17549,9 +17636,7 @@ async function onImportFile(event) {
       showToast(result.error, true);
       return;
     }
-    // Non-destructive: snapshot the current configuration before overwriting so
-    // the import can be undone, then apply every store the file provided.
-    gmSet(PRE_IMPORT_BACKUP_KEY, currentExportPayload());
+    const snapshot = currentExportPayload();
     const commit = applyImportedStores(result);
     if (!commit.ok) {
       showToast(commit.reason === 'over-budget'
@@ -17559,6 +17644,7 @@ async function onImportFile(event) {
         : 'The import could not be saved. Your previous settings are unchanged.', true);
       return;
     }
+    gmSet(PRE_IMPORT_BACKUP_KEY, snapshot);
     renderSettingsPage();
     scheduleApply(0);
     // Naming what was not kept, because an import that silently drops half a
@@ -18142,6 +18228,8 @@ async function copyDiagnostics() {
     applyCycle: applyCostSummary(state.diagnostics.apply),
     routeSource: state.runtime.routeSource,
     settingsSchema: SETTINGS_SCHEMA,
+    settingsDiff: diagnosticSettingsDiff(state.settings),
+    probes: state.compatibility?.probes || null,
   };
   const copied = await copyText(JSON.stringify(summary, null, 2));
   showToast(copied ? 'Diagnostic summary copied.' : 'Clipboard access was unavailable.', !copied);
