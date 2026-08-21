@@ -21,6 +21,10 @@ import {
   pruneChatHistory,
   searchChatHistory,
   shouldPlayMentionSound,
+  COMPOSER_RECALL_LIMIT,
+  appendComposerRecall,
+  composerRecallAt,
+  isComposerRecallGesture,
   VIEWER_HUB_CARDS,
   earnedState,
   VIEWER_HUB_STALE_MS,
@@ -2904,6 +2908,24 @@ test('chat history is bounded by age, rows, and bytes at once', { tag: 'unit' },
   assert.ok(byBytes.length >= 1, 'the byte cap emptied the store instead of trimming it');
   // The newest survives, which is the half of "trim" that matters.
   assert.equal(byBytes[byBytes.length - 1].id, 'h3');
+});
+
+test('composer recall is a five-message memory ring and only Shift+Up enters it', { tag: 'unit' }, () => {
+  assert.equal(DEFAULT_SETTINGS.content.chatComposerRecall, false);
+  let messages = [];
+  for (let index = 0; index < COMPOSER_RECALL_LIMIT + 2; index += 1) {
+    messages = appendComposerRecall(messages, `sent ${index}`);
+  }
+  assert.deepEqual(messages, ['sent 2', 'sent 3', 'sent 4', 'sent 5', 'sent 6']);
+  assert.equal(composerRecallAt(messages, 0), 'sent 6');
+  assert.equal(composerRecallAt(messages, 4), 'sent 2');
+  assert.equal(composerRecallAt(messages, 5), 'sent 6');
+  assert.deepEqual(appendComposerRecall(messages, '/w friend private'), messages);
+  assert.deepEqual(appendComposerRecall(messages, 'private composer', true), messages);
+  assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: true }), true);
+  assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: false }), false);
+  assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: true, ctrlKey: true }), false);
+  assert.equal(normalizeSettings({ content: { chatComposerRecall: true } }).content.chatComposerRecall, true);
 });
 
 test('a whisper, an unidentifiable message, and a repeat are all refused', { tag: 'unit' }, () => {

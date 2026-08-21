@@ -115,6 +115,7 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
   Touches: `src/runtime.js` composer hooks, a small in-memory ring of this tab’s own sends, i18n, a setting default off.
   Acceptance: Shift+Up cycles only messages this tab sent; whispers are excluded; reload clears the ring; Kick’s ArrowUp is not captured; nothing is written to disk.
   Complexity: M
+  Implementation note (2026-08-21): an off-by-default Content setting keeps a five-message ring in runtime memory only. Enter, the send control, and form submission coalesce into one local send; whisper composers and private-message commands are refused. Shift+Up cycles newest-first, ordinary Arrow Up is untouched, and switching the setting off clears the ring. Pure tests cover the cap, cycling, whisper refusal, normalization, and the exact gesture. The browser probe drives the setting, composer, enabled/disabled states, and plain Arrow Up. Offline verification passes 361/361 with 186 artifact checks and 80 red probes. The checkbox remains open until the browser probe can run; outbound TCP is currently blocked machine-wide.
 
 - [ ] P3 — R-87 — Following-rail hover preview from Kick’s own thumbnail
   Why: a Greasy Fork script dated 2026-08-09/11 and Mo'Kick both advertise sidebar hover previews; Kick Focus already has card chips and rail hide toggles but no preview.

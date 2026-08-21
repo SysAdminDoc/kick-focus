@@ -1505,6 +1505,86 @@ try {
       ? `left selected/stored=${chatLayout.leftSelected}/${chatLayout.leftStored}; owner ${chatLayout.before?.owner}px / inner ${chatLayout.before?.inner}px; dragged both to ${chatLayout.dragged?.owner}px (aria ${chatLayout.dragged?.aria}, css ${chatLayout.dragged?.css}); left=${chatLayout.placedLeft}, separator edge=${chatLayout.separatorOnPlayerEdge}, restored right=${chatLayout.restoredRight}, bounded=${chatLayout.bounded}`
       : chatLayout.why);
 
+  const composerRecallProbe = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = (ms = 350) => new Promise((done) => setTimeout(done, ms));
+    const beforePage = shadow.querySelector('[data-kf-page]')?.dataset.kfCurrentPage || '';
+    const stored = JSON.parse(localStorage.getItem('kick-focus:settings') || '{}');
+    const initiallyEnabled = stored.content?.chatComposerRecall === true;
+    const setEnabled = async (wanted) => {
+      shadow.querySelector('[data-action="open-settings"]')?.click();
+      await settle(120);
+      shadow.querySelector('[data-page="content"]')?.click();
+      await settle(120);
+      const control = shadow.querySelector('[data-set="content.chatComposerRecall"]');
+      if (!control) return false;
+      if ((control.getAttribute('aria-checked') === 'true') !== wanted) control.click();
+      await settle();
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      return (JSON.parse(localStorage.getItem('kick-focus:settings') || '{}').content || {}).chatComposerRecall === wanted;
+    };
+    const chat = document.createElement('div');
+    chat.id = 'channel-chatroom';
+    chat.style.cssText = 'position:fixed;left:-3000px;top:0';
+    const input = document.createElement('textarea');
+    input.setAttribute('data-testid', 'chat-input');
+    chat.append(input);
+    document.body.prepend(chat);
+    const type = (value) => {
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const key = (keyName, shiftKey = false) => {
+      const event = new KeyboardEvent('keydown', { key: keyName, shiftKey, bubbles: true, cancelable: true });
+      input.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    try {
+      if (!await setEnabled(true)) return { ok: false, why: 'the recall setting did not persist from its Content page control' };
+      type('first local send'); key('Enter');
+      type('second local send'); key('Enter');
+      type('/w friend private'); key('Enter');
+      type('draft stays');
+      const plainPrevented = key('ArrowUp');
+      const plainValue = input.value;
+      const firstPrevented = key('ArrowUp', true);
+      const first = input.value;
+      const secondPrevented = key('ArrowUp', true);
+      const second = input.value;
+      const thirdPrevented = key('ArrowUp', true);
+      const third = input.value;
+      await setEnabled(false);
+      type('disabled draft');
+      const disabledPrevented = key('ArrowUp', true);
+      return {
+        ok: true, plainPrevented, plainValue, firstPrevented, first,
+        secondPrevented, second, thirdPrevented, third,
+        disabledPrevented, disabledValue: input.value,
+      };
+    } finally {
+      await setEnabled(initiallyEnabled);
+      chat.remove();
+      if (beforePage) {
+        shadow.querySelector('[data-action="open-settings"]')?.click();
+        await settle(120);
+        shadow.querySelector('[data-page="' + beforePage + '"]')?.click();
+        shadow.querySelector('[data-action="close-settings"]')?.click();
+      }
+    }
+  })()`);
+  const composerRecall = composerRecallProbe.value || {};
+  record('composer recall cycles only this tab own public sends on Shift+Up',
+    composerRecall.ok === true
+      && composerRecall.plainPrevented === false && composerRecall.plainValue === 'draft stays'
+      && composerRecall.firstPrevented === true && composerRecall.first === 'second local send'
+      && composerRecall.secondPrevented === true && composerRecall.second === 'first local send'
+      && composerRecall.thirdPrevented === true && composerRecall.third === 'second local send'
+      && composerRecall.disabledPrevented === false && composerRecall.disabledValue === 'disabled draft',
+    composerRecall.ok
+      ? `plain=${composerRecall.plainPrevented}/${JSON.stringify(composerRecall.plainValue)}, recalls=${JSON.stringify([composerRecall.first, composerRecall.second, composerRecall.third])}, disabled=${composerRecall.disabledPrevented}/${JSON.stringify(composerRecall.disabledValue)}`
+      : composerRecall.why);
+
   // StreamerStats refuses framing with X-Frame-Options: DENY, so the profile
   // action must open a real popup. Supply a stable channel action row and stub
   // window.open so this proves the URL, placement, security handoff, and popup

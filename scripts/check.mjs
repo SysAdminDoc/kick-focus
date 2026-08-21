@@ -705,6 +705,15 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['composer recall is opt-in, session-only, and leaves plain ArrowUp to Kick', (() => {
+    const start = source.indexOf('function rememberComposerMessage');
+    const end = source.indexOf('function insertStickerName', start);
+    const region = start >= 0 && end > start ? source.slice(start, end) : '';
+    return source.includes('chatComposerRecall: false')
+      && source.includes("document.addEventListener('keydown', guard('composer recall', onComposerKeydown), true)")
+      && region.includes('isComposerRecallGesture(event)')
+      && !/gm(?:Set|Delete)|localStorage|sessionStorage/.test(region);
+  })()],
   ['settings page composition lives behind an explicit factory instead of runtime wrappers',
     settingsModuleSource.includes('export function createSettings(host)')
     && ['renderLayoutPage', 'renderAppearancePage', 'renderContentPage', 'renderAccessibilityPage', 'renderViewerPage', 'renderAboutPage']

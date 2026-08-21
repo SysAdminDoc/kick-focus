@@ -222,6 +222,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     chatMentionSound: false,
     chatHideMessages: false,
     chatHistory: false,
+    // The setting persists. The messages never do: runtime keeps only this
+    // tab's last five sends in memory and a reload drops them.
+    chatComposerRecall: false,
     organizeChatStickers: true,
     clickChatEmotes: true,
     // Off by default: this one types into Kick's chat input. Copying a name to
@@ -1259,6 +1262,39 @@ export const CHAT_HISTORY_LIMITS = Object.freeze({
 /** The longest single message worth keeping. Beyond this it is truncated, not dropped. */
 export const CHAT_HISTORY_MAX_TEXT = 400;
 
+/** Small by design. This is a composer convenience, not another chat log. */
+export const COMPOSER_RECALL_LIMIT = 5;
+
+/** Only the modified gesture belongs to this feature. Plain ArrowUp stays with Kick. */
+export function isComposerRecallGesture(event = {}) {
+  return event.key === 'ArrowUp'
+    && event.shiftKey === true
+    && event.altKey !== true
+    && event.ctrlKey !== true
+    && event.metaKey !== true;
+}
+
+/**
+ * Keep one local send in a bounded ring. Private-message commands and an
+ * explicitly private composer are refused before any text reaches the ring.
+ */
+export function appendComposerRecall(messages = [], value = '', whisper = false) {
+  const list = (Array.isArray(messages) ? messages : [])
+    .filter((message) => typeof message === 'string' && message.trim())
+    .slice(-COMPOSER_RECALL_LIMIT);
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  if (!text || whisper || /^\/(?:w|whisper|msg|pm)\b/i.test(text)) return list;
+  return [...list, text].slice(-COMPOSER_RECALL_LIMIT);
+}
+
+/** Newest first and circular, so repeated Shift+Up never falls into an empty state. */
+export function composerRecallAt(messages = [], index = 0) {
+  const list = (Array.isArray(messages) ? messages : []).filter((message) => typeof message === 'string');
+  if (!list.length) return '';
+  const offset = Math.abs(Math.trunc(Number(index) || 0)) % list.length;
+  return list[list.length - 1 - offset];
+}
+
 function historyBytes(rows) {
   let total = 0;
   for (const row of rows) total += (row.text?.length || 0) + (row.author?.length || 0) + 24;
@@ -1898,6 +1934,7 @@ export function normalizeSettings(input) {
       chatMentionSound: bool(content.chatMentionSound, defaults.content.chatMentionSound),
       chatHideMessages: bool(content.chatHideMessages, defaults.content.chatHideMessages),
       chatHistory: bool(content.chatHistory, defaults.content.chatHistory),
+      chatComposerRecall: bool(content.chatComposerRecall, defaults.content.chatComposerRecall),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),

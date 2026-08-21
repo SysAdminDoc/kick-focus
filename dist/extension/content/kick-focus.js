@@ -178,6 +178,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     chatMentionSound: false,
     chatHideMessages: false,
     chatHistory: false,
+    chatComposerRecall: false,
     organizeChatStickers: true,
     clickChatEmotes: true,
     insertEmoteName: false,
@@ -804,6 +805,32 @@ const CHAT_HISTORY_LIMITS = Object.freeze({
 
 const CHAT_HISTORY_MAX_TEXT = 400;
 
+const COMPOSER_RECALL_LIMIT = 5;
+
+function isComposerRecallGesture(event = {}) {
+  return event.key === 'ArrowUp'
+    && event.shiftKey === true
+    && event.altKey !== true
+    && event.ctrlKey !== true
+    && event.metaKey !== true;
+}
+
+function appendComposerRecall(messages = [], value = '', whisper = false) {
+  const list = (Array.isArray(messages) ? messages : [])
+    .filter((message) => typeof message === 'string' && message.trim())
+    .slice(-COMPOSER_RECALL_LIMIT);
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  if (!text || whisper || /^\/(?:w|whisper|msg|pm)\b/i.test(text)) return list;
+  return [...list, text].slice(-COMPOSER_RECALL_LIMIT);
+}
+
+function composerRecallAt(messages = [], index = 0) {
+  const list = (Array.isArray(messages) ? messages : []).filter((message) => typeof message === 'string');
+  if (!list.length) return '';
+  const offset = Math.abs(Math.trunc(Number(index) || 0)) % list.length;
+  return list[list.length - 1 - offset];
+}
+
 function historyBytes(rows) {
   let total = 0;
   for (const row of rows) total += (row.text?.length || 0) + (row.author?.length || 0) + 24;
@@ -1231,6 +1258,7 @@ function normalizeSettings(input) {
       chatMentionSound: bool(content.chatMentionSound, defaults.content.chatMentionSound),
       chatHideMessages: bool(content.chatHideMessages, defaults.content.chatHideMessages),
       chatHistory: bool(content.chatHistory, defaults.content.chatHistory),
+      chatComposerRecall: bool(content.chatComposerRecall, defaults.content.chatComposerRecall),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
@@ -6081,6 +6109,7 @@ function createSettings(host) {
           ${row('People worth noticing', 'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.', `<input class="kf-text" type="text" data-set="content.chatPriorityPeople" value="${escapeHtml((value.chatPriorityPeople || []).join(', '))}" placeholder="name, name" aria-label="People worth noticing">`)}
           ${row('Sound on a mention', 'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.', toggle('content.chatMentionSound', value.chatMentionSound, { label: 'Sound on a mention' }))}
           ${row('Hide a message for yourself', 'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.', toggle('content.chatHideMessages', value.chatHideMessages, { label: 'Hide a message for yourself' }))}
+          ${row('Recall my sent messages', 'Keep the last five messages sent from this tab in memory. Shift+Up cycles them. Whispers are skipped, reload clears them, and ordinary Arrow Up stays with Kick.', toggle('content.chatComposerRecall', value.chatComposerRecall, { label: 'Recall my sent messages' }))}
           ${row('Search this session’s chat', 'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.', toggle('content.chatHistory', value.chatHistory, { label: 'Search this session’s chat' }))}
           ${value.chatHistory ? `<div class="kf-row kf-row-wide" data-kf-chat-history>
             <div><h3>Session chat log</h3><p>${state.chatComfort.rows.length} ${plural(state.chatComfort.rows.length, 'message held. Capped at 400 messages, 200 KB, and one hour.', 'messages held. Capped at 400 messages, 200 KB, and one hour.')}</p></div>
@@ -6440,7 +6469,10 @@ const state = {
   presence: { channel: null, answers: [], offer: [] },
   viewerHub: { collectibles: null },
   discoveryLayouts: [],
-  chatComfort: { rows: [], hidden: new Set(), seen: new Set(), sounded: new Set(), lastSoundAt: 0, query: '' },
+  chatComfort: {
+    rows: [], hidden: new Set(), seen: new Set(), sounded: new Set(), lastSoundAt: 0, query: '',
+    composerRecall: [], composerRecallIndex: -1,
+  },
   modal: null,
   command: null,
   commandInput: null,
@@ -6478,6 +6510,9 @@ const state = {
     stickerGridScrollTop: null,
     stickerSearchTimer: 0,
     emoteCompletion: null,
+    recallingComposer: false,
+    composerRememberedText: '',
+    composerRememberedAt: 0,
     stickerGridAnchor: 0,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
@@ -7155,7 +7190,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              815196') || 0;
+const BUNDLE_BYTES = Number('              822106') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -11477,6 +11512,10 @@ function updateSetting(path, value, message = 'Autosaved') {
     state.observers.chat?.disconnect?.();
     state.observers.chat = null;
   }
+  if (path === 'content.chatComposerRecall' && !state.settings.content.chatComposerRecall) {
+    state.chatComfort.composerRecall = [];
+    state.chatComfort.composerRecallIndex = -1;
+  }
   if (path === 'content.blocklistSubscription' && !state.settings.content.blocklistSubscription) clearRemoteBlocklist();
   if (path === 'content.blocklistUrl' && state.remoteBlocklist.source !== state.settings.content.blocklistUrl) clearRemoteBlocklist();
   if (path.startsWith('content.blocklist')) window.setTimeout(() => scheduleRemoteBlocklistSync(true), 0);
@@ -12613,6 +12652,8 @@ const TRANSLATIONS = {
     'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.': 'Un tono corto cuando un mensaje coincide con tus resaltados, viene de alguien de tu lista o dice tu nombre. Se genera en el navegador, así que no se descarga nada. Callado con la pestaña en segundo plano, callado con tus propios mensajes y nunca más de una vez cada pocos segundos.',
     'Hide a message for yourself': 'Ocultar un mensaje solo para ti',
     'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.': 'Añade un pequeño control de descarte a cada mensaje. Oculta ese mensaje en tu navegador solo durante esta sesión, no cambia nada para los demás y ofrece deshacer.',
+    'Recall my sent messages': 'Recordar mis mensajes enviados',
+    'Keep the last five messages sent from this tab in memory. Shift+Up cycles them. Whispers are skipped, reload clears them, and ordinary Arrow Up stays with Kick.': 'Guarda en memoria los últimos cinco mensajes enviados desde esta pestaña. Mayús+Arriba los recorre. Los susurros se omiten, recargar los borra y Flecha arriba sigue siendo de Kick.',
     'Search this session’s chat': 'Buscar en el chat de esta sesión',
     'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.': 'Guarda lo que esta pestaña ha visto para que puedas encontrarlo otra vez. Queda en memoria, nunca llega al almacenamiento y desaparece al recargar. Los susurros no se guardan nunca, y un mensaje que un moderador elimine sale del registro en cuanto llega el borrado.',
     'Session chat log': 'Registro del chat de esta sesión',
@@ -13255,6 +13296,8 @@ const TRANSLATIONS = {
     'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.': 'Um tom curto quando uma mensagem corresponde aos teus destaques, vem de alguém da tua lista ou diz o teu nome. É gerado no navegador, por isso nada é transferido. Silencioso com o separador em segundo plano, silencioso nas tuas próprias mensagens e nunca mais do que uma vez a cada poucos segundos.',
     'Hide a message for yourself': 'Esconder uma mensagem só para ti',
     'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.': 'Adiciona um pequeno controlo de dispensa a cada mensagem. Esconde essa mensagem no teu navegador apenas nesta sessão, não muda nada para os outros e oferece anular.',
+    'Recall my sent messages': 'Recordar as minhas mensagens enviadas',
+    'Keep the last five messages sent from this tab in memory. Shift+Up cycles them. Whispers are skipped, reload clears them, and ordinary Arrow Up stays with Kick.': 'Guarda na memória as últimas cinco mensagens enviadas neste separador. Shift+Cima percorre-as. Os sussurros são ignorados, recarregar apaga-as e a Seta para cima continua com o Kick.',
     'Search this session’s chat': 'Procurar no chat desta sessão',
     'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.': 'Guarda o que este separador viu para que o possas encontrar outra vez. Fica em memória, nunca chega ao armazenamento e desaparece ao recarregar. Os sussurros nunca são guardados, e uma mensagem que um moderador apague sai do registo assim que a eliminação chega.',
     'Session chat log': 'Registo do chat desta sessão',
@@ -14081,11 +14124,11 @@ function buildInterface() {
   }
 
   document.addEventListener('keydown', onGlobalKeydown, true);
+  document.addEventListener('keydown', guard('composer recall', onComposerKeydown), true);
+  document.addEventListener('submit', guard('composer recall', onComposerSubmit), true);
+  document.addEventListener('click', guard('composer recall', onComposerSendClick), true);
   document.addEventListener('click', rememberWatchedCard, true);
-  document.addEventListener('input', (event) => {
-    if (!event.target?.closest?.('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]')) return;
-    updateEmoteCompletion();
-  }, true);
+  document.addEventListener('input', onComposerInput, true);
   document.addEventListener('selectionchange', () => {
     if (state.runtime.emoteCompletion) updateEmoteCompletion();
   });
@@ -15583,6 +15626,100 @@ function chatMessageInput() {
   const input = document.querySelector('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]');
   if (!input || input.closest('[data-kf-multistream-backdrop], iframe')) return null;
   return input.isContentEditable || input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input : null;
+}
+
+function composerInputFor(node) {
+  const input = node?.closest?.('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]');
+  if (!input || input.closest('[data-kf-multistream-backdrop], iframe')) return null;
+  return input.isContentEditable || input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input : null;
+}
+
+function composerText(input) {
+  if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) return input.value || '';
+  return input?.isContentEditable ? input.textContent || '' : '';
+}
+
+function composerIsWhisper(input) {
+  return /^\/messages(?:\/|$)/i.test(location.pathname)
+    || Boolean(input?.closest?.('[data-testid*="whisper" i], [data-testid*="direct-message" i], [data-testid*="message-thread" i]'));
+}
+
+function rememberComposerMessage(input) {
+  if (!state.settings.content.chatComposerRecall || !input) return;
+  const text = composerText(input);
+  const now = Date.now();
+  if (text === state.runtime.composerRememberedText && now - state.runtime.composerRememberedAt < 300) return;
+  const next = appendComposerRecall(state.chatComfort.composerRecall, text, composerIsWhisper(input));
+  const changed = next.length !== state.chatComfort.composerRecall.length
+    || next.some((message, index) => message !== state.chatComfort.composerRecall[index]);
+  if (!changed) return;
+  state.chatComfort.composerRecall = next;
+  state.chatComfort.composerRecallIndex = -1;
+  state.runtime.composerRememberedText = text;
+  state.runtime.composerRememberedAt = now;
+}
+
+function replaceComposerText(input, text) {
+  state.runtime.recallingComposer = true;
+  try {
+    input.focus();
+    if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+      const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+      if (setter) setter.call(input, text);
+      else input.value = text;
+      input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      input.setSelectionRange?.(text.length, text.length);
+      return true;
+    }
+    if (!input.isContentEditable) return false;
+    const selection = document.getSelection();
+    if (!selection) return false;
+    const range = document.createRange();
+    range.selectNodeContents(input);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return document.execCommand('insertText', false, text) === true;
+  } finally {
+    state.runtime.recallingComposer = false;
+  }
+}
+
+function onComposerKeydown(event) {
+  const input = composerInputFor(event.target);
+  if (!input) return;
+  if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
+    rememberComposerMessage(input);
+    return;
+  }
+  if (!state.settings.content.chatComposerRecall || !isComposerRecallGesture(event)) return;
+  const messages = state.chatComfort.composerRecall;
+  if (!messages.length) return;
+  const nextIndex = (state.chatComfort.composerRecallIndex + 1) % messages.length;
+  const recalled = composerRecallAt(messages, nextIndex);
+  if (!recalled || !replaceComposerText(input, recalled)) return;
+  state.chatComfort.composerRecallIndex = nextIndex;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function onComposerInput(event) {
+  const input = composerInputFor(event.target);
+  if (!input) return;
+  if (!state.runtime.recallingComposer) state.chatComfort.composerRecallIndex = -1;
+  updateEmoteCompletion();
+}
+
+function onComposerSubmit(event) {
+  const input = event.target?.querySelector?.('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]')
+    || chatMessageInput();
+  rememberComposerMessage(input);
+}
+
+function onComposerSendClick(event) {
+  const button = event.target?.closest?.('[data-testid="chat-send-button"], [data-testid="send-message"], button[type="submit"][aria-label*="send" i]');
+  if (!button || !button.closest?.('#channel-chatroom, [data-testid="chatroom"], form')) return;
+  rememberComposerMessage(chatMessageInput());
 }
 
 function insertStickerName(target) {
