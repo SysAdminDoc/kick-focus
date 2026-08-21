@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.31.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.32.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -190,7 +190,7 @@ Kick changes frequently. The most brittle hooks are the sidebar and chat selecto
 
 ## What it cannot do
 
-- **It cannot remove Kick's in-stream video ads.** Kick serves those through server-side ad insertion (SSAI): they are stitched into the video manifest itself, parsed inside an opaque Amazon IVS WASM worker the page world cannot reach, and the ad opt-out lives in a server-signed playback token. Kick Focus blocks the *separable* ad stack (display and tracking hosts) at the network and page layers and never touches playback. A subscription is the only path Kick offers to change in-stream ads, and even that does not remove them.
+- **It cannot remove Kick's in-stream video ads.** Kick serves those through server-side ad insertion (SSAI): they are stitched into the video manifest itself, parsed inside an opaque Amazon IVS WASM worker the page world cannot reach, and the ad opt-out lives in a server-signed playback token. Kick Focus blocks the *separable* ad stack (display and tracking hosts) at the network and page layers and never touches playback. Kick's own help currently disagrees with itself on whether a channel subscription skips those ads (the ads articles say subscribers will not see them on subscribed channels; the subscriptions article dated 2026-07-16 says subscribing does not remove ads). This build cannot observe SSAI, so it cannot verify skip, and it never promises in-stream ad removal.
 - **Installation is manual and unsigned.** Chromium rejects self-hosted `.crx` files on Windows and macOS, so the companion loads via Developer Mode → Load unpacked. The userscript is the artifact that actually reaches most people; install it in Tampermonkey or Violentmonkey. On Chromium a userscript manager needs its own "Allow user scripts" toggle (Chrome 138+), and Violentmonkey's true document-start injection needs its "Alternative page mode" enabled. The Firefox package is unsigned: it runs temporarily via `about:debugging`, or permanently only on Nightly/DevEdition/ESR with signature enforcement off.
 - **Account actions are deliberately narrow.** A click on a chat emote saves it locally. Only an explicit follow-gate from Kick can add the matching channel Follow in the same action; public artwork alone never triggers it, and subscriber access is unchanged. Copying an emote name is always available. Typing one into the chat box is off by default, inserts the plain name at your cursor and stops there, never Kick's `[emote:id:name]` wire token, never an id, and no build ever sends a chat message. The daily-reward claim is off by default, presses only Kick's own claim button, and stops for the night once it claims.
 
