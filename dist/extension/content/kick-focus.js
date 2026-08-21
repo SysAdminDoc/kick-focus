@@ -920,6 +920,29 @@ function formatChatTime(at, locale = undefined) {
   }
 }
 
+function floatingPreviewPosition(anchor = {}, preview = {}, viewport = {}, gap = 12) {
+  const number = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
+  const padding = Math.max(0, number(gap, 12));
+  const viewportWidth = Math.max(0, number(viewport.width));
+  const viewportHeight = Math.max(0, number(viewport.height));
+  const previewWidth = Math.max(0, number(preview.width));
+  const previewHeight = Math.max(0, number(preview.height));
+  const anchorLeft = number(anchor.left);
+  const anchorRight = number(anchor.right, anchorLeft + number(anchor.width));
+  const anchorTop = number(anchor.top);
+  const anchorHeight = Math.max(0, number(anchor.height, number(anchor.bottom) - anchorTop));
+  const right = anchorRight + padding;
+  const left = anchorLeft - padding - previewWidth;
+  const side = right + previewWidth <= viewportWidth - padding || left < padding ? 'right' : 'left';
+  const maxLeft = Math.max(padding, viewportWidth - previewWidth - padding);
+  const maxTop = Math.max(padding, viewportHeight - previewHeight - padding);
+  return Object.freeze({
+    left: Math.round(Math.min(maxLeft, Math.max(padding, side === 'right' ? right : left))),
+    top: Math.round(Math.min(maxTop, Math.max(padding, anchorTop + (anchorHeight - previewHeight) / 2))),
+    side,
+  });
+}
+
 function buildChatHistoryExport(rows = [], channel = '') {
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
   const header = `Kick Focus chat log — ${channel || 'this session'} — ${list.length} messages`;
@@ -6482,6 +6505,8 @@ const state = {
   headerControlButton: null,
   profileStatsHost: null,
   profileStatsButton: null,
+  followingPreview: null,
+  followingPreviewRow: null,
   chatResizeCleanup: null,
   lastFocused: null,
   applyTimer: 0,
@@ -7190,7 +7215,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              822106') || 0;
+const BUNDLE_BYTES = Number('              833785') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -7360,6 +7385,66 @@ const SITE_CSS = `
 
     #sidebar-wrapper a[data-testid^="sidebar-"]:hover {
       background: rgba(255,255,255,.045) !important;
+    }
+
+    #kick-focus-following-preview {
+      position: fixed !important;
+      z-index: 2147483000 !important;
+      width: min(320px, calc(100vw - 24px)) !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+      border: 1px solid rgba(255,255,255,.12) !important;
+      border-radius: 10px !important;
+      background: #0b100d !important;
+      box-shadow: 0 20px 54px rgba(0,0,0,.58), 0 2px 12px rgba(0,0,0,.3) !important;
+      color: #f7f9f8 !important;
+      opacity: 0 !important;
+      transform: translateX(-4px) scale(.985) !important;
+      transform-origin: center left !important;
+      pointer-events: none !important;
+      transition: opacity 120ms ease, transform 120ms ease !important;
+    }
+
+    #kick-focus-following-preview[hidden] { display: none !important; }
+    #kick-focus-following-preview[data-kf-open="true"] {
+      opacity: 1 !important;
+      transform: translateX(0) scale(1) !important;
+    }
+    #kick-focus-following-preview[data-kf-side="left"] { transform-origin: center right !important; }
+    #kick-focus-following-preview > :is(img, canvas) {
+      display: block !important;
+      width: 100% !important;
+      aspect-ratio: 16 / 9 !important;
+      object-fit: cover !important;
+      background: #111713 !important;
+    }
+    #kick-focus-following-preview > :is(img, canvas)[hidden] { display: none !important; }
+    #kick-focus-following-preview figcaption {
+      display: flex !important;
+      min-height: 42px !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      padding: 9px 11px 10px !important;
+      border-top: 1px solid rgba(255,255,255,.08) !important;
+      background: #101612 !important;
+      font: 500 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    }
+    #kick-focus-following-preview strong {
+      min-width: 0 !important;
+      overflow: hidden !important;
+      color: #f7f9f8 !important;
+      font-size: 14px !important;
+      font-weight: 720 !important;
+      letter-spacing: -.012em !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    #kick-focus-following-preview figcaption span {
+      flex: 0 0 auto !important;
+      color: rgba(247,249,248,.56) !important;
+      font-size: 11px !important;
+      letter-spacing: .02em !important;
     }
 
     #sidebar-wrapper :is(button, a):focus-visible,
@@ -8243,6 +8328,7 @@ const SITE_CSS = `
   }
   @media (prefers-reduced-motion: reduce) {
     html[data-kf-sidebar="dropdown"] #sidebar-wrapper { transition: none; }
+    #kick-focus-following-preview { transition: none !important; transform: none !important; }
   }
 
   /* Badges Kick's own markup omits. badges_v2 carries collectible and global
@@ -9012,6 +9098,183 @@ function applyRailVisibility() {
     const owner = heading.closest?.('section, [data-kick-rail], div') || heading.parentElement;
     if (owner) owner.dataset[`kf${rail[0].toUpperCase()}${rail.slice(1)}Rail`] = 'true';
   }
+}
+
+function followingPreviewSource(row) {
+  const owner = row?.closest?.('li') || row;
+  const images = [...(owner?.querySelectorAll?.('img') || [])]
+    .filter((image) => image.currentSrc || image.getAttribute?.('src'))
+    .sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
+  return images[0] || null;
+}
+
+function tagFollowingPreviewRows() {
+  if (state.runtime.sidebarHidden || state.runtime.focus || state.runtime.theater
+    || state.settings.layout.sidebar === 'hidden') {
+    hideFollowingPreview();
+    return;
+  }
+  const sidebar = findProbe(document, 'sidebar').element;
+  if (!sidebar) {
+    hideFollowingPreview();
+    return;
+  }
+  const tagged = new Set();
+  for (const marker of sidebar.querySelectorAll?.('[data-testid^="sidebar-following-channel-"]') || []) {
+    const row = marker.matches?.('a[href], button, [role="link"], [tabindex]')
+      ? marker
+      : marker.closest?.('a[href], button, [role="link"], [tabindex]');
+    if (!row || !sidebar.contains(row) || !followingPreviewSource(row)) continue;
+    tagged.add(row);
+    if (row.dataset.kfFollowingPreview !== 'true') row.dataset.kfFollowingPreview = 'true';
+  }
+  for (const marker of sidebar.querySelectorAll?.('[data-kf-following-preview]') || []) {
+    if (!tagged.has(marker)) delete marker.dataset.kfFollowingPreview;
+  }
+  if (state.followingPreviewRow && !state.followingPreviewRow.matches?.('[data-kf-following-preview="true"]')) {
+    hideFollowingPreview();
+  }
+}
+
+function ensureFollowingPreview() {
+  if (state.followingPreview?.isConnected) return state.followingPreview;
+  const host = document.createElement('figure');
+  host.id = 'kick-focus-following-preview';
+  host.lang = activeLocale();
+  host.hidden = true;
+  host.setAttribute('role', 'tooltip');
+  host.setAttribute('aria-live', 'off');
+  const image = document.createElement('img');
+  image.alt = '';
+  image.decoding = 'async';
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 360;
+  canvas.hidden = true;
+  canvas.setAttribute('aria-hidden', 'true');
+  const caption = document.createElement('figcaption');
+  const name = document.createElement('strong');
+  name.dataset.kfFollowingPreviewName = 'true';
+  const context = document.createElement('span');
+  context.dataset.kfFollowingPreviewContext = 'true';
+  caption.append(name, context);
+  host.append(image, canvas, caption);
+  document.body.append(host);
+  state.followingPreview = host;
+  return host;
+}
+
+function followingPreviewLabel(row) {
+  const ownLabel = row.getAttribute?.('aria-label') || row.getAttribute?.('title') || row.textContent || '';
+  const text = ownLabel.replace(/\s+/g, ' ').trim();
+  if (text) return text.slice(0, 80);
+  return cardPath(row).replace(/^\//, '') || tr('Following');
+}
+
+function snapshotFollowingThumbnail(source, canvas) {
+  if (!source?.complete || !source.naturalWidth || !source.naturalHeight) return false;
+  const targetWidth = canvas.width;
+  const targetHeight = canvas.height;
+  const scale = Math.max(targetWidth / source.naturalWidth, targetHeight / source.naturalHeight);
+  const width = source.naturalWidth * scale;
+  const height = source.naturalHeight * scale;
+  try {
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(source, (targetWidth - width) / 2, (targetHeight - height) / 2, width, height);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function setFollowingPreviewDescription(row, enabled) {
+  if (!row) return;
+  const tokens = new Set((row.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+  if (enabled) tokens.add('kick-focus-following-preview');
+  else tokens.delete('kick-focus-following-preview');
+  if (tokens.size) row.setAttribute('aria-describedby', [...tokens].join(' '));
+  else row.removeAttribute('aria-describedby');
+}
+
+function showFollowingPreview(row) {
+  if (!row?.matches?.('[data-kf-following-preview="true"]') || state.runtime.suspended) return;
+  const source = followingPreviewSource(row);
+  if (!source) return;
+  const reducedMotion = state.settings.accessibility.reduceMotion
+    || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const host = ensureFollowingPreview();
+  const image = host.querySelector('img');
+  const canvas = host.querySelector('canvas');
+  if (reducedMotion) {
+    if (!snapshotFollowingThumbnail(source, canvas)) {
+      hideFollowingPreview();
+      state.followingPreviewRow = row;
+      source.addEventListener('load', () => {
+        if (state.followingPreviewRow === row) showFollowingPreview(row);
+      }, { once: true });
+      return;
+    }
+    image.hidden = true;
+    canvas.hidden = false;
+  } else {
+    image.src = source.currentSrc || source.getAttribute('src');
+    image.hidden = false;
+    canvas.hidden = true;
+  }
+  const label = followingPreviewLabel(row);
+  host.querySelector('[data-kf-following-preview-name]').textContent = label;
+  host.querySelector('[data-kf-following-preview-context]').textContent = tr('Following');
+  host.dataset.kfStatic = String(reducedMotion);
+  host.dataset.kfSource = 'existing-image';
+  host.hidden = false;
+  host.style.visibility = 'hidden';
+  host.dataset.kfOpen = 'true';
+  const position = floatingPreviewPosition(
+    row.getBoundingClientRect(),
+    host.getBoundingClientRect(),
+    { width: innerWidth, height: innerHeight },
+  );
+  host.style.left = `${position.left}px`;
+  host.style.top = `${position.top}px`;
+  host.dataset.kfSide = position.side;
+  host.style.visibility = 'visible';
+  if (state.followingPreviewRow !== row) setFollowingPreviewDescription(state.followingPreviewRow, false);
+  state.followingPreviewRow = row;
+  setFollowingPreviewDescription(row, true);
+}
+
+function hideFollowingPreview() {
+  const host = state.followingPreview;
+  setFollowingPreviewDescription(state.followingPreviewRow, false);
+  state.followingPreviewRow = null;
+  if (!host) return;
+  delete host.dataset.kfOpen;
+  host.hidden = true;
+}
+
+function followingPreviewRowFromEvent(event) {
+  return event.target?.closest?.('[data-kf-following-preview="true"]') || null;
+}
+
+function onFollowingPreviewEnter(event) {
+  const row = followingPreviewRowFromEvent(event);
+  if (!row || (event.relatedTarget && row.contains(event.relatedTarget))) return;
+  showFollowingPreview(row);
+}
+
+function onFollowingPreviewLeave(event) {
+  const row = followingPreviewRowFromEvent(event) || state.followingPreviewRow;
+  if (!row || row !== state.followingPreviewRow || (event.relatedTarget && row.contains(event.relatedTarget))) return;
+  hideFollowingPreview();
+}
+
+function onFollowingPreviewKeydown(event) {
+  if (event.key !== 'Escape' || event.defaultPrevented
+    || state.followingPreview?.dataset.kfOpen !== 'true') return;
+  event.preventDefault();
+  event.stopPropagation();
+  hideFollowingPreview();
 }
 
 function applySearchEnhancements() {
@@ -11332,6 +11595,7 @@ async function runApplyCycle() {
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
+    tagFollowingPreviewRows();
     applyRailVisibility();
     applySearchEnhancements();
     applyDropsEnhancements();
@@ -13939,7 +14203,7 @@ function trf(template, values) {
 
 function applyInterfaceLanguage() {
   const locale = activeLocale();
-  for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control', 'kick-focus-streamer-stats']) {
+  for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control', 'kick-focus-streamer-stats', 'kick-focus-following-preview']) {
     const host = document.getElementById(id);
     if (host && host.lang !== locale) host.lang = locale;
   }
@@ -14144,6 +14408,14 @@ function buildInterface() {
   for (const type of ['mouseleave', 'blur', 'wheel', 'scroll']) {
     document.addEventListener(type, hideChatEmoteTooltip, true);
   }
+  document.addEventListener('mouseover', guard('following preview', onFollowingPreviewEnter), true);
+  document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true);
+  document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
+  document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
+  document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
+  for (const type of ['scroll', 'wheel']) document.addEventListener(type, hideFollowingPreview, true);
+  window.addEventListener('resize', hideFollowingPreview);
+  window.addEventListener('blur', hideFollowingPreview);
 }
 
 const settingsSurface = createSettings({
@@ -15830,6 +16102,9 @@ function clearEnhancedPage() {
   state.chatResizeCleanup?.();
   state.chatResizeCleanup = null;
   clearStickerUI();
+  hideFollowingPreview();
+  state.followingPreview?.remove?.();
+  state.followingPreview = null;
   disconnectChatStickerObserver();
   if (root.dataset.kfManagedSidebar === 'true') {
     findProbe(document, 'sidebarExpand').element?.click?.();
@@ -15840,7 +16115,7 @@ function clearEnhancedPage() {
   for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
     root.style.removeProperty(property);
   }
-  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization]')) {
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization], [data-kf-following-preview]')) {
     if (node.matches?.('[data-kf-card-actions], [data-kf-card-uptime], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
     else {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];

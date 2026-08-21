@@ -714,6 +714,19 @@ const checks = [
       && region.includes('isComposerRecallGesture(event)')
       && !/gm(?:Set|Delete)|localStorage|sessionStorage/.test(region);
   })()],
+  ['followed-channel previews reuse existing images, clamp on-screen, and freeze under reduced motion', (() => {
+    const start = source.indexOf('function followingPreviewSource');
+    const end = source.indexOf('function applySearchEnhancements', start);
+    const region = start >= 0 && end > start ? source.slice(start, end) : '';
+    return region.includes("querySelectorAll?.('img')")
+      && region.includes('floatingPreviewPosition(')
+      && region.includes("matchMedia('(prefers-reduced-motion: reduce)').matches")
+      && region.includes('snapshotFollowingThumbnail(source, canvas)')
+      && region.includes("event.key !== 'Escape'")
+      && source.includes("document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true)")
+      && source.includes('#kick-focus-following-preview')
+      && !/\bfetch\s*\(|GM_xmlhttpRequest|XMLHttpRequest/.test(region);
+  })()],
   ['settings page composition lives behind an explicit factory instead of runtime wrappers',
     settingsModuleSource.includes('export function createSettings(host)')
     && ['renderLayoutPage', 'renderAppearancePage', 'renderContentPage', 'renderAccessibilityPage', 'renderViewerPage', 'renderAboutPage']

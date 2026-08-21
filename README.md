@@ -15,6 +15,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 
 - Restyles Kick's current semantic desktop shell with clearer type, tighter spacing, quieter borders, fewer status pills, and text-first route tabs. Stream and category cards use imagery and whitespace instead of boxed perimeters.
 - Reclaims the permanent discovery rail with Auto, Compact, Dropdown, and Hidden modes; Auto is the default so the live site can choose the appropriate desktop width. Dropdown collapses the rail to a tab that expands on hover or keyboard focus.
+- A followed channel's existing Kick image opens in a compact preview when its sidebar row is hovered or focused. The preview stays inside the viewport, Escape closes it, and Reduced Motion freezes the source into a still canvas.
 - Adds Standard, Theater, and Focus stream layouts, plus Right, Docked, and Hidden chat. Theater keeps the player/chat split inside the viewport, and Kick's chat separator remains draggable with widths saved from 320 to 520 px.
 - Widens browse grids and preserves a compact, sticky desktop top bar. Following and Drops are classified as first-class routes instead of being mistaken for channels.
 - Treats Profile/Settings, Collectibles, and Subscriptions as first-class signed-in routes too: account tabs gain a clear selected state, form focus is stronger, disabled actions read as disabled, long explanatory copy becomes easier to scan, and collectible tiles get consistent hover/focus feedback without hiding or replacing Kick's controls.

@@ -1423,6 +1423,34 @@ export function formatChatTime(at, locale = undefined) {
 }
 
 /**
+ * Place a floating preview beside its rail row without letting it leave the
+ * viewport. The right side is preferred because Kick's followed rail normally
+ * hugs the left edge; the left side is the fallback for mirrored layouts.
+ */
+export function floatingPreviewPosition(anchor = {}, preview = {}, viewport = {}, gap = 12) {
+  const number = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
+  const padding = Math.max(0, number(gap, 12));
+  const viewportWidth = Math.max(0, number(viewport.width));
+  const viewportHeight = Math.max(0, number(viewport.height));
+  const previewWidth = Math.max(0, number(preview.width));
+  const previewHeight = Math.max(0, number(preview.height));
+  const anchorLeft = number(anchor.left);
+  const anchorRight = number(anchor.right, anchorLeft + number(anchor.width));
+  const anchorTop = number(anchor.top);
+  const anchorHeight = Math.max(0, number(anchor.height, number(anchor.bottom) - anchorTop));
+  const right = anchorRight + padding;
+  const left = anchorLeft - padding - previewWidth;
+  const side = right + previewWidth <= viewportWidth - padding || left < padding ? 'right' : 'left';
+  const maxLeft = Math.max(padding, viewportWidth - previewWidth - padding);
+  const maxTop = Math.max(padding, viewportHeight - previewHeight - padding);
+  return Object.freeze({
+    left: Math.round(Math.min(maxLeft, Math.max(padding, side === 'right' ? right : left))),
+    top: Math.round(Math.min(maxTop, Math.max(padding, anchorTop + (anchorHeight - previewHeight) / 2))),
+    side,
+  });
+}
+
+/**
  * The history as a file the reader asked for, and nothing they did not.
  *
  * Plain text rather than JSON: this is somebody looking for what was said, not

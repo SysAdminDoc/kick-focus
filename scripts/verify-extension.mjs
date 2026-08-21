@@ -391,6 +391,108 @@ try {
   const waiterReady = await evaluate(pageClient, 'window.__kfWaitInstalled === true');
   record('the probe waiter is installed in the page', waiterReady.value === true);
 
+  // R-87: exercise the document-level hover and focus handlers on the real
+  // Kick page. A synthetic followed row is used only when the signed-in rail is
+  // empty; a deliberately hidden rail is a skip, because the feature must not
+  // punch through the user's layout choice.
+  const followingPreviewProbe = await evaluate(pageClient, `(async () => {
+    const sidebar = document.querySelector('#sidebar-wrapper, [data-testid="sidebar-wrapper"], [data-kf-sidebar], [data-kick-sidebar]');
+    if (!sidebar || getComputedStyle(sidebar).display === 'none'
+      || document.documentElement.dataset.kfSidebar === 'hidden') {
+      return { skip: 'the followed-channel rail is hidden on this run' };
+    }
+    const settle = (ms = 90) => new Promise((done) => setTimeout(done, ms));
+    let row = await __kfWait(() => sidebar.querySelector('[data-kf-following-preview="true"]'), { timeout: 1200 });
+    let synthetic = false;
+    if (!row) {
+      synthetic = true;
+      row = document.createElement('button');
+      row.type = 'button';
+      row.dataset.testid = 'sidebar-following-channel-kf-probe';
+      row.dataset.kfLivePreviewProbe = 'true';
+      row.setAttribute('aria-label', 'Preview geometry probe');
+      row.style.cssText = 'display:flex;width:200px;height:42px;align-items:center';
+      const image = document.createElement('img');
+      image.alt = '';
+      image.width = 160;
+      image.height = 90;
+      image.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" fill="#152019"/><rect x="12" y="12" width="70" height="66" rx="8" fill="#53fc18"/></svg>');
+      row.append(image);
+      sidebar.append(row);
+      await image.decode().catch(() => {});
+      row = await __kfWait(() => sidebar.querySelector('[data-kf-live-preview-probe][data-kf-following-preview="true"]'), { timeout: 2500 });
+    }
+    if (!row) return { ok: false, why: 'a visible followed row was never tagged for preview' };
+    row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+    await settle();
+    const host = document.getElementById('kick-focus-following-preview');
+    const hoverBox = host?.getBoundingClientRect();
+    const hoverOpen = host?.dataset.kfOpen === 'true' && host.hidden === false;
+    const onScreen = Boolean(hoverBox)
+      && hoverBox.left >= 0 && hoverBox.top >= 0
+      && hoverBox.right <= innerWidth && hoverBox.bottom <= innerHeight;
+    const sourceExisting = host?.dataset.kfSource === 'existing-image';
+    row.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+    row.focus();
+    row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
+    await settle();
+    const focusOpen = host?.dataset.kfOpen === 'true' && row.getAttribute('aria-describedby')?.includes(host.id);
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    row.dispatchEvent(escape);
+    await settle(30);
+    return {
+      ok: true,
+      synthetic,
+      hoverOpen,
+      focusOpen,
+      escapePrevented: escape.defaultPrevented,
+      escapeClosed: host?.hidden === true && host?.dataset.kfOpen !== 'true',
+      onScreen,
+      sourceExisting,
+      width: Math.round(hoverBox?.width || 0),
+      height: Math.round(hoverBox?.height || 0),
+    };
+  })()`);
+  const followingPreview = followingPreviewProbe.value || {};
+  recordProbe('followed-channel preview opens by hover and focus, stays on-screen, and Escape closes it', followingPreview,
+    followingPreview.ok === true && followingPreview.hoverOpen === true && followingPreview.focusOpen === true
+      && followingPreview.escapePrevented === true && followingPreview.escapeClosed === true
+      && followingPreview.onScreen === true && followingPreview.sourceExisting === true
+      && followingPreview.width > 0 && followingPreview.height > 0,
+    followingPreview.ok
+      ? `${followingPreview.synthetic ? 'synthetic' : 'native'} row, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
+      : followingPreview.why);
+
+  if (!followingPreview.skip) {
+    await pageClient.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+    });
+    const reducedFollowingPreviewProbe = await evaluate(pageClient, `(async () => {
+      const row = document.querySelector('[data-kf-live-preview-probe], [data-kf-following-preview="true"]');
+      if (!row) return { ok: false, why: 'the followed row disappeared before the reduced-motion pass' };
+      row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+      await new Promise((done) => setTimeout(done, 100));
+      const host = document.getElementById('kick-focus-following-preview');
+      const result = {
+        ok: true,
+        open: host?.dataset.kfOpen === 'true',
+        staticFrame: host?.dataset.kfStatic === 'true'
+          && host.querySelector('canvas')?.hidden === false
+          && host.querySelector('img')?.hidden === true,
+      };
+      document.querySelector('[data-kf-live-preview-probe]')?.remove();
+      return result;
+    })()`);
+    await pageClient.send('Emulation.setEmulatedMedia', { features: [] });
+    const reducedFollowingPreview = reducedFollowingPreviewProbe.value || {};
+    record('followed-channel preview uses a canvas still under prefers-reduced-motion',
+      reducedFollowingPreview.ok === true && reducedFollowingPreview.open === true
+        && reducedFollowingPreview.staticFrame === true,
+      reducedFollowingPreview.ok
+        ? `open=${reducedFollowingPreview.open}, static canvas=${reducedFollowingPreview.staticFrame}`
+        : reducedFollowingPreview.why);
+  }
+
   // R-83: a discovery clock is useful only if it comes from data Kick already
   // sent, stays paired with Kick's own LIVE marker, and fits the card. The
   // source boundary is proved offline. This live half proves the derived value

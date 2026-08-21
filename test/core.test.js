@@ -16,6 +16,7 @@ import {
   buildChatHistoryExport,
   dropChatMessage,
   formatChatTime,
+  floatingPreviewPosition,
   isPriorityPerson,
   parsePeopleList,
   pruneChatHistory,
@@ -2926,6 +2927,25 @@ test('composer recall is a five-message memory ring and only Shift+Up enters it'
   assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: false }), false);
   assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: true, ctrlKey: true }), false);
   assert.equal(normalizeSettings({ content: { chatComposerRecall: true } }).content.chatComposerRecall, true);
+});
+
+test('following preview placement prefers the rail edge and clamps to the viewport', { tag: 'unit' }, () => {
+  assert.deepEqual(
+    floatingPreviewPosition(
+      { left: 12, right: 228, top: 640, height: 40 },
+      { width: 320, height: 214 },
+      { width: 1280, height: 720 },
+    ),
+    { left: 240, top: 494, side: 'right' },
+  );
+  assert.deepEqual(
+    floatingPreviewPosition(
+      { left: 1080, right: 1268, top: 2, height: 40 },
+      { width: 320, height: 214 },
+      { width: 1280, height: 720 },
+    ),
+    { left: 748, top: 12, side: 'left' },
+  );
 });
 
 test('a whisper, an unidentifiable message, and a repeat are all refused', { tag: 'unit' }, () => {
