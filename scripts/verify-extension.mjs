@@ -1946,29 +1946,45 @@ try {
     // Land at the bottom, live and unpaused, which is where a reader starts.
     // A transcript already scrolled back is the condition under test, so it has
     // to be ruled out before the scroll that is supposed to cause it.
-    for (let attempt = 0; attempt < 3 && read().paused !== 'false'; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       if (read().paused === 'true') { control().click(); await settle(600); }
       messages.scrollTop = messages.scrollHeight;
+      messages.dispatchEvent(new Event('scroll'));
       await settle(600);
+      const distance = messages.scrollHeight - messages.scrollTop - messages.clientHeight;
+      if (read().paused === 'false' && distance <= 2) break;
     }
     const before = read();
 
-    // A real scroll: assigning scrollTop dispatches the same event a wheel does.
-    const landed = scrollable - 300;
+    // Establish direction explicitly. A scrollTop assignment normally queues a
+    // scroll event, but Chromium may coalesce it with Kick's own live-edge
+    // correction. Dispatching the event here exercises the exact passive
+    // listener a wheel movement reaches without relying on that scheduling.
+    const landed = Math.max(0, messages.scrollTop - 300);
     messages.scrollTop = landed;
-    await settle(900);
+    messages.dispatchEvent(new Event('scroll'));
+    await __kfWait(() => read().paused === 'true', { timeout: 3000 });
+    await settle(300);
     const after = { ...read(), top: Math.round(messages.scrollTop) };
 
-    // Reported, not asserted. What this build owns is the state machine: the
-    // scroll-up arms it, the label changes, Resume leaves it. Where the
-    // transcript ends up afterwards is the pre-existing pixel pin, and on a
-    // virtualised list that recycles rows it drifts toward the live edge — see
-    // the pause-anchor item in ROADMAP.md, which this number is the evidence
-    // for. Asserting it here would either fail on shipped behaviour or bless a
-    // tolerance loose enough to mean nothing.
-    await settle(1500);
+    const viewport = messages.getBoundingClientRect();
+    const anchor = [...messages.querySelectorAll('[data-index]')]
+      .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+      .find(({ rect }) => rect.height > 0 && rect.top >= viewport.top && rect.bottom <= viewport.bottom);
+    const anchorStart = anchor ? anchor.rect.top - viewport.top : null;
+
+    // Five seconds gives a busy channel enough time to append and recycle rows.
+    // The same visible row must stay in place while it remains mounted, and the
+    // transcript must remain outside the pause-on-scroll threshold.
+    await settle(5000);
     const held = Math.round(messages.scrollTop);
     const heldDistance = Math.round(messages.scrollHeight - messages.scrollTop - messages.clientHeight);
+    const anchorEnd = anchor?.node?.isConnected
+      ? anchor.node.getBoundingClientRect().top - messages.getBoundingClientRect().top
+      : null;
+    const anchorDrift = anchorStart === null || anchorEnd === null
+      ? null
+      : Math.round(Math.abs(anchorEnd - anchorStart) * 10) / 10;
 
     control()?.click();
     await settle(700);
@@ -1977,7 +1993,7 @@ try {
     const off = await setSwitch('content.stickyChatPause', false);
     await settle(400);
     const cleared = { button: Boolean(control()) };
-    return { ok: true, before, after, held, heldDistance, landed: Math.round(landed), resumed, off, cleared };
+    return { ok: true, before, after, held, heldDistance, landed: Math.round(landed), anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
   })()`);
   const scroll = scrollPause.value || { why: scrollPause.error || 'the probe returned nothing' };
   recordProbe('scrolling chat up enters the paused state, and Resume leaves it',
@@ -1986,11 +2002,14 @@ try {
       && scroll.before?.paused === 'false'
       && scroll.after?.paused === 'true'
       && /Resume chat/.test(scroll.after?.label || '')
+      && Number.isFinite(scroll.anchorDrift)
+      && scroll.anchorDrift <= 8
+      && scroll.heldDistance > 64
       && scroll.resumed?.paused === 'false'
       && /Pause chat/.test(scroll.resumed?.label || '')
       && scroll.cleared?.button === false,
     scroll.ok
-      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
+      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor drift ${scroll.anchorDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
       : scroll.why);
 
   // R-76: a banned reader's way back into a chat, still on screen.

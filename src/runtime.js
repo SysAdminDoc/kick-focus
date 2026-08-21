@@ -135,6 +135,9 @@ const state = {
     chatScrollNode: null,
     chatScrollHandler: null,
     chatScrollLastTop: 0,
+    chatScrollTop: null,
+    chatScrollAnchor: null,
+    chatPauseNode: null,
     suspended: false,
     routeSource: '',
     // The route a saved view was last applied for, so it is applied on entering
@@ -3285,6 +3288,62 @@ function applyPlayerResilience() {
 const CHAT_SCROLL_PAUSE_DISTANCE = 64;
 
 /**
+ * The first visible message and its position inside the transcript viewport.
+ *
+ * Kick removes old rows while chat is paused, so scrollTop does not describe a
+ * stable place. A row plus its visual offset does. Prefer Kick's data index,
+ * which is present on the virtualised rows, and keep conservative fallbacks for
+ * fixture and markup variants.
+ */
+function captureChatScrollAnchor(messages) {
+  const viewport = messages.getBoundingClientRect();
+  const indexed = [...messages.querySelectorAll('[data-index]')];
+  const rows = indexed.length
+    ? indexed
+    : [...messages.querySelectorAll('[data-message-id], [data-chat-entry], .group')];
+  const visible = rows
+    .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom);
+  const row = visible.find(({ rect }) => rect.top >= viewport.top) || visible[0];
+  if (!row) return null;
+  const id = chatMessageId(row.node);
+  return {
+    node: row.node,
+    signature: id ? `id:${id}` : `text:${String(row.node.textContent || '').replace(/\s+/g, ' ').trim()}`,
+    offset: row.rect.top - viewport.top,
+  };
+}
+
+function chatScrollAnchorStillMatches(messages, anchor) {
+  if (!anchor?.node?.isConnected || !messages.contains(anchor.node)) return false;
+  const id = chatMessageId(anchor.node);
+  const signature = id
+    ? `id:${id}`
+    : `text:${String(anchor.node.textContent || '').replace(/\s+/g, ' ').trim()}`;
+  return signature === anchor.signature;
+}
+
+/** Hold the anchored row, or the last stable pixel when Kick recycled it. */
+function restorePausedChatPosition(messages) {
+  const anchor = state.runtime.chatScrollAnchor;
+  if (chatScrollAnchorStillMatches(messages, anchor)) {
+    const viewportTop = messages.getBoundingClientRect().top;
+    const currentOffset = anchor.node.getBoundingClientRect().top - viewportTop;
+    const adjustment = currentOffset - anchor.offset;
+    if (Math.abs(adjustment) > 0.5) messages.scrollTop += adjustment;
+    state.runtime.chatScrollTop = messages.scrollTop;
+    return;
+  }
+
+  // The anchored row was one of the rows Kick recycled. Restoring the last
+  // stable scrollTop avoids a visible jump, then a fresh visible row becomes
+  // the anchor for later mutations.
+  if (Number.isFinite(state.runtime.chatScrollTop)) messages.scrollTop = state.runtime.chatScrollTop;
+  state.runtime.chatScrollTop = messages.scrollTop;
+  state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
+}
+
+/**
  * Arm the existing paused state when the reader scrolls the transcript up.
  *
  * Kick's own pause-on-scroll is reported broken, and this build already has the
@@ -3370,6 +3429,9 @@ function applyChatPause() {
     releaseChatScrollPause();
     state.observers.chat?.disconnect?.();
     state.observers.chat = null;
+    state.runtime.chatPauseNode = null;
+    state.runtime.chatScrollAnchor = null;
+    state.runtime.chatScrollTop = null;
     const previousAriaLive = messages.dataset.kfPreviousAriaLive;
     if (previousAriaLive && previousAriaLive !== '__none__') messages.setAttribute('aria-live', previousAriaLive);
     else messages.removeAttribute('aria-live');
@@ -3394,12 +3456,17 @@ function applyChatPause() {
     if (!Object.prototype.hasOwnProperty.call(messages.dataset, 'kfPreviousAriaLive')) {
       messages.dataset.kfPreviousAriaLive = messages.getAttribute('aria-live') || '__none__';
     }
-    if (!state.observers.chat) {
-      const restoreScroll = () => {
-        if (Number.isFinite(state.runtime.chatScrollTop)) messages.scrollTop = state.runtime.chatScrollTop;
-      };
+    if (state.runtime.chatPauseNode !== messages) {
+      state.observers.chat?.disconnect?.();
+      state.observers.chat = null;
+      state.runtime.chatPauseNode = messages;
       state.runtime.chatScrollTop = messages.scrollTop;
-      state.observers.chat = new MutationObserver(restoreScroll);
+      state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
+    }
+    if (!state.observers.chat) {
+      state.runtime.chatScrollTop = messages.scrollTop;
+      state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
+      state.observers.chat = new MutationObserver(() => restorePausedChatPosition(messages));
       state.observers.chat.observe(messages, { childList: true, subtree: true, characterData: true });
     }
     messages.setAttribute('aria-live', 'off');
@@ -3407,6 +3474,9 @@ function applyChatPause() {
   } else {
     state.observers.chat?.disconnect?.();
     state.observers.chat = null;
+    state.runtime.chatPauseNode = null;
+    state.runtime.chatScrollAnchor = null;
+    state.runtime.chatScrollTop = null;
     delete messages.dataset.kfChatPaused;
     const previousAriaLive = messages.dataset.kfPreviousAriaLive;
     if (previousAriaLive && previousAriaLive !== '__none__') messages.setAttribute('aria-live', previousAriaLive);
@@ -10945,6 +11015,9 @@ function clearEnhancedPage() {
   state.runtime.chatHidden = false;
   state.runtime.sidebarHidden = false;
   state.runtime.chatPaused = false;
+  state.runtime.chatPauseNode = null;
+  state.runtime.chatScrollAnchor = null;
+  state.runtime.chatScrollTop = null;
   if (state.modal) state.modal.hidden = true;
   if (state.command) state.command.hidden = true;
   state.profileStatsHost?.remove?.();

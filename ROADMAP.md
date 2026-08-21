@@ -133,13 +133,6 @@ Added from the differential research recorded in [RESEARCH.md](RESEARCH.md), run
 
 ### P1
 
-- [ ] P1 — R-96 — Hold a paused transcript with a row anchor instead of a pixel
-  Why: `applyChatPause` pins `messages.scrollTop` to one number and restores it from a MutationObserver. Kick's transcript is virtualised and recycles rows out of the top, so the browser's scroll anchoring adjusts `scrollTop` under the pin and the restored number points further down the shortened list each time. Measured on kick.com 2026-08-21: across five live runs a transcript paused 300px back reached the live edge within 1.5 seconds, with the Resume control still showing. A sixth run, after the arming was moved onto scroll direction, held 384px off the live edge with 60px of drift, so the pin is not always lost — but a pixel is still the wrong unit for a list that recycles rows, and which way a run goes depends on how fast the channel is.
-  Evidence: `scripts/verify-extension.mjs` "scrolling chat up enters the paused state" detail line, which reports the held pixel and the distance off the live edge on every run; `src/runtime.js` `applyChatPause` `restoreScroll`; DOM measurement of `#chatroom-messages` (26 rows in the DOM against a scroll height of several thousand pixels, `overflow-y: hidden`, Kick owning `scrollTop`).
-  Touches: `src/runtime.js` `applyChatPause` (capture an anchor row from `[data-index]` plus its offset within the viewport rather than a scroll offset, and restore against that row while it is still in the DOM), the live probe's reported numbers, which become assertable once a row anchor holds.
-  Acceptance: WHEN chat is paused 300px back on a live channel, THEN after 5 seconds of incoming messages the anchored row SHALL still be within 8px of where it was, and the transcript SHALL still be more than 64px off the live edge; the live probe asserts both instead of only reporting them; when the anchor row is itself recycled out, the pause falls back to the current pixel pin rather than jumping.
-  Complexity: M
-
 ### P2
 
 ## Audit leftovers, 2026-08-21
@@ -161,4 +154,3 @@ Incomplete work found in the v1.32.0 audit that was not already R-72–R-91. R-7
   Touches: `scripts/verify-extension.mjs` optional theme sweep, `scripts/verify-firefox.mjs`, signed-in matrix.
   Acceptance: OLED and Slate settings dialogs, toasts, and the companion popup remain readable at 1440x900; Firefox 8/8 still holds; signed-in skips stay skips rather than false passes.
   Complexity: M
-
