@@ -1086,7 +1086,20 @@ test('custom accents stay visible across every dark theme surface', { tag: 'unit
   assert.equal(normalizeCustomAccent('not-a-color'), '#FF5CA8');
   const tokens = customAccentTokens('#38d7d0');
   assert.deepEqual(tokens, { hex: '#38D7D0', rgb: '56, 215, 208', onAccent: '#071004' });
-  assert.ok(colorContrastRatio(tokens.hex, '#141817') >= 3);
+  // All three, not one: an accent is a focus ring and a control boundary on
+  // whichever dark theme the reader chose, and the darkest surface differs per
+  // theme — pure black on OLED, #080B09 on Studio, #141817 on Slate. Checking
+  // the lightest of the three would let an accent through that disappears on
+  // the other two.
+  for (const surface of ['#000000', '#080B09', '#141817']) {
+    assert.ok(colorContrastRatio(tokens.hex, surface) >= 3,
+      `an accepted accent must clear 3:1 against ${surface}, got ${colorContrastRatio(tokens.hex, surface).toFixed(2)}`);
+    assert.ok(colorContrastRatio(normalizeCustomAccent('#2a0030'), surface) >= 3,
+      `the safe fallback must clear 3:1 against ${surface}`);
+  }
+  // The CSS half is a fallback beside the JS gate, not a replacement, so the
+  // ink the tokens carry has to remain the better of the two choices on its own.
+  assert.ok(colorContrastRatio(tokens.hex, tokens.onAccent) >= colorContrastRatio(tokens.hex, '#FFFFFF'));
 
   const normalized = normalizeSettings({ appearance: { accent: 'custom', customAccent: '#2a0030' } });
   assert.equal(normalized.appearance.accent, 'custom');

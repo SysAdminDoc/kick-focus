@@ -18,6 +18,7 @@ All notable changes are documented here. Dates use ISO 8601.
 ### Changed
 
 - The emote library's synchronous seed is now bounded by bytes as well as by entry count. 400 ordinary emote records are about 116 KB, but 400 records at every field's ceiling would be 1.3 MB of browser storage sitting beside an injected script that has its own size ceiling. The full library is untouched; only the small copy read at startup is trimmed.
+- Where the browser supports it, the text drawn on an accent colour is chosen by the browser rather than by one hardcoded value shared across every accent. The rule that rejects a custom accent too dark to work as a focus ring is unchanged.
 - The build checks the userscript's size and the storage it will claim against one ceiling instead of measuring the file alone.
 - The live gate reads Kick's Content-Security-Policy on the home and channel documents and fails if a script policy appears that would refuse the inline injection the Firefox companion depends on. Measured 2026-08-21: neither route serves one.
 - The build strips comments from the generated bundles. The userscript is 774,847 bytes instead of 974,585, which moves it from 97% of Violentmonkey's ~1 MB injection ceiling down to 77%. Source comments are untouched; they live in `src/`, which is where anyone reads them.

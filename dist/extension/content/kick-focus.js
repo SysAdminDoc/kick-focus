@@ -6159,6 +6159,26 @@ const SITE_CSS = `
   html[data-kf-accent="cyan"] { --kf-accent: #38d7d0; --kf-accent-rgb: 56, 215, 208; }
   html[data-kf-accent="violet"] { --kf-accent: #9667ff; --kf-accent-rgb: 150, 103, 255; }
   html[data-kf-accent="gold"] { --kf-accent: #ffbe2e; --kf-accent-rgb: 255, 190, 46; }
+
+  /*
+   * The ink on top of an accent, picked by the engine where it can be.
+   *
+   * Every preset above changes the accent and none of them changes the ink, so
+   * one hardcoded near-black carries all four. Measured, that is the right
+   * choice for all four today — violet is the closest at 5.24:1 against the
+   * dark ink and 3.70:1 against white — but it is right by coincidence, and the
+   * next accent added to that list inherits the coincidence rather than a
+   * decision.
+   *
+   * This does not replace the JS gate and cannot: a custom accent's ink is set
+   * as an inline style on the root, which outranks this rule, and
+   * normalizeCustomAccent still rejects a picker value that would not clear
+   * 3:1 against the darkest Studio, OLED, and Slate surfaces. CSS decides the
+   * foreground; the 3:1 reject decides whether the accent is allowed at all.
+   */
+  @supports (color: contrast-color(#000)) {
+    :root { --kf-on-accent: contrast-color(var(--kf-accent)); }
+  }
   html[data-kf-radius="subtle"] { --kf-radius: 6px; }
   html[data-kf-radius="rounded"] { --kf-radius: 12px; }
   html[data-kf-theme="oled"] {

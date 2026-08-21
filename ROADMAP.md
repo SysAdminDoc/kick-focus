@@ -82,13 +82,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P2
 
-- [ ] P2 — R-84 — Use CSS `contrast-color()` as a fallback next to the existing JS accent check
-  Why: `contrast-color()` is Baseline 2026; Kick Focus already rejects too-dark custom accents in JS because MDN documents mid-tone failures, so CSS can mirror the safe pair without replacing the 3:1 gate.
-  Evidence: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/contrast-color ; `src/core.mjs` custom-accent contrast helpers.
-  Touches: accent token CSS in `src/runtime.js`, keep the JS 3:1 reject path.
-  Acceptance: an invalid/too-dark custom accent still falls back to the safe rose; a passing accent still meets 3:1 against the darkest Studio/OLED/Slate surfaces in a unit test.
-  Complexity: S
-
 - [ ] P2 — R-85 — Repeat Export / README help on every settings page (WCAG 2.2 3.2.6)
   Why: export, panic, and install-recovery copy live only on About (`renderAboutPage`); 3.2.6 Consistent Help wants the same help mechanism in the same relative place on every settings page.
   Evidence: https://www.w3.org/WAI/WCAG22/Understanding/consistent-help ; `NAV_ITEMS` + `renderAboutPage` in `src/runtime.js`.
