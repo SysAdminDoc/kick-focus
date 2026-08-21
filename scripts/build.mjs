@@ -61,7 +61,21 @@ const bundledRuntime = stripComments(runtime)
 const body = `(() => {\n'use strict';\n${GUARD}${bundledCore}\n${bundledApi}\n${bundledCompatibility}\n${bundledStorage}\n${bundledLive}\n${bundledMultistream}\n${bundledRuntime}\n})();\n`;
 
 await mkdir(resolve(root, 'dist'), { recursive: true });
-const userscript = `${metadata.replaceAll('__VERSION__', VERSION)}${body}`;
+/**
+ * Tell the artifact how big it is, without changing how big it is.
+ *
+ * The placeholder is replaced by a space-padded number of exactly the same
+ * width, so the length measured before the stamp is still the length after it.
+ * Doing it the obvious way — stamp, then measure — would report a number that
+ * was already wrong by the width of the difference, and About would be
+ * confidently off by a few bytes forever.
+ */
+const BYTES_PLACEHOLDER = '__KICK_FOCUS_BYTES__';
+const stampBytes = (text, bytes) => text.replaceAll(BYTES_PLACEHOLDER, String(bytes).padStart(BYTES_PLACEHOLDER.length));
+const userscript = stampBytes(`${metadata.replaceAll('__VERSION__', VERSION)}${body}`, `${metadata.replaceAll('__VERSION__', VERSION)}${body}`.length);
+if (userscript.includes(BYTES_PLACEHOLDER) || userscript.length !== `${metadata.replaceAll('__VERSION__', VERSION)}${body}`.length) {
+  throw new Error('the byte stamp changed the artifact length, so the number it carries is wrong');
+}
 await writeFile(resolve(root, 'dist/kick-focus.user.js'), userscript, 'utf8');
 // Printed every build so the growth trend is visible in the log rather than
 // only when the budget gate in check.mjs finally trips. The userscript is the
@@ -113,7 +127,7 @@ const files = [
   ['popup.html', await read('src/extension/popup.html')],
   ['popup.js', await read('src/extension/popup.js')],
   ['content/bridge.js', await read('src/extension/bridge.js')],
-  ['content/kick-focus.js', `/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`],
+  ['content/kick-focus.js', stampBytes(`/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`, userscript.length)],
   ['rules/ads.json', `${JSON.stringify(ruleset(AD_HOSTS, 1), null, 2)}\n`],
   // litix.io is intentionally excluded from the network-layer cancel set: a
   // hard block there triggers a retry storm. The page realm answers it empty-200.
@@ -203,7 +217,7 @@ const firefoxBridge = (await read('src/extension/bridge.firefox.js'))
   // A replacer *function*, not a string: the bundle contains `$&`, `` $` `` and
   // `$'` sequences, and String.replace would interpret those in a replacement
   // string and splice pieces of the file into itself.
-  .replace('"__PAGE_BUNDLE__"', () => JSON.stringify(`/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`));
+  .replace('"__PAGE_BUNDLE__"', () => JSON.stringify(stampBytes(`/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`, userscript.length)));
 if (firefoxBridge.includes('__PAGE_BUNDLE__')) {
   throw new Error('Firefox bridge still carries the __PAGE_BUNDLE__ placeholder — the page script would be empty.');
 }

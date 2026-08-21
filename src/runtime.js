@@ -962,6 +962,23 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
+/**
+ * How many bytes the built userscript is, stamped in by the build.
+ *
+ * A userscript is injected whole, and Violentmonkey's Alternative page mode
+ * stops giving it a real document-start somewhere around a megabyte, so this is
+ * a number with a real ceiling rather than trivia. It was cut hard once and it
+ * will grow again; About shows it so the next regression is visible to whoever
+ * is looking at their own install, not only to a build gate.
+ *
+ * The placeholder is replaced with a space-padded number of exactly its own
+ * width. Number() trims the padding, and the file's length does not change by
+ * being told what it is. Zero here means an unstamped build, which is what
+ * running from source rather than from dist looks like.
+ */
+const BUNDLE_BYTES = Number('__KICK_FOCUS_BYTES__') || 0;
+const BUNDLE_BYTE_CEILING = 1000000;
+
 const SITE_CSS = `
   :root {
     --kf-accent: #7cff2b;
@@ -7320,6 +7337,8 @@ const TRANSLATIONS = {
     'Pause chat updates': 'Pausar las actualizaciones del chat',
     'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Desplazarte hacia arriba en el chat lo congela, igual que el botón. Reanudar siempre está a un control de distancia.',
     'Chat updates paused': 'Actualizaciones del chat en pausa',
+    'Userscript size': 'Tamaño del userscript',
+    'Injection ceiling': 'Límite de inyección',
     'Help': 'Ayuda',
     'Open help and recovery': 'Abrir ayuda y recuperación',
     'Chat updates resumed': 'Actualizaciones del chat reanudadas',
@@ -7897,6 +7916,8 @@ const TRANSLATIONS = {
     'Pause chat updates': 'Pausar as atualizações do chat',
     'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Rolar a transcrição para cima congela o chat, assim como o botão. Retomar está sempre a um controle de distância.',
     'Chat updates paused': 'Atualizações do chat pausadas',
+    'Userscript size': 'Tamanho do userscript',
+    'Injection ceiling': 'Limite de injeção',
     'Help': 'Ajuda',
     'Open help and recovery': 'Abrir ajuda e recuperação',
     'Chat updates resumed': 'Atualizações do chat retomadas',
@@ -9386,7 +9407,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
     ${renderStorageHealthPanel()}
-    <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
+    <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${Math.round((BUNDLE_BYTES / BUNDLE_BYTE_CEILING) * 100)}%` : '—'}</td></tr></tbody></table></div></section>`;
 }
 
 // A stable selector for the focused control, so focus can be restored to the

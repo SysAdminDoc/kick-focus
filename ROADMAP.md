@@ -88,6 +88,7 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
   Touches: card tagger in `src/runtime.js`, `src/api.mjs` / `current-viewers` if that is the source the page already uses, CSS, live card-slug derived check.
   Acceptance: a live home/browse card that Kick marks LIVE shows a duration or nothing (never a guessed time); compact density still fits; 1440×900 has no card overflow.
   Complexity: M
+  Note (2026-08-21, measured): the source exists and is already fetched by the page, so the endpoint half of this is settled. A home load issues `GET https://web.kick.com/api/v1/livestreams/featured?language=en` on its own (request 97 of a cold load), and the answer carries one entry per rendered card — 14 entries against 14 `livestream-results-card` nodes — each with `start_time` as an ISO UTC stamp, alongside `channel`, `category`, `viewer_count` and `thumbnail`. Nothing in the card markup carries a time: a card's only data attribute is `data-testid`, and the string `start_time` appears nowhere in the document. So the join is slug-to-slug against a read the page already makes, not a new request and not a guess. Still open: `/browse` and `/category/*` are served by different lists and were not measured, and per the acceptance a card whose start time is not in hand must show nothing rather than an estimate.
 
 - [ ] P2 — R-78 — Extract settings UI from `runtime.js` behind a `host` factory
   Why: `src/runtime.js` is 11,566 lines and 625,776 bytes (~64% of the userscript); settings render/search/import already form a closed boundary the same way `createLive` / `createMultistream` do.
@@ -124,13 +125,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
   Evidence: Kick Augmenter CWS; enhancer.at Kick features; `VIEWER_HUB_REASONS.dialog-closed` in `src/core.mjs`.
   Touches: `src/core.mjs` Viewer Hub card registry, `src/runtime.js`, i18n.
   Acceptance: the card says it is this browser session’s timer; it resets on reload; it never writes a Kick level; signed-out still explains itself.
-  Complexity: S
-
-- [ ] P3 — R-89 — Print userscript size percent on About diagnostics
-  Why: R-72 can regress without a runtime signal; the build already knows the byte length and the 1 MB budget.
-  Evidence: `scripts/check.mjs` `SIZE_BUDGETS`; `renderAboutPage`.
-  Touches: `scripts/build.mjs` (stamp bytes), About table, `scripts/check.mjs`.
-  Acceptance: About shows `N / 1,000,000 bytes` for the userscript; a unit or artifact test fails if the stamped number disagrees with the built file.
   Complexity: S
 
 ## Research-Driven Additions, 2026-08-21 (v1.31.0 differential)

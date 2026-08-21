@@ -179,6 +179,21 @@ test('the built bundle resolves every embedded visual asset', { tag: 'artifact' 
   assert.equal(bundle.includes('__KICK_FOCUS_PREVIEW__'), false, 'preview placeholder survived the build');
 });
 
+test('the bundle knows its own size, and the number is the file', { tag: 'artifact' }, async () => {
+  // About shows this against the 1 MB injection ceiling, so a stale or
+  // approximate number is worse than none: it would read as a measurement.
+  // The build pads the stamp to the placeholder's exact width for this reason —
+  // stamping a number changes the file, unless it cannot.
+  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  assert.equal(bundle.includes('__KICK_FOCUS_BYTES__'), false, 'byte placeholder survived the build');
+  const stamped = bundle.match(/Number\('(\s*\d+)'\)/);
+  assert.ok(stamped, 'the bundle carries no byte stamp at all');
+  assert.equal(Number(stamped[1]), bundle.length,
+    `the bundle says it is ${Number(stamped[1])} bytes and it is ${bundle.length}`);
+  // And it is still inside the ceiling it is displayed against.
+  assert.ok(bundle.length < 1000000, `the userscript is ${bundle.length} B, past its injection ceiling`);
+});
+
 test('with the Navigation API, route changes come from the browser and history is left untouched', { tag: 'artifact' }, async () => {
   const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
   const listeners = {};

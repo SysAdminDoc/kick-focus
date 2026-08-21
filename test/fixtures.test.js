@@ -422,10 +422,18 @@ for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
   test(`fixture ${name} resolves the shell hooks the live route resolves`, { tag: 'unit' }, () => {
     const document = parseFixture(fixtureSource(name));
     const snapshot = compatibilitySnapshot(document, { expectedChat: entry.expectedChat, derive: DERIVERS });
-    assert.deepEqual(snapshot.probes, { ...entry.shell },
+    // An optional hook is one the live route renders only sometimes, so a
+    // fixture captured on a run without it is still a faithful fixture. What
+    // stays pinned is which probe wins when it is there.
+    const optional = new Set(entry.optional || []);
+    const expected = { ...entry.shell };
+    for (const hook of optional) {
+      if (snapshot.probes[hook] === null) expected[hook] = null;
+    }
+    assert.deepEqual(snapshot.probes, expected,
       `${name} fixture resolves a different probe than ${entry.url || 'the live route'} does`);
     assert.equal(snapshot.healthy, true, `${name} fixture is missing ${snapshot.missing.join(', ')}`);
-    if (entry.shell.card) assert.ok(snapshot.cards > 0, `${name} fixture resolved a card probe but found no cards`);
+    if (snapshot.probes.card) assert.ok(snapshot.cards > 0, `${name} fixture resolved a card probe but found no cards`);
   });
 
   test(`fixture ${name} still yields the values derived from those hooks`, { tag: 'unit' }, () => {
@@ -450,6 +458,11 @@ test('the contract names a real probe for every hook it records', { tag: 'unit' 
       }
       assert.deepEqual(Object.keys(entry.derived).sort(), [...derivedIds].sort(),
         `${name} does not record an outcome for every derived expectation`);
+      // Optional only means anything for a hook the route actually records.
+      for (const hook of entry.optional || []) {
+        assert.ok(hook in entry.shell, `${name} calls ${hook} optional but records no shell probe for it`);
+        assert.ok(entry.shell[hook], `${name} calls ${hook} optional and absent, which says nothing`);
+      }
     }
     // A retired marker with no reason is how the next capture puts it back.
     for (const [marker, why] of Object.entries(entry.retired)) {

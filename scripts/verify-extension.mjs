@@ -1631,14 +1631,20 @@ try {
       // that was just confirmed.
       if (first > 0 && !(hook in contract.shell)) fellBack.push(`${hook}->${list[first].id}`);
     }
+    // An optional hook is one Kick renders on this route only sometimes, and
+    // its absence is not drift. A different probe winning still is: that is the
+    // test id going away and a looser selector picking up something else.
+    const optional = new Set(contract.optional || []);
     const changed = Object.entries(contract.shell)
-      .filter(([hook, expected]) => winners[hook] !== expected)
+      .filter(([hook, expected]) => winners[hook] !== expected && !(optional.has(hook) && winners[hook] === null))
       .map(([hook, expected]) => `${hook}: contract says ${expected || 'absent'}, Kick serves ${winners[hook] || 'absent'}`);
+    const notRendered = [...optional].filter((hook) => winners[hook] === null);
     record(`Kick's shell on ${name} matches what the fixture contract records`,
       changed.length === 0,
       changed.length
         ? `${changed.join('; ')} — update scripts/fixture-contract.mjs and test/fixtures/${name}.html together`
         : `${Object.entries(contract.shell).map(([hook, probe]) => `${hook}:${probe || 'absent'}`).join(', ')}`
+        + `${notRendered.length ? ` | optional and not rendered this run: ${notRendered.join(', ')}` : ''}`
         + `${fellBack.length ? ` | route-shaped fall-through (not a failure): ${fellBack.join(', ')}` : ''}`);
     record(`no shell hook on ${name} lost every probe it has`, invalid.length === 0,
       invalid.length ? `invalid selectors: ${invalid.join(', ')}` : 'every selector Kick still accepts as a selector');

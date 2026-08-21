@@ -6157,6 +6157,9 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
+const BUNDLE_BYTES = Number('              781026') || 0;
+const BUNDLE_BYTE_CEILING = 1000000;
+
 const SITE_CSS = `
   :root {
     --kf-accent: #7cff2b;
@@ -11751,6 +11754,8 @@ const TRANSLATIONS = {
     'Pause chat updates': 'Pausar las actualizaciones del chat',
     'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Desplazarte hacia arriba en el chat lo congela, igual que el botón. Reanudar siempre está a un control de distancia.',
     'Chat updates paused': 'Actualizaciones del chat en pausa',
+    'Userscript size': 'Tamaño del userscript',
+    'Injection ceiling': 'Límite de inyección',
     'Help': 'Ayuda',
     'Open help and recovery': 'Abrir ayuda y recuperación',
     'Chat updates resumed': 'Actualizaciones del chat reanudadas',
@@ -12327,6 +12332,8 @@ const TRANSLATIONS = {
     'Pause chat updates': 'Pausar as atualizações do chat',
     'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.': 'Rolar a transcrição para cima congela o chat, assim como o botão. Retomar está sempre a um controle de distância.',
     'Chat updates paused': 'Atualizações do chat pausadas',
+    'Userscript size': 'Tamanho do userscript',
+    'Injection ceiling': 'Limite de injeção',
     'Help': 'Ajuda',
     'Open help and recovery': 'Abrir ajuda e recuperação',
     'Chat updates resumed': 'Atualizações do chat retomadas',
@@ -13629,7 +13636,7 @@ function renderAboutPage() {
       <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
     </section>
     ${renderStorageHealthPanel()}
-    <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
+    <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${Math.round((BUNDLE_BYTES / BUNDLE_BYTE_CEILING) * 100)}%` : '—'}</td></tr></tbody></table></div></section>`;
 }
 
 function focusRestoreKey(element) {
