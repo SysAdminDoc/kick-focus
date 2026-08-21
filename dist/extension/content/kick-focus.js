@@ -5482,6 +5482,7 @@ const state = {
     chatPaused: false,
     chatScrollNode: null,
     chatScrollHandler: null,
+    chatScrollLastTop: 0,
     suspended: false,
     routeSource: '',
     layoutRoute: '',
@@ -8163,11 +8164,11 @@ const CHAT_SCROLL_PAUSE_DISTANCE = 64;
 function armChatScrollPause(messages) {
   if (state.runtime.chatScrollNode === messages) return;
   releaseChatScrollPause();
-  let lastTop = messages.scrollTop;
+  state.runtime.chatScrollLastTop = messages.scrollTop;
   const handler = () => {
     const top = messages.scrollTop;
-    const movedUp = top < lastTop - 2;
-    lastTop = top;
+    const movedUp = top < state.runtime.chatScrollLastTop - 2;
+    state.runtime.chatScrollLastTop = top;
     if (!movedUp) return;
     if (!state.settings.content.stickyChatPause) return;
     if (state.runtime.chatPaused) return;
@@ -8193,7 +8194,10 @@ function releaseChatScrollPause() {
 function applyChatPause() {
   const panel = findProbe(document, 'chatPanel').element;
   const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
-  if (!panel || !messages) return;
+  if (!panel || !messages) {
+    if (!state.settings.content.stickyChatPause) releaseChatScrollPause();
+    return;
+  }
   const owner = ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"]');
   owner.dataset.kfChatPaused = String(state.runtime.chatPaused);
   let button = owner.querySelector?.('[data-kf-chat-pause]');
@@ -9994,6 +9998,7 @@ async function runApplyCycle() {
         state.runtime.chatHidden = false;
         state.runtime.sidebarHidden = false;
         state.runtime.chatPaused = false;
+        state.runtime.chatScrollLastTop = 0;
         state.observers.chat?.disconnect?.();
         state.observers.chat = null;
       }

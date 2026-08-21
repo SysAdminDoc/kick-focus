@@ -134,6 +134,7 @@ const state = {
     // Kick's node the moment the setting goes off.
     chatScrollNode: null,
     chatScrollHandler: null,
+    chatScrollLastTop: 0,
     suspended: false,
     routeSource: '',
     // The route a saved view was last applied for, so it is applied on entering
@@ -3278,7 +3279,7 @@ const CHAT_SCROLL_PAUSE_DISTANCE = 64;
 function armChatScrollPause(messages) {
   if (state.runtime.chatScrollNode === messages) return;
   releaseChatScrollPause();
-  let lastTop = messages.scrollTop;
+  state.runtime.chatScrollLastTop = messages.scrollTop;
   const handler = () => {
     // Two conditions, and the direction is the one that matters. Distance from
     // the bottom alone reads a busy channel as a reader scrolling back: between
@@ -3288,8 +3289,14 @@ function armChatScrollPause(messages) {
     // re-armed the pause seconds after Resume. A reader scrolling back is the
     // only thing that moves scrollTop *up*.
     const top = messages.scrollTop;
-    const movedUp = top < lastTop - 2;
-    lastTop = top;
+    // Held on `state.runtime`, not in this closure. Kick can reconcile the
+    // transcript node across a channel-to-channel navigation rather than
+    // remounting it, and the identity guard above then never re-runs — so a
+    // closure variable would still hold the previous channel's position, and
+    // the new channel's list loading in below it would read as the reader
+    // scrolling back on a page they just opened.
+    const movedUp = top < state.runtime.chatScrollLastTop - 2;
+    state.runtime.chatScrollLastTop = top;
     if (!movedUp) return;
     if (!state.settings.content.stickyChatPause) return;
     // Once paused there is nothing left for this listener to decide; the
@@ -3324,7 +3331,13 @@ function releaseChatScrollPause() {
 function applyChatPause() {
   const panel = findProbe(document, 'chatPanel').element;
   const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
-  if (!panel || !messages) return;
+  if (!panel || !messages) {
+    // Nothing to tag, but a listener from a route that did resolve may still be
+    // on one of Kick's nodes. Switching the setting off has to take it back off
+    // even on the cycle where the chat probes find nothing.
+    if (!state.settings.content.stickyChatPause) releaseChatScrollPause();
+    return;
+  }
   const owner = ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"]');
   owner.dataset.kfChatPaused = String(state.runtime.chatPaused);
   let button = owner.querySelector?.('[data-kf-chat-pause]');
@@ -5483,6 +5496,7 @@ async function runApplyCycle() {
         state.runtime.chatHidden = false;
         state.runtime.sidebarHidden = false;
         state.runtime.chatPaused = false;
+        state.runtime.chatScrollLastTop = 0;
         state.observers.chat?.disconnect?.();
         state.observers.chat = null;
       }

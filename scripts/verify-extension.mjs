@@ -30,6 +30,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { inlineScriptVerdict } from './csp.mjs';
 import { CAPTURABLE, FIXTURE_CONTRACT } from './fixture-contract.mjs';
 import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
@@ -1583,22 +1584,7 @@ try {
       derived = document.documentElement.dataset.kfDerived || null;
       if (!derived) await settle(300);
     }
-    // What Kick's own document says about script policy, read from the tab that
-    // loaded it: the meta form and the header form both bind this document, and
-    // the Firefox companion injects the page bundle as an inline <script>.
-    const meta = [...document.querySelectorAll('meta[http-equiv]')]
-      .filter((node) => String(node.httpEquiv).toLowerCase().startsWith('content-security-policy'))
-      .map((node) => ({ reportOnly: String(node.httpEquiv).toLowerCase().endsWith('report-only'), value: String(node.content || '') }));
-    const csp = { meta, header: null, reportOnly: null, read: false, why: '' };
-    try {
-      const response = await fetch(location.href, { credentials: 'include', cache: 'no-store' });
-      csp.header = response.headers.get('content-security-policy');
-      csp.reportOnly = response.headers.get('content-security-policy-report-only');
-      csp.read = true;
-    } catch (error) {
-      csp.why = String((error && error.message) || error);
-    }
-    return { out, derived, csp, route: location.pathname };
+    return { out, derived, route: location.pathname };
   })()`;
 
   /** Open one route in its own tab, read the probe report, close it again. */
@@ -1624,47 +1610,9 @@ try {
     return report.value || { why: report.error || 'the probe report returned nothing' };
   };
 
-  /**
-   * R-74: whether Kick's own CSP would still let the companion inject.
-   *
-   * The Firefox companion puts the page bundle in the document as an inline
-   * `<script>` — that is deliberate, because injecting it from a
-   * `moz-extension://` URL leaks a per-install UUID into the page. Kick served
-   * no `script-src` on any route measured to date, which is the only reason
-   * that works. The day it ships one, Firefox users lose the whole build with
-   * no error anyone would connect to Kick, so the shape of the policy is read
-   * on every route the sweep already opens and asserted on the two that matter.
-   *
-   * `'unsafe-inline'` is inert next to a nonce, a hash, or `'strict-dynamic'`,
-   * so a policy carrying those is treated as blocking even when the keyword is
-   * present. Report-only is recorded and does not fail: it blocks nothing yet,
-   * and it is the warning that the enforcing version is coming.
-   */
-  const readPolicy = (csp) => {
-    if (!csp) return { measured: false, why: 'the route probe returned no CSP reading' };
-    const enforcing = [csp.header, ...(csp.meta || []).filter((entry) => !entry.reportOnly).map((entry) => entry.value)].filter(Boolean);
-    const reporting = [csp.reportOnly, ...(csp.meta || []).filter((entry) => entry.reportOnly).map((entry) => entry.value)].filter(Boolean);
-    const directive = enforcing
-      .flatMap((policy) => policy.split(';'))
-      .map((part) => part.trim())
-      .find((part) => /^(script-src|script-src-elem|default-src)\b/i.test(part)) || '';
-    const inlineAllowed = !directive
-      || (/'unsafe-inline'/i.test(directive) && !/'strict-dynamic'/i.test(directive) && !/'nonce-|'sha(256|384|512)-/i.test(directive));
-    return {
-      measured: csp.read === true || enforcing.length > 0,
-      why: csp.why || '',
-      directive,
-      inlineAllowed,
-      enforcing: enforcing.length,
-      reporting: reporting.length,
-    };
-  };
-  const policies = {};
-
   for (const name of CAPTURABLE) {
     const contract = FIXTURE_CONTRACT[name];
     const swept = await sweepRoute(contract.url);
-    policies[name] = swept.out ? readPolicy(swept.csp) : { measured: false, why: swept.why || 'the route tab never loaded' };
     if (!swept.out) {
       record(`Kick's shell on ${name} matches what the fixture contract records`, false, swept.why);
       continue;
@@ -1704,17 +1652,97 @@ try {
       swept.derived === 'ok' ? 'nothing broken' : `resolved but derived nothing: ${swept.derived} (probe:derivedValue)`);
   }
 
+  /**
+   * R-74: whether Kick's own CSP would still let the companion inject.
+   *
+   * The Firefox companion puts the page bundle in the document as an inline
+   * script element, deliberately, because injecting it from a moz-extension URL
+   * leaks a per-install UUID into the page. That works only because Kick serves
+   * no script policy. The day it does, Firefox users lose the whole build with
+   * no error anyone would connect to Kick.
+   *
+   * Read from the navigation response itself, over CDP, rather than from a
+   * second fetch of the same URL. A re-fetch carries Sec-Fetch-Dest: empty, and
+   * edge middleware routinely attaches CSP only to document requests, so a
+   * policy that blocks the companion could be served all day while the probe
+   * reported a confident "no CSP". The tab opens blank, Network is enabled, and
+   * only then does it navigate, which is what makes the document response
+   * observable at all.
+   *
+   * The verdict is scripts/csp.mjs, unit-tested: directive precedence and the
+   * intersection across several enforcing policies are both easy to get
+   * backwards, and getting them backwards is what turns this into decoration.
+   */
+  const readDocumentCsp = async (url) => {
+    const opener = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await opener.ready;
+    const targetId = (await opener.send('Target.createTarget', { url: 'about:blank' })).result.targetId;
+    opener.close();
+    const entry = (await json('/json/list')).find((candidate) => candidate.id === targetId);
+    let reading = { measured: false, why: 'the CSP tab never opened' };
+    if (entry) {
+      const client = cdp(entry.webSocketDebuggerUrl);
+      await client.ready;
+      await client.send('Runtime.enable');
+      await client.send('Network.enable');
+      await client.send('Page.navigate', { url });
+      await sleep(9000);
+      const documents = client.events.filter((event) => event.method === 'Network.responseReceived'
+        && event.params?.type === 'Document'
+        && String(event.params?.response?.url || '').startsWith('https://kick.com'));
+      const response = documents[documents.length - 1]?.params?.response;
+      const header = (name) => Object.entries(response?.headers || {})
+        .filter(([key]) => key.toLowerCase() === name)
+        .map(([, value]) => value);
+      // The meta form binds the same document and is invisible to the response.
+      const meta = await evaluate(client, `(() => {
+        const nodes = [...document.querySelectorAll('meta[http-equiv]')]
+          .filter((node) => String(node.httpEquiv).toLowerCase().startsWith('content-security-policy'));
+        return {
+          enforcing: nodes.filter((node) => !String(node.httpEquiv).toLowerCase().endsWith('report-only')).map((node) => String(node.content || '')),
+          reporting: nodes.filter((node) => String(node.httpEquiv).toLowerCase().endsWith('report-only')).map((node) => String(node.content || '')),
+          landed: location.href,
+        };
+      })()`);
+      client.close();
+      reading = response
+        ? {
+          measured: true,
+          status: response.status,
+          landed: meta.value?.landed || response.url,
+          enforcing: header('content-security-policy'),
+          reporting: header('content-security-policy-report-only'),
+          meta: meta.value || { enforcing: [], reporting: [] },
+        }
+        : { measured: false, why: `no document response was observed for ${url}` };
+    }
+    const closer = cdp((await json('/json/version')).webSocketDebuggerUrl);
+    await closer.ready;
+    await closer.send('Target.closeTarget', { targetId });
+    closer.close();
+    return reading;
+  };
+
   // The document loaded or it did not. There is no third answer here, so this
   // is a record and never a skip: an unmeasured CSP is the same blind spot the
   // check exists to close.
-  for (const name of ['home', 'channel']) {
-    const policy = policies[name] || { measured: false, why: 'the sweep never reached this route' };
-    const shape = policy.directive
-      ? `${policy.directive}${policy.inlineAllowed ? '' : ' — the Firefox companion injects the page bundle inline and this policy refuses it'}`
-      : `no script-src, script-src-elem, or default-src in ${policy.enforcing} enforcing polic${policy.enforcing === 1 ? 'y' : 'ies'}`;
-    record(`Kick's ${name} document still lets the companion inject`,
-      policy.measured === true && policy.inlineAllowed === true,
-      policy.measured ? `${shape}${policy.reporting ? `; ${policy.reporting} report-only policy recorded` : ''}` : `CSP unmeasured: ${policy.why}`);
+  for (const [routeName, routeUrl] of [['home', 'https://kick.com/'], ['channel', FIXTURE_CONTRACT.channel.url]]) {
+    const reading = await readDocumentCsp(routeUrl);
+    const verdict = reading.measured
+      ? inlineScriptVerdict(reading.enforcing, reading.meta.enforcing)
+      : { allowed: false, policies: 0, governing: [], blockedBy: [] };
+    const reportOnly = reading.measured ? [...reading.reporting, ...reading.meta.reporting].length : 0;
+    const shape = verdict.policies === 0
+      ? 'no enforcing Content-Security-Policy on the document response or in its markup'
+      : `${verdict.policies} enforcing polic${verdict.policies === 1 ? 'y' : 'ies'}, script source ${verdict.governing.join(' | ') || 'ungoverned'}`;
+    const refused = verdict.blockedBy.length
+      ? ` -- the Firefox companion injects the page bundle inline and ${verdict.blockedBy.join(' | ')} refuses it`
+      : '';
+    record(`Kick's ${routeName} document still lets the companion inject`,
+      reading.measured === true && verdict.allowed === true,
+      reading.measured
+        ? `HTTP ${reading.status} for ${reading.landed}: ${shape}${refused}${reportOnly ? `; ${reportOnly} report-only policy recorded` : ''}`
+        : `CSP unmeasured: ${reading.why}`);
   }
 
   // R-68: what a busy chat costs, measured rather than reasoned about.
