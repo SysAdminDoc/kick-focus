@@ -67,3 +67,17 @@ test('the matrix carries no account data, only selectors and routes', { tag: 'un
     assert.ok(!pattern.test(source), `the signed-in matrix contains ${what}`);
   }
 });
+
+test('theme contrast verification never writes an operator-owned profile', { tag: 'unit' }, () => {
+  const source = readFileSync(resolve('scripts/verify-extension.mjs'), 'utf8');
+  const start = source.indexOf('// Theme tokens have to reach three separate layers');
+  const end = source.indexOf('const popupErrors', start);
+  assert.ok(start >= 0 && end > start, 'theme verification block not found');
+  const sweep = source.slice(start, end);
+  assert.ok(!/clear-favorites|choice\.click|data-value=["']studio["']/.test(sweep),
+    'theme verification can clear data or persist a replacement theme');
+  assert.match(sweep, /document\.documentElement\.dataset\.kfTheme =/,
+    'page theme should be applied as a transient DOM token');
+  assert.match(sweep, /applyAppearance\(\{ appearance:/,
+    'popup theme should be applied without writing extension storage');
+});

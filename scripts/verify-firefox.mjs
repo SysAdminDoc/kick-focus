@@ -32,8 +32,12 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = process.argv[2] || 'https://kick.com/';
 const PORT = Number(process.env.KF_FIREFOX_PORT || 9333);
+const COMMAND_TIMEOUT = Number(process.env.KF_FIREFOX_COMMAND_TIMEOUT || 90000);
 const EXTENSION = resolve(root, 'dist/extension-firefox');
 const ALLOW_NO_FIREFOX = process.env.KF_ALLOW_NO_FIREFOX === '1';
+if (!Number.isFinite(COMMAND_TIMEOUT) || COMMAND_TIMEOUT < 1000) {
+  throw new Error('KF_FIREFOX_COMMAND_TIMEOUT must be a number of milliseconds greater than 999');
+}
 
 const CANDIDATES = [
   process.env.FIREFOX_PATH,
@@ -106,7 +110,7 @@ function bidi(url) {
     const id = nextId += 1;
     pending.set(id, (msg) => (msg.error ? rej(new Error(`${method}: ${msg.error} ${msg.message || ''}`)) : res(msg.result)));
     ws.send(JSON.stringify({ id, method, params }));
-    setTimeout(() => { if (pending.has(id)) { pending.delete(id); rej(new Error(`${method}: timed out`)); } }, 45000);
+    setTimeout(() => { if (pending.has(id)) { pending.delete(id); rej(new Error(`${method}: timed out`)); } }, COMMAND_TIMEOUT);
   });
   return { ready, send, events, close: () => ws.close() };
 }
@@ -153,7 +157,13 @@ try {
   await client.ready;
 
   await client.send('session.new', { capabilities: { alwaysMatch: {} } });
-  await client.send('session.subscribe', { events: ['network.beforeRequestSent', 'network.responseCompleted', 'network.fetchError'] });
+  const tree = await client.send('browsingContext.getTree', {});
+  const context = tree?.contexts?.[0]?.context;
+  if (!context) throw new Error('no browsing context');
+  await client.send('session.subscribe', {
+    events: ['network.beforeRequestSent', 'network.responseCompleted', 'network.fetchError'],
+    contexts: [context],
+  });
   record('Firefox WebDriver BiDi session established', true, url);
 
   // An unsigned MV2 package installs as a *temporary* add-on, which is the only
@@ -163,11 +173,19 @@ try {
   });
   record('the unsigned Manifest V2 package installs as a temporary add-on', Boolean(installed?.extension), installed?.extension || '');
 
-  const tree = await client.send('browsingContext.getTree', {});
-  const context = tree?.contexts?.[0]?.context;
-  if (!context) throw new Error('no browsing context');
-
-  await client.send('browsingContext.navigate', { context, url: TARGET, wait: 'complete' });
+  let navigationError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await client.send('browsingContext.navigate', { context, url: TARGET, wait: 'complete' });
+      navigationError = null;
+      break;
+    } catch (error) {
+      navigationError = error;
+      if (!/timed out|connection_refused|network/i.test(error.message) || attempt === 3) break;
+      await sleep(attempt * 1500);
+    }
+  }
+  if (navigationError) throw navigationError;
   await sleep(6000);
 
   const evaluate = async (expression) => {

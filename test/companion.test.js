@@ -4,8 +4,20 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import { colorContrastRatio } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+test('the popup chooses the higher-contrast ink for a boundary custom accent', async () => {
+  const source = await readFile(resolve(root, 'src/extension/popup.js'), 'utf8');
+  const start = source.indexOf('function accentInk');
+  const end = source.indexOf('function applyAppearance', start);
+  assert.ok(start >= 0 && end > start, 'popup accent helper not found');
+  const context = { result: '' };
+  vm.runInNewContext(`${source.slice(start, end)}\nresult = accentInk('#00884F');`, context);
+  assert.equal(context.result, '#ffffff');
+  assert.ok(colorContrastRatio('#00884F', context.result) >= 4.5);
+});
 
 class EventTargetStub {
   constructor() {

@@ -137,6 +137,7 @@ const state = {
     chatScrollLastTop: 0,
     chatScrollTop: null,
     chatScrollAnchor: null,
+    chatScrollIgnoreUntil: 0,
     chatPauseNode: null,
     suspended: false,
     routeSource: '',
@@ -3287,6 +3288,70 @@ function applyPlayerResilience() {
  */
 const CHAT_SCROLL_PAUSE_DISTANCE = 64;
 
+/** Resolve message rows even when Kick removes every identifying attribute. */
+function chatScrollRows(messages) {
+  const viewport = messages.getBoundingClientRect();
+  const inViewport = (node) => {
+    const rect = node.getBoundingClientRect();
+    return rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom;
+  };
+  const indexed = [...messages.querySelectorAll('[data-index]')].filter(inViewport);
+  if (indexed.length) return indexed;
+  const identified = [...messages.querySelectorAll('[data-message-id], [data-chat-entry], [role="listitem"], article, .group')]
+    .filter((node) => inViewport(node) && String(node.textContent || '').trim().length > 0);
+  if (identified.length) return identified;
+
+  // Current Kick markup sometimes leaves the virtual rows completely
+  // anonymous. Sample what the browser actually painted through the viewport,
+  // then walk upward to the smallest row-shaped owner. This survives wrapper
+  // changes that make a direct-child scan mistake the whole virtual list for a
+  // message.
+  const painted = [];
+  if (typeof document.elementsFromPoint === 'function' && viewport.width > 0 && viewport.height > 0) {
+    const xs = [0.2, 0.5, 0.8].map((ratio) => Math.min(viewport.right - 4, viewport.left + viewport.width * ratio));
+    for (const x of xs) {
+      for (let y = viewport.top + 8; y < viewport.bottom - 4; y += 24) {
+        const candidates = [];
+        for (const hit of document.elementsFromPoint(x, y)) {
+          if (!messages.contains(hit)) continue;
+          for (let node = hit; node && node !== messages; node = node.parentElement) {
+            const rect = node.getBoundingClientRect();
+            if (rect.height >= 16
+              && rect.height <= Math.max(240, viewport.height * 0.45)
+              && rect.width >= viewport.width * 0.5
+              && String(node.textContent || '').trim().length > 0) {
+              candidates.push({ node, rect });
+            }
+          }
+        }
+        candidates.sort((a, b) => a.rect.height - b.rect.height || b.rect.width - a.rect.width);
+        if (candidates[0] && !painted.includes(candidates[0].node)) painted.push(candidates[0].node);
+      }
+    }
+  }
+  if (painted.length) {
+    return painted.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+  }
+
+  // A partial DOM or a browser without point sampling still gets a geometry
+  // fallback. Find the descendant whose direct children form the largest
+  // visible row group.
+  let best = [];
+  for (const parent of [messages, ...messages.querySelectorAll('div')]) {
+    const rows = [...parent.children].filter((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.height >= 16
+        && rect.height <= Math.max(240, viewport.height * 0.45)
+        && rect.width >= viewport.width * 0.5
+        && rect.bottom > viewport.top
+        && rect.top < viewport.bottom
+        && String(node.textContent || '').trim().length > 0;
+    });
+    if (rows.length > best.length) best = rows;
+  }
+  return best.length >= 2 ? best : [];
+}
+
 /**
  * The first visible message and its position inside the transcript viewport.
  *
@@ -3297,11 +3362,7 @@ const CHAT_SCROLL_PAUSE_DISTANCE = 64;
  */
 function captureChatScrollAnchor(messages) {
   const viewport = messages.getBoundingClientRect();
-  const indexed = [...messages.querySelectorAll('[data-index]')];
-  const rows = indexed.length
-    ? indexed
-    : [...messages.querySelectorAll('[data-message-id], [data-chat-entry], .group')];
-  const visible = rows
+  const visible = chatScrollRows(messages)
     .map((node) => ({ node, rect: node.getBoundingClientRect() }))
     .filter(({ rect }) => rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom);
   const row = visible.find(({ rect }) => rect.top >= viewport.top) || visible[0];
@@ -3330,7 +3391,10 @@ function restorePausedChatPosition(messages) {
     const viewportTop = messages.getBoundingClientRect().top;
     const currentOffset = anchor.node.getBoundingClientRect().top - viewportTop;
     const adjustment = currentOffset - anchor.offset;
-    if (Math.abs(adjustment) > 0.5) messages.scrollTop += adjustment;
+    if (Math.abs(adjustment) > 0.5) {
+      state.runtime.chatScrollIgnoreUntil = Date.now() + 80;
+      messages.scrollTop += adjustment;
+    }
     state.runtime.chatScrollTop = messages.scrollTop;
     return;
   }
@@ -3338,7 +3402,10 @@ function restorePausedChatPosition(messages) {
   // The anchored row was one of the rows Kick recycled. Restoring the last
   // stable scrollTop avoids a visible jump, then a fresh visible row becomes
   // the anchor for later mutations.
-  if (Number.isFinite(state.runtime.chatScrollTop)) messages.scrollTop = state.runtime.chatScrollTop;
+  if (Number.isFinite(state.runtime.chatScrollTop) && Math.abs(messages.scrollTop - state.runtime.chatScrollTop) > 0.5) {
+    state.runtime.chatScrollIgnoreUntil = Date.now() + 80;
+    messages.scrollTop = state.runtime.chatScrollTop;
+  }
   state.runtime.chatScrollTop = messages.scrollTop;
   state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
 }
@@ -3348,23 +3415,39 @@ function restorePausedChatPosition(messages) {
  *
  * A MutationObserver runs before requestAnimationFrame. Restoring directly in
  * the observer lets Kick's queued live-edge scroll win later in the same frame.
- * Two frames put this correction after that work, while coalescing a burst of
- * message mutations into one layout read and one possible scroll write.
+ * Two frames put the first correction after that work. A second bounded pass
+ * catches virtualisers that settle later, while a dirty flag gives mutations
+ * received during that window one follow-up cycle. Scroll events caused by a
+ * correction are ignored briefly, while a later downward scroll schedules one
+ * more coalesced restore instead of correcting synchronously.
  */
 function schedulePausedChatRestore(messages) {
-  if (state.runtime.chatScrollRestorePending) return;
+  if (state.runtime.chatScrollRestorePending) {
+    state.runtime.chatScrollRestoreDirty = true;
+    return;
+  }
+  state.runtime.chatScrollRestorePending = true;
+  state.runtime.chatScrollRestoreDirty = false;
   const restore = () => {
-    state.runtime.chatScrollRestorePending = null;
-    if (!state.runtime.chatPaused || state.runtime.chatPauseNode !== messages) return;
+    if (!state.runtime.chatPaused || state.runtime.chatPauseNode !== messages) return false;
     restorePausedChatPosition(messages);
     state.runtime.chatScrollLastTop = messages.scrollTop;
+    return true;
+  };
+  const finish = () => {
+    const active = restore();
+    const repeat = active && state.runtime.chatScrollRestoreDirty;
+    state.runtime.chatScrollRestorePending = null;
+    state.runtime.chatScrollRestoreDirty = false;
+    if (repeat) schedulePausedChatRestore(messages);
   };
   if (typeof requestAnimationFrame === 'function') {
-    state.runtime.chatScrollRestorePending = requestAnimationFrame(() => {
-      state.runtime.chatScrollRestorePending = requestAnimationFrame(restore);
-    });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      restore();
+      setTimeout(finish, 120);
+    }));
   } else {
-    state.runtime.chatScrollRestorePending = setTimeout(restore, 0);
+    setTimeout(finish, 120);
   }
 }
 
@@ -3391,6 +3474,10 @@ function armChatScrollPause(messages) {
     // only thing that moves scrollTop *up*.
     const top = messages.scrollTop;
     const previousTop = state.runtime.chatScrollLastTop;
+    if (Date.now() < state.runtime.chatScrollIgnoreUntil) {
+      state.runtime.chatScrollLastTop = top;
+      return;
+    }
     // Held on `state.runtime`, not in this closure. Kick can reconcile the
     // transcript node across a channel-to-channel navigation rather than
     // remounting it, and the identity guard above then never re-runs — so a
@@ -3401,13 +3488,15 @@ function armChatScrollPause(messages) {
 
     // An upward movement while paused is the reader continuing farther into
     // history, so it becomes the new anchor instead of being undone. Downward
-    // movement is left to the coalesced post-render restore below. Correcting
-    // it synchronously from this event creates a feedback loop with Kick's own
+    // movement schedules the coalesced post-render restore below. Correcting it
+    // synchronously from this event creates a feedback loop with Kick's own
     // virtualiser on busy channels.
     if (state.runtime.chatPaused) {
       if (movedUp) {
         state.runtime.chatScrollTop = top;
         state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
+      } else if (top > previousTop + 2) {
+        schedulePausedChatRestore(messages);
       }
       state.runtime.chatScrollLastTop = top;
       return;
@@ -3443,6 +3532,7 @@ function releaseChatScrollPause() {
   if (chatScrollNode && chatScrollHandler) chatScrollNode.removeEventListener('scroll', chatScrollHandler);
   state.runtime.chatScrollNode = null;
   state.runtime.chatScrollHandler = null;
+  state.runtime.chatScrollIgnoreUntil = 0;
 }
 
 function applyChatPause() {
@@ -7552,6 +7642,27 @@ const TRANSLATIONS = {
     'Not-interested channels restored.': 'Se restauraron los canales marcados como no interesantes.',
     'Could not export settings.': 'No se pudo exportar la configuración.',
     'Could not read that settings file.': 'No se pudo leer ese archivo de configuración.',
+    'That backup is too large for this browser’s storage. Nothing was changed.': 'Esa copia de seguridad es demasiado grande para el almacenamiento de este navegador. No se cambió nada.',
+    'The import could not be saved. Your previous settings are unchanged.': 'No se pudo guardar la importación. Tu configuración anterior no ha cambiado.',
+    'Settings imported.': 'Configuración importada.',
+    'Previous settings backed up. Use Undo import to restore them.': 'Se hizo una copia de la configuración anterior. Usa Deshacer importación para restaurarla.',
+    ' and {count} more': ' y {count} más',
+    '{count} more': '{count} más',
+    'Ignored unknown section "{key}".': 'Se ignoró la sección desconocida "{key}".',
+    'Ignored unknown setting "{path}".': 'Se ignoró la configuración desconocida "{path}".',
+    'Adjusted "{path}" to a supported value.': 'Se ajustó "{path}" a un valor compatible.',
+    'Upgraded from an unversioned file to schema {schema}.': 'Se actualizó un archivo sin versión al esquema {schema}.',
+    'Upgraded from schema {from} to schema {to}.': 'Se actualizó del esquema {from} al esquema {to}.',
+    '{count} sticker could not be kept: {sample}{more}.': 'No se pudo conservar {count} emote: {sample}{more}.',
+    '{count} stickers could not be kept: {sample}{more}.': 'No se pudieron conservar {count} emotes: {sample}{more}.',
+    'Adjusted emote {field} to supported entries.': 'Se ajustó emote {field} a entradas compatibles.',
+    'Upgraded emotes to schema {schema}.': 'Se actualizaron los emotes al esquema {schema}.',
+    'Adjusted emote usage counts to {count} supported entries.': 'Se ajustaron los recuentos de uso de emotes a {count} entradas compatibles.',
+    'Adjusted the multi-stream grid to {count} supported channels.': 'Se ajustó la cuadrícula multitransmisión a {count} canales compatibles.',
+    'Adjusted saved layouts to {count} supported entries.': 'Se ajustaron los diseños guardados a {count} entradas compatibles.',
+    'Density saved': 'Densidad guardada',
+    'Content filter saved': 'Filtro de contenido guardado',
+    'Poor mode saved': 'Modo Pobre guardado',
     'No import to undo.': 'No hay ninguna importación que deshacer.',
     'The backup could not be restored.': 'No se pudo restaurar la copia de seguridad.',
     'Import undone — your previous settings are back.': 'Importación deshecha: tu configuración anterior está de vuelta.',
@@ -8173,6 +8284,27 @@ const TRANSLATIONS = {
     'Not-interested channels restored.': 'Canais marcados como sem interesse restaurados.',
     'Could not export settings.': 'Não foi possível exportar as configurações.',
     'Could not read that settings file.': 'Não foi possível ler esse arquivo de configurações.',
+    'That backup is too large for this browser’s storage. Nothing was changed.': 'Esse backup é grande demais para o armazenamento deste navegador. Nada foi alterado.',
+    'The import could not be saved. Your previous settings are unchanged.': 'Não foi possível salvar a importação. Suas configurações anteriores não foram alteradas.',
+    'Settings imported.': 'Configurações importadas.',
+    'Previous settings backed up. Use Undo import to restore them.': 'Foi feito backup das configurações anteriores. Use Desfazer importação para restaurá-las.',
+    ' and {count} more': ' e mais {count}',
+    '{count} more': 'mais {count}',
+    'Ignored unknown section "{key}".': 'A seção desconhecida "{key}" foi ignorada.',
+    'Ignored unknown setting "{path}".': 'A configuração desconhecida "{path}" foi ignorada.',
+    'Adjusted "{path}" to a supported value.': '"{path}" foi ajustada para um valor compatível.',
+    'Upgraded from an unversioned file to schema {schema}.': 'Um arquivo sem versão foi atualizado para o esquema {schema}.',
+    'Upgraded from schema {from} to schema {to}.': 'O esquema {from} foi atualizado para o esquema {to}.',
+    '{count} sticker could not be kept: {sample}{more}.': 'Não foi possível manter {count} emote: {sample}{more}.',
+    '{count} stickers could not be kept: {sample}{more}.': 'Não foi possível manter {count} emotes: {sample}{more}.',
+    'Adjusted emote {field} to supported entries.': 'O campo de emotes {field} foi ajustado para entradas compatíveis.',
+    'Upgraded emotes to schema {schema}.': 'Os emotes foram atualizados para o esquema {schema}.',
+    'Adjusted emote usage counts to {count} supported entries.': 'As contagens de uso de emotes foram ajustadas para {count} entradas compatíveis.',
+    'Adjusted the multi-stream grid to {count} supported channels.': 'A grade multistream foi ajustada para {count} canais compatíveis.',
+    'Adjusted saved layouts to {count} supported entries.': 'Os layouts salvos foram ajustados para {count} entradas compatíveis.',
+    'Density saved': 'Densidade salva',
+    'Content filter saved': 'Filtro de conteúdo salvo',
+    'Poor mode saved': 'Modo Pobre salvo',
     'No import to undo.': 'Não há importação para desfazer.',
     'The backup could not be restored.': 'Não foi possível restaurar o backup.',
     'Import undone — your previous settings are back.': 'Importação desfeita: suas configurações anteriores voltaram.',
@@ -10475,9 +10607,10 @@ async function onImportFile(event) {
     const snapshot = currentExportPayload();
     const commit = applyImportedStores(result);
     if (!commit.ok) {
-      showToast(commit.reason === 'over-budget'
-        ? 'That backup is too large for this browser’s storage. Nothing was changed.'
-        : 'The import could not be saved. Your previous settings are unchanged.', true);
+      const message = commit.reason === 'over-budget'
+        ? tr('That backup is too large for this browser’s storage. Nothing was changed.')
+        : tr('The import could not be saved. Your previous settings are unchanged.');
+      showToast(message, true);
       return;
     }
     gmSet(PRE_IMPORT_BACKUP_KEY, snapshot);
@@ -10485,13 +10618,21 @@ async function onImportFile(event) {
     scheduleApply(0);
     // Naming what was not kept, because an import that silently drops half a
     // configuration still reports success otherwise.
-    const notes = result.notes || [];
-    const undoHint = ' Previous settings backed up — use Undo import to restore them.';
+    const notes = Array.isArray(result.noteDetails) && result.noteDetails.length === result.notes?.length
+      ? result.noteDetails.map((detail) => {
+        const values = { ...(detail.values || {}) };
+        values.more = values.moreCount > 0 ? trf(' and {count} more', { count: values.moreCount }) : '';
+        return trf(detail.key, values);
+      })
+      : (result.notes || []).map((note) => tr(note));
+    const imported = tr('Settings imported.');
+    const undoHint = tr('Previous settings backed up. Use Undo import to restore them.');
     if (notes.length === 0) {
-      showToast(`Settings imported.${undoHint}`);
+      showToast(`${imported} ${undoHint}`);
     } else {
-      showToast(`Settings imported. ${notes[0]}${notes.length > 1 ? ` (+${notes.length - 1} more)` : ''}${undoHint}`);
-      announce(`Settings imported. ${notes.join(' ')}${undoHint}`);
+      const more = notes.length > 1 ? ` (+${trf('{count} more', { count: notes.length - 1 })})` : '';
+      showToast(`${imported} ${notes[0]}${more} ${undoHint}`);
+      announce(`${imported} ${notes.join(' ')} ${undoHint}`);
     }
   } catch {
     showToast('Could not read that settings file.', true);

@@ -3004,6 +3004,21 @@ export const IMPORT_ERROR_MESSAGES = Object.freeze({
   empty: 'That file does not contain Kick Focus settings.',
 });
 
+export const IMPORT_NOTE_MESSAGES = Object.freeze({
+  unknownSection: 'Ignored unknown section "{key}".',
+  unknownSetting: 'Ignored unknown setting "{path}".',
+  adjustedSetting: 'Adjusted "{path}" to a supported value.',
+  upgradedUnversioned: 'Upgraded from an unversioned file to schema {schema}.',
+  upgradedSchema: 'Upgraded from schema {from} to schema {to}.',
+  droppedSticker: '{count} sticker could not be kept: {sample}{more}.',
+  droppedStickers: '{count} stickers could not be kept: {sample}{more}.',
+  adjustedEmoteField: 'Adjusted emote {field} to supported entries.',
+  upgradedEmotes: 'Upgraded emotes to schema {schema}.',
+  adjustedUsage: 'Adjusted emote usage counts to {count} supported entries.',
+  adjustedGrid: 'Adjusted the multi-stream grid to {count} supported channels.',
+  adjustedLayouts: 'Adjusted saved layouts to {count} supported entries.',
+});
+
 export function validateImportedSettings(jsonText) {
   let parsed;
   try {
@@ -3041,13 +3056,21 @@ export function validateImportedSettings(jsonText) {
   const value = normalizeSettings(parsed);
   const stickers = parsed.stickers == null ? null : normalizeStickerPreferences(parsed.stickers);
   const notes = [];
+  const noteDetails = [];
+  const addNote = (message, key, values = {}, first = false) => {
+    const method = first ? 'unshift' : 'push';
+    notes[method](message);
+    noteDetails[method]({ key, values });
+  };
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
   const hasSettings = sections.some((section) => isRecord(parsed[section]));
   const known = new Set(['schema', 'stickers', 'usage', 'multistream', 'channelLayouts',
     'favoriteChannels', 'dismissedChannels', 'chatKeywords', 'channelNotes', 'mediaPreferences']);
 
   for (const key of Object.keys(parsed)) {
-    if (!known.has(key) && !sections.includes(key)) notes.push(`Ignored unknown section "${key}".`);
+    if (!known.has(key) && !sections.includes(key)) {
+      addNote(`Ignored unknown section "${key}".`, IMPORT_NOTE_MESSAGES.unknownSection, { key });
+    }
   }
   for (const section of sections) {
     const incoming = parsed[section];
@@ -3058,16 +3081,31 @@ export function validateImportedSettings(jsonText) {
       // report. normalizeSettings rebuilds from defaults, so this was never a
       // pollution risk — but transparency is the point of this whole function.
       if (!Object.hasOwn(value[section], key)) {
-        notes.push(`Ignored unknown setting "${section}.${key}".`);
+        const path = `${section}.${key}`;
+        addNote(`Ignored unknown setting "${path}".`, IMPORT_NOTE_MESSAGES.unknownSetting, { path });
       } else if (JSON.stringify(value[section][key]) !== JSON.stringify(raw)) {
-        notes.push(`Adjusted "${section}.${key}" to a supported value.`);
+        const path = `${section}.${key}`;
+        addNote(`Adjusted "${path}" to a supported value.`, IMPORT_NOTE_MESSAGES.adjustedSetting, { path });
       }
     }
   }
 
-  const from = parsed.schema == null ? 'an unversioned file' : `schema ${parsed.schema}`;
   if (parsed.schema == null || Number(parsed.schema) < SETTINGS_SCHEMA) {
-    notes.unshift(`Upgraded from ${from} to schema ${SETTINGS_SCHEMA}.`);
+    if (parsed.schema == null) {
+      addNote(
+        `Upgraded from an unversioned file to schema ${SETTINGS_SCHEMA}.`,
+        IMPORT_NOTE_MESSAGES.upgradedUnversioned,
+        { schema: SETTINGS_SCHEMA },
+        true,
+      );
+    } else {
+      addNote(
+        `Upgraded from schema ${parsed.schema} to schema ${SETTINGS_SCHEMA}.`,
+        IMPORT_NOTE_MESSAGES.upgradedSchema,
+        { from: parsed.schema, to: SETTINGS_SCHEMA },
+        true,
+      );
+    }
   }
 
   if (stickers) {
@@ -3086,16 +3124,29 @@ export function validateImportedSettings(jsonText) {
       if (dropped.length) {
         const sample = dropped.slice(0, 5).join(', ');
         const suffix = dropped.length > 5 ? ` and ${dropped.length - 5} more` : '';
-        notes.push(`${dropped.length} sticker${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`);
+        const key = dropped.length === 1 ? IMPORT_NOTE_MESSAGES.droppedSticker : IMPORT_NOTE_MESSAGES.droppedStickers;
+        addNote(
+          `${dropped.length} sticker${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`,
+          key,
+          { count: dropped.length, sample, moreCount: Math.max(0, dropped.length - 5) },
+        );
       }
     }
     for (const field of ['favorites', 'hidden', 'groups', 'assignments']) {
       if (Array.isArray(parsed.stickers[field]) && parsed.stickers[field].length !== stickers[field].length) {
-        notes.push(`Adjusted emote ${field} to supported entries.`);
+        addNote(
+          `Adjusted emote ${field} to supported entries.`,
+          IMPORT_NOTE_MESSAGES.adjustedEmoteField,
+          { field },
+        );
       }
     }
     if (parsed.stickers.schema == null || Number(parsed.stickers.schema) < STICKER_PREFERENCES_SCHEMA) {
-      notes.push(`Upgraded emotes to schema ${STICKER_PREFERENCES_SCHEMA}.`);
+      addNote(
+        `Upgraded emotes to schema ${STICKER_PREFERENCES_SCHEMA}.`,
+        IMPORT_NOTE_MESSAGES.upgradedEmotes,
+        { schema: STICKER_PREFERENCES_SCHEMA },
+      );
     }
   }
 
@@ -3106,18 +3157,32 @@ export function validateImportedSettings(jsonText) {
   if (usage) {
     const kept = Object.keys(usage.global).length;
     const offered = isRecord(parsed.usage.global) ? Object.keys(parsed.usage.global).length : 0;
-    if (offered !== kept) notes.push(`Adjusted emote usage counts to ${kept} supported entries.`);
+    if (offered !== kept) {
+      addNote(
+        `Adjusted emote usage counts to ${kept} supported entries.`,
+        IMPORT_NOTE_MESSAGES.adjustedUsage,
+        { count: kept },
+      );
+    }
   }
 
   const multistream = parsed.multistream == null ? null : normalizeMultistream(parsed.multistream);
   if (multistream) {
     const offeredStreams = Array.isArray(parsed.multistream.streams) ? parsed.multistream.streams.length : 0;
     if (offeredStreams !== multistream.streams.length) {
-      notes.push(`Adjusted the multi-stream grid to ${multistream.streams.length} supported channels.`);
+      addNote(
+        `Adjusted the multi-stream grid to ${multistream.streams.length} supported channels.`,
+        IMPORT_NOTE_MESSAGES.adjustedGrid,
+        { count: multistream.streams.length },
+      );
     }
     const offeredLayouts = Array.isArray(parsed.multistream.layouts) ? parsed.multistream.layouts.length : 0;
     if (offeredLayouts !== multistream.layouts.length) {
-      notes.push(`Adjusted saved layouts to ${multistream.layouts.length} supported entries.`);
+      addNote(
+        `Adjusted saved layouts to ${multistream.layouts.length} supported entries.`,
+        IMPORT_NOTE_MESSAGES.adjustedLayouts,
+        { count: multistream.layouts.length },
+      );
     }
   }
 
@@ -3143,7 +3208,7 @@ export function validateImportedSettings(jsonText) {
     settings: hasSettings ? value : null,
     stickers, usage, multistream,
     channelLayouts, favoriteChannels, dismissedChannels, chatKeywords, channelNotes, mediaPreferences,
-    notes,
+    notes, noteDetails,
   };
 }
 

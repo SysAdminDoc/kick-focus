@@ -39,7 +39,14 @@ function accentInk(hex) {
   const luminance = channels
     .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
     .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
-  return luminance > 0.18 ? '#071004' : '#ffffff';
+  const inkLuminance = (value) => value
+    .map((part) => part / 255)
+    .map((part) => (part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, part, index) => sum + part * [0.2126, 0.7152, 0.0722][index], 0);
+  const contrast = (first, second) => (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+  const dark = inkLuminance([7, 16, 4]);
+  const light = 1;
+  return contrast(luminance, dark) >= contrast(luminance, light) ? '#071004' : '#ffffff';
 }
 
 function applyAppearance(settings) {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DISCOVERY_ROUTE_LABELS, EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, IMPORT_ERROR_MESSAGES, STORAGE_STORES, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
+import { DISCOVERY_ROUTE_LABELS, EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, IMPORT_ERROR_MESSAGES, IMPORT_NOTE_MESSAGES, STORAGE_STORES, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -22,6 +22,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  */
 /** A single-quoted JS string literal, capturing its contents. */
 const STR = "'((?:[^'\\\\]|\\\\.)*)'";
+const STR_NC = "'(?:[^'\\\\]|\\\\.)*'";
 
 /**
  * Every surface that puts this build's own copy in front of a user.
@@ -38,8 +39,9 @@ const SCANNERS = [
   ['tr', new RegExp(`\\btr\\(${STR}`, 'g')],
   ['trf', new RegExp(`\\btrf\\(${STR}`, 'g')],
   ['showToast', new RegExp(`\\bshowToast\\(${STR}`, 'g')],
-  ['showToast ternary', new RegExp(`\\bshowToast\\([^\\n?]+\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
+  ['showToast ternary', new RegExp(`\\bshowToast\\([^;?]{0,300}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['save status', new RegExp(`\\b(?:saveSettings|setSaveStatus)\\(${STR}`, 'g')],
+  ['update setting status', new RegExp(`\\bupdateSetting\\(${STR_NC},[^;]{0,400}?,\\s*${STR}\\s*\\);`, 'g')],
   ['announce', new RegExp(`\\bannounce\\(${STR}`, 'g')],
   ['toast action label', new RegExp(`\\blabel:\\s*${STR}`, 'g')],
   ['plural form', new RegExp(`\\bplural\\([^,]+,\\s*${STR},\\s*${STR}\\s*\\)`, 'g')],
@@ -97,6 +99,7 @@ async function collect(override = null) {
     ...Object.values(VIEWER_HUB_REASONS),
     ...Object.values(VIEWER_HUB_REWARD_WORDS),
     ...Object.values(IMPORT_ERROR_MESSAGES),
+    ...Object.values(IMPORT_NOTE_MESSAGES),
     ...STORAGE_STORES.map((store) => store.label),
     'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.',
     // The earned marker's status, which reaches the accessible name through a
@@ -191,6 +194,13 @@ expectFailure('a settings row with no dictionary entry fails the coverage gate',
 });
 
 expectFailure('a ternary toast with untranslated literals fails the coverage gate', { tag: 'unit' }, async () => {
-  const missing = untranslated(await collect(await sabotaged("  showToast(ok ? 'An untranslated success' : 'An untranslated failure');")));
+  const missing = untranslated(await collect(await sabotaged(`  showToast(ok
+    ? 'An untranslated success'
+    : 'An untranslated failure');`)));
+  assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
+});
+
+expectFailure('an indirect save status with no translation fails the coverage gate', { tag: 'unit' }, async () => {
+  const missing = untranslated(await collect(await sabotaged("  updateSetting('layout.density', nextDensity, 'An untranslated save status');")));
   assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });

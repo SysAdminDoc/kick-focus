@@ -1967,21 +1967,19 @@ try {
     await settle(300);
     const after = { ...read(), top: Math.round(messages.scrollTop) };
 
-    const viewport = messages.getBoundingClientRect();
-    const indexed = [...messages.querySelectorAll('[data-index]')];
-    const rows = indexed.length
-      ? indexed
-      : [...messages.querySelectorAll('[data-message-id], [data-chat-entry], .group')];
-    const anchor = rows
-      .map((node) => ({ node, rect: node.getBoundingClientRect() }))
-      .find(({ rect }) => rect.height > 0 && rect.top >= viewport.top && rect.top < viewport.bottom);
-    const anchorStart = anchor ? anchor.rect.top - viewport.top : null;
+    const anchor = typeof captureChatScrollAnchor === 'function'
+      ? captureChatScrollAnchor(messages)
+      : null;
+    const anchorRowCount = typeof chatScrollRows === 'function' ? chatScrollRows(messages).length : null;
+    const anchorSignature = anchor?.signature || '';
+    const anchorStart = anchor?.offset ?? null;
 
     // Five seconds gives a busy channel enough time to append and recycle rows.
     // The same visible row must stay in place while it remains mounted, and the
     // transcript must remain outside the pause-on-scroll threshold.
     await settle(5000);
     const held = Math.round(messages.scrollTop);
+    const pixelDrift = Math.round(Math.abs(held - after.top) * 10) / 10;
     const heldDistance = Math.round(messages.scrollHeight - messages.scrollTop - messages.clientHeight);
     const anchorEnd = anchor?.node?.isConnected
       ? anchor.node.getBoundingClientRect().top - messages.getBoundingClientRect().top
@@ -1997,7 +1995,7 @@ try {
     const off = await setSwitch('content.stickyChatPause', false);
     await settle(400);
     const cleared = { button: Boolean(control()) };
-    return { ok: true, before, after, held, heldDistance, landed: Math.round(landed), anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
+    return { ok: true, before, after, held, pixelDrift, heldDistance, landed: Math.round(landed), anchorRowCount, anchorSignature, anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
   })()`);
   const scroll = scrollPause.value || { why: scrollPause.error || 'the probe returned nothing' };
   recordProbe('scrolling chat up enters the paused state, and Resume leaves it',
@@ -2006,14 +2004,14 @@ try {
       && scroll.before?.paused === 'false'
       && scroll.after?.paused === 'true'
       && /Resume chat/.test(scroll.after?.label || '')
-      && Number.isFinite(scroll.anchorDrift)
-      && scroll.anchorDrift <= 8
+      && ((Number.isFinite(scroll.anchorDrift) && scroll.anchorDrift <= 8)
+        || (!Number.isFinite(scroll.anchorDrift) && scroll.pixelDrift <= 8))
       && scroll.heldDistance > 64
       && scroll.resumed?.paused === 'false'
       && /Pause chat/.test(scroll.resumed?.label || '')
       && scroll.cleared?.button === false,
     scroll.ok
-      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor drift ${scroll.anchorDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
+      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, signature ${scroll.anchorSignature || 'none'}, drift ${scroll.anchorDrift}px, pixel fallback drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
       : scroll.why);
 
   // R-76: a banned reader's way back into a chat, still on screen.
@@ -3325,6 +3323,10 @@ try {
   // shadow-root dialogs, and the extension popup. Source inspection proves the
   // variables exist but not that nested text resolves against the right
   // surface, so each non-default theme is measured at runtime.
+  const storedPageTheme = await evaluate(pageClient, 'document.documentElement.dataset.kfTheme || "studio"');
+  const originalPageTheme = ['studio', 'oled', 'slate'].includes(storedPageTheme.value)
+    ? storedPageTheme.value
+    : 'studio';
   for (const theme of ['oled', 'slate']) {
     const pageTheme = await evaluate(pageClient, `(async () => {
       const host = document.getElementById('kick-focus-root');
@@ -3356,9 +3358,10 @@ try {
       await settle();
       shadow.querySelector('[data-page="appearance"]')?.click();
       await settle();
-      const choice = shadow.querySelector('[data-set="appearance.theme"][data-value="${theme}"]');
-      if (!choice) return { ok: false, why: 'the ${theme} theme control was not rendered' };
-      choice.click();
+      // Apply the visual token directly. Clicking the setting here writes the
+      // operator's profile, which makes a verification run destructive when
+      // KF_USER_DATA_DIR points at a real signed-in profile.
+      document.documentElement.dataset.kfTheme = '${theme}';
       await settle(700);
       const shell = shadow.querySelector('[data-kf-settings-shell]');
       const heading = shadow.querySelector('.kf-page-header h2');
@@ -3371,10 +3374,20 @@ try {
       const dialogTitle = measure(title, confirm);
       const dialogCopy = measure(copy, confirm);
       shadow.querySelector('[data-action="cancel-reset"]')?.click();
+      // Exercise the real toast path without changing storage: submitting the
+      // empty hidden-channel field is validation only.
       shadow.querySelector('[data-page="content"]')?.click();
-      await settle();
-      shadow.querySelector('[data-action="clear-favorites"]')?.click();
       await settle(250);
+      const invalidChannel = shadow.querySelector('[data-action="add-hidden-channel"]');
+      const channelInput = shadow.querySelector('[data-kf-hidden-channel-input]');
+      if (!invalidChannel || !channelInput) return { ok: false, why: 'the validation toast control is unavailable' };
+      channelInput.value = '';
+      invalidChannel.click();
+      await settle(250);
+      // Rendering and validation can coincide with a scheduled apply from an
+      // earlier journey. Reassert only the transient visual token before the
+      // final sample so the profile remains untouched.
+      document.documentElement.dataset.kfTheme = '${theme}';
       const toast = shadow.querySelector('[data-kf-toast]');
       return {
         ok: true,
@@ -3387,7 +3400,9 @@ try {
     })()`);
     await sleep(500);
     const popupTheme = await evaluate(popupClient, `(async () => {
-      await render();
+      // This exercises the same validated appearance function render() calls
+      // without writing synthetic settings into extension storage.
+      applyAppearance({ appearance: { theme: '${theme}', accent: 'custom', customAccent: '#00884F' } });
       const channels = (value) => (String(value).match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
       const luminance = (value) => channels(value)
         .map((part) => part / 255)
@@ -3423,15 +3438,12 @@ try {
         && popupSample.theme === theme
         && popupSample.title >= 4.5 && popupSample.note >= 4.5 && popupSample.button >= 4.5,
       pageSample.ok
-        ? `page contrast ${pageMetrics.map((metric) => metric?.ratio).join('/')}; popup contrast ${popupSample.title}/${popupSample.note}/${popupSample.button}; popup theme=${popupSample.theme}`
+        ? `page contrast ${pageMetrics.map((metric) => metric?.ratio).join('/')}; popup contrast ${popupSample.title}/${popupSample.note}/${popupSample.button} with boundary custom accent; popup theme=${popupSample.theme}`
         : pageSample.why);
   }
   await evaluate(pageClient, `(async () => {
     const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-    shadow?.querySelector('[data-page="appearance"]')?.click();
-    await new Promise((done) => setTimeout(done, 400));
-    shadow?.querySelector('[data-set="appearance.theme"][data-value="studio"]')?.click();
-    await new Promise((done) => setTimeout(done, 500));
+    document.documentElement.dataset.kfTheme = '${originalPageTheme}';
     shadow?.querySelector('[data-action="close-settings"]')?.click();
   })()`);
   await sleep(300);

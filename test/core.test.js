@@ -1554,6 +1554,10 @@ test('settings import names whatever it could not keep', { tag: 'unit' }, () => 
   assert.equal(clamped.ok, true);
   assert.equal(clamped.value.layout.chatWidth, 520);
   assert.ok(clamped.notes.some((note) => /Adjusted "layout.chatWidth"/.test(note)));
+  assert.deepEqual(clamped.noteDetails.find((note) => note.values?.path === 'layout.chatWidth'), {
+    key: 'Adjusted "{path}" to a supported value.',
+    values: { path: 'layout.chatWidth' },
+  });
 
   // Settings and sections this build does not have are reported, not ignored.
   const unknown = validateImportedSettings('{"schema":1,"layout":{"nonsense":1},"mystery":{}}');
@@ -1567,6 +1571,7 @@ test('settings import names whatever it could not keep', { tag: 'unit' }, () => 
   // A clean, current file produces no noise.
   const clean = validateImportedSettings(JSON.stringify({ schema: SETTINGS_SCHEMA, layout: { chatWidth: 410 } }));
   assert.deepEqual(clean.notes, []);
+  assert.deepEqual(clean.noteDetails, []);
 });
 
 test('settings import round-trips the sticker library without treating it as an unknown section', { tag: 'unit' }, () => {
