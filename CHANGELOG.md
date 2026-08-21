@@ -4,8 +4,13 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Fixed
+
+- The channel fixture and the shell contract said a channel page renders stream cards. It renders none, under any of the three probe shapes. Kick's React payload still serialises the card test id 22 times as script text, which is why the capture script had been calling it a reduction bug rather than drift; the capture now reads markers from the markup and not from inline script.
+
 ### Changed
 
+- The live gate reads Kick's Content-Security-Policy on the home and channel documents and fails if a script policy appears that would refuse the inline injection the Firefox companion depends on. Measured 2026-08-21: neither route serves one.
 - The build strips comments from the generated bundles. The userscript is 774,847 bytes instead of 974,585, which moves it from 97% of Violentmonkey's ~1 MB injection ceiling down to 77%. Source comments are untouched; they live in `src/`, which is where anyone reads them.
 
 ## 1.32.0, 2026-08-21

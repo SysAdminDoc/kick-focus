@@ -1518,7 +1518,22 @@ try {
       derived = document.documentElement.dataset.kfDerived || null;
       if (!derived) await settle(300);
     }
-    return { out, derived, route: location.pathname };
+    // What Kick's own document says about script policy, read from the tab that
+    // loaded it: the meta form and the header form both bind this document, and
+    // the Firefox companion injects the page bundle as an inline <script>.
+    const meta = [...document.querySelectorAll('meta[http-equiv]')]
+      .filter((node) => String(node.httpEquiv).toLowerCase().startsWith('content-security-policy'))
+      .map((node) => ({ reportOnly: String(node.httpEquiv).toLowerCase().endsWith('report-only'), value: String(node.content || '') }));
+    const csp = { meta, header: null, reportOnly: null, read: false, why: '' };
+    try {
+      const response = await fetch(location.href, { credentials: 'include', cache: 'no-store' });
+      csp.header = response.headers.get('content-security-policy');
+      csp.reportOnly = response.headers.get('content-security-policy-report-only');
+      csp.read = true;
+    } catch (error) {
+      csp.why = String((error && error.message) || error);
+    }
+    return { out, derived, csp, route: location.pathname };
   })()`;
 
   /** Open one route in its own tab, read the probe report, close it again. */
@@ -1544,9 +1559,47 @@ try {
     return report.value || { why: report.error || 'the probe report returned nothing' };
   };
 
+  /**
+   * R-74: whether Kick's own CSP would still let the companion inject.
+   *
+   * The Firefox companion puts the page bundle in the document as an inline
+   * `<script>` — that is deliberate, because injecting it from a
+   * `moz-extension://` URL leaks a per-install UUID into the page. Kick served
+   * no `script-src` on any route measured to date, which is the only reason
+   * that works. The day it ships one, Firefox users lose the whole build with
+   * no error anyone would connect to Kick, so the shape of the policy is read
+   * on every route the sweep already opens and asserted on the two that matter.
+   *
+   * `'unsafe-inline'` is inert next to a nonce, a hash, or `'strict-dynamic'`,
+   * so a policy carrying those is treated as blocking even when the keyword is
+   * present. Report-only is recorded and does not fail: it blocks nothing yet,
+   * and it is the warning that the enforcing version is coming.
+   */
+  const readPolicy = (csp) => {
+    if (!csp) return { measured: false, why: 'the route probe returned no CSP reading' };
+    const enforcing = [csp.header, ...(csp.meta || []).filter((entry) => !entry.reportOnly).map((entry) => entry.value)].filter(Boolean);
+    const reporting = [csp.reportOnly, ...(csp.meta || []).filter((entry) => entry.reportOnly).map((entry) => entry.value)].filter(Boolean);
+    const directive = enforcing
+      .flatMap((policy) => policy.split(';'))
+      .map((part) => part.trim())
+      .find((part) => /^(script-src|script-src-elem|default-src)\b/i.test(part)) || '';
+    const inlineAllowed = !directive
+      || (/'unsafe-inline'/i.test(directive) && !/'strict-dynamic'/i.test(directive) && !/'nonce-|'sha(256|384|512)-/i.test(directive));
+    return {
+      measured: csp.read === true || enforcing.length > 0,
+      why: csp.why || '',
+      directive,
+      inlineAllowed,
+      enforcing: enforcing.length,
+      reporting: reporting.length,
+    };
+  };
+  const policies = {};
+
   for (const name of CAPTURABLE) {
     const contract = FIXTURE_CONTRACT[name];
     const swept = await sweepRoute(contract.url);
+    policies[name] = swept.out ? readPolicy(swept.csp) : { measured: false, why: swept.why || 'the route tab never loaded' };
     if (!swept.out) {
       record(`Kick's shell on ${name} matches what the fixture contract records`, false, swept.why);
       continue;
@@ -1584,6 +1637,19 @@ try {
       swept.derived ? {} : { skip: `the mod published no compatibility verdict on ${contract.url}` },
       swept.derived === 'ok',
       swept.derived === 'ok' ? 'nothing broken' : `resolved but derived nothing: ${swept.derived} (probe:derivedValue)`);
+  }
+
+  // The document loaded or it did not. There is no third answer here, so this
+  // is a record and never a skip: an unmeasured CSP is the same blind spot the
+  // check exists to close.
+  for (const name of ['home', 'channel']) {
+    const policy = policies[name] || { measured: false, why: 'the sweep never reached this route' };
+    const shape = policy.directive
+      ? `${policy.directive}${policy.inlineAllowed ? '' : ' — the Firefox companion injects the page bundle inline and this policy refuses it'}`
+      : `no script-src, script-src-elem, or default-src in ${policy.enforcing} enforcing polic${policy.enforcing === 1 ? 'y' : 'ies'}`;
+    record(`Kick's ${name} document still lets the companion inject`,
+      policy.measured === true && policy.inlineAllowed === true,
+      policy.measured ? `${shape}${policy.reporting ? `; ${policy.reporting} report-only policy recorded` : ''}` : `CSP unmeasured: ${policy.why}`);
   }
 
   // R-68: what a busy chat costs, measured rather than reasoned about.

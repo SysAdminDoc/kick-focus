@@ -119,8 +119,6 @@ export const FIXTURE_CONTRACT = Object.freeze({
       '#channel-chatroom',
       '[role="separator"][aria-valuemin]',
       'video',
-      '[data-testid="livestream-results-card"]',
-      '[data-testid="livestream-results-card"] a[href]',
     ]),
     expectedChat: true,
     shell: Object.freeze({
@@ -132,14 +130,19 @@ export const FIXTURE_CONTRACT = Object.freeze({
       sidebar: 'sidebar-id',
       chatSeparator: 'chat-resizer-values',
       chatPanel: 'chat-panel-id',
-      card: 'card-testid',
+      // A channel renders no stream cards at all — not under this test id, not
+      // under the class or `article` fall-backs. Recorded as absent rather than
+      // required, the same way `main-container` is, so the gate stops calling a
+      // route-shaped absence a regression.
+      card: null,
     }),
-    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'ok', qualityHeight: 'absent' }),
-    markers: Object.freeze(['id="sidebar-wrapper"', 'channel-chatroom', 'chatroom-messages', 'aria-valuemin', 'livestream-results-card']),
+    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'ok', qualityHeight: 'absent' }),
+    markers: Object.freeze(['id="sidebar-wrapper"', 'channel-chatroom', 'chatroom-messages', 'aria-valuemin']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({
       'id="main-container"': 'route-shaped: 0 live on a channel 2026-08-19; the channel shell uses a bare <main>',
       'data-testid="channel-player"': 'renamed: 0 live 2026-08-19; the player is found through its <video>',
+      'livestream-results-card': 'route-shaped: 0 rendered on /xqc 2026-08-21, though React flight payload still serialises the test id 22 times as script text; a channel page carries no card of any probe shape',
     }),
   }),
 

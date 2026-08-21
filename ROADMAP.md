@@ -78,14 +78,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P0
 
-- [ ] P0 — R-74 — Live-gate CSP on Home and a channel document
-  Why: the Firefox companion injects the page bundle inline because Kick had no `script-src`; only homepage `HEAD` was measured on 2026-08-20, and Chrome 153 (2026-09-08) doubles front-end churn.
-  Evidence: README Firefox companion section; homepage HEAD 2026-08-20 (no CSP); https://developer.chrome.com/blog/chrome-two-week-release
-  Touches: `scripts/verify-extension.mjs` (read document/response CSP on the home tab and the channel tab already opened for the per-route sweep), README if the result changes.
-  Acceptance: the live gate records CSP presence/absence for home and channel; it fails if `script-src` appears without `'unsafe-inline'`; a skip is not allowed when the document loaded.
-  Complexity: S
-  Note (2026-08-21): GET `/`, `/xqc`, and `www.kick.com/` had no CSP header or meta. Discovery is done; keep the item as a regression gate, not a measurement task.
-
 ### P1
 
 - [ ] P1 — R-75 — Enter the existing chat-pause state when the user scrolls the transcript up

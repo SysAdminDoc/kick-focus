@@ -203,7 +203,17 @@ const REDUCER = `(() => {
   // stopped serving, and reporting the first as the second is a false drift
   // finding — measured 2026-08-19, /category/slots is on the browse page twice
   // and the cap still dropped it.
-  const liveHtml = document.documentElement.outerHTML;
+  //
+  // Script text is excluded, and that is the whole point of the clone: Kick
+  // ships a React flight payload that serialises component props as text, so a
+  // test id belonging to a component the route never mounts is still in the
+  // document as characters. Counting those made this script report Kick's own
+  // drift as its own bug, the precise confusion this block exists to prevent.
+  // Measured on /xqc 2026-08-21: livestream-results-card appears 22 times in
+  // inline script and matches 0 elements.
+  const markerRoot = document.documentElement.cloneNode(true);
+  for (const buried of markerRoot.querySelectorAll('script, style, template, noscript')) buried.remove();
+  const liveHtml = markerRoot.outerHTML;
   const live = {};
   for (const marker of __MARKERS__) live[marker] = liveHtml.includes(marker);
 

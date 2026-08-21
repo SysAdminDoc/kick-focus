@@ -1,18 +1,124 @@
 <!doctype html>
 <html lang="en">
   <body>
-    <div class="group/main" data-sidebar="true" data-chat="true">
-      <nav data-testid="top-nav"></nav>
-      <aside id="sidebar-wrapper"><button data-testid="sidebar-collapse" aria-controls="sidebar-wrapper" aria-expanded="true"></button></aside>
-      <main>
-        <div data-player="true"><video controls></video></div>
-        <div data-testid="livestream-results-card"><a href="https://kick.com/channel-name">Channel Name</a></div>
-      </main>
-      <aside>
-        <div role="separator" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="420" tabindex="0"></div>
-        <section id="channel-chatroom"><div id="chatroom-messages" contenteditable="true"></div></section>
-      </aside>
+    <div class="group/main" data-sidebar="true" data-chat="true" data-theatre="false">
+      <nav>
+        <div>
+          <button aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar-wrapper" data-testid="sidebar-collapse"></button>
+        </div>
+      </nav>
+      <div>
+        <div id="sidebar-wrapper" data-nosnippet="true">
+          <ul>
+            <li>
+              <a data-state="inactive" data-testid="sidebar-home" href="/">a</a>
+            </li>
+            <li>
+              <a data-state="inactive" data-testid="sidebar-browse" href="/browse">a</a>
+            </li>
+            <li>
+              <button data-testid="sidebar-following">button</button>
+            </li>
+          </ul>
+          <div>
+            <div>
+              <section>
+                <button>
+                  <a data-testid="sidebar-recommended-channel-1" data-state="false" href="/lospollostv">a</a>
+                </button>
+                <button>
+                  <a data-testid="sidebar-recommended-channel-2" data-state="false" href="/deenthegreat">a</a>
+                </button>
+              </section>
+            </div>
+          </div>
+        </div>
+        <div>
+          <main data-theatre-mode-container="true">
+            <div>
+              <div id="injected-channel-player">
+                <div>
+                  <div>
+                    <div id="injected-embedded-channel-player-video">
+                      <div>
+                        <video id="video-player"></video>
+                        <div class="grid grid-cols-1 grid-rows-[1fr_auto]">
+                          <div class="grid-row-2">
+                            <div class="group-data-[theatre=true]/main:group-data-[chat=true]/main:w-[calc(100vw-var(--chat-width))] supports-[width:100dvw]:group-data-[theatre=true]/main:group-data-[chat=true]/main:w-[calc(100dvw-var(--chat-width))]">
+                              <div>
+                                <div class="group/volume"></div>
+                              </div>
+                              <div>
+                                <button data-state="closed" data-testid="video-player-pip"></button>
+                                <button data-state="closed" data-testid="video-player-clip">button</button>
+                                <button data-state="closed" data-testid="video-player-theatre-mode"></button>
+                                <button data-state="closed" data-testid="video-player-fullscreen"></button>
+                                <button data-state="closed" type="button" id="radix-_r_51_" aria-haspopup="menu" aria-expanded="false"></button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="channel-content">
+              <div>
+                <div>
+                  <div>
+                    <button data-state="closed" aria-label="Share via" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="radix-_r_v_"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+          <div>
+            <div>
+              <div role="separator" aria-orientation="vertical" aria-label="Resize chatroom" aria-valuenow="340" aria-valuemin="280" aria-valuemax="420"></div>
+              <div id="channel-chatroom" class="group-data-[chat=false]/main:opacity-0 group-data-[chat=false]/main:lg:w-0 group-data-[chat=true]/main:lg:w-[var(--chat-width)] tv:group-data-[chat=true]/main:h-screen tv:group-data-[chat=true]/main:max-h-screen" data-is-resizing="false">
+                <div>
+                  <div>
+                    <div>
+                      <div id="chatroom-messages" data-testid="chatroom-messages">div</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <script src="/dist/kick-focus.user.js"></script>
+    <div hidden id="S:1">
+      <div>
+        <main data-theatre-mode-container="true">
+          <div id="channel-content">
+            <div>
+              <div>
+                <div>
+                  <button data-state="closed" aria-label="Share via" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="radix-_R_2ksp8r5ubqo9d9eiv5ubtb_"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+        <div>
+          <div>
+            <div role="separator" aria-orientation="vertical" aria-label="Resize chatroom" aria-valuenow="340" aria-valuemin="280" aria-valuemax="420"></div>
+            <div id="channel-chatroom" class="group-data-[chat=false]/main:opacity-0 group-data-[chat=false]/main:lg:w-0 group-data-[chat=true]/main:lg:w-[var(--chat-width)] tv:group-data-[chat=true]/main:h-screen tv:group-data-[chat=true]/main:max-h-screen" data-is-resizing="false">
+              <div>
+                <div>
+                  <div>
+                    <div id="chatroom-messages" data-testid="chatroom-messages"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
