@@ -1,4 +1,4 @@
-export const VERSION = '1.31.0';
+export const VERSION = '1.32.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -47,6 +47,10 @@ export const VERSION_NOTES = Object.freeze({
     summary: 'Studio, OLED, and Slate now change the full surface hierarchy. Settings boards, multi-stream, and the companion popup have clearer structure and less visual noise.',
     defaults: Object.freeze([]),
   }),
+  '1.32.0': Object.freeze({
+    summary: 'Hidden channels, favorites, and volume now match Kick card links that carry a trailing slash. A stickers-only import no longer resets the rest of the profile. Copied diagnostics include a settings diff without channel names.',
+    defaults: Object.freeze([]),
+  }),
   '1.31.0': Object.freeze({
     summary: 'The main Kick theme now uses clearer type, quieter borders, tighter spacing, flatter content cards, and more compact route controls.',
     defaults: Object.freeze([]),
@@ -78,6 +82,35 @@ export function updateNotice(lastSeen, current = VERSION, notes = VERSION_NOTES)
     summary: note?.summary || '',
     defaults: Array.isArray(note?.defaults) ? [...note.defaults] : [],
   };
+}
+
+/**
+ * What a pasted diagnostic dump may include: only keys that differ from
+ * defaults, with channel lists and URLs reduced to counts so a shared
+ * summary does not name the user's hidden channels.
+ */
+export function diagnosticSettingsDiff(settings) {
+  const current = normalizeSettings(settings);
+  const defaults = DEFAULT_SETTINGS;
+  const diff = {};
+  for (const section of ['layout', 'appearance', 'content', 'accessibility', 'shortcuts']) {
+    const now = current[section];
+    const base = defaults[section];
+    const changed = {};
+    for (const key of Object.keys(base)) {
+      if (key === 'hiddenChannels') {
+        if (now.hiddenChannels.length) changed.hiddenChannels = now.hiddenChannels.length;
+        continue;
+      }
+      if (key === 'blocklistUrl') {
+        if (now.blocklistUrl) changed.blocklistUrl = true;
+        continue;
+      }
+      if (JSON.stringify(now[key]) !== JSON.stringify(base[key])) changed[key] = now[key];
+    }
+    if (Object.keys(changed).length) diff[section] = changed;
+  }
+  return diff;
 }
 
 /**
@@ -2780,6 +2813,17 @@ export function normalizeChannelPath(value) {
   }
 }
 
+/**
+ * A Kick pathname as the rest of this build stores it: lowercased, no
+ * trailing slash, empty for home. Card hrefs, hide lists, favorites, and
+ * layout keys all have to agree on this or a `/xqc/` link misses a `/xqc`
+ * store entry.
+ */
+export function observedChannelPath(value) {
+  const path = normalizeChannelPath(value);
+  return path && path !== '/' ? path : '';
+}
+
 function normalizeBlocklistPayload(payload) {
   const source = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   return {
@@ -2906,8 +2950,19 @@ export function normalizeMediaPreferences(input, limit = 240) {
   for (const [key, value] of Object.entries(input)) {
     if (POLLUTION_KEYS.has(key)) continue;
     if (!/^[a-z]+:.+/.test(key) || key.length > 200) continue;
-    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') continue;
-    out[key] = value;
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean'
+      && !(isRecord(value) && Number.isFinite(value.volume))) continue;
+    const split = key.indexOf(':');
+    const kind = key.slice(0, split);
+    const rest = key.slice(split + 1);
+    let nextKey = key;
+    if (kind === 'volume' || kind === 'quality' || kind === 'position') {
+      const path = observedChannelPath(rest);
+      if (!path) continue;
+      nextKey = `${kind}:${path}`;
+    }
+    if (Object.hasOwn(out, nextKey)) continue;
+    out[nextKey] = value;
     if (++count >= limit) break;
   }
   return out;
@@ -2962,6 +3017,7 @@ export function validateImportedSettings(jsonText) {
   const stickers = parsed.stickers == null ? null : normalizeStickerPreferences(parsed.stickers);
   const notes = [];
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
+  const hasSettings = sections.some((section) => isRecord(parsed[section]));
   const known = new Set(['schema', 'stickers', 'usage', 'multistream', 'channelLayouts',
     'favoriteChannels', 'dismissedChannels', 'chatKeywords', 'channelNotes', 'mediaPreferences']);
 
@@ -3050,8 +3106,17 @@ export function validateImportedSettings(jsonText) {
   const channelNotes = parsed.channelNotes == null ? null : normalizeChannelNotes(parsed.channelNotes);
   const mediaPreferences = parsed.mediaPreferences == null ? null : normalizeMediaPreferences(parsed.mediaPreferences);
 
+  if (!hasSettings && !stickers && !usage && !multistream
+    && channelLayouts == null && favoriteChannels == null && dismissedChannels == null
+    && chatKeywords == null && channelNotes == null && mediaPreferences == null) {
+    return { ok: false, error: 'That file does not contain Kick Focus settings.' };
+  }
+
   return {
-    ok: true, value, stickers, usage, multistream,
+    ok: true,
+    value,
+    settings: hasSettings ? value : null,
+    stickers, usage, multistream,
     channelLayouts, favoriteChannels, dismissedChannels, chatKeywords, channelNotes, mediaPreferences,
     notes,
   };

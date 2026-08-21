@@ -134,6 +134,10 @@ import {
   updateNotice,
   normalizeVersion,
   rankSettingsMatches,
+  observedChannelPath,
+  diagnosticSettingsDiff,
+  normalizeMediaPreferences,
+  normalizeChannelLayouts,
 } from '../src/core.mjs';
 
 test('settings focus returns to the exact option after a re-render', { tag: 'unit' }, () => {
@@ -1511,6 +1515,10 @@ test('settings import reports malformed and future schemas', { tag: 'unit' }, ()
   assert.equal(validateImportedSettings('{oops').ok, false);
   assert.match(validateImportedSettings('{"schema":99}').error, /newer/);
   assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').value.layout.chatWidth, 410);
+  assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').settings.layout.chatWidth, 410);
+  assert.equal(validateImportedSettings('{}').ok, false);
+  assert.match(validateImportedSettings('{}').error, /does not contain/);
+  assert.equal(validateImportedSettings('{"schema":1}').ok, false);
 });
 
 test('settings import names whatever it could not keep', { tag: 'unit' }, () => {
@@ -1549,6 +1557,7 @@ test('settings import round-trips the sticker library without treating it as an 
   }));
   assert.equal(imported.ok, true);
   assert.equal(imported.stickers.library.length, 1);
+  assert.equal(imported.settings, null, 'a stickers-only file must not replace the live settings profile');
   assert.deepEqual(imported.stickers.assignments, [{ key: 'kick:id:100', groupId: 'memes' }]);
   assert.equal(imported.notes.some((note) => /unknown section "stickers"/.test(note)), false);
   assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Emote schema 99/);
@@ -1586,12 +1595,47 @@ test('hidden channels normalize and round-trip through settings', { tag: 'unit' 
   assert.equal(normalizeChannelPath('https://kick.com/Creator/'), '/creator');
   assert.equal(normalizeChannelPath('/already-clean'), '/already-clean');
   assert.equal(normalizeChannelPath(''), '');
+  assert.equal(observedChannelPath('/xqc/'), '/xqc');
+  assert.equal(observedChannelPath('/XQC'), '/xqc');
+  assert.equal(observedChannelPath('/'), '');
+  assert.equal(observedChannelPath('https://kick.com/Creator/'), '/creator');
 
   // Settings normalization caps the list and deduplicates.
   const settings = normalizeSettings({
     content: { hiddenChannels: ['/a', '/b', '/a', 42, '/c'] },
   });
   assert.deepEqual(settings.content.hiddenChannels, ['/a', '/b', '/c']);
+});
+
+test('a diagnostic settings diff names changed keys and not hidden-channel slugs', { tag: 'unit' }, () => {
+  const empty = diagnosticSettingsDiff(DEFAULT_SETTINGS);
+  assert.deepEqual(empty, {});
+  const diff = diagnosticSettingsDiff({
+    content: { hideCasino: true, hiddenChannels: ['/xqc', '/alpha'], blocklistUrl: 'https://example.com/list.json' },
+    appearance: { theme: 'oled' },
+  });
+  assert.equal(diff.content.hideCasino, true);
+  assert.equal(diff.content.hiddenChannels, 2);
+  assert.equal(diff.content.blocklistUrl, true);
+  assert.equal(diff.appearance.theme, 'oled');
+  assert.equal('hiddenChannels' in (diff.content || {}) && typeof diff.content.hiddenChannels === 'number', true);
+  assert.ok(!JSON.stringify(diff).includes('xqc'));
+});
+
+test('stored channel keys are canonicalized on the way in', { tag: 'unit' }, () => {
+  const layouts = normalizeChannelLayouts({ '/XQC/': { focus: true }, '/xqc': { theater: true } });
+  assert.equal(Object.keys(layouts).length, 1);
+  assert.equal(layouts['/xqc'].theater, true);
+  const media = normalizeMediaPreferences({
+    'volume:/XQC/': { volume: 0.4, muted: false },
+    'quality:/Alpha': '720',
+    'ladder:global': '1080,720',
+    'volume:/': 0.1,
+  });
+  assert.deepEqual(media['volume:/xqc'], { volume: 0.4, muted: false });
+  assert.equal(media['quality:/alpha'], '720');
+  assert.equal(media['ladder:global'], '1080,720');
+  assert.equal('volume:/' in media, false);
 });
 
 test('remote blocklists accept data-only entries and reject executable or unknown fields', { tag: 'unit' }, () => {

@@ -138,6 +138,14 @@ export function createLive(host) {
     }
   }
 
+  function describeKickFetchFailure(status) {
+    if (status === 'parse') return 'returned data this build could not read';
+    if (status === 'timeout') return 'timed out';
+    if (status === 'network') return 'could not be reached';
+    if (status === 'oversized') return 'returned more data than this build will read';
+    return `answered ${status}`;
+  }
+
   /**
    * Same-origin JSON with a deadline and a size ceiling.
    *
@@ -162,7 +170,11 @@ export function createLive(host) {
       if (!response.ok) return { ok: false, status: response.status };
       const text = await response.text();
       if (text.length > LIVE_MAX_BYTES) return { ok: false, status: 'oversized' };
-      return { ok: true, status: response.status, body: JSON.parse(text) };
+      try {
+        return { ok: true, status: response.status, body: JSON.parse(text) };
+      } catch {
+        return { ok: false, status: 'parse' };
+      }
     } catch (error) {
       return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network' };
     } finally {
@@ -254,7 +266,7 @@ export function createLive(host) {
     const channelResponse = await kickFetchJson(endpoints.channel(slug));
     if (state.live.slug !== slug) return; // navigated away mid-flight
     if (!channelResponse.ok) {
-      state.live.catalogError = `Kick's channel API answered ${channelResponse.status}.`;
+      state.live.catalogError = `Kick's channel API ${describeKickFetchFailure(channelResponse.status)}.`;
       refreshLiveDiagnostics();
       return;
     }
@@ -344,7 +356,7 @@ export function createLive(host) {
     if (state.live.slug !== slug) return;
     state.live.standing = standing;
     if (!response.ok) {
-      state.live.catalogError = `Kick's emote API answered ${response.status}; using the picker instead.`;
+      state.live.catalogError = `Kick's emote API ${describeKickFetchFailure(response.status)}; using the picker instead.`;
       refreshLiveDiagnostics();
       return;
     }

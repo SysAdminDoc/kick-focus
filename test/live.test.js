@@ -171,7 +171,16 @@ test('malformed JSON is reported as a failure, never thrown at the caller', { ta
     pageFetch: async () => ({ ok: true, status: 200, text: async () => 'not json' }),
   });
   const result = await createLive(host).kickFetchJson('https://kick.com/api/v2/x');
-  assert.deepEqual(result, { ok: false, status: 'network' });
+  assert.deepEqual(result, { ok: false, status: 'parse' });
+});
+
+test('a channel API that returns HTML is reported as unreadable, not as a network failure', { tag: 'unit' }, async () => {
+  const { host, state } = makeHost({
+    pageFetch: async () => ({ ok: true, status: 200, text: async () => '<html>nope</html>' }),
+  });
+  await createLive(host).refreshLiveChannel();
+  assert.match(state.live.catalogError, /could not read/);
+  assert.equal(state.live.channel, null);
 });
 
 test('the follow mutation refuses a junk channel before it reaches the network', { tag: 'unit' }, async () => {

@@ -118,7 +118,9 @@ const shadowAccessibilityWired = (bundle) => {
  * set of `gmSet(...)` lines: the previous version named the exact write calls,
  * so restructuring the function into one staged transaction broke the gate
  * without anything actually going missing, and a store added later was never
- * covered at all. `settings` arrives as `result.value`.
+ * covered at all. `settings` arrives as `result.settings`, which is null when
+ * the file omitted every settings section so a stickers-only import cannot
+ * wipe the live profile.
  */
 const importBody = (() => {
   const start = source.indexOf('function applyImportedStores');
@@ -126,7 +128,7 @@ const importBody = (() => {
 })();
 const importGapsIn = (body) => STORAGE_STORES
   .filter((store) => store.backup)
-  .map((store) => (store.field === 'settings' ? 'result.value' : `result.${store.field}`))
+  .map((store) => (store.field === 'settings' ? 'result.settings' : `result.${store.field}`))
   .filter((reference) => !String(body).includes(reference));
 const importGaps = importGapsIn(importBody);
 
