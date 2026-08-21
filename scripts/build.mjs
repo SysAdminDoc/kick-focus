@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AD_HOSTS, TELEMETRY_HOSTS, cancellableTelemetryHosts, VERSION } from '../src/core.mjs';
 import { renderIcon } from './icons.mjs';
+import { stripComments } from './strip-comments.mjs';
 import { createZip } from './zip.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,8 +36,12 @@ const GUARD = `if (window.__kickFocusBooted) return;\nwindow.__kickFocusBooted =
  * hoisting to supply symbols nothing names.
  *
  * check.mjs asserts no `import`/`export` statement survives into the artifact.
+ *
+ * Comments go too. They are a fifth of the source and the userscript has a real
+ * ceiling — see SIZE_BUDGETS in check.mjs — while the artifact is generated and
+ * nobody edits it. The prose stays in `src/`, where it is read.
  */
-const bundled = (source) => source
+const bundled = (source) => stripComments(source)
   .replace(/^import\s[\s\S]*?from\s+'[^']*';[^\S\n]*\n/gm, '')
   .replace(/^export\s+/gm, '');
 
@@ -48,7 +53,7 @@ const bundledLive = bundled(live);
 const iconData = `data:image/png;base64,${renderIcon(32).toString('base64')}`;
 const bundledMultistream = bundled(multistream)
   .replaceAll('__KICK_FOCUS_ICON__', iconData);
-const bundledRuntime = runtime
+const bundledRuntime = stripComments(runtime)
   .replaceAll('__KICK_FOCUS_ICON__', iconData)
   .replaceAll('__KICK_FOCUS_PREVIEW__', `data:image/jpeg;base64,${appearancePreview.toString('base64')}`);
 // Concat order is the dependency order: everything a module imports must have

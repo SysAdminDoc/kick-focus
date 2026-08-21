@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## Unreleased
+
+### Changed
+
+- The build strips comments from the generated bundles. The userscript is 774,847 bytes instead of 974,585, which moves it from 97% of Violentmonkey's ~1 MB injection ceiling down to 77%. Source comments are untouched; they live in `src/`, which is where anyone reads them.
+
 ## 1.32.0, 2026-08-21
 
 ### Fixed

@@ -6,15 +6,6 @@ window.__kickFocusBooted = true;
 const VERSION = '1.32.0';
 const SETTINGS_SCHEMA = 5;
 
-/**
- * What changed, per version, for the notice shown after an update.
- *
- * Only versions worth telling somebody about need an entry; a version absent
- * from here still records itself as seen and simply says nothing. `defaults`
- * names any setting whose default moved, because that is the one kind of change
- * that alters behaviour on a profile nobody touched — the rest a user can find
- * in the changelog if they care.
- */
 const VERSION_NOTES = Object.freeze({
   '1.21.0': Object.freeze({
     summary: 'The live gate waits for what it asserts, the Firefox package no longer leaks a per-install identifier to Kick, and the interface declares the language it is written in.',
@@ -62,20 +53,11 @@ const VERSION_NOTES = Object.freeze({
   }),
 });
 
-/** A version string this build is willing to store and compare. */
 function normalizeVersion(value) {
   const raw = String(value ?? '').trim();
   return /^\d{1,4}(\.\d{1,4}){0,3}$/.test(raw) ? raw : '';
 }
 
-/**
- * Whether to tell the user the build changed under them, and what to say.
- *
- * Silent in both directions that are not an update: a profile with no recorded
- * version is either a first install or one that predates this field, and in
- * neither case can this build honestly claim to know what changed. A downgrade
- * is reported too — running an older build than last time is worth knowing.
- */
 function updateNotice(lastSeen, current = VERSION, notes = VERSION_NOTES) {
   const from = normalizeVersion(lastSeen);
   const to = normalizeVersion(current);
@@ -89,11 +71,6 @@ function updateNotice(lastSeen, current = VERSION, notes = VERSION_NOTES) {
   };
 }
 
-/**
- * What a pasted diagnostic dump may include: only keys that differ from
- * defaults, with channel lists and URLs reduced to counts so a shared
- * summary does not name the user's hidden channels.
- */
 function diagnosticSettingsDiff(settings) {
   const current = normalizeSettings(settings);
   const defaults = DEFAULT_SETTINGS;
@@ -118,19 +95,6 @@ function diagnosticSettingsDiff(settings) {
   return diff;
 }
 
-/**
- * Rank settings against a search query.
- *
- * The shape is FrankerFaceZ's, which is the only implementation in this field
- * that has solved cross-page settings search — no index and no fuzzy matching,
- * just a lowercased term blob per row and a substring test. BetterTTV ships no
- * search at all, so there is no second design to weigh it against.
- *
- * A title match outranks a description-only match, and a title that *starts*
- * with the query outranks one that merely contains it — the same ordering the
- * emote completion uses, and for the same reason: what someone typed the
- * beginning of is what they meant.
- */
 function rankSettingsMatches(query, entries, limit = 40) {
   const needle = String(query ?? '').trim().toLowerCase();
   if (needle.length < 2) return [];
@@ -157,8 +121,6 @@ function rankSettingsMatches(query, entries, limit = 40) {
 
 const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
-  // Recorded rather than defaulted to VERSION: a fresh profile has seen nothing,
-  // and claiming otherwise would announce an update that never happened.
   lastSeenVersion: '',
   layout: Object.freeze({
     sidebar: 'auto',
@@ -172,8 +134,6 @@ const DEFAULT_SETTINGS = Object.freeze({
     quickButton: true,
     showFollowingRail: true,
     showRecommendedRail: true,
-    // Ids from HIDEABLE_ELEMENTS. Empty by default: nothing of Kick's own
-    // chrome disappears until someone asks for it by name.
     hidden: [],
     miniPlayerCollision: true,
     playerResizeRecovery: true,
@@ -203,21 +163,12 @@ const DEFAULT_SETTINGS = Object.freeze({
     reduceTelemetry: true,
     rememberVolume: true,
     rememberQuality: true,
-    // Off by default, and opt-in for the same reason Poor mode is: it spends
-    // the user's bandwidth on their behalf. It also learns before it acts —
-    // see QUALITY_LADDER_KEY in the runtime.
     preferBestQuality: false,
     rememberVodPosition: true,
-    // On: it reads a field Kick already sends with the channel payload and
-    // shows it, which is the whole feature. No extra request, no polling.
     showUptime: true,
     showVodExpiry: true,
     stickyChatPause: false,
     chatHighlights: false,
-    // Five chat comfort switches, each independent and each off until asked
-    // for. The history one is off for a stronger reason than the rest: it is
-    // the only one that keeps anything, and what it would keep is other
-    // people's messages.
     chatTimestamps: false,
     chatPriorityPeople: [],
     chatMentionSound: false,
@@ -225,30 +176,15 @@ const DEFAULT_SETTINGS = Object.freeze({
     chatHistory: false,
     organizeChatStickers: true,
     clickChatEmotes: true,
-    // Off by default: this one types into Kick's chat input. Copying a name to
-    // the clipboard needs no permission and always ships; putting characters in
-    // someone's message box is an opt-in.
     insertEmoteName: false,
-    // Same reasoning, and the same default: this one puts characters in
-    // someone's message box. Mouse-only by design — the list is clicked, never
-    // captured from the keyboard, so it cannot swallow a keystroke meant for
-    // Kick's own composer.
     emoteAutocomplete: false,
-    // Acts on the user's behalf, so it is opt-in like the two above. It clicks
-    // Kick's own claim button in Kick's own dialog and nothing else — it cannot
-    // claim a reward the account has not earned, because a disabled button is
-    // Kick refusing and this obeys it.
     autoClaimRewards: false,
-    // Where a newly favorited emote lands. Global by default: changing this
-    // under existing users would make favorites vanish when they switch channel.
     favoriteScope: 'global',
     playbackDiagnostics: false,
     hiddenChannels: [],
     blocklistSubscription: false,
     blocklistUrl: '',
     blocklistRefreshHours: 24,
-    // Kick's own data, read the way Kick's own client reads it. Same-origin,
-    // read-only, inheriting the session the page already has.
     liveEmoteCatalog: true,
     liveChatEvents: true,
     showModerationReasons: true,
@@ -297,20 +233,6 @@ const VIEWING_PRESETS = Object.freeze({
   }),
 });
 
-/**
- * Kick's own controls a user may switch off, and the probe each resolves through.
- *
- * Hiding here is CSS only. The element stays in the DOM with its listeners
- * intact and comes back the instant the switch flips — nothing in this feature
- * clicks, removes, or reorders anything Kick rendered, so a hidden control is
- * never a control that stopped working.
- *
- * `probe` names a hook in `LOCATOR_PROBES`, which is what puts these selectors
- * under the same live drift gate as the rest of the shell. They are deliberately
- * *not* written as literals here: a second selector list is a second thing to
- * rot, and this one would rot silently because a control that fails to hide
- * looks exactly like a control the user never switched off.
- */
 const HIDEABLE_ELEMENTS = Object.freeze([
   Object.freeze({ id: 'player-pip', group: 'player', probe: 'playerPip', label: 'Miniplayer' }),
   Object.freeze({ id: 'player-clip', group: 'player', probe: 'playerClip', label: 'Clip' }),
@@ -328,7 +250,6 @@ const HIDEABLE_ELEMENTS = Object.freeze([
   Object.freeze({ id: 'sidebar-recommended-channels', group: 'sidebar', probe: 'sidebarRecommendedChannels', label: 'Recommended channel list' }),
 ]);
 
-/** The groups the settings grid renders, in order, with their headings. */
 const HIDEABLE_GROUPS = Object.freeze([
   Object.freeze({ id: 'player', label: 'Player controls' }),
   Object.freeze({ id: 'sidebar', label: 'Sidebar' }),
@@ -336,14 +257,6 @@ const HIDEABLE_GROUPS = Object.freeze([
 
 const HIDEABLE_ORDER = new Map(HIDEABLE_ELEMENTS.map((entry, index) => [entry.id, index]));
 
-/**
- * Keep only ids this build actually knows how to find, in catalog order.
- *
- * Catalog order rather than the order they were clicked, so the exported value
- * is the same set however it was reached and a diff of two backups is readable.
- * An unknown id is dropped rather than kept: it would otherwise sit in the
- * settings file forever, matching nothing and explaining nothing.
- */
 function normalizeHiddenElements(input) {
   if (!Array.isArray(input)) return [];
   const kept = new Set();
@@ -363,16 +276,6 @@ const QUALITY_ALIAS_HEIGHT = new Map([
   ['low', 360],
 ]);
 
-/**
- * Order Kick's quality labels so the highest one can be picked without knowing
- * the ladder in advance — Kick offers a different set per channel.
- *
- * `Auto` scores 0 on purpose. It is adaptive, so it is the *absence* of a
- * choice rather than a rung on the ladder, and treating it as the top would
- * make "always start at the highest quality" mean "change nothing". Anything
- * unrecognized scores -1 and is never chosen: guessing at an unknown label is
- * how a mod ends up writing a value the player rejects.
- */
 function qualityRank(label) {
   const text = String(label ?? '').trim().toLowerCase();
   if (!text) return -1;
@@ -383,19 +286,6 @@ function qualityRank(label) {
   return height ? height * 1000 + 30 : -1;
 }
 
-/**
- * The value Kick's player reads, which is not the label Kick displays.
- *
- * Measured on a live channel 2026-08-16 by picking each rung and reading the
- * key back: 720p60 writes `720`, 360p writes `360`, 160p writes `160`, and
- * Auto writes `0`. It is the bare height as a string, every time — so writing
- * the menu label into `sessionStorage['stream_quality']`, which is what this
- * build did before, hands the player a value it does not recognize.
- *
- * A rank that decodes to an implausible height is the alias table's synthetic
- * one (`Source`), not a real rung, so it returns '' rather than inventing a
- * number: that rung can still be clicked, it just cannot be pre-seeded.
- */
 function qualitySessionValue(label) {
   const rank = qualityRank(label);
   if (rank < 0) return '';
@@ -404,7 +294,6 @@ function qualitySessionValue(label) {
   return height > 0 && height <= 4320 ? String(height) : '';
 }
 
-/** The best real option in a list, or '' when the list holds nothing rankable. */
 function bestQualityOption(labels) {
   let best = '';
   let bestRank = 0;
@@ -435,19 +324,8 @@ const TELEMETRY_HOSTS = Object.freeze([
   'reporting.cdndex.io',
 ]);
 
-/**
- * Telemetry hosts that must never be hard-cancelled at the network layer.
- *
- * Blocking litix.io (Mux Data) with a cancel/error triggers an unbounded retry
- * storm — uAssets #33860 measured 139,182 of 139,189 blocks on this one host,
- * surfacing to users as #34081 "massive delays entering live streams". The page
- * realm still answers it with an empty 200 (blockedResponse), which the player
- * accepts without retrying, so it stays in TELEMETRY_HOSTS for that strategy but
- * is excluded from the companion's DNR / webRequest cancel set.
- */
 const TELEMETRY_NO_CANCEL_HOSTS = Object.freeze(['litix.io']);
 
-/** Telemetry hosts the network layer may hard-cancel without a retry storm. */
 function cancellableTelemetryHosts() {
   return TELEMETRY_HOSTS.filter((host) => !TELEMETRY_NO_CANCEL_HOSTS.includes(host));
 }
@@ -510,12 +388,6 @@ function colorContrastRatio(first, second) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-/**
- * A custom accent is a focus indicator and a control boundary, not decoration.
- * WCAG 2.2 requires 3:1 against adjacent colors for those non-text roles, so a
- * valid but too-dark picker value falls back to a known-safe rose rather than
- * quietly making focus and selected states disappear in one of the dark themes.
- */
 function normalizeCustomAccent(value, fallback = CUSTOM_ACCENT_FALLBACK) {
   const parsed = rgbFromHex(value);
   const normalizedFallback = rgbFromHex(fallback) ? String(fallback).toUpperCase() : CUSTOM_ACCENT_FALLBACK;
@@ -547,12 +419,6 @@ function normalizeShortcut(value, fallback) {
   return cleaned.length > 0 && cleaned.length <= 32 ? cleaned : fallback;
 }
 
-/**
- * The key of the shortcut that already uses `candidate`, or '' if none does.
- * README advertises that reassigning a shortcut rejects a duplicate; this is the
- * decision behind that, extracted so it can be tested rather than only reached
- * through the capture handler.
- */
 function findShortcutConflict(shortcuts, capturingKey, candidate) {
   if (!isRecord(shortcuts) || typeof candidate !== 'string' || !candidate) return '';
   const wanted = candidate.toLowerCase();
@@ -563,7 +429,6 @@ function findShortcutConflict(shortcuts, capturingKey, candidate) {
   return '';
 }
 
-/** How an emote's access level reads to a user, shared by the library and the chat tooltip. */
 const EMOTE_ACCESS_LABELS = Object.freeze({
   available: 'Seen available',
   channel: 'Channel-only',
@@ -575,16 +440,6 @@ function emoteAccessLabel(access) {
   return EMOTE_ACCESS_LABELS[access] || EMOTE_ACCESS_LABELS.locked;
 }
 
-/**
- * A stream's elapsed time as `h:mm:ss`, or `mm:ss` under an hour.
- *
- * Returns '' for a start that is missing, in the future, or implausibly old, so
- * the caller can use it as a presence test. The ceiling is deliberate: a stale
- * `start_time` on a re-used livestream record would otherwise render a clock
- * counting into the hundreds of hours, which reads as a bug in the mod rather
- * than as bad data from Kick. Fourteen days is well past the longest
- * subathons and far short of a parse error.
- */
 const MAX_UPTIME_MS = 14 * 24 * 60 * 60 * 1000;
 
 function formatUptime(startedAt, now = Date.now()) {
@@ -598,17 +453,6 @@ function formatUptime(startedAt, now = Date.now()) {
   return hours ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
 }
 
-/**
- * How long Kick keeps a VOD before deleting it, by the channel's verification.
- *
- * Kick offers no download to anyone — including the broadcaster — and shows
- * this countdown nowhere, which is what makes it worth surfacing at all.
- *
- * `verified` must be a real boolean. Defaulting it would be the whole defect
- * this guards: 7 and 30 are four-fold apart, so a guess is not a smaller
- * version of the right answer, it is a wrong deadline stated confidently. A
- * caller that does not know returns null and the surface stays silent.
- */
 const VOD_RETENTION_DAYS = { verified: 30, unverified: 7 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -617,21 +461,10 @@ function vodExpiry(startedAt, verified, now = Date.now()) {
   if (typeof verified !== 'boolean') return null;
   const days = verified ? VOD_RETENTION_DAYS.verified : VOD_RETENTION_DAYS.unverified;
   const expiresAt = startedAt + days * DAY_MS;
-  // A recording dated in the future is Kick's clock disagreeing with the
-  // viewer's, not a VOD with extra life; refuse it rather than render it.
   if (startedAt > now + DAY_MS) return null;
   return { expiresAt, remaining: expiresAt - now, days, expired: expiresAt <= now };
 }
 
-/**
- * The remaining window as a short label, in the largest unit that stays honest.
- *
- * Days above two, then hours, then minutes — a "7 days left" that silently
- * means 7.9 is fine at that range and misleading at one hour, which is why the
- * unit narrows as the deadline approaches. Returns '' once the window has
- * closed, so the caller can use it as a presence test exactly like
- * `formatUptime`.
- */
 function formatVodRetention(remaining) {
   if (!Number.isFinite(remaining) || remaining <= 0) return '';
   const minutes = Math.floor(remaining / 60000);
@@ -641,19 +474,6 @@ function formatVodRetention(remaining) {
   return `${Math.max(1, minutes)}m`;
 }
 
-/**
- * The merged multi-channel chat buffer.
- *
- * Ordered by *arrival*, not by any timestamp the sender chose. Nine channels
- * mean nine independent connections whose clocks and latencies differ, and
- * Kick's own message timestamps are zone-less strings written by whichever
- * server took the message — sorting by them would shuffle the reading order
- * for no gain. What a reader wants is the order they would have seen if they
- * were watching all nine, which is arrival order.
- *
- * Capped from the front, because a busy grid produces messages faster than
- * anyone reads them and an uncapped array is a memory leak with a scrollbar.
- */
 const MERGED_CHAT_CAP = 300;
 
 function appendMergedMessage(entries, entry, cap = MERGED_CHAT_CAP) {
@@ -663,9 +483,6 @@ function appendMergedMessage(entries, entry, cap = MERGED_CHAT_CAP) {
   const id = typeof entry.id === 'string' ? entry.id : '';
   const text = typeof entry.text === 'string' ? entry.text : '';
   if (!slug || !text) return list;
-  // Kick replays recent history on reconnect, so the same message can arrive
-  // twice on one channel. Keyed by channel *and* id: two channels can carry the
-  // same id and they are different messages.
   if (id && list.some((seen) => seen.id === id && seen.slug === slug)) return list;
   const next = list.concat({
     slug,
@@ -679,39 +496,13 @@ function appendMergedMessage(entries, entry, cap = MERGED_CHAT_CAP) {
   return next.length > limit ? next.slice(next.length - limit) : next;
 }
 
-/** Drop everything from a channel that is no longer in the grid. */
 function dropMergedChannel(entries, slug) {
   if (!Array.isArray(entries) || typeof slug !== 'string' || !slug) return Array.isArray(entries) ? entries : [];
   return entries.filter((entry) => entry.slug !== slug);
 }
 
-/**
- * Where an emote can be sent, which is a different question from whether the
- * account owns it — and the one Kick's interface never answers.
- *
- * Measured 2026-08-16 by posting each kind into a real chatroom: a *free*
- * channel emote is refused outside its own channel (`FOREIGN_CHANNEL_EMOTE_-
- * ERROR`), while a subscriber emote the account owns is accepted everywhere.
- * So "channel-only" and "subscriber-only" are not two points on one scale;
- * they are reach and ownership, and a picker that shows only the second leaves
- * users typing an emote that silently never arrives.
- *
- * Returns '' when the catalog has not established reach — an entry recorded
- * from chat alone, or written before this was known. Saying nothing is correct
- * there; a guess would be indistinguishable from a measurement.
- *
- * The channel name is returned separately rather than pasted into the sentence.
- * An interpolated string matches no dictionary entry, which is how a line ends
- * up permanently English while the i18n gate — which only scans fixed literals
- * — stays green.
- */
 function emoteReach(entry) {
   if (!isRecord(entry)) return { text: '', channel: '' };
-  // An emote the account cannot send has no useful reach to report. Kick's flag
-  // still says "platform-wide", because that is what a subscriber emote is *to
-  // a subscriber* — printing it beside "Subscriber-only" told a user who cannot
-  // send it at all that it works everywhere. The lock reason is the answer
-  // there, and it already says how to unlock it.
   if (entry.usableHere === false) return { text: '', channel: '' };
   if (entry.usableEverywhere === true) return { text: 'Works in every chat', channel: '' };
   if (entry.usableEverywhere !== false) return { text: '', channel: '' };
@@ -721,15 +512,6 @@ function emoteReach(entry) {
     : { text: 'Only works in its own channel', channel: '' };
 }
 
-/**
- * The account-level collection Kick's native picker never assembles.
- *
- * Ownership and reach are both required: an observed free emote may be usable
- * on its own channel without being part of the account's portable collection,
- * while an owned subscriber or collectible emote is available and usable in
- * every chat. Group labels come from the source channel first, then Kick's set
- * name for global/collectible sets. Nothing is invented when both are absent.
- */
 function ownedEmoteGroups(entries) {
   const groups = new Map();
   for (const entry of Array.isArray(entries) ? entries : []) {
@@ -754,24 +536,9 @@ function ownedEmoteGroups(entries) {
     });
 }
 
-/**
- * The lines of the hover card for one chat emote.
- *
- * Everything here is already recorded — name, Kick's own set names, access
- * level, first capture, and whether this name is shadowed by another channel's
- * emote. It was only reachable by opening the library manager, so a click-to-
- * save control gave no indication of what it was about to save or whether it
- * had it already.
- *
- * Returns an array of lines so the caller can render each as its own node and
- * never has to parse a delimiter back out. Empty for anything unnamed, which is
- * how a non-emote image ends up with no tooltip at all.
- */
 function emoteTooltipText(entry, collisions = [], saved = false) {
   if (!isRecord(entry) || typeof entry.name !== 'string' || !entry.name) return [];
   const lines = [entry.name];
-  // A chat-discovered emote's only "set" is the literal string 'Seen in chat',
-  // which is also its access label — printing both reads as a stutter.
   const access = emoteAccessLabel(entry.access);
   const sets = (Array.isArray(entry.nativeGroups) ? entry.nativeGroups : [])
     .filter((group) => group && group !== access);
@@ -781,9 +548,6 @@ function emoteTooltipText(entry, collisions = [], saved = false) {
   if (Number.isFinite(entry.firstSeen) && entry.firstSeen > 0) {
     lines.push(`First seen ${new Date(entry.firstSeen).toISOString().slice(0, 10)}`);
   }
-  // Kick resolves a typed name through one map, so a shared name means one
-  // channel's emote silently sends the other's. Naming the winner is the whole
-  // value of the warning — "shadowed" alone does not say which one you get.
   const collision = (Array.isArray(collisions) ? collisions : [])
     .find((item) => isRecord(item) && item.name === entry.name);
   if (collision) {
@@ -794,41 +558,15 @@ function emoteTooltipText(entry, collisions = [], saved = false) {
   return lines;
 }
 
-/**
- * A Kick emote name as it may be typed into chat: the plain token, nothing else.
- *
- * This is the boundary that keeps "use an emote you have seen" from becoming
- * "send an emote you do not own". Kick's wire form is `[emote:<id>:<name>]`,
- * and putting that in the input is an entitlement bypass — so a name carrying
- * a bracket, colon, or whitespace is refused outright rather than sanitised
- * into something that looks close enough.
- */
 const PLAIN_EMOTE_NAME = /^[A-Za-z0-9_]{1,64}$/;
 
-/**
- * What may be copied or typed for one recorded emote.
- *
- * Emotes discovered in chat are dead weight outside the library manager: you
- * can see them, but not use them. This makes the *name* available while leaving
- * entitlement exactly where Kick put it — the name is what a user would type by
- * hand, and typing it resolves through Kick's own map or does nothing.
- *
- * `text` is always the plain name. There is no branch that emits an id or a
- * wire token, and nothing here sends anything: the caller inserts at the caret
- * and stops.
- */
 function insertionPlanFor(descriptor, collisions = [], access = '') {
   const name = isRecord(descriptor) ? String(descriptor.name ?? '').trim() : '';
   if (!name) return { ok: false, text: '', warning: '', sendable: false, reason: 'unnamed' };
   if (!PLAIN_EMOTE_NAME.test(name)) {
-    // A descriptor that already holds a wire token, or a name with characters
-    // chat would not treat as one token, is refused rather than repaired.
     return { ok: false, text: '', warning: '', sendable: false, reason: 'not-a-plain-name' };
   }
 
-  // Subscriber-only stays subscriber-only. The name copies — it is public — but
-  // the plan says plainly that typing it will not produce the emote, instead of
-  // letting the user discover that in a live chat.
   const sendable = access !== 'locked';
   const collision = (Array.isArray(collisions) ? collisions : [])
     .find((item) => isRecord(item) && item.name === name);
@@ -843,73 +581,21 @@ function insertionPlanFor(descriptor, collisions = [], access = '') {
   return { ok: true, text: name, warning, sendable, reason: '' };
 }
 
-// ---------------------------------------------------------------------------
-// Daily reward claim
-//
-// Kick's daily reward is a header button that opens a dialog with one action
-// button, disabled until enough watch time has accrued. The claim itself is a
-// POST from inside Kick's own bundle, so this drives the dialog rather than the
-// endpoint: the same rule the rest of this build follows, and the reason the
-// feature needs no new permission and can never claim something the account has
-// not earned — a disabled button is Kick saying no, and it is obeyed.
-//
-// The decision is here, where it is testable without a browser. The runtime
-// only carries it out.
-// ---------------------------------------------------------------------------
 
-/**
- * The reward is a roulette reveal, so its action button is labelled with
- * whichever verb that reward uses.
- */
 const CLAIM_ACTION = /^\s*(claim|open|spin|reveal|collect)\b/i;
 const CLAIM_COUNTDOWN = /watch\s+(\d+)\s+more\s+minute/i;
 
-/**
- * Fallback interval, used only when Kick told us nothing usable.
- *
- * Almost every path schedules from real information instead: the dialog's own
- * "Watch N more minutes" countdown, or the nightly reset. Polling on a fixed
- * timer is the thing this deliberately avoids — the apply cycle runs on every
- * route change and every few seconds of DOM churn, and opening Kick's dialog at
- * that rate fights the user for focus to re-read a number that barely moves.
- */
 const CLAIM_RECHECK_MS = 10 * 60 * 1000;
 
-/**
- * The hour the daily reward rolls over, in local time.
- *
- * Observed at 20:00. Watch time then has to accrue before the reward unlocks —
- * about an hour — so waking at the reset and reading the countdown there lands
- * the real attempt near 21:00 without that delay being hardcoded anywhere: the
- * reset schedules the wake-up, and the countdown schedules the claim.
- */
 const CLAIM_RESET_HOUR = 20;
 
-/** The next time the reward rolls over, strictly after `now`. */
 function nextClaimResetAt(now, resetHour = CLAIM_RESET_HOUR) {
   const at = new Date(now);
   at.setHours(resetHour, 0, 0, 0);
-  // Already past today's rollover (or exactly on it) — the next one is tomorrow.
   if (at.getTime() <= now) at.setDate(at.getDate() + 1);
   return at.getTime();
 }
 
-/**
- * When to look again, given what the dialog just said.
- *
- * Three cases, and only the last one is a timer:
- * - **claimed** — nothing more is coming until the rollover, so sleep to it.
- * - **counted** — Kick published the minutes remaining; wait that long (plus a
- *   minute, so we do not arrive just before it flips) and no longer than the
- *   rollover, which also absorbs a nonsense figure.
- * - **collected** — the dialog rendered, but with no action and no countdown.
- *   That is what an already-taken reward looks like, including one taken by
- *   hand in another tab, so it sleeps to the rollover too rather than
- *   rechecking all day.
- *
- * Anything else — an empty dialog, a shape we do not recognise — is a possible
- * render race, and only that gets the fixed fallback.
- */
 function nextRewardCheckAt(facts = {}) {
   const { outcome, now = 0, minutesRemaining = null, dialogText = '', resetHour = CLAIM_RESET_HOUR } = facts;
   const reset = nextClaimResetAt(now, resetHour);
@@ -917,13 +603,10 @@ function nextRewardCheckAt(facts = {}) {
   if (Number.isFinite(minutesRemaining) && minutesRemaining > 0) {
     return Math.min(now + (minutesRemaining + 1) * 60_000, reset);
   }
-  // A dialog with real text but nothing to claim and nothing counting down is
-  // a reward that is already gone. An empty one is a race, not an answer.
   if (String(dialogText).trim().length > 0) return reset;
   return now + CLAIM_RECHECK_MS;
 }
 
-/** "Watch 54 more minutes to claim" → 54. */
 function parseClaimCountdown(text) {
   const match = CLAIM_COUNTDOWN.exec(String(text ?? ''));
   if (!match) return null;
@@ -931,18 +614,6 @@ function parseClaimCountdown(text) {
   return Number.isFinite(minutes) ? minutes : null;
 }
 
-/**
- * Decide what the auto-claim should do from observable facts alone.
- *
- * Returns one of:
- * - `absent`   — no reward trigger on the page (logged out, or nothing to claim)
- * - `cooling`  — looked recently; do not reopen the dialog
- * - `wait`     — the dialog is open and the action is disabled: Kick says not yet
- * - `claim`    — the action is present and enabled; clicking it is the whole feature
- *
- * `enabled` is the user's setting. Everything here is deliberately conservative:
- * anything unrecognised resolves to `wait`, never to `claim`.
- */
 function decideRewardClaim(facts = {}) {
   const {
     enabled = false,
@@ -957,8 +628,6 @@ function decideRewardClaim(facts = {}) {
   if (!enabled) return { action: 'absent', reason: 'off' };
   if (!hasTrigger) return { action: 'absent', reason: 'no-trigger' };
   if (!dialogOpen) {
-    // One timestamp decides this, and it was written from what Kick last said
-    // — the countdown, or the rollover. There is no polling interval to tune.
     if (nextCheckAt > now) return { action: 'cooling', reason: 'not-due' };
     return { action: 'open', reason: 'due' };
   }
@@ -967,31 +636,7 @@ function decideRewardClaim(facts = {}) {
   return { action: 'claim', reason: 'ready' };
 }
 
-// ---------------------------------------------------------------------------
-// Viewer hub
-//
-// One read-only summary of what Kick already tells this account, assembled from
-// values the page is showing and reads this build already makes. It adds no
-// endpoint, claims nothing, and changes nothing.
-//
-// The whole design is in the card states, and the reason is a failure mode this
-// project has hit before: a summary that renders an absent number as zero. A
-// viewer with no reward waiting and a viewer whose reward state could not be
-// read look identical at that point, and the second one is a lie. So a value
-// reaches a card only when it was actually measured, every card carries where
-// it came from and when, and "not known" is a state with its own words rather
-// than a default.
-//
-// Cards are independent by construction: each is derived from its own fact,
-// inside its own try, so a card that throws becomes one card in `error` and the
-// other five still render. That is the difference between a hub and a hub-shaped
-// blank page.
-//
-// The decisions live here, where they are testable without a browser. The
-// runtime supplies the facts and turns the returned codes into copy.
-// ---------------------------------------------------------------------------
 
-/** The six cards, in the order they are shown. `source` is where the value comes from. */
 const VIEWER_HUB_CARDS = Object.freeze([
   Object.freeze({ id: 'reward', source: 'dom' }),
   Object.freeze({ id: 'points', source: 'dom' }),
@@ -1001,14 +646,6 @@ const VIEWER_HUB_CARDS = Object.freeze([
   Object.freeze({ id: 'streak', source: 'dom' }),
 ]);
 
-/**
- * The hub's own copy, kept here with the card definitions.
- *
- * In core rather than beside the markup so `test/i18n-coverage.test.js` can see
- * it: these strings reach the DOM through a lookup rather than as literals, and
- * the scanners that read `runtime.js` cannot find a string that is never
- * written there. Same reason the hideable-element labels live in a catalog.
- */
 const VIEWER_HUB_TITLES = Object.freeze({
   reward: 'Daily reward',
   points: 'Channel points',
@@ -1018,7 +655,6 @@ const VIEWER_HUB_TITLES = Object.freeze({
   streak: 'Streak',
 });
 
-/** What a card says instead of a number. One sentence, and it names the cause. */
 const VIEWER_HUB_REASONS = Object.freeze({
   'not-read': 'Not read yet on this page.',
   anonymous: 'Kick shows this to a signed-in account only.',
@@ -1030,24 +666,14 @@ const VIEWER_HUB_REASONS = Object.freeze({
   threw: 'This card could not be built. The rest of the hub is unaffected.',
 });
 
-/** The reward card has words rather than a number, because the state is not a quantity. */
 const VIEWER_HUB_REWARD_WORDS = Object.freeze({
   claimed: 'Claimed today',
   waiting: 'Not ready yet',
   available: 'Ready to claim',
 });
 
-/**
- * How long a reading stays current.
- *
- * Not a polling interval — nothing here polls, and the hub reads only while it
- * is open. This is how long a value may still be *shown* before it is labelled
- * as an old reading, so a number that stopped updating is visibly old instead of
- * quietly wrong.
- */
 const VIEWER_HUB_STALE_MS = 60_000;
 
-/** A measured number, or null. `0` is a real answer here and survives; absent does not. */
 function measured(value) {
   return Number.isFinite(value) ? Number(value) : null;
 }
@@ -1065,7 +691,6 @@ function card(id, source, state, extra = {}) {
   };
 }
 
-/** Was this reading taken recently enough to show without a caveat? */
 function freshness(observedAt, now) {
   const at = measured(observedAt) || 0;
   if (!at) return { observedAt: 0, stale: true };
@@ -1073,10 +698,6 @@ function freshness(observedAt, now) {
 }
 
 const BUILDERS = {
-  /**
-   * The reward. `trigger` is Kick's own header control: absent means either a
-   * signed-out page or a Kick that renamed it, and neither is a reward of zero.
-   */
   reward(fact, now) {
     if (!fact) return card('reward', 'dom', 'unavailable', { reason: 'not-read' });
     if (fact.loading) return card('reward', 'dom', 'loading');
@@ -1084,9 +705,6 @@ const BUILDERS = {
     const claimedAt = measured(fact.lastClaimAt);
     const nextAt = measured(fact.nextCheckAt);
     const rest = freshness(fact.observedAt, now);
-    // Claimed since the last rollover: the one case where there is nothing to
-    // wait for. `resetAt` is passed in rather than recomputed so the caller and
-    // this agree about when the day turns over.
     const rolledOverAt = measured(fact.previousResetAt) || 0;
     if (claimedAt && claimedAt >= rolledOverAt) {
       return card('reward', 'dom', 'ready', { value: 'claimed', ...rest });
@@ -1095,13 +713,6 @@ const BUILDERS = {
     return card('reward', 'dom', 'ready', { value: 'available', ...rest });
   },
 
-  /**
-   * Channel points for the channel being watched.
-   *
-   * Kick renders the exact figure in a `title` and an abbreviated one in the
-   * text, so the runtime prefers the attribute. Off a channel there is no
-   * control and therefore no number — not a zero balance.
-   */
   points(fact, now) {
     if (!fact) return card('points', 'dom', 'unavailable', { reason: 'not-read' });
     if (fact.loading) return card('points', 'dom', 'loading');
@@ -1111,7 +722,6 @@ const BUILDERS = {
     return card('points', 'dom', 'ready', { value, channel: String(fact.channel || ''), ...freshness(fact.observedAt, now) });
   },
 
-  /** The account's own collectible inventory. 401/403 is the signed-out answer, not an error. */
   collectibles(fact, now) {
     if (!fact) return card('collectibles', 'api', 'unavailable', { reason: 'not-read' });
     if (fact.loading) return card('collectibles', 'api', 'loading');
@@ -1126,11 +736,6 @@ const BUILDERS = {
     });
   },
 
-  /**
-   * Drops. Off the Drops route there is no campaign list to count, so the card
-   * says the surface exists and stops there rather than reporting zero
-   * campaigns to somebody who simply is not looking at the page.
-   */
   drops(fact, now) {
     if (!fact) return card('drops', 'dom', 'unavailable', { reason: 'not-read' });
     if (fact.loading) return card('drops', 'dom', 'loading');
@@ -1142,13 +747,6 @@ const BUILDERS = {
   },
 };
 
-/**
- * Level and streak share a builder because they share a constraint: Kick shows
- * both only inside the reward dialog, and this build opens that dialog on the
- * user's own auto-claim schedule and never for decoration. Outside it there is
- * nothing to read, and neither value is persisted to fill the gap — a level
- * kept from yesterday is a number that looks live and is not.
- */
 function fromRewardDialog(id) {
   return (fact, now) => {
     if (!fact) return card(id, 'dom', 'unavailable', { reason: 'not-read' });
@@ -1163,54 +761,24 @@ function fromRewardDialog(id) {
 BUILDERS.level = fromRewardDialog('level');
 BUILDERS.streak = fromRewardDialog('streak');
 
-/**
- * Build every card from the facts the runtime collected.
- *
- * One card per entry, always, in a fixed order: a hub that drops a card when
- * its source is missing is a hub whose shape changes under the reader, and the
- * missing card is precisely the one worth explaining.
- */
 function viewerHubCards(facts = {}, now = 0) {
   return VIEWER_HUB_CARDS.map(({ id, source }) => {
     try {
       const built = BUILDERS[id](facts[id], now);
-      // A value may only ride on a `ready` card. This is the guard for the
-      // failure this whole module exists to prevent: an absent reading arriving
-      // at the interface as a number.
       if (built.state !== 'ready' && built.value !== null) built.value = null;
       return built;
     } catch {
-      // One card's fault is one card's problem.
       return card(id, source, 'error', { reason: 'threw' });
     }
   });
 }
 
-/**
- * The one earned state worth marking outside the hub, or null.
- *
- * Deliberately narrow. Kick exposes exactly one thing a client can honestly
- * say is *earned and waiting*: a reward the account has not taken since the
- * rollover, and only because Kick's own control is on the page saying so. Every
- * other candidate is either unknown (a level nobody can read outside a dialog)
- * or a number that does not change (a collectible count).
- *
- * So there is no streak flourish, no progress bar toward a reward, no "you are
- * close" copy, and nothing at all for a signed-out page: with no reward control
- * there is no earned state, and inventing one would be a client pressuring
- * somebody on Kick's behalf. A card in any state but `ready` yields null.
- *
- * The label is the status in words. Whatever paints it may add a dot, a colour,
- * or a motion-safe pulse on top, but the sentence has to stand on its own —
- * colour is not a status and neither is an animation.
- */
 function earnedState(cards = []) {
   const reward = (Array.isArray(cards) ? cards : []).find((entry) => entry?.id === 'reward');
   if (!reward || reward.state !== 'ready' || reward.value !== 'available') return null;
   return { kind: 'reward-ready', label: 'Daily reward ready' };
 }
 
-/** How many cards actually have a reading. Used for the hub's own one-line summary. */
 function viewerHubSummary(cards = []) {
   const list = Array.isArray(cards) ? cards : [];
   return {
@@ -1218,46 +786,18 @@ function viewerHubSummary(cards = []) {
     total: list.length,
     errors: list.filter((entry) => entry.state === 'error').length,
     stale: list.filter((entry) => entry.state === 'ready' && entry.stale).length,
-    // Named so diagnostics can say which half of the hub is speaking: a value
-    // read off the page and one read from an endpoint fail for different
-    // reasons and are worth telling apart when one of them stops arriving.
     fromDom: list.filter((entry) => entry.state === 'ready' && entry.source === 'dom').map((entry) => entry.id),
     fromApi: list.filter((entry) => entry.state === 'ready' && entry.source === 'api').map((entry) => entry.id),
   };
 }
 
-// ---------------------------------------------------------------------------
-// Chat comfort
-//
-// Five small things a chat reader wants, each independent of the others and
-// each off until asked for: a time beside a message, people worth noticing,
-// a sound when something matches, a way to hide one message locally, and a
-// search over what this session has seen.
-//
-// The last one is the one with teeth, and everything below is shaped by it.
-// A searchable chat history is one careless decision away from being a
-// transcript archive of other people's messages sitting in someone's browser
-// forever, so it is bounded three ways at once — rows, bytes, and age — it
-// holds only the main chatroom, it never leaves the machine without a
-// deliberate action, and a message deleted by a moderator is dropped from it
-// the moment that deletion is seen. A record of something Kick removed is
-// exactly the thing not to keep.
-// ---------------------------------------------------------------------------
 
-/**
- * Three caps, applied together, because each catches what the others miss.
- *
- * Rows bound a quiet channel, bytes bound a channel where every message is a
- * wall of text, and age bounds a session left open overnight — a tab open for
- * eight hours should not still hold what was said in the first hour.
- */
 const CHAT_HISTORY_LIMITS = Object.freeze({
   rows: 400,
   bytes: 200_000,
   ageMs: 60 * 60 * 1000,
 });
 
-/** The longest single message worth keeping. Beyond this it is truncated, not dropped. */
 const CHAT_HISTORY_MAX_TEXT = 400;
 
 function historyBytes(rows) {
@@ -1266,14 +806,6 @@ function historyBytes(rows) {
   return total;
 }
 
-/**
- * Drop what no longer belongs: too old first, then oldest-first until the row
- * and byte caps are met.
- *
- * Age is applied before the other two on purpose. Trimming by count first can
- * leave an hour-old message in place because the list happened to be short,
- * and "we keep the last 400" is not the promise this makes.
- */
 function pruneChatHistory(rows = [], limits = CHAT_HISTORY_LIMITS, now = 0) {
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
   const fresh = list.filter((row) => Number.isFinite(row.at) && now - row.at <= limits.ageMs);
@@ -1282,14 +814,6 @@ function pruneChatHistory(rows = [], limits = CHAT_HISTORY_LIMITS, now = 0) {
   return capped;
 }
 
-/**
- * Record one message, or refuse it.
- *
- * Refusals are the interesting part: no id means nothing can ever delete it
- * again, and a whisper is a private message that has no business in a searchable
- * log at all. Both return the store unchanged rather than storing something
- * this module cannot later honour a deletion for.
- */
 function appendChatEntry(rows = [], entry = {}, limits = CHAT_HISTORY_LIMITS, now = 0) {
   const list = Array.isArray(rows) ? rows : [];
   const id = String(entry.id ?? '').trim();
@@ -1297,8 +821,6 @@ function appendChatEntry(rows = [], entry = {}, limits = CHAT_HISTORY_LIMITS, no
   if (!id || !text) return list;
   if (entry.whisper === true) return list;
   const at = Number.isFinite(entry.at) ? entry.at : now;
-  // Kick recycles message nodes as chat scrolls, so the same id can be offered
-  // more than once. The first sighting is the true one.
   if (list.some((row) => row.id === id)) return list;
   const row = {
     id,
@@ -1310,20 +832,12 @@ function appendChatEntry(rows = [], entry = {}, limits = CHAT_HISTORY_LIMITS, no
   return pruneChatHistory([...list, row], limits, Math.max(now, at));
 }
 
-/**
- * Forget a message, because Kick did.
- *
- * Called from the same deletion path that already annotates a removed message
- * in the DOM. A history that outlives a moderator's decision is the one thing
- * this feature must never become.
- */
 function dropChatMessage(rows = [], id = '') {
   const wanted = String(id ?? '').trim();
   if (!wanted) return Array.isArray(rows) ? rows : [];
   return (Array.isArray(rows) ? rows : []).filter((row) => row.id !== wanted);
 }
 
-/** Newest first, so a search answers with what was just said before what was said an hour ago. */
 function searchChatHistory(rows = [], query = '', limit = 50) {
   const needle = String(query ?? '').trim().toLowerCase();
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
@@ -1334,7 +848,6 @@ function searchChatHistory(rows = [], query = '', limit = 50) {
   return matched.slice(-limit).reverse();
 }
 
-/** A comma or newline separated list of names, cleaned up and de-duplicated. */
 function parsePeopleList(value, max = 40) {
   const seen = new Set();
   for (const raw of String(value ?? '').split(/[\n,]/)) {
@@ -1346,24 +859,14 @@ function parsePeopleList(value, max = 40) {
   return [...seen];
 }
 
-/** Is this message from somebody the reader asked to notice? */
 function isPriorityPerson(people = [], author = '') {
   const name = String(author ?? '').trim().replace(/^@/, '').toLowerCase();
   if (!name) return false;
   return (Array.isArray(people) ? people : []).some((entry) => String(entry).toLowerCase() === name);
 }
 
-/** The shortest gap between two sounds. A busy channel must not become a smoke alarm. */
 const MENTION_SOUND_GAP_MS = 4000;
 
-/**
- * Should a sound play for this message?
- *
- * Every condition is a reason somebody would be annoyed if it were missing.
- * Off by default, only for a message that actually matched, never for the
- * reader's own message, silent while the tab is in the background (the browser
- * would queue a pile of them for the moment it is focused), and rate limited.
- */
 function shouldPlayMentionSound(facts = {}) {
   const {
     enabled = false,
@@ -1377,7 +880,6 @@ function shouldPlayMentionSound(facts = {}) {
   return now - lastPlayedAt >= MENTION_SOUND_GAP_MS;
 }
 
-/** Local clock, 24-hour, because a chat line has no room for anything longer. */
 function formatChatTime(at, locale = undefined) {
   if (!Number.isFinite(at)) return '';
   try {
@@ -1387,13 +889,6 @@ function formatChatTime(at, locale = undefined) {
   }
 }
 
-/**
- * The history as a file the reader asked for, and nothing they did not.
- *
- * Plain text rather than JSON: this is somebody looking for what was said, not
- * a data interchange, and a format nobody can read by accident is a format
- * nobody checks before sharing.
- */
 function buildChatHistoryExport(rows = [], channel = '') {
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
   const header = `Kick Focus chat log — ${channel || 'this session'} — ${list.length} messages`;
@@ -1401,28 +896,7 @@ function buildChatHistoryExport(rows = [], channel = '') {
   return [header, ...lines].join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// Discovery layouts
-//
-// A layout is a named snapshot of the settings that decide how a discovery page
-// looks and what it leaves out, plus the routes it belongs to. Browse can be
-// dense and unfiltered while Home stays calm, without either being re-tuned by
-// hand every time.
-//
-// It is worth saying plainly what this is not, because the shape invites the
-// confusion: it changes nothing about what Kick recommends. Every value here is
-// already a setting in this build, applied to markup Kick has already sent. No
-// layout reorders a rail, asks Kick for different cards, or knows anything
-// about why a card is on the page.
-// ---------------------------------------------------------------------------
 
-/**
- * The settings a layout may carry, and nothing else.
- *
- * An explicit list rather than "whatever was in the object": a layout is
- * restored into live settings, so an unbounded key set would be a path from a
- * file somebody imported to any setting in the build.
- */
 const DISCOVERY_LAYOUT_KEYS = Object.freeze([
   'layout.density',
   'layout.wideGrid',
@@ -1436,16 +910,8 @@ const DISCOVERY_LAYOUT_KEYS = Object.freeze([
   'content.suppressPromoted',
 ]);
 
-/** The discovery routes a layout can belong to. */
 const DISCOVERY_LAYOUT_ROUTES = Object.freeze(['home', 'browse', 'category', 'following', 'search']);
 
-/**
- * What each route is called in the interface.
- *
- * Here rather than beside the markup for the same reason the viewer hub's copy
- * is: these reach the DOM through a lookup keyed by route, so no literal of any
- * of them exists in runtime.js for the translation gate's scanners to find.
- */
 const DISCOVERY_ROUTE_LABELS = Object.freeze({
   home: 'Home',
   browse: 'Browse',
@@ -1454,7 +920,6 @@ const DISCOVERY_ROUTE_LABELS = Object.freeze({
   search: 'Search results',
 });
 
-/** How many layouts are worth keeping. Past this it is a list nobody reads. */
 const DISCOVERY_LAYOUT_MAX = 12;
 const DISCOVERY_LAYOUT_NAME_MAX = 40;
 
@@ -1464,18 +929,10 @@ function settingAt(settings, path) {
   return owner && typeof owner === 'object' ? owner[key] : undefined;
 }
 
-/** A layout's name, cleaned to something that can sit in a list and in a label. */
 function cleanLayoutName(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, DISCOVERY_LAYOUT_NAME_MAX);
 }
 
-/**
- * Capture the current view as a layout.
- *
- * Only the keys above, only from the settings handed in, and only the routes
- * asked for. A layout with no routes is legal and simply never applies itself —
- * it is a saved view somebody switches to by hand.
- */
 function buildDiscoveryLayout(name, settings, routes = []) {
   const values = {};
   for (const path of DISCOVERY_LAYOUT_KEYS) {
@@ -1489,15 +946,6 @@ function buildDiscoveryLayout(name, settings, routes = []) {
   };
 }
 
-/**
- * Clean a stored or imported list of layouts.
- *
- * Every value is checked against the type of the current setting rather than
- * taken as written, so a layout carrying a string where a number belongs is
- * dropped at that key instead of being pushed into live settings — a saved view
- * is a file that round-trips through export and import like everything else
- * here, and it arrives from wherever that file has been.
- */
 function normalizeDiscoveryLayouts(input, settings) {
   const list = Array.isArray(input) ? input : [];
   const seen = new Set();
@@ -1527,25 +975,11 @@ function normalizeDiscoveryLayouts(input, settings) {
   return out;
 }
 
-/**
- * The layout to apply on a route, or null.
- *
- * First match wins, and the order is the order the user put them in, so
- * "the one nearer the top" is the answer to two layouts claiming Browse rather
- * than something the reader has to work out.
- */
 function layoutForRoute(layouts = [], route = '') {
   if (!DISCOVERY_LAYOUT_ROUTES.includes(route)) return null;
   return (Array.isArray(layouts) ? layouts : []).find((entry) => entry?.routes?.includes(route)) || null;
 }
 
-/**
- * Merge a layout into settings, returning what changed.
- *
- * Returns the paths it actually moved rather than a boolean, because the
- * interface says what happened and "applied Calm" is a weaker sentence than
- * naming the two things that are now different.
- */
 function applyDiscoveryLayout(settings, layout) {
   const changed = [];
   if (!layout || typeof layout !== 'object') return changed;
@@ -1560,7 +994,6 @@ function applyDiscoveryLayout(settings, layout) {
   return changed;
 }
 
-/** Is this layout what the settings currently say? Used to mark the active one. */
 function layoutMatchesSettings(layout, settings) {
   if (!layout || typeof layout !== 'object') return false;
   const entries = Object.entries(layout.values || {});
@@ -1568,57 +1001,20 @@ function layoutMatchesSettings(layout, settings) {
   return entries.every(([path, value]) => settingAt(settings, path) === value);
 }
 
-/** Shortest query worth opening a list for. One letter matches most of a library. */
 const EMOTE_TRIGGER_MIN = 2;
 
-/**
- * The colon trigger immediately before the caret, or null.
- *
- * Anchored to the end of the text and required to follow whitespace or the
- * start of the message, so a colon inside a word — a URL's `https:`, an emoji
- * shortcode someone is mid-way through — is not a trigger.
- */
 function emoteTriggerAt(textBeforeCaret) {
   const source = String(textBeforeCaret ?? '');
   const match = /(?:^|\s):([A-Za-z0-9_]+)$/.exec(source);
   if (!match) return null;
   const query = match[1];
   if (query.length < EMOTE_TRIGGER_MIN) return null;
-  // `+ 1` for the colon: what a completion replaces is `:query`, not `query`.
   return { query, length: query.length + 1 };
 }
 
-/**
- * Rank emote candidates for a colon query.
- *
- * A name that *starts* with what was typed always outranks one that merely
- * contains it — the single behaviour every client that gets this right shares,
- * and the one Chatterino #1962 is about, where `:pep` surfaced everything with
- * "pep" anywhere before the emote actually named Pepe. After that the order is
- * what the user has shown: favorites, then how often they send it in this
- * channel, then overall, then the shorter name. The final comparison is on the
- * name itself so two otherwise-equal candidates never swap between renders.
- */
-/**
- * Will Kick refuse this emote in this channel, as a matter of record?
- *
- * Two refusals were measured against a real chatroom on 2026-08-16 and they are
- * the whole model: `SUBSCRIBERS_ONLY_EMOTE_ERROR` for a subscriber emote the
- * account does not own, and `FOREIGN_CHANNEL_EMOTE_ERROR` for a *free* channel
- * emote used outside its own channel. Offering either is offering something the
- * user will watch bounce.
- *
- * Only positive knowledge filters. An anonymous read cannot answer "can I send
- * this" — it returns the same shape for an emote the account owns and one it
- * never will — so an unknown reach is offered exactly as it is today. Hiding on
- * uncertainty would empty the list for every signed-out user, which is the
- * opposite of the fix.
- */
 function completionWouldBounce(entry, channel = '') {
   if (!isRecord(entry)) return false;
-  // Kick says this account cannot send it where it is standing.
   if (entry.usableHere === false) return true;
-  // A free channel emote: usable in its own channel and refused everywhere else.
   if (entry.usableEverywhere !== false) return false;
   const source = typeof entry.sourceSlug === 'string' ? entry.sourceSlug : '';
   const here = typeof channel === 'string' ? channel : '';
@@ -1637,14 +1033,9 @@ function rankEmoteCompletions(query, candidates, options = {}) {
   const scored = [];
   for (const candidate of Array.isArray(candidates) ? candidates : []) {
     const name = isRecord(candidate) && typeof candidate.name === 'string' ? candidate.name : '';
-    // Only a name chat would treat as one token can be completed — the same
-    // boundary the insertion path enforces, applied before anything is offered.
     if (!name || !PLAIN_EMOTE_NAME.test(name)) continue;
     const at = name.toLowerCase().indexOf(needle);
     if (at === -1) continue;
-    // Nothing that Kick is on record as refusing here. The reach data has been
-    // on every catalog record since v1.20.0; this is the ranker finally reading
-    // it, so the list stops offering emotes that bounce.
     if (completionWouldBounce(candidate, channel)) continue;
     const key = typeof candidate.key === 'string' && candidate.key ? candidate.key : name;
     if (seen.has(key)) continue;
@@ -1668,14 +1059,6 @@ function rankEmoteCompletions(query, candidates, options = {}) {
   return scored.slice(0, Math.max(0, Math.floor(Number(limit)) || 0)).map((entry) => entry.candidate);
 }
 
-/**
- * Where each keyword occurs in one run of text, as non-overlapping spans.
- *
- * Case-insensitive, sorted, and merged where two keywords overlap or touch, so
- * the caller can turn each span straight into a Range without producing nested
- * or duplicate highlights. `limit` caps the total, because a chat that scrolls
- * for hours can accumulate more matches than are worth painting.
- */
 function findKeywordSpans(text, keywords, limit = 500) {
   const haystack = typeof text === 'string' ? text.toLowerCase() : '';
   const needles = (Array.isArray(keywords) ? keywords : [])
@@ -1704,15 +1087,6 @@ function findKeywordSpans(text, keywords, limit = 500) {
   return merged;
 }
 
-/**
- * Running cost of the apply cycle, so a regression shows up as a number.
- *
- * Kept as plain deltas rather than `performance.measure` entries: measures land
- * in the page's own performance timeline, where Kick's instrumentation could
- * read them, and this build's rule is that its identity never leaks into page
- * globals. The number is what matters, and it is shown on the About page and
- * carried in the diagnostics copy.
- */
 function recordApplyCost(stats, ms) {
   const prior = isRecord(stats) ? stats : {};
   const value = Number(ms);
@@ -1724,8 +1098,6 @@ function recordApplyCost(stats, ms) {
     total,
     last: value,
     max: Math.max(Number(prior.max) || 0, value),
-    // Recent average over a sliding window, so a slow first paint does not
-    // dominate the figure forever.
     recent: [...(Array.isArray(prior.recent) ? prior.recent : []), value].slice(-20),
   };
 }
@@ -1738,18 +1110,6 @@ function applyCostSummary(stats) {
   return `${stats.count} runs · last ${fmt(stats.last)} ms · recent avg ${fmt(recentAvg)} ms · max ${fmt(stats.max)} ms`;
 }
 
-/**
- * The overlay layers this build can stack, outermost last. The first one that
- * is open is the one on top.
- *
- * The reset alertdialog is nested *inside* the settings shell, which is exactly
- * why this has to be a shared decision: the focus trap scoped itself to the
- * settings shell and let Tab walk the page the dialog was obscuring, while
- * Escape closed all of Settings rather than the prompt the user meant to
- * decline. Tab and Escape now read the same ladder, so they cannot drift again
- * (they already had — the trap ranked the command menu above settings and
- * Escape ranked settings above the command menu).
- */
 const OVERLAY_LAYERS = [
   ['multistream', '.kf-ms-shell'],
   ['command', '.kf-command-shell'],
@@ -1757,25 +1117,12 @@ const OVERLAY_LAYERS = [
   ['settings', '[data-kf-settings-shell]'],
 ];
 
-/**
- * Which layer owns focus and Escape right now, or null if none is open.
- * `open` maps a layer name to whether it is currently shown.
- */
 function topmostOverlayLayer(open) {
   if (!isRecord(open)) return null;
   const found = OVERLAY_LAYERS.find(([layer]) => open[layer] === true);
   return found ? { layer: found[0], selector: found[1] } : null;
 }
 
-/**
- * Locale-correct plural selection.
- *
- * English has only one/other, but CLDR 48 gives both es and pt a "many"
- * category, so a hand-built `n === 1 ? word : word + 's'` is wrong in those
- * locales. `forms` maps Intl.PluralRules categories (one/few/many/other/…) to
- * strings; the CLDR category for the count and locale chooses one, falling back
- * to `other`. Intl.PluralRules is Baseline since 2019 and needs no dependency.
- */
 function pluralForm(count, forms, locale = 'en') {
   const value = Number(count);
   const source = forms && typeof forms === 'object' ? forms : {};
@@ -1788,27 +1135,15 @@ function pluralForm(count, forms, locale = 'en') {
   return source[category] ?? source.other ?? '';
 }
 
-/**
- * Strip query strings and long opaque tokens from an error message before it is
- * shown in the diagnostics log or copied, matching the protection log's "query
- * strings are never retained" discipline. Nothing is sent anywhere; this only
- * keeps a local record from carrying a session token or a channel id.
- */
 function sanitizeErrorMessage(message, limit = 300) {
   return String(message ?? '')
-    .replace(/[?#][^\s'")]*/g, '')          // drop query strings and fragments
-    .replace(/[A-Za-z0-9_-]{40,}/g, '…')    // drop long opaque tokens / ids
+    .replace(/[?#][^\s'")]*/g, '')
+    .replace(/[A-Za-z0-9_-]{40,}/g, '…')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, limit);
 }
 
-/**
- * A remote blocklist URL is only accepted when it is a well-formed https URL.
- * Validated here, at normalize time, so the value that reaches the privileged
- * companion fetch and the userscript transport can never be a `javascript:`,
- * `data:`, `http:` or otherwise malformed string.
- */
 function normalizeBlocklistUrl(value) {
   if (typeof value !== 'string' || value.length > 2048) return '';
   const trimmed = value.trim();
@@ -1830,9 +1165,6 @@ function normalizeSettings(input) {
   const shortcuts = isRecord(source.shortcuts) ? source.shortcuts : {};
   const defaults = clone(DEFAULT_SETTINGS);
   const sourceSchema = Number(source.schema) || 0;
-  // v2 aligns the effective defaults with the site redesign. Preserve any
-  // clearly intentional custom value, while moving the two old defaults to
-  // the new readable desktop baseline for existing installations.
   const sidebar = sourceSchema < 2 && (layout.sidebar == null || layout.sidebar === 'compact')
     ? defaults.layout.sidebar
     : enumValue(layout.sidebar, ['auto', 'compact', 'dropdown', 'hidden'], defaults.layout.sidebar);
@@ -1873,7 +1205,6 @@ function normalizeSettings(input) {
       colorizeLive: bool(appearance.colorizeLive, defaults.appearance.colorizeLive),
     },
     content: {
-      // Core ad blocking is deliberately not user-disableable in this zero-ad build.
       blockAds: true,
       removeAdContainers: bool(content.removeAdContainers, defaults.content.removeAdContainers),
       suppressPromoted: bool(content.suppressPromoted, defaults.content.suppressPromoted),
@@ -1892,9 +1223,6 @@ function normalizeSettings(input) {
       stickyChatPause: bool(content.stickyChatPause, defaults.content.stickyChatPause),
       chatHighlights: bool(content.chatHighlights, defaults.content.chatHighlights),
       chatTimestamps: bool(content.chatTimestamps, defaults.content.chatTimestamps),
-      // Parsed rather than trusted: this is the one chat setting a person types
-      // into, and the same cleaning runs whether it arrives from the field, an
-      // imported file, or a record written by an older build.
       chatPriorityPeople: parsePeopleList(content.chatPriorityPeople),
       chatMentionSound: bool(content.chatMentionSound, defaults.content.chatMentionSound),
       chatHideMessages: bool(content.chatHideMessages, defaults.content.chatHideMessages),
@@ -1970,7 +1298,6 @@ function routeKind(input) {
   return 'channel';
 }
 
-/** The current StreamerStats analytics page for a validated Kick channel slug. */
 function streamerStatsProfileUrl(slug) {
   const channel = String(slug ?? '').trim();
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(channel)) return '';
@@ -2017,17 +1344,8 @@ function classifyRequest(rawUrl, options = {}) {
   return { blocked: false, category: 'allowed', label: sanitizeDiagnosticUrl(url.href) };
 }
 
-// Kick's live pages mutate continuously — player, chat, viewer counts. A plain
-// debounce is reset by every one of those mutations and therefore never fires,
-// so the debounce is capped: once work has been waiting this long it runs, no
-// matter how busy the page still is.
 const APPLY_MAX_WAIT = 500;
 
-/**
- * Delay before the next apply cycle, given how long work has already waited.
- * Returns 0 once the cap is reached, which converts a starving debounce into a
- * throttle without giving up burst coalescing.
- */
 function nextApplyDelay(requestedDelay, waitedMs, maxWait = APPLY_MAX_WAIT) {
   const requested = Math.max(0, Number(requestedDelay) || 0);
   const waited = Math.max(0, Number(waitedMs) || 0);
@@ -2035,29 +1353,14 @@ function nextApplyDelay(requestedDelay, waitedMs, maxWait = APPLY_MAX_WAIT) {
   return Math.min(requested, remaining);
 }
 
-// A grid this small can legitimately be mostly filtered; below it the ratio
-// test is noise. Above it, hiding this share of a page is far more likely to be
-// a labelling mistake than a page that really is mostly casino content.
 const FILTER_MIN_SAMPLE = 8;
 const FILTER_MAX_HIDDEN_RATIO = 0.25;
 
-/**
- * Decide whether filtering may be applied to a grid.
- *
- * Filtering is suspended rather than applied when it would hide most of a page.
- * A filter that empties a grid is indistinguishable from the site being broken,
- * and the user has no way to tell which happened, so the safe failure is to
- * show everything and say so.
- */
 function filterDecision(total, wouldHide, options = {}) {
   const sample = Math.max(0, Number(total) || 0);
   const hidden = Math.min(sample, Math.max(0, Number(wouldHide) || 0));
   const ratio = sample > 0 ? hidden / sample : 0;
 
-  // On a category page the user asked for exactly one kind of content, so a
-  // page that is entirely that kind is the expected result rather than
-  // evidence of a labelling mistake. Suspending here would quietly overrule
-  // the filter the user turned on.
   if (options.route === 'category') {
     return { apply: true, hidden, total: sample, ratio, reason: 'category-route' };
   }
@@ -2068,57 +1371,24 @@ function filterDecision(total, wouldHide, options = {}) {
   return { apply: true, hidden, total: sample, ratio, reason: 'ok' };
 }
 
-// Kick's own category slugs. Language-independent and far more reliable than
-// the displayed name, which is localized and appears inside stream titles.
 const CASINO_CATEGORY_SLUGS = Object.freeze([
   'slots', 'casino', 'slots-casino', 'poker', 'sports-betting', 'gambling',
 ]);
 
-/**
- * Classify a card.
- *
- * Structured evidence wins: a category slug and Kick's own short badge
- * elements say what a card is, while the card's full text merely mentions
- * things. Matching prose is what made "Drop the beat" read as a Drops
- * promotion and any title mentioning a casino read as gambling.
- *
- * The text heuristics remain, but only as a fallback for a signal that has no
- * structured evidence available — never to override it.
- *
- * @param {string} text Full card text, used only for fallback.
- * @param {{categories?: string[], badges?: string[]}} [context] Structured
- *   evidence read from the card: category slugs and short badge texts.
- */
-// Ad SDK blocks Kick advertises in its playback payload. Removing them stops
-// the player initialising the SDKs at all, rather than blocking their requests
-// after the fact. These serve advertising and are always removed.
 const PLAYBACK_AD_SDK_KEYS = Object.freeze([
   'google_ads_sdk', 'pal_sdk', 'ima_sdk',
 ]);
 
-// Analytics rather than advertising. Removing these is a privacy choice, not
-// an ad-blocking one, so it follows the telemetry setting instead of being
-// forced on everyone.
 const PLAYBACK_TELEMETRY_SDK_KEYS = Object.freeze([
   'mux_sdk', 'datazoom_sdk',
 ]);
 
-// The shape of Kick's ad stack as last confirmed by inspection. When the site
-// stops matching this, the ad defences may be aiming at something that no
-// longer exists, and silence would look identical to success.
 const AD_STACK_BASELINE = Object.freeze({
   date: '2026-08-14',
   playbackSdkKeys: Object.freeze(['google_ads_sdk', 'pal_sdk', 'ima_sdk', 'mux_sdk', 'datazoom_sdk']),
   sessionFlag: 'auto_ads_enabled',
 });
 
-/**
- * Compare what was observed against the known ad stack.
- *
- * A zero in the protection log is ambiguous: it means either that nothing was
- * served or that the defences no longer recognise what is being served. This
- * turns the second case into something the user can see.
- */
 function assessAdStack(observed = {}) {
   const seenKeys = Array.isArray(observed.playbackSdkKeys) ? observed.playbackSdkKeys : [];
   const sawPlayback = Boolean(observed.sawPlayback);
@@ -2155,7 +1425,6 @@ function assessAdStack(observed = {}) {
   };
 }
 
-/** Keep the strongest known emote access without dereferencing a missing record. */
 function preferredStickerAccess(existingAccess, incomingAccess) {
   const accessRank = { observed: 0, locked: 1, channel: 2, available: 3 };
   const incoming = Object.hasOwn(accessRank, incomingAccess) ? incomingAccess : 'locked';
@@ -2163,25 +1432,11 @@ function preferredStickerAccess(existingAccess, incomingAccess) {
   return accessRank[existingAccess] >= accessRank[incoming] ? existingAccess : incoming;
 }
 
-/**
- * Fold one observation of an emote into its stored record.
- *
- * Kick edits emotes users have already pulled — a 2026-07-24 report of four
- * changed emotes was answered by Kick support with "remastered… clear your
- * cache" — so the local record is the only version a user can check against.
- * `wasName`/`wasSrc` always hold the value at *first* capture, not the previous
- * one, so a rename and a rename-back correctly reads as unchanged.
- *
- * Pure: no clock of its own, so the caller supplies `now` and tests are exact.
- */
 function recordStickerObservation(existing, observed, now) {
   const at = cleanCaptureTime(now);
   if (!existing) {
     return { ...observed, firstSeen: at, lastSeen: at };
   }
-  // An entry carried over from schema 3 keeps `firstSeen: 0` — unknown. Stamping
-  // it with today would claim the emote was first seen now, when in fact it was
-  // recorded before this build tracked dates at all.
   const entry = { ...existing, ...observed, firstSeen: cleanCaptureTime(existing.firstSeen), lastSeen: at };
 
   const originalName = existing.wasName || existing.name;
@@ -2195,15 +1450,10 @@ function recordStickerObservation(existing, observed, now) {
   return entry;
 }
 
-/** Whether Kick has changed this entry since it was first recorded. */
 function stickerChangedSinceCapture(entry) {
   return Boolean(entry?.wasName || entry?.wasSrc);
 }
 
-/**
- * Say what changed, in the user's terms. Returns '' when nothing has, so the
- * caller can use it directly as a presence test.
- */
 function describeStickerChange(entry) {
   if (!entry) return '';
   const parts = [];
@@ -2215,22 +1465,11 @@ function describeStickerChange(entry) {
   return `Kick has ${parts.join(' and ')}${when}.`;
 }
 
-/** How many library entries Kick has edited since they were recorded. */
 function countChangedStickers(library) {
   const entries = library instanceof Map ? [...library.values()] : (Array.isArray(library) ? library : []);
   return entries.filter((entry) => stickerChangedSinceCapture(entry)).length;
 }
 
-/**
- * Decide which chat badges this build has to draw itself.
- *
- * Kick renders some badges in its own markup but omits the collectible and
- * global ones `badges_v2` carries, so the job is to fill that gap without
- * duplicating what is already on screen. An image URL is the only reliable
- * identity — badge `type` is absent on some entries and `text` is localised —
- * so a badge whose image Kick already drew is skipped, and a badge with no
- * image at all is kept because it cannot be matched and reads as text anyway.
- */
 function chatBadgesToRender(badges, drawnImageUrls = []) {
   if (!Array.isArray(badges)) return [];
   const drawn = drawnImageUrls instanceof Set ? drawnImageUrls : new Set(drawnImageUrls);
@@ -2241,7 +1480,6 @@ function chatBadgesToRender(badges, drawnImageUrls = []) {
     const label = badge.text || badge.type;
     if (!label) continue;
     if (badge.image && drawn.has(badge.image)) continue;
-    // A payload repeating the same badge must not draw it twice.
     const key = badge.image || `text:${label}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -2250,14 +1488,6 @@ function chatBadgesToRender(badges, drawnImageUrls = []) {
   return render;
 }
 
-/**
- * Accumulated API drift report.
- *
- * Kick removed an endpoint, dropped a header, and changed moderation behaviour
- * inside four weeks, and each was found by a competing client breaking in
- * public. This detects shape changes at the boundary rather than discovering
- * them through breakage; the model is assessAdStack above.
- */
 function assessApiDrift(events = []) {
   if (!events.length) {
     return { drifted: false, summary: 'No API shape mismatches this session.' };
@@ -2278,15 +1508,6 @@ function assessApiDrift(events = []) {
   };
 }
 
-/**
- * Describe how early the script actually started.
- *
- * `@run-at document-start` is a request, not a guarantee: Chromium userscript
- * managers inject through `chrome.userScripts`, which can land after the page's
- * own first scripts, and the "instant injection" modes that fix it are off by
- * default. Rather than claim a timing the script cannot verify, it measures
- * what it found on arrival and reports that.
- */
 function describeInjection({ readyState, scriptCount, hasBody } = {}) {
   const scripts = Math.max(0, Number(scriptCount) || 0);
   if (hasBody || readyState === 'complete' || readyState === 'interactive') {
@@ -2300,26 +1521,10 @@ function describeInjection({ readyState, scriptCount, hasBody } = {}) {
 
 function isPlaybackUrl(rawUrl) {
   const value = String(rawUrl || '');
-  // Kick versions this endpoint, so the version segment is not pinned.
   return /\/api\/v\d+\/[^?#]*\/playback(?:[/?#]|$)/.test(value)
     || /\/stream\/[^/?#]+\/playback(?:[/?#]|$)/.test(value);
 }
 
-/**
- * Turn off ads in a playback payload.
- *
- * Kick decides client-side ad behaviour from flags in this response: a session
- * flag that enables automatic ads, and per-SDK blocks that tell the player
- * which ad SDKs to bootstrap. Reporting the flag false and removing the SDK
- * blocks stops ad initialisation at its source.
- *
- * This does not remove ads already spliced into the media stream itself; those
- * are stitched server-side and are not described by this payload.
- *
- * Returns the original text unchanged when the payload is not JSON, does not
- * look like a playback response, or already has nothing to disable — callers
- * rely on `changed` to avoid pointlessly rebuilding responses.
- */
 function neutralizePlaybackPayload(rawText, options = {}) {
   const text = String(rawText ?? '');
   if (!text) return { changed: false, text, removed: [] };
@@ -2385,27 +1590,16 @@ function detectContentLabels(text, context = {}) {
     promoted: hasBadges
       ? badgeMatches(/^(sponsored|promoted|advertisement|ad)$/)
       : /\b(sponsored|promoted|advertisement)\b/.test(normalized),
-    // Never bare "drops": it is an ordinary English word in stream titles.
     drops: hasBadges
       ? badgeMatches(/^(drops?|drops enabled|kick drops)$/)
       : /\b(?:kick\s+drops?|drops\s+enabled)\b/.test(normalized),
   };
 }
 
-/**
- * Identify a Kick control whose only purpose is spending or spend-based social
- * proof. Inputs are deliberately plain strings so the DOM adapter can stay
- * small and the false-positive boundary can be unit-tested.
- */
 function monetizationKind({ text = '', ariaLabel = '', title = '', testId = '' } = {}) {
   const id = String(testId).trim().toLowerCase();
   if (id === 'sub-button') return 'subscribe';
   if (id === 'gift-sub-button' || id === 'gift-shop-button' || id === 'gift-shop-panel') return 'gift';
-  // `kicks-value` is the balance readout in the chat footer, not a control. It
-  // survived Poor mode until 2026-08-16 for two reasons: the tagger walked only
-  // buttons and links, and the button around it carries no label of its own —
-  // its whole text is the number. A balance is the spend prompt without the
-  // verb, so it goes with the rest.
   if (id === 'kicks-top-nav' || id === 'get-kicks' || id === 'kicks-value') return 'currency';
 
   const label = [text, ariaLabel, title]
@@ -2420,55 +1614,24 @@ function monetizationKind({ text = '', ariaLabel = '', title = '', testId = '' }
 
 const STICKER_PREFERENCES_SCHEMA = 8;
 
-/**
- * The platform an emote key belongs to.
- *
- * Keys were `id:<id>` or `name:<name>|src:<url>`, which says nothing about
- * where the emote came from. Everything this build records is Kick's, so today
- * that is a constant — but the library, the favorites, the removals and the
- * group assignments are all keyed by the same string, and adding the origin
- * later would mean migrating four stores at once against data that had grown
- * for months. The prefix goes in now, while the migration is small.
- */
 const PLATFORM_ID = 'kick';
 
-/** A key written before the prefix existed: the two legacy forms, nothing else. */
 const UNPREFIXED_STICKER_KEY = /^(?:id|name):/;
 
-/**
- * Prefix a key with its platform, idempotently.
- *
- * Applied unconditionally rather than gated on the stored schema number, so a
- * store that is half-migrated — an export from an older build imported into a
- * newer one, say — heals instead of splitting into two key spaces. Only the two
- * legacy shapes are rewritten; anything already carrying a platform is left as
- * it is, and an emote whose *name* happens to start with `kick:` is unaffected
- * because a raw key always begins `id:` or `name:`.
- */
 function platformStickerKey(key, platformId = PLATFORM_ID) {
   if (typeof key !== 'string' || !key) return '';
   return UNPREFIXED_STICKER_KEY.test(key) ? `${platformId}:${key}` : key;
 }
 
-/**
- * Timestamps travel through the settings export, so an imported file can carry
- * anything. Anything not a plausible epoch-millisecond reading is discarded
- * rather than clamped, because a wrong date is worse than no date: the whole
- * point of the record is that the user can trust it.
- */
 const EARLIEST_CAPTURE_MS = Date.UTC(2024, 0, 1);
 
 function cleanCaptureTime(value) {
   const time = Number(value);
   if (!Number.isFinite(time) || time < EARLIEST_CAPTURE_MS) return 0;
-  // A reading far in the future is a broken clock or a hand-edited file.
   if (time > EARLIEST_CAPTURE_MS + 100 * 365 * 24 * 60 * 60 * 1000) return 0;
   return Math.floor(time);
 }
 
-// 360, not 320: a key is built and sliced to 320 before the platform prefix is
-// added, so the longest legitimate migrated key is 320 plus the prefix. At 320
-// this cap silently dropped the longest name-and-src keys during migration.
 const STICKER_KEY_MAX_LENGTH = 360;
 
 function cleanStickerKeys(input, limit = 2400) {
@@ -2543,14 +1706,6 @@ function cleanStickerAssignments(input, groupIds) {
 
 const STICKER_LIBRARY_LIMIT = 2400;
 
-/**
- * Evict the recorded library down to `limit` without discarding anything the
- * user acted on. A naive FIFO truncation kept the oldest entries and dropped
- * every NEW one once the cap was hit; this drops the most disposable records
- * instead — `observed` (chat-only) before `locked`, oldest `lastSeen` first —
- * and never evicts an `available` emote or one that is favorited or assigned.
- * Returns the retained list and how many entries were dropped.
- */
 function evictStickerLibrary(library, limit = STICKER_LIBRARY_LIMIT, protectedKeys = new Set()) {
   const list = Array.isArray(library) ? library : [...library];
   if (list.length <= limit) return { library: list, evicted: 0 };
@@ -2570,16 +1725,6 @@ function evictStickerLibrary(library, limit = STICKER_LIBRARY_LIMIT, protectedKe
   return { library: list.filter((_, index) => !dropped.has(index)), evicted: dropCount };
 }
 
-/**
- * Turn a realtime chat frame's emote list into library observations.
- *
- * These are frame-only: no DOM node corroborated them, and the id came off the
- * wire, so a crafted `[emote:999999:Fake]` token would otherwise let anyone burn
- * a library slot. The caller must validate each src loads as an image before
- * committing it. `urlFn` builds the CDN src from the id (injected so this stays
- * pure and testable). Ids are deduped and both id- and name-derived duplicates
- * collapse to one id-keyed entry.
- */
 function observationsFromChatEmotes(emotes, urlFn) {
   if (!Array.isArray(emotes)) return [];
   const out = [];
@@ -2608,7 +1753,6 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
     const key = cleanStickerKeys([raw.key], 1)[0];
     const name = cleanStickerText(raw.name, 80);
     const src = cleanStickerAssetUrl(raw.src);
-    // A removed key is a slot the user freed; never re-materialise it here.
     if (!key || !name || !src || keys.has(key) || hiddenSet.has(key)) continue;
     keys.add(key);
     const entry = {
@@ -2624,38 +1768,19 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
       requiresFollow: raw.requiresFollow === true,
       followed: raw.followed === true,
       subscribersOnly: raw.subscribersOnly === true,
-      // Schema 4. Entries captured before it carry 0, which reads as unknown
-      // rather than as a date the record cannot actually support.
       firstSeen: cleanCaptureTime(raw.firstSeen),
       lastSeen: cleanCaptureTime(raw.lastSeen),
     };
-    // Only present once Kick has changed the entry under the user, which is
-    // the case this record exists to catch — and keeping them optional stops a
-    // 2,400-entry library from carrying a duplicate of itself.
     const wasName = cleanStickerText(raw.wasName, 80);
     if (wasName && wasName !== name) entry.wasName = wasName;
     const wasSrc = cleanStickerAssetUrl(raw.wasSrc);
     if (wasSrc && wasSrc !== src) entry.wasSrc = wasSrc;
     library.push(entry);
-    // A generous hard ceiling bounds a crafted import; evictStickerLibrary does
-    // the real capping and protects the records the user actually acted on.
     if (library.length >= STICKER_LIBRARY_LIMIT * 2) break;
   }
   return library;
 }
 
-/**
- * Favorites, scoped and ordered.
- *
- * A favorite is `{ key, channel, order }`. `channel` is a lowercased Kick slug,
- * or `''` for a favorite that follows you everywhere. Order is explicit and
- * per scope, because "frequently used" ranks nothing on Kick and alphabetical
- * is not how anyone reaches for an emote.
- *
- * The emote's own data is not duplicated here — the library already holds a
- * full snapshot per key, so a favorite still renders when its set is not
- * loaded. That is the property that matters, and it costs nothing extra.
- */
 const FAVORITES_PER_SCOPE_LIMIT = 60;
 
 function favoriteScope(channel) {
@@ -2681,14 +1806,9 @@ function cleanStickerFavorites(input, legacyPinned, hiddenSet) {
       add(key, raw.channel, Number(raw.order));
     }
   } else {
-    // Schema 4 and earlier stored a flat `pinned` array with no scope and no
-    // explicit order. Position in that array *was* the order, so it carries
-    // over as a global favorite and nothing is lost.
     for (const key of cleanStickerKeys(legacyPinned)) add(key, '', entries.length);
   }
 
-  // Renumber densely per scope so an imported file cannot smuggle sparse or
-  // colliding orders past the reorder controls.
   const byScope = new Map();
   for (const entry of entries) {
     const list = byScope.get(entry.channel) || [];
@@ -2705,10 +1825,6 @@ function cleanStickerFavorites(input, legacyPinned, hiddenSet) {
   return cleaned;
 }
 
-/**
- * The keys to show on a channel, in order: that channel's own favorites first,
- * then the global ones it has not already overridden.
- */
 function favoritesForChannel(favorites, channel) {
   const list = Array.isArray(favorites) ? favorites : [];
   const scope = favoriteScope(channel);
@@ -2725,7 +1841,6 @@ function isStickerFavorite(favorites, key, channel) {
   return favoritesForChannel(favorites, channel).includes(key);
 }
 
-/** Add or remove one favorite in one scope, leaving every other scope alone. */
 function toggleStickerFavorite(favorites, key, channel) {
   const list = Array.isArray(favorites) ? favorites : [];
   const scope = favoriteScope(channel);
@@ -2738,7 +1853,6 @@ function toggleStickerFavorite(favorites, key, channel) {
   return renumberFavorites([...list, { key, channel: scope, order: inScope }]);
 }
 
-/** Move a favorite within its own scope. `delta` is -1 for earlier, +1 for later. */
 function moveStickerFavorite(favorites, key, channel, delta) {
   const list = Array.isArray(favorites) ? favorites : [];
   const scope = favoriteScope(channel);
@@ -2768,7 +1882,6 @@ function normalizeStickerPreferences(input) {
   const view = enumValue(source.view, ['all', 'pinned', 'native', 'group'], 'all');
   const favorites = cleanStickerFavorites(source.favorites, source.pinned, hiddenSet);
   const assignments = cleanStickerAssignments(source.assignments, groupIds);
-  // Favorited or assigned emotes are protected from eviction: the user filed them.
   const protectedKeys = new Set([
     ...favorites.map((favorite) => favorite.key),
     ...assignments.map((assignment) => assignment.key),
@@ -2818,12 +1931,6 @@ function normalizeChannelPath(value) {
   }
 }
 
-/**
- * A Kick pathname as the rest of this build stores it: lowercased, no
- * trailing slash, empty for home. Card hrefs, hide lists, favorites, and
- * layout keys all have to agree on this or a `/xqc/` link misses a `/xqc`
- * store entry.
- */
 function observedChannelPath(value) {
   const path = normalizeChannelPath(value);
   return path && path !== '/' ? path : '';
@@ -2839,11 +1946,6 @@ function normalizeBlocklistPayload(payload) {
   };
 }
 
-/**
- * Validate data-only remote blocklists before they enter settings or storage.
- * Unknown keys, executable-looking fields, and non-string list members are
- * rejected rather than silently merged.
- */
 function validateRemoteBlocklist(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return { ok: false, error: 'A blocklist must be a JSON object.' };
@@ -2866,21 +1968,8 @@ function validateRemoteBlocklist(payload) {
   return { ok: true, value, dropped: inputCount - outputCount };
 }
 
-/**
- * Validate a settings file, and account for anything it contains that this
- * build will not keep.
- *
- * Normalisation silently replaces unknown or malformed values with defaults,
- * which means an import can quietly discard part of someone's configuration.
- * The caller gets a list of what was dropped so the interface can say so
- * instead of reporting a clean success.
- */
-// Prototype-pollution keys (CVE-2026-21710 class). Every store that writes an
-// untrusted key drops these before the assignment, so a hand-edited import can
-// never reach `obj['__proto__'] = …`. Settings sections stay safe by rebuild.
 const POLLUTION_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-/** Channel-path list (favorites, not-interested), rebuilt with the writer's bound. */
 function normalizeChannelList(input, limit = 200) {
   if (!Array.isArray(input)) return [];
   const out = [];
@@ -2893,7 +1982,6 @@ function normalizeChannelList(input, limit = 200) {
   return out;
 }
 
-/** Channel notes: path -> note string, rebuilt with the writer's bounds. */
 function normalizeChannelNotes(input, limit = 100) {
   if (!isRecord(input)) return {};
   const out = {};
@@ -2908,7 +1996,6 @@ function normalizeChannelNotes(input, limit = 100) {
   return out;
 }
 
-/** Chat keyword filters: path -> keyword[], rebuilt with the writer's bounds. */
 function normalizeChatKeywords(input, limit = 100) {
   if (!isRecord(input)) return {};
   const out = {};
@@ -2927,7 +2014,6 @@ function normalizeChatKeywords(input, limit = 100) {
   return out;
 }
 
-/** Per-channel layout: path -> {focus,theater,chatHidden,sidebarHidden} booleans. */
 function normalizeChannelLayouts(input, limit = 50) {
   if (!isRecord(input)) return {};
   const out = {};
@@ -2947,7 +2033,6 @@ function normalizeChannelLayouts(input, limit = 50) {
   return out;
 }
 
-/** Volume/quality memory: "kind:path" -> primitive, rebuilt with the writer's bound. */
 function normalizeMediaPreferences(input, limit = 240) {
   if (!isRecord(input)) return {};
   const out = {};
@@ -2973,11 +2058,6 @@ function normalizeMediaPreferences(input, limit = 240) {
   return out;
 }
 
-/**
- * Assemble the settings export payload from every backup store. Settings are
- * spread at the root (schema/section keys); the rest are nested under their
- * registered field. One shaper so the export and its coverage test cannot drift.
- */
 function buildSettingsExport(sources) {
   const source = isRecord(sources) ? sources : {};
   return {
@@ -3033,10 +2113,6 @@ function validateImportedSettings(jsonText) {
     const incoming = parsed[section];
     if (!isRecord(incoming)) continue;
     for (const [key, raw] of Object.entries(incoming)) {
-      // `in` walks the prototype chain, so an imported "__proto__", "constructor"
-      // or "toString" key read as recognised and was silently dropped from the
-      // report. normalizeSettings rebuilds from defaults, so this was never a
-      // pollution risk — but transparency is the point of this whole function.
       if (!Object.hasOwn(value[section], key)) {
         notes.push(`Ignored unknown setting "${section}.${key}".`);
       } else if (JSON.stringify(value[section][key]) !== JSON.stringify(raw)) {
@@ -3051,13 +2127,7 @@ function validateImportedSettings(jsonText) {
   }
 
   if (stickers) {
-    // Name which library entries were dropped instead of reporting only a count,
-    // because an import that silently loses entries undermines the trust the
-    // export/import round-trip exists to provide.
     if (Array.isArray(parsed.stickers.library)) {
-      // Both sides in one key space: the normalized library carries platform-
-      // prefixed keys, the parsed file may still hold the legacy form, and
-      // comparing across the two reported every entry as dropped.
       const keptKeys = new Set(stickers.library.map((entry) => entry.key));
       const dropped = parsed.stickers.library
         .filter((entry) => isRecord(entry) && entry.name && entry.key
@@ -3079,9 +2149,6 @@ function validateImportedSettings(jsonText) {
     }
   }
 
-  // Usage counts and saved layouts are user-authored data the export promises
-  // to carry, so they are validated and reported like everything else rather
-  // than passed through or silently dropped.
   const usage = parsed.usage == null ? null : normalizeEmoteUsage(parsed.usage);
   if (usage) {
     const kept = Object.keys(usage.global).length;
@@ -3101,9 +2168,6 @@ function validateImportedSettings(jsonText) {
     }
   }
 
-  // The remaining user-authored stores the export carries. Each is rebuilt from
-  // scratch with the same bounds its writer enforces, and `null` when absent so
-  // the importer only touches what the file actually provided.
   const channelLayouts = parsed.channelLayouts == null ? null : normalizeChannelLayouts(parsed.channelLayouts);
   const favoriteChannels = parsed.favoriteChannels == null ? null : normalizeChannelList(parsed.favoriteChannels);
   const dismissedChannels = parsed.dismissedChannels == null ? null : normalizeChannelList(parsed.dismissedChannels);
@@ -3127,35 +2191,11 @@ function validateImportedSettings(jsonText) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Emote usage
-// ---------------------------------------------------------------------------
 
-/**
- * Kick's "Frequently Used" tab is a 50-entry MRU whose `timeUsed` is hardcoded
- * to 1 and never incremented, so no real frequency ranking exists anywhere on
- * the platform. Competitors count usage only for third-party providers
- * (7TV/BTTV/FFZ), never for Kick's own emotes.
- *
- * Counts are keyed by emote id, not name: names collide across sets and Kick
- * remaps them, while ids are stable. Storage is per channel plus a global
- * rollup, both local-only and exported with the library.
- */
 const USAGE_CHANNEL_LIMIT = 400;
 
-/** The global rollup spans every channel, so it is bounded more loosely — but
- *  bounded: it was previously capped only on read and grew without limit on
- *  write, so a long session persisted an ever-larger map. */
 const USAGE_GLOBAL_LIMIT = 2000;
 
-/**
- * Rebuild a usage store from untrusted input.
- *
- * Counts travel through the settings export, so an imported file can contain
- * anything. Everything is rebuilt from scratch with bounded shapes rather than
- * merged in, and the per-channel cap is enforced here too so a hand-edited file
- * cannot smuggle an unbounded map past the writer that normally trims it.
- */
 function normalizeEmoteUsage(input) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const cleanScope = (raw, limit = USAGE_CHANNEL_LIMIT) => {
@@ -3202,7 +2242,6 @@ function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
     firstAt: globalEntry.firstAt || at,
     lastAt: at,
   };
-  // The global rollup was capped only on read, so it grew without bound on write.
   next.global = trimUsage(next.global, USAGE_GLOBAL_LIMIT);
   if (channel) {
     const scope = { ...(next.channels[channel] || {}) };
@@ -3213,7 +2252,6 @@ function recordEmoteUse(counts, { channel, id, name, at = 0 }) {
   return next;
 }
 
-/** Keep a usage map bounded by dropping the least-used entries. */
 function trimUsage(scope, limit = USAGE_CHANNEL_LIMIT) {
   const entries = Object.entries(scope);
   if (entries.length <= limit) return scope;
@@ -3221,11 +2259,6 @@ function trimUsage(scope, limit = USAGE_CHANNEL_LIMIT) {
   return Object.fromEntries(entries.slice(0, limit));
 }
 
-/**
- * Rank emotes by real usage. `channel` scopes to one chat and falls back to the
- * global rollup for anything never used there, so a shelf is useful the first
- * time a channel is opened rather than empty.
- */
 function rankEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
   const scope = (channel && counts?.channels?.[channel]) || {};
   const global = counts?.global || {};
@@ -3242,20 +2275,6 @@ function rankEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
     .slice(0, limit);
 }
 
-/**
- * Emotes ordered by how recently they were sent, newest first.
- *
- * The companion to `rankEmoteUsage`, not a replacement: frequency answers "what
- * do I use", recency answers "what am I using right now", and a shelf built on
- * frequency alone takes weeks to notice that a channel's meta moved on. Same
- * scoping rule as the frequency ranking — the channel's own record wins, and
- * falls back to the global rollup for an emote never sent here.
- *
- * Presentational only. This orders emotes the user already sent by hand; it
- * neither records a use nor sends anything, which is the line that separates a
- * recency shelf from the hold-to-spam, turbo and pyramid features other clients
- * pair it with and this build does not have.
- */
 function recentEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
   const scope = (channel && counts?.channels?.[channel]) || {};
   const global = counts?.global || {};
@@ -3273,31 +2292,17 @@ function recentEmoteUsage(counts, { channel = '', limit = 24 } = {}) {
     });
   }
   return [...merged.values()]
-    // An entry with no timestamp is one an import carried without one; it has
-    // no place in a list whose whole ordering is the timestamp.
     .filter((entry) => entry.lastAt > 0)
     .sort((a, b) => (b.lastAt - a.lastAt) || (b.count - a.count) || String(a.id).localeCompare(String(b.id)))
     .slice(0, Math.max(0, Math.floor(Number(limit)) || 0));
 }
 
-/** How many tiles the organizer grid renders at once, regardless of library size. */
 const EMOTE_WINDOW_SIZE = 240;
 
-/**
- * The slice of a long list worth putting in the DOM, and how much is outside it.
- *
- * Not virtualization: the caller renders `items` plus one spacer above and one
- * below, sized from `before` and `after`, so the scrollbar stays honest and the
- * browser keeps doing the scrolling. A library at the 2400 cap therefore costs
- * one window of nodes rather than 2400, and the arithmetic that decides which
- * window lives here where it can be tested without a browser.
- */
 function visibleWindow(entries, anchor = 0, size = EMOTE_WINDOW_SIZE) {
   const list = Array.isArray(entries) ? entries : [];
   const count = Math.max(1, Math.floor(Number(size)) || EMOTE_WINDOW_SIZE);
   if (list.length <= count) return { start: 0, end: list.length, items: list, before: 0, after: 0 };
-  // Lead margin: start the window a little above the anchor so scrolling back a
-  // row does not immediately fall out of it and force a rebuild.
   const lead = Math.floor(count / 4);
   const requested = Math.floor(Number(anchor)) || 0;
   const start = Math.min(Math.max(0, requested - lead), list.length - count);
@@ -3305,7 +2310,6 @@ function visibleWindow(entries, anchor = 0, size = EMOTE_WINDOW_SIZE) {
   return { start, end, items: list.slice(start, end), before: start, after: list.length - end };
 }
 
-/** Emotes the user owns but has never sent — the inverse view nothing offers. */
 function unusedEmotes(counts, emotes, { channel = '' } = {}) {
   const used = new Set([
     ...Object.keys(counts?.global || {}),
@@ -3314,21 +2318,11 @@ function unusedEmotes(counts, emotes, { channel = '' } = {}) {
   return (emotes || []).filter((emote) => !used.has(String(emote.id)));
 }
 
-// ---------------------------------------------------------------------------
-// Multi-stream
-// ---------------------------------------------------------------------------
 
 const MULTISTREAM_SCHEMA = 1;
-/**
- * Nine tiles is a hard ceiling, not a preference. Each tile is a real Kick
- * player: an independent HLS decode plus its own socket. Past a 3×3 the grid
- * stops being watchable and starts being a way to melt a laptop, so the limit
- * is enforced in the data rather than suggested in the interface.
- */
 const MULTISTREAM_MAX = 9;
 const MULTISTREAM_LAYOUT_LIMIT = 24;
 
-/** Column count per tile count, chosen so the last row is never a lone tile. */
 function multistreamColumns(count) {
   const total = Number(count) || 0;
   if (total <= 1) return 1;
@@ -3353,17 +2347,6 @@ function cleanSlugList(input) {
   return slugs;
 }
 
-/**
- * Layout links.
- *
- * Path-style grid URLs are the field's de facto sharing format, but this
- * project runs on kick.com and cannot claim a path there — so the layout rides
- * on a query parameter Kick ignores and Kick Focus reads on boot.
- *
- * The link carries slugs and nothing else: no settings, no identifiers, and no
- * state from the sender's machine. Every slug is revalidated on the way in,
- * because a link is untrusted input no matter who sent it.
- */
 const MULTISTREAM_LINK_PARAM = 'kf-multi';
 
 function multistreamLayoutLink(streams, origin = 'https://kick.com') {
@@ -3372,10 +2355,6 @@ function multistreamLayoutLink(streams, origin = 'https://kick.com') {
   return `${origin}/?${MULTISTREAM_LINK_PARAM}=${encodeURIComponent(slugs.join(','))}`;
 }
 
-/**
- * Read a layout out of a URL. Returns [] for anything unusable, so a malformed
- * or hostile link opens nothing rather than opening something unexpected.
- */
 function parseMultistreamLink(href) {
   let value = '';
   try {
@@ -3387,36 +2366,14 @@ function parseMultistreamLink(href) {
   return cleanSlugList(value.split(','));
 }
 
-/** How long a tab's roll-call answer is trusted before it is treated as gone. */
 const PRESENCE_TTL_MS = 30_000;
 
-/**
- * Fold roll-call answers into the set of channels open in other tabs.
- *
- * Every answer carries the tab's own timestamp, so an entry expires on its own
- * rather than needing a goodbye message — a tab that is closed, crashed, or
- * simply asleep stops appearing without anything having to notice it left.
- * Slugs are validated exactly as the grid validates them, because an answer
- * arrives over a channel any script on the origin can post to.
- */
-/**
- * Path segments Kick uses for its own surfaces. A discovery card links to a
- * channel, but the same markup wraps category tiles and section links, and
- * "browse" is not a channel no matter how channel-shaped the path looks.
- */
 const NON_CHANNEL_SEGMENTS = new Set([
   'about', 'api', 'browse', 'categories', 'category', 'clips', 'dashboard', 'drops', 'following',
   'help', 'legal', 'messages', 'popout', 'privacy', 'profile', 'search', 'settings', 'shop',
   'store', 'subscriptions', 'support', 'terms', 'user', 'video', 'videos', 'wallet',
 ]);
 
-/**
- * The channel a discovery card points at, or '' if it points at anything else.
- *
- * Accepts what a card's `href` actually yields — a path, a path with a query or
- * hash, or a full URL — and refuses a host that is not Kick's, because the
- * return value feeds a grid of embedded players.
- */
 function cardSlugFromPath(path) {
   const raw = String(path ?? '').trim();
   if (!raw) return '';
@@ -3440,18 +2397,12 @@ function mergePresence(entries, now = 0) {
     if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
     if (!Number.isFinite(ts) || now - ts > PRESENCE_TTL_MS || ts > now + PRESENCE_TTL_MS) continue;
     const key = slug.toLowerCase();
-    // The freshest answer for a slug wins, so two tabs on the same channel
-    // count once and the newer timestamp is the one that expires it.
     const prior = seen.get(key);
     if (!prior || ts > prior.ts) seen.set(key, { slug, ts });
   }
   return [...seen.values()].sort((a, b) => a.slug.localeCompare(b.slug)).map((entry) => entry.slug);
 }
 
-/**
- * Which of the present channels are worth offering, given what the grid holds.
- * Returns the slugs not already in the grid, capped at the remaining room.
- */
 function presenceOffer(present, streams, max = MULTISTREAM_MAX) {
   const have = new Set((Array.isArray(streams) ? streams : []).map((slug) => String(slug).toLowerCase()));
   const room = Math.max(0, max - have.size);
@@ -3464,8 +2415,6 @@ function normalizeMultistream(input) {
   const source = isRecord(input) ? input : {};
   const streams = cleanSlugList(source.streams);
   const focusCandidate = typeof source.focus === 'string' ? source.focus : '';
-  // Audio follows focus, and focus must name a stream that is actually present
-  // or the grid ends up silent with no obvious way to fix it.
   const focus = streams.some((slug) => slug.toLowerCase() === focusCandidate.toLowerCase())
     ? streams.find((slug) => slug.toLowerCase() === focusCandidate.toLowerCase())
     : (streams[0] || '');
@@ -3492,31 +2441,13 @@ function normalizeMultistream(input) {
       ? streams.find((slug) => slug.toLowerCase() === String(source.chat).toLowerCase())
       : focus,
     showChat: typeof source.showChat === 'boolean' ? source.showChat : true,
-    // Nine autoplaying tiles with no way to stop them is a WCAG 2.2.2 failure,
-    // and the focused tile's audio is a 1.4.2 failure. These two flags back the
-    // pause-all and mute-all controls. `muted` is deliberately separate from
-    // `focus`: silencing the grid must not also move the chat panel.
     paused: typeof source.paused === 'boolean' ? source.paused : false,
     muted: typeof source.muted === 'boolean' ? source.muted : false,
-    // Off by default: one channel's chat, with Kick's own emotes and badges, is
-    // the better read. This is for the case the grid exists for — watching
-    // several at once and not wanting to miss which one just reacted.
     mergedChat: typeof source.mergedChat === 'boolean' ? source.mergedChat : false,
     layouts,
   };
 }
 
-/**
- * Merge a multi-stream write across tabs without a lost update.
- *
- * A blind `gmSet(state.multistream)` clobbers whatever another tab added since
- * this tab booted. Instead, membership is taken from what is *stored* (the most
- * recent write from any tab), minus this operation's `removed`, plus its
- * `added` — so two tabs adding different channels both survive. Order follows
- * this tab's own arrangement, then its additions, then any stored channels it
- * has not seen yet; focus/chat/pause/mute stay this tab's presentation choice;
- * layouts are a name-keyed union with stored winning a conflict.
- */
 function mergeMultistream(stored, current, added = [], removed = []) {
   const base = normalizeMultistream(stored);
   const view = normalizeMultistream(current);
@@ -3556,31 +2487,12 @@ function mergeMultistream(stored, current, added = [], removed = []) {
   });
 }
 
-/**
- * Should a tile carry audio?
- *
- * Exactly one tile ever does, and only when the grid is neither paused nor
- * muted — so this is the single place the "one unmuted tile" invariant lives.
- */
 function multistreamTileMuted(value, slug) {
   const state = value || {};
   if (state.paused || state.muted) return true;
   return slug !== state.focus;
 }
 
-/**
- * Should this tile have a player document loaded at all?
- *
- * A cross-origin embed cannot be paused, quality-capped, or inspected from
- * here — `player.kick.com` is a different origin from `kick.com`, it accepts no
- * quality parameter, and its internals are unreachable. Dropping the document
- * is therefore the only lever available over decode cost, and it is a real one:
- * an unloaded tile decodes nothing.
- *
- * The focused tile is never suspended. It is the one carrying audio, and
- * silencing what someone is actively listening to because they scrolled or
- * switched tabs would be worse than the CPU it saves.
- */
 function multistreamTileActive(value, slug, suspended) {
   const state = value || {};
   if (state.paused) return false;
@@ -3589,14 +2501,6 @@ function multistreamTileActive(value, slug, suspended) {
   return !set.has(slug);
 }
 
-/**
- * Decide which tiles to keep, build, and drop for a render.
- *
- * Replacing an `<iframe>` restarts its stream, so a tile that is still wanted
- * must be reused rather than recreated — adding a tenth channel must not
- * interrupt the nine already playing. Keeping that decision here makes the
- * invariant testable without a browser; the DOM layer only carries it out.
- */
 function planMultistreamTiles(existing, wanted) {
   const present = new Set((existing instanceof Set ? [...existing] : (Array.isArray(existing) ? existing : [])));
   const order = Array.isArray(wanted) ? wanted : [];
@@ -3613,16 +2517,10 @@ function planMultistreamTiles(existing, wanted) {
     order: [...seen],
     reuse,
     create,
-    // Anything present but no longer wanted. A tile that is still wanted must
-    // never appear here, or the render would tear down a playing stream.
     remove: [...present].filter((slug) => !seen.has(slug)),
   };
 }
 
-/**
- * Add a channel, reporting *why* nothing happened rather than failing silently
- * — "I clicked add and nothing appeared" is the whole failure mode here.
- */
 function addMultistreamChannel(value, slug) {
   const state = normalizeMultistream(value);
   const cleaned = typeof slug === 'string' ? slug.trim() : '';
@@ -3642,8 +2540,6 @@ function addMultistreamChannel(value, slug) {
 function removeMultistreamChannel(value, slug) {
   const state = normalizeMultistream(value);
   const streams = state.streams.filter((entry) => entry.toLowerCase() !== String(slug).toLowerCase());
-  // Focus and chat fall through to normalizeMultistream, which re-points them
-  // at a surviving stream rather than leaving the grid muted and chatless.
   return normalizeMultistream({ ...state, streams });
 }
 
@@ -3659,24 +2555,7 @@ function saveMultistreamLayout(value, name) {
   return { ok: true, value: normalizeMultistream({ ...state, layouts }) };
 }
 
-// ---------------------------------------------------------------------------
-// Player loading
-// ---------------------------------------------------------------------------
 
-/**
- * The advertising preflight scripts Kick waits on before it will request
- * playback.
- *
- * This matters most to a build like this one: `imasdk.googleapis.com` is in our
- * own AD_HOSTS, so blocking PAL is exactly what makes Kick sit through the full
- * preflight timeout before the stream starts. The block is correct; the wait is
- * an artifact of it.
- *
- * Same-origin `/om/omweb-v1.js` is included because other content blockers stop
- * it even though this build does not.
- *
- * Approach adapted from KickCX/KickFixPlayerLoading (MIT).
- */
 const AD_PREFLIGHT_SCRIPTS = Object.freeze([
   { hostname: 'imasdk.googleapis.com', pathname: '/pal/sdkloader/pal.js' },
   { hostname: 'platform.datazoom.io', pathname: '/beacon/v1/config' },
@@ -3696,32 +2575,7 @@ function isAdPreflightScript(rawUrl, pageOrigin = 'https://kick.com') {
     : url.hostname === entry.hostname && url.pathname === entry.pathname);
 }
 
-// ---------------------------------------------------------------------------
-// Storage health
-// ---------------------------------------------------------------------------
 
-/**
- * What each persisted key is, in the user's words.
- *
- * A failed write used to be discarded by 12 of 13 call sites, so a full quota
- * lost a curated emote library with no message at all. Naming the data is the
- * difference between "something went wrong" and "your emote library did not
- * save".
- */
-/**
- * Every persistent store the mod owns, in one place, so export coverage,
- * factory reset, and the diagnostics labels cannot drift apart.
- *
- * - `key`    the localStorage / GM key
- * - `label`  the user-facing name (feeds STORAGE_LABELS)
- * - `backup` carried by the settings export/import round-trip
- * - `field`  the export-payload key ('settings' is spread at the root)
- * - `reset`  cleared by "Reset all settings" (a full factory reset)
- *
- * The emote library is deliberately `backup:true, reset:false`: it is the only
- * irreplaceable store (first-seen provenance cannot be regenerated), so a reset
- * keeps it — disclosure is not an acceptable substitute for destroying it.
- */
 const STORAGE_STORES = Object.freeze([
   { key: 'kick-focus:settings', label: 'settings', backup: true, field: 'settings', reset: true },
   { key: 'kick-focus:sticker-preferences', label: 'emote library', backup: true, field: 'stickers', reset: false },
@@ -3739,31 +2593,8 @@ const STORAGE_STORES = Object.freeze([
 
 const STORAGE_LABELS = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store.label]));
 
-/**
- * How much of the origin's storage one multi-store write may claim.
- *
- * Chromium gives localStorage 10 MB per origin, counted in UTF-16 code units,
- * and Kick itself is a tenant of the same budget. The real hazard is not the
- * ceiling but what happens at it: `kCommitErrorThreshold` is 8, and after eight
- * consecutive commit failures Chromium **deletes the whole origin's storage** —
- * so a run of failing writes does not degrade, it wipes. Sizing a multi-key
- * write before any of it is attempted is what keeps a too-large import from
- * spending those attempts.
- */
 const STORAGE_BUDGET_BYTES = 4 * 1024 * 1024;
 
-/**
- * Serialize every store of a multi-key write up front and total its size.
- *
- * The import path used to write nine stores in sequence, so a quota failure on
- * the fourth left a configuration that was half the imported file and half the
- * previous one, with no record of where the seam was. Nothing is written until
- * the whole set is known to serialize and to fit.
- *
- * Returns `{ ok, staged, bytes }`, or `ok:false` with a `reason` of
- * 'unserializable' (naming the `key`) or 'over-budget'. `staged` is empty on
- * failure — there is no partial plan to accidentally commit.
- */
 function planStorageCommit(entries, budgetBytes = STORAGE_BUDGET_BYTES) {
   if (!Array.isArray(entries)) return { ok: false, reason: 'unserializable', key: '', staged: [], bytes: 0 };
   const staged = [];
@@ -3775,8 +2606,6 @@ function planStorageCommit(entries, budgetBytes = STORAGE_BUDGET_BYTES) {
     try {
       serialized = JSON.stringify(value);
     } catch {
-      // A cycle or a BigInt throws here rather than at write time, where half
-      // the stores would already be committed.
       return { ok: false, reason: 'unserializable', key, staged: [], bytes: 0 };
     }
     if (serialized === undefined) return { ok: false, reason: 'unserializable', key, staged: [], bytes: 0 };
@@ -3791,12 +2620,6 @@ function storageLabel(key) {
   return STORAGE_LABELS[key] || String(key || '').replace(/^kick-focus:/, '') || 'data';
 }
 
-/**
- * Fold a failed or recovered write into a failure registry.
- *
- * Keyed by storage key so a repeatedly failing library reports once rather than
- * once per keystroke, and a later success clears the entry.
- */
 function recordStorageResult(registry, key, ok, at = 0) {
   const next = { ...(registry || {}) };
   if (ok) delete next[key];
@@ -3804,13 +2627,6 @@ function recordStorageResult(registry, key, ok, at = 0) {
   return next;
 }
 
-/**
- * Describe a failure registry for a warning the user has to acknowledge.
- *
- * `quota` is the likely cause when several distinct keys fail together: a denied
- * storage backend fails everything, whereas a single large payload hitting the
- * cap fails only itself.
- */
 function describeStorageFailures(registry) {
   const entries = Object.entries(registry || {});
   if (!entries.length) return null;
@@ -3826,14 +2642,12 @@ function describeStorageFailures(registry) {
   };
 }
 
-/** Approximate on-disk size of the payloads this build owns, for diagnostics. */
 function approximateStorageBytes(entries) {
   let total = 0;
   const breakdown = [];
   for (const [key, value] of Object.entries(entries || {})) {
     let bytes = 0;
     try {
-      // UTF-16 code units are what a browser quota actually counts.
       bytes = (typeof value === 'string' ? value : JSON.stringify(value) || '').length * 2;
     } catch {
       bytes = 0;
@@ -3852,7 +2666,6 @@ function formatBytes(bytes) {
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-/** Build a stable selector for the settings control that owns keyboard focus. */
 function settingsFocusSelector(element) {
   const escape = (value) => String(value).replace(/["\\]/g, '\\$&');
   const setting = element?.getAttribute?.('data-set');
@@ -3870,27 +2683,10 @@ function settingsFocusSelector(element) {
   return '';
 }
 
-/**
- * Kick's own API surface, as pure data handling.
- *
- * Everything here is a URL builder, a normaliser, or a join. Nothing in this
- * file performs a request, touches the DOM, or holds state, so all of it is
- * unit-tested against payload shapes captured from the live site on 2026-08-15.
- *
- * Boundaries this module holds to, deliberately:
- *   - Request-free. This module only builds URLs and normalizes data. Runtime
- *     owns the single deliberate Follow mutation used by click-to-save.
- *   - Same-origin, inheriting whatever session the page already has. Nothing
- *     handles, stores or forwards a credential.
- *   - Only endpoints Kick's own client already calls from the page.
- *   - Every normaliser tolerates a changed shape and reports it, because the
- *     one thing certain about an internal API is that it will change.
- */
 
 const KICK_ORIGIN = 'https://kick.com';
 const KICK_WEB_ORIGIN = 'https://web.kick.com';
 
-/** Emote images are content-addressed by id; the size suffix is Kick's own. */
 function emoteImageUrl(id, size = 'fullsize') {
   return `https://files.kick.com/emotes/${encodeURIComponent(String(id))}/${size}`;
 }
@@ -3898,59 +2694,22 @@ function emoteImageUrl(id, size = 'fullsize') {
 const endpoints = {
   channel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}`,
   followChannel: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}/follow`,
-  /**
-   * This account's relationship to one channel: `subscription`, `is_following`,
-   * `is_moderator`, `banned`. The only first-party statement of subscription
-   * this build has ever had — measured 2026-08-16, it answers 401 to a
-   * cookie-only read and 200 to the same read carrying Kick's bearer token.
-   */
   channelMe: (slug) => `${KICK_ORIGIN}/api/v2/channels/${encodeURIComponent(slug)}/me`,
   emoteSets: (slug) => `${KICK_ORIGIN}/emotes/${encodeURIComponent(slug)}`,
   chatSettings: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/chat/settings`,
   chatHistory: (chatroomId) => `${KICK_WEB_ORIGIN}/api/v1/chat/${encodeURIComponent(chatroomId)}/history`,
   collectibles: () => `${KICK_WEB_ORIGIN}/api/v1/gamification/collectibles`,
-  /**
-   * One channel's recent VODs, and the only way to date one.
-   *
-   * Keyed by channel **id**, and on **web.kick.com v1** — not the
-   * `kick.com/api/v2/channels/{slug}/videos` that also answers. The difference
-   * matters and cost a whole pass to find: the v2 list's entries carry a v4
-   * `video.uuid` that matches nothing in the page URL, while this list's `id`
-   * *is* the v7 UUID at `/{slug}/videos/{uuid}`. Measured 2026-08-18.
-   *
-   * There is no single-video read to prefer over it: `web.kick.com/api/v1/`
-   * `{videos,video,streams}/{uuid}` and `kick.com/api/v1/videos/{uuid}` are all
-   * 404, and `stream/{uuid}/playback` is 404 once the VOD is not live. So a
-   * recording older than this list's window simply cannot be resolved, and the
-   * caller must say nothing rather than guess.
-   */
   channelVideos: (channelId) => `${KICK_WEB_ORIGIN}/api/v1/channels/${encodeURIComponent(channelId)}/videos`,
-  /**
-   * One request for the live state of many channels, instead of N per-channel
-   * polls. Kick's own sidebar uses it.
-   */
   currentViewers: (ids) => {
     const query = [...new Set(ids.map((id) => String(id)).filter(Boolean))]
       .map((id) => `ids[]=${encodeURIComponent(id)}`)
       .join('&');
     return `${KICK_ORIGIN}/current-viewers?${query}`;
   },
-  /**
-   * The realtime *broker*, not a realtime connection. It answers with whichever
-   * provider is currently in force. See `normalizeRealtimeConnection`.
-   */
   realtimeChat: (chatroomId, clientId) =>
     `${KICK_WEB_ORIGIN}/api/v1/realtime/chat/${encodeURIComponent(chatroomId)}/client/${encodeURIComponent(clientId)}/connection`,
 };
 
-/**
- * Kick's own embeddable surfaces, verified frameable on 2026-08-15 (200, and
- * neither sends X-Frame-Options nor a frame-ancestors CSP).
- *
- * These are Kick's real player and chat, not a reimplementation: playback,
- * subscriptions, and entitlements all stay Kick's, which is what keeps a
- * multi-stream grid from becoming a workaround for anything.
- */
 function playerEmbedUrl(slug, { muted = true, autoplay = true } = {}) {
   const params = new URLSearchParams({ muted: String(muted), autoplay: String(autoplay) });
   return `https://player.kick.com/${encodeURIComponent(slug)}?${params}`;
@@ -3960,15 +2719,10 @@ function chatEmbedUrl(slug) {
   return `${KICK_ORIGIN}/popout/${encodeURIComponent(slug)}/chat`;
 }
 
-/** Kick channel slugs: what the site itself accepts in a path segment. */
 function isValidSlug(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value);
 }
 
-/**
- * Accept whatever a person is most likely to paste: a bare name, a kick.com
- * URL, a URL with query or trailing path, or a name with stray whitespace.
- */
 function parseChannelInput(raw) {
   const text = String(raw ?? '').trim();
   if (!text) return '';
@@ -3986,42 +2740,19 @@ function parseChannelInput(raw) {
   return isValidSlug(candidate) ? candidate : '';
 }
 
-// ---------------------------------------------------------------------------
-// Realtime
-// ---------------------------------------------------------------------------
 
-/** Pusher's documented client handshake. The key never appears in our source. */
 function pusherSocketUrl({ appKey, cluster }, version = '8.6.0') {
   return `wss://ws-${cluster}.pusher.com/app/${appKey}?protocol=7&client=js&version=${version}&flash=false`;
 }
 
-/**
- * Kick's own gateway, which speaks the same wire protocol as the hosted Pusher
- * path — same `pusher:subscribe` frames, same `chatrooms.{id}.v2` channel
- * names, same `App\Events\ChatMessageEvent` payloads. Only the handshake
- * differs: a token instead of an app key and cluster.
- *
- * Never contacted from this project. It is registered so a forced migration is
- * an added URL builder rather than a rewrite, and it is marked unverified so
- * nothing claims it works until a live run says so.
- */
 function kickGatewaySocketUrl({ token }) {
   return `wss://websockets.kick.com/viewer/v1/connect?token=${encodeURIComponent(token)}`;
 }
 
-/**
- * One entry per realtime provider Kick's broker can name.
- *
- * The split that matters: `socketUrl` and `credentials` are the *transport* and
- * differ per provider, while the frame protocol below is shared because Kick's
- * own gateway reuses Pusher's wire format. Adding a provider is one entry here,
- * not a change to frame parsing or subscription management.
- */
 const REALTIME_TRANSPORTS = Object.freeze({
   PUSHER: Object.freeze({
     id: 'PUSHER',
     label: 'Pusher',
-    // Verified by anonymous handshake against the live service on 2026-08-15.
     verified: true,
     credentials(entry) {
       const appKey = entry?.credentials?.app_key;
@@ -4035,7 +2766,6 @@ const REALTIME_TRANSPORTS = Object.freeze({
   KICK: Object.freeze({
     id: 'KICK',
     label: 'Kick gateway',
-    // Never reached from this project. See "Realtime transport" in README.
     verified: false,
     credentials(entry) {
       const token = entry?.credentials?.token || entry?.credentials?.auth_token;
@@ -4052,20 +2782,6 @@ function realtimeTransport(provider) {
   return REALTIME_TRANSPORTS[String(provider || '').toUpperCase()] || null;
 }
 
-/**
- * Read the broker's answer without assuming Pusher.
- *
- * The response carries an array of connections behind a `provider`
- * discriminator, and Kick's client tracks a `degraded` connection state — a
- * multi-provider failover abstraction it can flip server-side. A build that
- * hardcodes the Pusher app key keeps working right up until it silently does
- * not, so an unrecognised provider must degrade to the DOM path rather than
- * throw or guess.
- *
- * A verified provider is preferred over an unverified one when the broker
- * offers both, so a migration only takes effect once Kick stops offering the
- * path this project has actually run against.
- */
 function normalizeRealtimeConnection(payload) {
   const connections = payload?.data?.connections;
   if (!Array.isArray(connections) || connections.length === 0) {
@@ -4091,29 +2807,15 @@ function normalizeRealtimeConnection(payload) {
   };
 }
 
-/**
- * The frame protocol, shared by every transport.
- *
- * Kept apart from the connection method on purpose: this is what a second
- * transport must *not* have to reimplement.
- */
 function realtimeSubscribeFrame(channel) {
-  // Public channels need no auth; an empty auth string is what Kick's own
-  // client sends for them.
   return JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel } });
 }
 
-/**
- * Classify one inbound frame. Returns a `kind` the caller dispatches on, so
- * frame shape knowledge lives here rather than in the socket wiring.
- */
 function parseRealtimeFrame(raw) {
   let frame;
   try {
     frame = JSON.parse(raw);
   } catch {
-    // A run of frames we cannot read means Kick changed its payload shape.
-    // That is a different problem from silence and deserves to be visible.
     return { kind: 'unparsable' };
   }
   const event = String(frame?.event || '');
@@ -4131,13 +2833,6 @@ function parseRealtimeFrame(raw) {
   return { kind: 'other', event, payload };
 }
 
-/**
- * Kick's channel naming is inconsistent by design: `chatrooms.{id}.v2` and
- * `chatroom_{id}` are different channels carrying different events, as are
- * `channel.{id}` and `channel_{id}`. Getting a separator wrong subscribes
- * successfully to a channel that is simply never published to, which looks
- * exactly like a working connection.
- */
 function realtimeChannels({ chatroomId, channelId }) {
   const names = [];
   if (chatroomId) names.push(`chatrooms.${chatroomId}.v2`, `chatroom_${chatroomId}`);
@@ -4145,12 +2840,6 @@ function realtimeChannels({ chatroomId, channelId }) {
   return names;
 }
 
-/**
- * A dead Kick socket stays `readyState === OPEN` and never fires `close` or
- * `error`, so "connected" is not evidence of anything. Liveness is inferred
- * from inbound traffic, and a run of unparseable frames is treated as Kick
- * having changed shape rather than as noise to swallow.
- */
 const REALTIME_SILENCE_MS = 60_000;
 const REALTIME_UNPARSABLE_LIMIT = 20;
 
@@ -4165,21 +2854,7 @@ function realtimeHealth({ lastFrameAt = 0, unparsable = 0, now = 0, connected = 
   return { state: 'live', healthy: true };
 }
 
-// ---------------------------------------------------------------------------
-// Channel identity
-// ---------------------------------------------------------------------------
 
-/**
- * Kick's livestream timestamps, as milliseconds, or 0.
- *
- * `created_at` and `start_time` arrive as `2026-08-16 23:53:38` — a space
- * instead of a `T` and no zone marker at all. `new Date()` reads that as
- * *local* time, so a viewer in New York would have seen a stream that started
- * four minutes ago reported as four hours and four minutes. The values are
- * UTC — confirmed against the same channel's `livestream.created_at` and the
- * live viewer's own clock on 2026-08-16 — so the zone is supplied here rather
- * than trusted to the engine's parse of an ambiguous string.
- */
 function parseKickTimestamp(value) {
   if (typeof value !== 'string' || !value) return 0;
   const iso = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(value.trim())
@@ -4189,21 +2864,6 @@ function parseKickTimestamp(value) {
   return Number.isFinite(at) ? at : 0;
 }
 
-/**
- * A live stream's start time out of the page's own structured data.
- *
- * Kick ships a schema.org `VideoObject` whose `uploadDate` is the stream start,
- * in the same zone-less form as the API's `start_time`. It is in the HTML, so
- * it needs no request — which matters because Kick's bot defence answers 429 to
- * the channel API often enough that a feature depending on that read alone
- * silently does nothing. Measured 2026-08-16: a live channel carries the block;
- * an offline one carries only `ProfilePage`, so its absence is itself the
- * liveness answer.
- *
- * Takes the raw script texts rather than a document, so the parse is testable
- * without a DOM. Kick ships several blocks and not all of them parse — a bad
- * one is skipped rather than treated as the answer.
- */
 function streamStartFromLinkedData(texts) {
   if (!Array.isArray(texts)) return 0;
   for (const text of texts) {
@@ -4234,18 +2894,10 @@ function normalizeChannel(payload) {
     userId: Number(payload.user_id) || 0,
     slug: typeof payload.slug === 'string' ? payload.slug : '',
     chatroomId: Number(payload.chatroom?.id) || 0,
-    // The bulk live-status endpoint keys on the livestream, not the channel, so
-    // an offline channel has no id here — which is itself the answer.
     livestreamId: Number(livestream?.id) || 0,
     followers: Number(payload.followers_count) || 0,
-    // The retention tier, and the only trustworthy statement of it. The VOD
-    // entries carry a `tier` field that reads "unverified" for a channel whose
-    // own payload says `verified: true` — measured on xQc, 2026-08-18 — so this
-    // is the source and that field is ignored. Kick has returned both a boolean
-    // and a record here, hence the coercion rather than a strict compare.
     verified: Boolean(payload.verified),
     isLive: Boolean(livestream?.is_live),
-    // Kick returns this and shows it nowhere: its own page has no uptime.
     startedAt: parseKickTimestamp(livestream?.start_time) || parseKickTimestamp(livestream?.created_at),
     viewers: Number(livestream?.viewer_count) || 0,
     title: typeof livestream?.session_title === 'string' ? livestream.session_title : '',
@@ -4257,18 +2909,6 @@ function normalizeChannel(payload) {
   };
 }
 
-/**
- * The recent VOD list, reduced to what dating one needs.
- *
- * `start_time` and `end_time` arrive here as zone-declared ISO
- * (`2026-08-18T00:47:57Z`), unlike the zone-less form the livestream payload
- * uses — `parseKickTimestamp` passes a declared zone through untouched, so both
- * go through the same parse and neither is guessed at.
- *
- * The entry's own `tier` is deliberately not carried through. See
- * `normalizeChannel`: it disagrees with the channel's `verified` flag, so
- * reading it would put a wrong retention window on screen.
- */
 function normalizeChannelVideos(payload) {
   const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
   if (!rows) return null;
@@ -4289,32 +2929,18 @@ function normalizeChannelVideos(payload) {
   return videos;
 }
 
-/** The entry a VOD page URL names, or null when it is outside the list. */
 function findChannelVideo(videos, id) {
   if (!Array.isArray(videos) || typeof id !== 'string' || !id) return null;
   return videos.find((video) => video.id === id) || null;
 }
 
-// ---------------------------------------------------------------------------
-// Emotes
-// ---------------------------------------------------------------------------
 
-/**
- * Kick's own marker for a Daily Rewards emote is the name prefix — there is no
- * type field on the emote itself.
- */
 const COLLECTIBLE_PREFIX = 'collectibles';
 
 function isCollectibleEmote(name) {
   return typeof name === 'string' && name.startsWith(COLLECTIBLE_PREFIX);
 }
 
-/**
- * Collectible emotes can be 2:1, and every third-party renderer squashes them
- * square because the rule lives only in Kick's own client. Measure the loaded
- * image rather than trusting the name: the prefix alone is not the rule, and a
- * name-only guess stretches ordinary square collectibles.
- */
 const WIDE_ASPECT_RATIO = 1.2;
 
 function emoteAspect(name, naturalWidth, naturalHeight) {
@@ -4329,19 +2955,10 @@ function setKind(name) {
   const label = String(name || '').toLowerCase();
   if (label === 'global') return 'global';
   if (label === 'emojis') return 'emoji';
-  // Only an authenticated read carries this set, and it holds the collectibles
-  // this account has actually pulled. Without its own kind it parses as a
-  // channel named "Collectibles" whose free emotes look channel-local, which is
-  // the opposite of true: a pulled collectible is usable in every chat.
   if (label === 'collectibles') return 'collectible';
   return 'channel';
 }
 
-/**
- * Explicit entitlement only. The public /emotes/{slug} response normally
- * carries subscribers_only but no ownership signal, so "unknown" must stay
- * distinct from both granted and denied.
- */
 function emoteEntitlement(source) {
   const emote = source && typeof source === 'object' ? source : {};
   const value = emote.subscribed ?? emote.is_subscribed ?? emote.subscription
@@ -4351,11 +2968,6 @@ function emoteEntitlement(source) {
   return 'unknown';
 }
 
-/**
- * A follow must never be inferred from an ordinary channel emote. Kick's own
- * help says channel emotes are local to that chat; a follow gate is actionable
- * only when the response explicitly carries one of the known gate fields.
- */
 function emoteFollowRequirement(emote, slug = '') {
   const source = emote && typeof emote === 'object' ? emote : {};
   const required = source.requiresFollow === true
@@ -4371,10 +2983,6 @@ function emoteFollowRequirement(emote, slug = '') {
   return { required, followed, slug: isValidSlug(candidate) ? candidate : '' };
 }
 
-/**
- * What an API-only catalog entry may honestly claim before the native picker
- * corroborates it. Public artwork is not proof that the account can send it.
- */
 function catalogEmoteAccess(emote) {
   const source = emote && typeof emote === 'object' ? emote : {};
   if (source.kind === 'global' || source.kind === 'emoji' || source.kind === 'collectible') return 'available';
@@ -4384,20 +2992,6 @@ function catalogEmoteAccess(emote) {
   return (source.entitlement || emoteEntitlement(source)) === 'granted' ? 'available' : 'locked';
 }
 
-/**
- * Turn `/emotes/{slug}` into a flat, deduplicated catalog.
- *
- * Two facts drive the shape here:
- *
- *   - `subscribers_only` is not only an entitlement flag. Kick uses it to mean
- *     "usable in every chat", which is inverted from what the name suggests: a
- *     free channel emote works only in its own channel, while a sub emote
- *     travels everywhere. That is why `global` is derived from it.
- *   - Kick resolves a typed name through one name-keyed map where the last set
- *     loaded wins, so duplicate names across sets are a real collision, not a
- *     display detail. `normalizeEmoteSets` keeps every occurrence so the
- *     collision can be reported; see `findShadowedNames`.
- */
 function normalizeEmoteSets(payload) {
   if (!Array.isArray(payload)) return { ok: false, reason: 'not-an-array', sets: [], emotes: [] };
   const sets = [];
@@ -4423,7 +3017,6 @@ function normalizeEmoteSets(payload) {
         sourceSlug,
         kind,
         channelId: raw.channel_id == null ? null : String(raw.channel_id),
-        // Kick's flag: subscriber emotes are usable platform-wide.
         subscribersOnly: Boolean(raw.subscribers_only),
         requiresFollow: follow.required,
         followed: follow.followed,
@@ -4437,45 +3030,11 @@ function normalizeEmoteSets(payload) {
     }
     sets.push({ id: rawSet.id == null ? null : String(rawSet.id), name: setName, kind, emotes: normalized });
   }
-  // A catalog with no usable emote is not a catalog — sets full of entries that
-  // failed validation mean Kick changed shape, and the caller must fall back to
-  // scraping rather than render an empty picker as success.
   if (!sets.length) return { ok: false, reason: 'no-sets', sets: [], emotes: [] };
   if (!emotes.length) return { ok: false, reason: 'no-emotes', sets, emotes };
   return { ok: true, sets, emotes };
 }
 
-/**
- * Fold this account's own entitlement into a normalized catalog.
- *
- * Measured against Kick on 2026-08-16, reading `/emotes/xqc` twice from the
- * same page: a cookie-only read returned three sets (the channel, Global,
- * Emojis) and 12,566 bytes. The same read carrying Kick's bearer token returned
- * thirteen sets and 44,404 bytes — the nine extra channel sets were every
- * channel this account subscribes to, each one entirely `subscribers_only`,
- * plus a Collectibles set of the collectibles it had pulled.
- *
- * So the authenticated response *is* Kick's own answer to "what may this
- * account send", which is the explicit entitlement this build has always
- * required and never had. A set Kick returns for a channel other than the one
- * asked about is returned because the account owns it; that is a statement,
- * not an inference from artwork.
- *
- * Two server refusals, both measured by sending into a real chatroom, fix the
- * other half of the model:
- *
- *   - `SUBSCRIBERS_ONLY_EMOTE_ERROR` — a subscriber emote from a channel this
- *     account does not subscribe to is refused, in that channel's own chat and
- *     everywhere else alike.
- *   - `FOREIGN_CHANNEL_EMOTE_ERROR` — a *free* channel emote is refused
- *     anywhere but its own channel.
- *
- * Which is Kick's inverted `subscribers_only` stated as consequences: a free
- * channel emote is local, an owned subscriber emote is global.
- *
- * Anonymous catalogs are returned untouched. Entitlement is never invented for
- * a reader Kick did not recognise.
- */
 function applyAccountEntitlement(catalog, { slug = '', authenticated = false, subscribedToChannel = null } = {}) {
   if (!catalog?.ok || !Array.isArray(catalog.emotes)) return catalog;
   if (!authenticated) return { ...catalog, account: { authenticated: false, ownedSets: [], ownedEmotes: 0 } };
@@ -4485,15 +3044,12 @@ function applyAccountEntitlement(catalog, { slug = '', authenticated = false, su
   let ownedEmotes = 0;
 
   const decide = (emote) => {
-    // Global, Emojis, and the collectibles this account has pulled.
     if (emote.kind !== 'channel') return { entitlement: 'granted', usableEverywhere: true, usableHere: true };
     const own = String(emote.sourceSlug || emote.setName || '').toLowerCase() === asked;
     if (!own) {
-      // A set for another channel, in a response Kick only serves to its owner.
       return { entitlement: 'granted', usableEverywhere: true, usableHere: true };
     }
     if (!emote.subscribersOnly) {
-      // Free, and therefore local to this channel — usable here, nowhere else.
       return { entitlement: emote.entitlement, usableEverywhere: false, usableHere: true };
     }
     if (subscribedToChannel === true) return { entitlement: 'granted', usableEverywhere: true, usableHere: true };
@@ -4525,10 +3081,6 @@ function applyAccountEntitlement(catalog, { slug = '', authenticated = false, su
   };
 }
 
-/**
- * Where an emote may actually be sent, phrased for a person rather than as a
- * flag. `channel` is the slug the catalog was read for.
- */
 function emoteReachLabel(emote, channel = '') {
   const source = emote && typeof emote === 'object' ? emote : {};
   if (source.usableHere === false) return 'not-yours';
@@ -4536,11 +3088,6 @@ function emoteReachLabel(emote, channel = '') {
   return channel ? 'this-channel' : 'source-channel';
 }
 
-/**
- * Return only the requested channel's own set from a normalized response.
- * The response also carries Global/Emoji sets (and may eventually carry other
- * account sets), none of which an arbitrary-channel import should duplicate.
- */
 function channelCatalogEmotes(catalog, slug) {
   if (!catalog?.ok || !Array.isArray(catalog.sets) || !isValidSlug(slug)) return [];
   const wanted = String(slug).toLowerCase();
@@ -4549,19 +3096,6 @@ function channelCatalogEmotes(catalog, slug) {
   return Array.isArray(set?.emotes) ? set.emotes : [];
 }
 
-/**
- * Why an emote is unavailable, and where Kick itself lets you unlock it.
- *
- * Entitlement is read across several shapes on purpose. Kick has expressed
- * subscription state in more than one way, and a single-shape check produces
- * *false negatives* — the documented failure is a client greying out emotes the
- * user does own, which is far worse than showing one it cannot confirm. So the
- * default when nothing says otherwise is unlocked, and only an explicit signal
- * locks an entry.
- *
- * Nothing here enables anything or sends anything. It explains, and links to
- * Kick's own page.
- */
 function emoteLockState(emote, slug = '') {
   const source = emote && typeof emote === 'object' ? emote : {};
   const channel = String(slug || source.setName || '').trim();
@@ -4577,14 +3111,12 @@ function emoteLockState(emote, slug = '') {
     };
   }
 
-  // Any of these, in any of the shapes seen, means Kick says it is available.
   const entitled = source.subscribed ?? source.is_subscribed ?? source.subscription
     ?? source.entitled ?? source.unlocked ?? source.owned;
   if (entitled === true || entitled === 1 || (entitled && typeof entitled === 'object')) {
     return { locked: false, reason: '', unlockUrl: '' };
   }
 
-  // An explicit denial is the only thing that locks an entry.
   const denied = source.locked === true
     || source.is_locked === true
     || entitled === false || entitled === 0
@@ -4614,17 +3146,6 @@ function emoteLockState(emote, slug = '') {
   };
 }
 
-/**
- * Which typed names resolve to something other than what the user expects.
- *
- * Sub emotes work in every chat, and Kick matches a typed name against a single
- * name-keyed Map, so two channels shipping `KEKW` means one of them silently
- * sends the other's image. Collisions grow with each subscription, and nothing
- * on Kick surfaces them.
- *
- * "Last loaded wins" is the platform's own resolution order, so the winner is
- * the last occurrence, not the first.
- */
 function findShadowedNames(emotes) {
   const byName = new Map();
   for (const emote of emotes || []) {
@@ -4646,22 +3167,9 @@ function findShadowedNames(emotes) {
   return collisions.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// ---------------------------------------------------------------------------
-// Chat events
-// ---------------------------------------------------------------------------
 
-/** Kick's chat wire format, e.g. `[emote:37226:KEKW]`. */
 const EMOTE_TOKEN = /\[emote:(\d+):([^\]]*)\]/g;
 
-/**
- * Bounds for anything arriving over the realtime socket.
- *
- * The subscription is anonymous and public, so a frame is untrusted input by
- * construction — not because Kick is hostile, but because nothing about the
- * transport guarantees otherwise. Every consumer of these normalizers inherits
- * whatever assumption is set here, so the bounds live at the boundary rather
- * than at each call site.
- */
 const LIMITS = Object.freeze({
   id: 128,
   content: 2000,
@@ -4674,26 +3182,16 @@ const LIMITS = Object.freeze({
   url: 400,
 });
 
-/** Coerce to a bounded string; anything else becomes empty rather than throwing. */
 function boundedString(value, max) {
   return typeof value === 'string' ? value.slice(0, max) : '';
 }
 
-/**
- * Split message content into text and emote segments.
- *
- * Kick's rendered DOM gives an `<img>` with an alt attribute; the wire format
- * gives the emote *id*, which is what a usage counter and a rarity join both
- * actually need. A name is not an identity on Kick — see `findShadowedNames`.
- */
 function parseEmoteTokens(content) {
   const text = boundedString(content, LIMITS.content);
   const segments = [];
   let index = 0;
   EMOTE_TOKEN.lastIndex = 0;
   for (const match of text.matchAll(EMOTE_TOKEN)) {
-    // A message crafted to be thousands of tokens must not become thousands of
-    // nodes downstream.
     if (segments.length >= LIMITS.segments) break;
     if (match.index > index) segments.push({ type: 'text', value: text.slice(index, match.index) });
     segments.push({ type: 'emote', id: match[1].slice(0, LIMITS.id), name: match[2].slice(0, LIMITS.username) });
@@ -4711,8 +3209,6 @@ function normalizeChatMessage(event) {
   if (!id || (typeof id !== 'string' && typeof id !== 'number')) return null;
   const sender = event.sender || {};
   const identity = sender.identity || {};
-  // badges_v2 supersedes badges: it carries image URLs and covers the global
-  // and collectible badges the legacy array omits entirely.
   const badges = Array.isArray(identity.badges_v2) && identity.badges_v2.length
     ? identity.badges_v2
     : (Array.isArray(identity.badges) ? identity.badges : []);
@@ -4727,15 +3223,11 @@ function normalizeChatMessage(event) {
       id: sender.id == null ? '' : String(sender.id).slice(0, LIMITS.id),
       username: boundedString(sender.username, LIMITS.username),
       slug: boundedString(sender.slug, LIMITS.username),
-      // A colour goes straight into a style, so it is restricted to shapes CSS
-      // can only read as a colour — never an arbitrary attacker-chosen string.
       color: /^#[0-9a-f]{3,8}$/i.test(String(identity.color || '')) ? String(identity.color) : '',
     },
     badges: badges.slice(0, LIMITS.badges).map((badge) => ({
       type: boundedString(badge?.type || badge?.badge_type, LIMITS.badgeText),
       text: boundedString(badge?.text || badge?.name, LIMITS.badgeText),
-      // Only https URLs on Kick's own CDNs; a javascript: or data: image URL
-      // has no legitimate reason to arrive here.
       image: /^https:\/\/[a-z0-9.-]*kick\.com\//i.test(String(badge?.image_url || ''))
         ? String(badge.image_url).slice(0, LIMITS.url)
         : '',
@@ -4743,7 +3235,6 @@ function normalizeChatMessage(event) {
   };
 }
 
-/** Kick's own rule slugs, as they appear in `violatedRules`. */
 const RULE_LABELS = {
   bullying: 'bullying',
   harassment: 'harassment',
@@ -4755,15 +3246,6 @@ const RULE_LABELS = {
   violence: 'violence',
 };
 
-/**
- * Why a message disappeared.
- *
- * `MessageDeletedEvent` carries `{aiModerated, violatedRules}`, but the DOM only
- * removes the node — so every DOM-scraping tool can see *that* a message went
- * and none can see *why*. Kick's non-disableable AI moderation is among the
- * loudest documented complaints about the platform, and this is the only place
- * the reason is exposed at all.
- */
 function normalizeDeletion(event) {
   if (!event || typeof event !== 'object') return null;
   const id = event.message?.id ?? event.id;
@@ -4780,9 +3262,6 @@ function normalizeDeletion(event) {
   return { id: String(id).slice(0, LIMITS.id), aiModerated, rules: labels, reason };
 }
 
-// ---------------------------------------------------------------------------
-// Collectible rarity
-// ---------------------------------------------------------------------------
 
 const RARITY_ORDER = Object.freeze(['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic']);
 
@@ -4791,7 +3270,6 @@ function rarityRank(rarity) {
   return index < 0 ? -1 : index;
 }
 
-/** Strip the marketing prefix and casing so a name can be matched in a URL. */
 function joinToken(name) {
   return String(name || '')
     .replace(new RegExp(`^${COLLECTIBLE_PREFIX}`, 'i'), '')
@@ -4799,20 +3277,6 @@ function joinToken(name) {
     .toLowerCase();
 }
 
-/**
- * Join collectible card art to emote identity.
- *
- * Kick exposes rarity only on the card (`{id: uuid, card_url, owned, rarity}`,
- * no name) and identity only in the picker (`{id: int, name}`, no rarity). The
- * two payloads share no key, which is why no client anywhere can currently tell
- * a user what rarity an emote they own is.
- *
- * There is therefore no exact join, only evidence. Each strategy carries its own
- * confidence, and anything below `minConfidence` is returned as unmatched with
- * no label attached: a mislabelled Mythic is strictly worse than no label, and
- * this join is the one place in the project where being wrong is worse than
- * being silent.
- */
 const RARITY_MIN_CONFIDENCE = 0.75;
 
 function joinCollectibleRarity(cards, emotes, { minConfidence = RARITY_MIN_CONFIDENCE } = {}) {
@@ -4832,13 +3296,10 @@ function joinCollectibleRarity(cards, emotes, { minConfidence = RARITY_MIN_CONFI
 
       let confidence = 0;
       let basis = '';
-      // Strongest: the card art is addressed by the emote's own id.
       if (new RegExp(`(^|[^0-9])${emote.id}([^0-9]|$)`).test(url)) {
         confidence = 0.98;
         basis = 'emote id in card URL';
       } else if (token.length >= 4 && url.replace(/[^a-z0-9]/g, '').includes(token)) {
-        // Weaker: the name appears in the asset path. Short tokens match by
-        // accident far too easily, hence the length floor.
         confidence = 0.85;
         basis = 'emote name in card URL';
       }
@@ -4866,21 +3327,10 @@ function joinCollectibleRarity(cards, emotes, { minConfidence = RARITY_MIN_CONFI
     unmatched,
     total,
     coverage: total ? matched.length / total : 0,
-    // The caller renders rarity only when this is true; otherwise the tab looks
-    // exactly as it does today.
     usable: total > 0 && matched.length > 0,
   };
 }
 
-/**
- * Bulk live status, as Kick's own sidebar reads it.
- *
- * One request answers for every channel in the grid and every saved layout, so
- * a shelf of layouts costs what a single channel would. A channel absent from
- * the response is offline by Kick's own convention — it only returns entries
- * for channels that are live — so absence is treated as offline rather than
- * unknown, and a reshaped payload reports rather than inventing a status.
- */
 function normalizeCurrentViewers(payload) {
   const list = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
   if (!list) return { ok: false, reason: 'not-a-list' };
@@ -4893,7 +3343,6 @@ function normalizeCurrentViewers(payload) {
     entries.push({
       id: String(id).slice(0, LIMITS.id),
       viewers: Number.isFinite(viewers) && viewers >= 0 ? Math.floor(viewers) : 0,
-      // Presence in this response is Kick's own signal that a channel is live.
       live: true,
     });
     if (entries.length >= 200) break;
@@ -4901,16 +3350,6 @@ function normalizeCurrentViewers(payload) {
   return { ok: true, entries };
 }
 
-/**
- * Summarise the user's own collectible inventory.
- *
- * Kick publishes no drop odds and documents no duplicate protection, so the
- * only trustworthy duplicate figure is the one the user's own inventory shows.
- * Whether it shows one at all depends on Kick returning a per-card quantity,
- * which is read tolerantly across the names it might use — and when no card
- * carries one, `quantityKnown` is false and the caller must say the number is
- * unavailable rather than present `distinct` as if it were the whole story.
- */
 function summarizeCollectibleInventory(cards) {
   const list = (Array.isArray(cards) ? cards : []).filter((card) => card && typeof card === 'object');
   if (!list.length) return { ok: false, reason: 'no-cards' };
@@ -4924,8 +3363,6 @@ function summarizeCollectibleInventory(cards) {
       copies += value;
       quantityKnown = true;
     } else {
-      // No quantity on this card: it is still one copy, so the total stays a
-      // lower bound rather than becoming a guess.
       copies += 1;
     }
   }
@@ -4942,11 +3379,6 @@ function summarizeCollectibleInventory(cards) {
   };
 }
 
-/**
- * What Kick does not explain about collectibles, stated only where a source
- * exists. Every line is either something Kick has published, something Kick
- * support has said, or an absence that can be verified by looking.
- */
 const COLLECTIBLE_FACTS = Object.freeze([
   Object.freeze({
     claim: 'The daily streak does not improve what you get.',
@@ -4970,15 +3402,6 @@ const COLLECTIBLE_FACTS = Object.freeze([
   }),
 ]);
 
-/**
- * Ordered DOM probes for Kick's shell.
- *
- * The site changes utility classes often, so the runtime should anchor on
- * stable ids and data attributes first, then use structural and accessible
- * fallbacks. React props/fibers are deliberately the last probe: they are
- * useful when Kick removes a public marker, but are not treated as a stable
- * public API.
- */
 
 const LOCATOR_PROBES = Object.freeze({
   main: Object.freeze([
@@ -5019,17 +3442,6 @@ const LOCATOR_PROBES = Object.freeze({
     Object.freeze({ id: 'card-article', selector: 'article' }),
   ]),
 
-  // Hooks for HIDEABLE_ELEMENTS. Every one of these is route-shaped — the
-  // player bar only exists on a channel and the sidebar sections only appear
-  // when the account has anything in them — so the live gate reports a
-  // fall-through here rather than failing on it.
-  //
-  // The player bar's own buttons carry `data-testid`, which is the stable hook
-  // and always the first probe. The three that do not (quality, share, report)
-  // are found through `data-ds-icon`, the design system's icon name: it is
-  // language-independent, unlike the `aria-label` beside it, so it keeps
-  // working for a user browsing Kick in Spanish. `aria-label` is kept as the
-  // last probe for the day an icon is renamed.
   playerPip: Object.freeze([
     Object.freeze({ id: 'pip-testid', selector: '[data-testid="video-player-pip"]' }),
     Object.freeze({ id: 'pip-icon', selector: 'button:has(> svg[data-ds-icon="ViewMiniplayer"])' }),
@@ -5046,9 +3458,6 @@ const LOCATOR_PROBES = Object.freeze({
     Object.freeze({ id: 'fullscreen-testid', selector: '[data-testid="video-player-fullscreen"]' }),
     Object.freeze({ id: 'fullscreen-icon', selector: 'button:has(> svg[data-ds-icon^="Fullscreen"])' }),
   ]),
-  // No `data-testid` on the gear today, unlike its four neighbours, so the icon
-  // name is the first probe rather than a placeholder that would report a
-  // fall-through on every single run and train the gate to be ignored.
   playerQuality: Object.freeze([
     Object.freeze({ id: 'quality-icon', selector: 'button[aria-haspopup="menu"]:has(> svg[data-ds-icon="Settings"])' }),
     Object.freeze({ id: 'quality-label', selector: 'button[aria-haspopup="menu"][aria-label*="setting" i]' }),
@@ -5066,9 +3475,6 @@ const LOCATOR_PROBES = Object.freeze({
     Object.freeze({ id: 'report-label', selector: 'button[aria-label*="report" i]' }),
   ]),
 
-  // The sidebar links are hidden at their list item so the row collapses
-  // instead of leaving a gap. The anchor is the fallback: it is the only child
-  // of an unstyled `<li>`, so hiding it alone still collapses the row.
   sidebarHome: Object.freeze([
     Object.freeze({ id: 'sidebar-home-item', selector: 'li:has(> [data-testid="sidebar-home"])' }),
     Object.freeze({ id: 'sidebar-home-link', selector: '[data-testid="sidebar-home"]' }),
@@ -5085,8 +3491,6 @@ const LOCATOR_PROBES = Object.freeze({
     Object.freeze({ id: 'sidebar-drops-item', selector: 'li:has(> [data-testid="sidebar-drops"])' }),
     Object.freeze({ id: 'sidebar-drops-link', selector: '[data-testid="sidebar-drops"]' }),
   ]),
-  // The whole section, heading icon included — hiding only the channel buttons
-  // would leave a bare heart or antenna glyph floating above nothing.
   sidebarFollowedChannels: Object.freeze([
     Object.freeze({ id: 'sidebar-followed-section', selector: 'section:has([data-testid^="sidebar-following-channel-"])' }),
     Object.freeze({ id: 'sidebar-followed-buttons', selector: '[data-testid^="sidebar-following-channel-"]' }),
@@ -5096,8 +3500,6 @@ const LOCATOR_PROBES = Object.freeze({
     Object.freeze({ id: 'sidebar-recommended-buttons', selector: '[data-testid^="sidebar-recommended-channel-"]' }),
   ]),
 
-  // Kick's own quality menu. `[role="menuitemradio"]` is what it renders; the
-  // rest are older guesses kept so a previous shell still reads.
   qualityOption: Object.freeze([
     Object.freeze({ id: 'quality-menuitemradio', selector: '[role="menuitemradio"]' }),
     Object.freeze({ id: 'quality-data', selector: '[data-quality], [data-resolution]' }),
@@ -5126,7 +3528,6 @@ function reactMetadata(node) {
       const value = node[name];
       if (value) values.push(value);
     } catch {
-      // A framework-owned property may be a throwing getter.
     }
   }
   return values;
@@ -5160,7 +3561,6 @@ function reactProbe(root, kind) {
   return null;
 }
 
-/** Return the first matching element and the probe that matched it. */
 function findProbe(root, name) {
   const owner = asRoot(root);
   if (!owner) return { element: null, probe: null };
@@ -5173,7 +3573,6 @@ function findProbe(root, name) {
       }
       return { element, probe: probe.id };
     } catch {
-      // A future selector must not take down the whole apply cycle.
     }
   }
   if (name === 'chatPanel') {
@@ -5187,7 +3586,6 @@ function findProbe(root, name) {
   return { element: null, probe: null };
 }
 
-/** Return every matching element from the first probe that finds any. */
 function findAllProbe(root, name) {
   const owner = asRoot(root);
   if (!owner) return { elements: [], probe: null };
@@ -5196,7 +3594,6 @@ function findAllProbe(root, name) {
       const elements = [...owner.querySelectorAll(probe.selector)];
       if (elements.length) return { elements, probe: probe.id };
     } catch {
-      // Keep trying the ordered fallbacks.
     }
   }
   return { elements: [], probe: null };
@@ -5206,11 +3603,6 @@ function ownerFromChild(element, fallbackSelector) {
   return safeClosest(element, fallbackSelector) || element.parentElement || element;
 }
 
-/**
- * Snapshot the hooks the runtime depends on. `expectedChat` is route-aware so
- * a browse page without an open chat is not reported as a compatibility failure
- * while a channel page without chat is.
- */
 function compatibilitySnapshot(root, options = {}) {
   const owner = asRoot(root);
   const main = findProbe(owner, 'main');
@@ -5239,48 +3631,20 @@ function compatibilitySnapshot(root, options = {}) {
       card: cards.probe,
     },
     missing: required.filter(([, present]) => !present).map(([name]) => name),
-    // Reported beside `healthy` rather than folded into it. `healthy` has always
-    // meant "the shell hooks this build hangs off are present", and other code
-    // and the user-facing message key off that; a derived value breaking is a
-    // different and narrower statement, so it gets its own field instead of
-    // changing what an existing one means.
     derived: derivedSnapshot(owner, options.derive),
   };
 }
 
-/**
- * Probes whose real product is not the element but something computed from it.
- *
- * Two whole feature classes died silently in one month, both this exact shape:
- * a probe resolved, the value derived from it did not, and every gate stayed
- * green because every gate stopped at "the hook matched". A card resolved while
- * `cardSlugFromPath` yielded nothing and three chips vanished; `closest()`
- * returned the `<video>` itself, so a container that was supposed to be an
- * ancestor was the element, and three more features vanished.
- *
- * Each entry pairs a probe with the claim the runtime actually depends on. The
- * deriver is supplied by the caller rather than imported, because these helpers
- * live in `runtime.js` — which is concatenated *after* this module — and that
- * keeps the expectations checkable offline against a fixture with stubs.
- */
 const DERIVED_EXPECTATIONS = Object.freeze([
   Object.freeze({
     id: 'cardSlug',
     probe: 'card',
     claim: 'a card yields a channel slug',
-    // Loading skeletons already carry the card test id but have no destination
-    // yet. They are nothing to derive from, not evidence that slug derivation
-    // broke. Judge only cards whose channel/category anchor has arrived.
     sample: (owner) => findAllProbe(owner, 'card').elements.filter((card) => {
       try { return Boolean(card.matches?.('a[href]') || card.querySelector?.('a[href]')); }
       catch { return false; }
     }),
     judge: (value) => typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value),
-    // Only a clean sweep counts. A discovery page mixes channel cards with
-    // category cards, and `cardSlugFromPath` returns '' for a category on
-    // purpose — so "some cards yield nothing" is the normal state of the home
-    // page, not drift. The defect this exists for was total: every card on the
-    // page resolved and not one produced a slug, and three chips vanished.
     requireAll: false,
   }),
   Object.freeze({
@@ -5294,8 +3658,6 @@ const DERIVED_EXPECTATIONS = Object.freeze([
         return [];
       }
     },
-    // The precise defect: `closest()` matches the element it starts from, so a
-    // container that is the video is not a near miss, it is the bug.
     judge: (value, source) => Boolean(value)
       && value !== source
       && typeof value.contains === 'function'
@@ -5306,9 +3668,6 @@ const DERIVED_EXPECTATIONS = Object.freeze([
     probe: 'qualityOption',
     claim: 'a quality row yields a plausible height',
     sample: (owner) => findAllProbe(owner, 'qualityOption').elements,
-    // 0 is Auto and is a real answer. Anything outside the range of a rung a
-    // player could actually offer means the label was read wrong — which is how
-    // a menu badge once got glued to the rung and written to Kick's own key.
     judge: (value) => value === 0 || (Number.isFinite(value) && value >= 144 && value <= 4320),
   }),
 ]);
@@ -5322,14 +3681,6 @@ function describeDerived(value) {
   return typeof value;
 }
 
-/**
- * Check every derived value whose deriver the caller supplied.
- *
- * Three outcomes, deliberately, and for the same reason the live gate has
- * three: `absent` means Kick rendered nothing to derive from on this route,
- * which is not a defect — only `broken` is. `unchecked` means no deriver was
- * passed, so this says nothing either way rather than quietly passing.
- */
 function derivedSnapshot(root, derive = {}) {
   const owner = asRoot(root);
   const results = [];
@@ -5380,8 +3731,6 @@ function derivedSnapshot(root, derive = {}) {
 
 function compatibilitySummary(snapshot) {
   const broken = (snapshot?.derived || []).filter((entry) => entry.outcome === 'broken');
-  // Named by probe *and* by derived value: "card resolved, slug did not" is the
-  // sentence that would have saved a research pass, and "card" alone is not.
   const derivedNote = broken.length
     ? ` ${broken.map((entry) => `${entry.probe} resolved but ${entry.claim} failed (${entry.detail})`).join('; ')}.`
     : '';
@@ -5391,48 +3740,16 @@ function compatibilitySummary(snapshot) {
   return `Compatibility needs attention: missing ${snapshot.missing.join(', ')}.${derivedNote}`;
 }
 
-// ---------------------------------------------------------------------------
-// Library storage providers
-//
-// The emote library is the one store that grows without a natural bound, and it
-// lives behind a synchronous read: boot needs it before the first render, and
-// `localStorage` is the only backend that can answer synchronously. IndexedDB
-// holds orders of magnitude more but only answers asynchronously.
-//
-// So neither one alone is the store. What ships is a proxy over both: a bounded
-// *seed* written synchronously so boot is unchanged, and the complete record
-// written to IndexedDB, which is read back a moment later and merged in. The
-// arithmetic that makes that lossless is pure and lives here, where it is tested
-// without a browser; the database calls themselves are thin enough to be proven
-// by the live gate against real IndexedDB.
-//
-// Dexie is deliberately not used. It is a dependency, this file is 200 lines,
-// and the schema is two object stores.
-// ---------------------------------------------------------------------------
 
 const LIBRARY_DB_NAME = 'kick-focus';
 const LIBRARY_DB_VERSION = 1;
 const LIBRARY_STORE = 'library';
 const BLOB_STORE = 'blobs';
 
-/**
- * How many library entries the synchronous seed carries.
- *
- * Enough that a picker opened immediately after boot is already useful, small
- * enough that the seed cannot be what fills a 5MB localStorage quota. The rest
- * arrives when the database answers, which is within a frame or two.
- */
 const LIBRARY_SEED_LIMIT = 400;
 
-/**
- * Providers are scored, and the highest available one wins. `localStorage`
- * scores far below anything else because it is the floor: always present,
- * always last, never chosen over a real database.
- */
 const PROVIDER_SCORES = Object.freeze({ indexeddb: 100, localstorage: -1000 });
 
-// Named for this file rather than `isRecord`: every bundled module shares one
-// scope in the artifact, so a second top-level `isRecord` is a SyntaxError.
 const isStoredRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const SEED_MARKER = 'librarySeedTotal';
 
@@ -5443,15 +3760,6 @@ function withoutMarker(value) {
   return copy;
 }
 
-/**
- * Split a stored value into what goes in the synchronous seed and what goes in
- * the database.
- *
- * Everything except the library is small and travels whole in both. The library
- * is ordered newest-first for the seed, so the entries a seed has to drop are
- * the ones least likely to be reached for in the moment before the full record
- * loads — not an arbitrary prefix of whatever order it happened to be in.
- */
 function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT } = {}) {
   const source = isStoredRecord(value) ? withoutMarker(value) : {};
   const library = Array.isArray(source.library) ? source.library : [];
@@ -5464,7 +3772,6 @@ function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT } = {}) {
   };
 }
 
-/** Whether a synchronously-read value is only part of the library. */
 function isSeedPartial(value) {
   if (!isStoredRecord(value)) return false;
   const total = Number(value[SEED_MARKER]);
@@ -5472,16 +3779,6 @@ function isSeedPartial(value) {
   return total > (Array.isArray(value.library) ? value.library.length : 0);
 }
 
-/**
- * Fold the database's fuller record back into the seed the page is already
- * using, without losing either side.
- *
- * The seed is written on every change and the database write is queued behind
- * it, so for anything outside the library the seed is the newer copy. Inside the
- * library the two are reconciled per entry, newest `lastSeen` winning, which
- * covers the one case that actually loses data otherwise: a write that reached
- * the seed and had not yet reached the database when the page was closed.
- */
 function mergeHydratedLibrary(seed, hydrated) {
   const base = isStoredRecord(seed) ? seed : {};
   if (!isStoredRecord(hydrated)) return withoutMarker(base);
@@ -5499,7 +3796,6 @@ function mergeHydratedLibrary(seed, hydrated) {
   return withoutMarker({ ...hydrated, ...base, library: [...merged.values()] });
 }
 
-/** Promisify one IDBRequest. */
 function request(source) {
   return new Promise((resolve, reject) => {
     source.onsuccess = () => resolve(source.result);
@@ -5507,13 +3803,6 @@ function request(source) {
   });
 }
 
-/**
- * Open the database, creating the two stores.
- *
- * Blobs live in their own store rather than beside the records: a record read
- * pulls every value in its store into memory, so keeping images next to the
- * library would make the common read as expensive as the whole cache.
- */
 function openLibraryDatabase(factory) {
   const idb = factory || globalThis.indexedDB;
   if (!idb) return Promise.resolve(null);
@@ -5531,20 +3820,11 @@ function openLibraryDatabase(factory) {
       if (!db.objectStoreNames.contains(BLOB_STORE)) db.createObjectStore(BLOB_STORE);
     };
     open.onsuccess = () => resolve(open.result);
-    // Private-browsing modes and blocked upgrades both land here. Neither is an
-    // error worth surfacing: the seed is a working store on its own.
     open.onerror = () => resolve(null);
     open.onblocked = () => resolve(null);
   });
 }
 
-/**
- * One store fronting both backends.
- *
- * `host` supplies the synchronous pair the page already has (`readFallback` /
- * `writeFallback`) so this never reaches for `localStorage` itself — which is
- * what lets the userscript build keep using GM storage as the seed.
- */
 function createLibraryStore(host) {
   const {
     readFallback,
@@ -5569,15 +3849,10 @@ function createLibraryStore(host) {
     return database;
   }
 
-  /** What boot reads: synchronous, and complete enough to render. */
   function readSync() {
     return readFallback();
   }
 
-  /**
-   * Read the full record and merge it into the seed. Returns the merged value,
-   * or null when there is nothing more than the seed already had.
-   */
   async function hydrate() {
     const db = await connect();
     if (!db) return null;
@@ -5592,11 +3867,6 @@ function createLibraryStore(host) {
     }
   }
 
-  /**
-   * Write both halves. The seed goes first and synchronously, so a tab closed
-   * in the next millisecond still has it; the database write is queued behind
-   * it and coalesced, because the library is rewritten on every observation.
-   */
   function write(value) {
     const plan = planLibraryPersist(value, { seedLimit });
     const ok = writeFallback(plan.seed);
@@ -5605,13 +3875,6 @@ function createLibraryStore(host) {
     return { ok, truncated: plan.truncated, provider: provider() };
   }
 
-  /**
-   * Drain the queue, and hand back the drain already running if there is one.
-   *
-   * Returning early while a write was in flight would make `await flush()` mean
-   * "someone else is writing" rather than "the queue is empty" — which is not
-   * something a caller can act on, and is exactly what a shutdown flush needs.
-   */
   function flush() {
     if (draining) return draining;
     if (queued === null) return Promise.resolve();
@@ -5630,7 +3893,6 @@ function createLibraryStore(host) {
         await request(transaction.objectStore(LIBRARY_STORE).put(value, 'preferences'));
       }
     } catch (error) {
-      // A quota failure here is survivable: the seed already took the write.
       onError('write', error);
       queued = null;
     }
@@ -5661,7 +3923,6 @@ function createLibraryStore(host) {
     }
   }
 
-  /** Drop everything this store owns, for the factory reset. */
   async function clear() {
     const db = await connect();
     if (!db) return false;
@@ -5681,63 +3942,22 @@ function createLibraryStore(host) {
   return { readSync, hydrate, write, flush, putBlob, getBlob, clear, provider, score };
 }
 
-// ---------------------------------------------------------------------------
-// Kick live data
-//
-// Read-only, same-origin requests to endpoints Kick's own client already calls,
-// inheriting the session the page already has. Nothing here writes to Kick,
-// handles a credential, or runs when the matching setting is off, and every
-// path falls back to the existing DOM scraping when it fails.
-//
-// Like the multi-stream surface, everything page-owned arrives through `host`
-// rather than out of the enclosing bundle scope, so this file loads on its own
-// under `node --test`. The build strips the imports below and relies on concat
-// order to supply the names.
-// ---------------------------------------------------------------------------
 
 
 const LIVE_TIMEOUT_MS = 8000;
 const LIVE_MAX_BYTES = 4_000_000;
 const REALTIME_BACKOFF_MS = [2000, 5000, 15000, 45000];
 
-/**
- * Harvest emotes seen in realtime chat frames into the library.
- *
- * A frame carries {id,name} for every emote in a message. These are frame-only
- * (no DOM node corroborates them and the id came off the wire), so an unknown
- * emote is committed only after a one-shot Image() load proves the CDN actually
- * serves it — a crafted [emote:999999:Fake] token fails that load and never
- * takes a cap slot. At most a few loads run at once, and a per-session negative
- * cache stops re-attempting an id that already failed. Emotes already in the
- * library skip validation and merge directly to refresh their last-seen date.
- */
 const HARVEST_MAX_INFLIGHT = 4;
 const HARVEST_NEGATIVE_CAP = 5000;
 
-/**
- * Kick's chat identity payload carries `badges_v2`, which includes the
- * collectible and global badges the legacy array omits entirely — so a client
- * reading only the rendered DOM shows a gap where other clients show a badge.
- *
- * A realtime frame routinely arrives before Kick has rendered the message, so
- * an unrenderable badge set is held briefly and retried on the apply cycle
- * rather than dropped. The map only holds messages still waiting for a node,
- * which is a handful even in a fast chat.
- */
 const CHAT_BADGE_WAIT_MS = 30_000;
 
-/** The selectors Kick's chat uses to key a rendered message to its id. */
 function chatMessageSelector(id) {
   const escaped = CSS.escape(id);
   return `[data-index="${escaped}"], [data-message-id="${escaped}"], [data-chat-entry="${escaped}"]`;
 }
 
-/**
- * Build the live-data surface against a host.
- *
- * `host` supplies the page-owned collaborators: `state`, the storage writer,
- * the unhooked `fetch`, and the two runtime helpers this surface borrows.
- */
 function createLive(host) {
   const {
     state,
@@ -5750,23 +3970,6 @@ function createLive(host) {
     mergeStickerLibrary,
   } = host;
 
-  /**
-   * The bearer token Kick's own page sends, read from its own cookie.
-   *
-   * The belief this replaces — that these endpoints authenticate with cookies
-   * and no token is ever involved — was wrong, and wrong silently. Measured
-   * 2026-08-16 from a signed-in page: `/gamification/collectibles` answers
-   * **403** to a cookie-only read and 200 with the header, so collectible
-   * rarity had been degrading for every signed-in user; `/emotes/{slug}`
-   * answers with three sets and 12,566 bytes without it and thirteen sets and
-   * 44,404 bytes with it. Kick's SPA reads the same `session_token` cookie and
-   * sends it the same way — see the `Authorization` on any `search.kick.com`
-   * request the page makes.
-   *
-   * Same-origin only. `kickFetchJson` is called with Kick URLs exclusively and
-   * the header is attached under that assumption, so the guard below is what
-   * keeps a future caller from handing the token to another host.
-   */
   function kickBearerToken() {
     const raw = document.cookie.split(';')
       .map((part) => part.trim())
@@ -5779,7 +3982,6 @@ function createLive(host) {
     }
   }
 
-  /** Is this a Kick origin, and therefore an origin its own session may reach? */
   function isKickUrl(url) {
     try {
       const { origin } = new URL(String(url), window.location.href);
@@ -5797,13 +3999,6 @@ function createLive(host) {
     return `answered ${status}`;
   }
 
-  /**
-   * Same-origin JSON with a deadline and a size ceiling.
-   *
-   * `credentials: 'include'` carries the session cookie; the bearer header
-   * carries the account. Some endpoints need only the first, several need both,
-   * and none of them say so — see `kickBearerToken`.
-   */
   async function kickFetchJson(url, { credentials = 'include' } = {}) {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
@@ -5833,11 +4028,6 @@ function createLive(host) {
     }
   }
 
-  /**
-   * Same-origin account mutation with Kick's own session and CSRF cookie. The
-   * only caller is the explicit click-to-save gesture for an emote Kick itself
-   * marks follow-gated; ordinary channel emotes never reach this path.
-   */
   async function mutateKickChannelFollow(slug, method = 'POST') {
     if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug || '')) return { ok: false, status: 'invalid-channel' };
     const controller = new AbortController();
@@ -5863,22 +4053,11 @@ function createLive(host) {
     }
   }
 
-  /**
-   * Record an API shape mismatch so the About page can report accumulated drift
-   * rather than silently falling back. Capped at 50 events per session.
-   */
   function recordApiDrift(endpoint, reason, detail = '') {
     if (state.live.apiDrift.length >= 50) return;
     state.live.apiDrift.push({ endpoint, reason, detail, at: Date.now() });
   }
 
-  /**
-   * Pull channel identity and the emote catalog for the current channel.
-   *
-   * The catalog avoids depending entirely on a lazy-rendered picker, but its
-   * public artwork is not account entitlement. API-only channel entries remain
-   * channel-only or locked until the native picker corroborates access.
-   */
   async function refreshLiveChannel() {
     const slug = currentChannelSlug();
     if (!slug) {
@@ -5888,10 +4067,6 @@ function createLive(host) {
       return;
     }
     if (state.live.slug === slug && state.live.channel) {
-      // Same channel, different recording. Opening a VOD from the channel's own
-      // list is an SPA navigation that changes only the last path segment, so
-      // nothing below re-runs and the retention read has to be reached here or
-      // it never happens at all.
       await refreshVodRetention(slug);
       return;
     }
@@ -5907,15 +4082,11 @@ function createLive(host) {
     state.live.standing = { known: false, subscribed: null, following: null, moderator: null };
     state.live.vod = null;
 
-    // The retention chip needs this read too — for the channel's id and its
-    // `verified` flag — so it has to be able to ask for it. Still free on a
-    // channel page, and free on a VOD when the setting is off: the guard is the
-    // route and the setting together, not the setting alone.
     const wantsVodDate = state.settings.content.showVodExpiry && Boolean(currentVodId());
     if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents && !wantsVodDate) return;
 
     const channelResponse = await kickFetchJson(endpoints.channel(slug));
-    if (state.live.slug !== slug) return; // navigated away mid-flight
+    if (state.live.slug !== slug) return;
     if (!channelResponse.ok) {
       state.live.catalogError = `Kick's channel API ${describeKickFetchFailure(channelResponse.status)}.`;
       refreshLiveDiagnostics();
@@ -5935,15 +4106,6 @@ function createLive(host) {
     refreshLiveDiagnostics();
   }
 
-  /**
-   * Date the VOD this page is showing, if it is showing one.
-   *
-   * One read, on a route that has a VOD id, and only when the setting is on —
-   * a channel page pays nothing for this. Everything about it degrades to
-   * silence: no id, no channel id, a failed read, a changed shape, or an entry
-   * simply not in the returned window all leave `state.live.vod` null, and the
-   * surface renders nothing rather than guessing a deadline.
-   */
   async function refreshVodRetention(slug) {
     if (!state.settings.content.showVodExpiry) {
       state.live.vod = null;
@@ -5951,8 +4113,6 @@ function createLive(host) {
     }
     const id = currentVodId();
     if (!id) {
-      // Left a VOD for a channel page: drop the answer rather than let a stale
-      // deadline sit on a different recording.
       state.live.vod = null;
       return;
     }
@@ -5961,7 +4121,7 @@ function createLive(host) {
     const channelId = state.live.channel?.id;
     if (!channelId) return;
     const response = await kickFetchJson(endpoints.channelVideos(channelId));
-    if (state.live.slug !== slug) return; // navigated away mid-flight
+    if (state.live.slug !== slug) return;
     if (!response.ok) return;
     const videos = normalizeChannelVideos(response.body);
     if (!videos) {
@@ -5969,20 +4129,10 @@ function createLive(host) {
       return;
     }
     const entry = findChannelVideo(videos, id);
-    // Not a drift report: Kick returns a bounded window, so a recording older
-    // than it is absent by design and there is no single-video read to fall
-    // back to. Absent is an answer, and the answer is to say nothing.
     if (!entry || !entry.startedAt) return;
     state.live.vod = { id, startedAt: entry.startedAt, title: entry.title };
   }
 
-  /**
-   * This account's standing in one channel, or nulls where Kick will not say.
-   *
-   * A 401 is the signed-out answer and is not an error: every caller treats a
-   * null subscription as "unknown", never as "denied", which is the difference
-   * between not knowing and greying out an emote the user owns.
-   */
   async function readChannelStanding(slug) {
     const response = await kickFetchJson(endpoints.channelMe(slug));
     if (!response.ok) return { known: false, subscribed: null, following: null, moderator: null };
@@ -6018,8 +4168,6 @@ function createLive(host) {
       subscribedToChannel: standing.known ? standing.subscribed : null,
     });
     if (!catalog.ok) {
-      // A changed shape must not produce an empty organizer that looks like an
-      // account with no emotes. Keep scraping and say why.
       state.live.catalogError = `Kick's emote payload changed shape (${catalog.reason}); using the picker instead.`;
       recordApiDrift('emotes', 'shape-changed', catalog.reason);
       refreshLiveDiagnostics();
@@ -6030,10 +4178,6 @@ function createLive(host) {
     state.live.catalogError = '';
     state.live.collisions = state.settings.content.warnShadowedEmotes ? findShadowedNames(catalog.emotes) : [];
 
-    // An anonymous read publishes every image and carries no ownership signal,
-    // so it seeds the library without claiming subscriber artwork is sendable.
-    // An authenticated one is Kick's own account answer and has already been
-    // folded in above — see `applyAccountEntitlement`.
     mergeStickerLibrary(catalog.emotes.map((emote) => ({
       key: platformStickerKey(`id:${emote.id}`),
       id: emote.id,
@@ -6053,12 +4197,6 @@ function createLive(host) {
     refreshLiveDiagnostics();
   }
 
-  /**
-   * Join collectible card art to emote identity.
-   *
-   * Anonymous sessions get 403 here, which is expected and not an error worth
-   * reporting: the whole point is that this is the user's own inventory.
-   */
   async function refreshCollectibleRarity(slug) {
     if (!state.live.catalog?.emotes.some((emote) => emote.collectible)) return;
     const response = await kickFetchJson(endpoints.collectibles());
@@ -6068,26 +4206,11 @@ function createLive(host) {
     if (!cards.length) return;
     const join = joinCollectibleRarity(cards, state.live.catalog.emotes);
     state.live.rarity = join.usable ? join : null;
-    // The user's own inventory is the only evidence for a duplicate rate, since
-    // Kick publishes no odds and documents no duplicate protection.
     const inventory = summarizeCollectibleInventory(cards);
     state.live.inventory = inventory.ok ? inventory : null;
     refreshLiveDiagnostics();
   }
 
-  /**
-   * The account's own collectible inventory, read once, on request.
-   *
-   * The viewer hub asks for this when it opens and never on a timer: the read
-   * is one GET to the endpoint Kick's own client already calls, and a summary
-   * nobody is looking at is not worth a request.
-   *
-   * The three answers are kept apart because they mean different things to a
-   * reader. 401/403 is the signed-out answer and is not a failure. A response
-   * whose shape this build does not recognise is a failure, and is recorded as
-   * drift. An empty inventory is a *measured zero* and is reported as one — the
-   * only case in this file where zero is the honest answer.
-   */
   async function readCollectibleInventory() {
     const response = await kickFetchJson(endpoints.collectibles());
     const observedAt = Date.now();
@@ -6109,9 +4232,6 @@ function createLive(host) {
     };
   }
 
-  // -------------------------------------------------------------------------
-  // Realtime
-  // -------------------------------------------------------------------------
 
   function teardownRealtime() {
     clearTimeout(state.live.reconnectAt);
@@ -6123,18 +4243,9 @@ function createLive(host) {
     state.live.provider = '';
     state.live.providerVerified = true;
     state.live.lastLiveAt = 0;
-    try { socket?.close(); } catch { /* already gone */ }
+    try { socket?.close(); } catch {   }
   }
 
-  /**
-   * Ask Kick which realtime provider is in force, then connect to that.
-   *
-   * Kick returns connection credentials behind a `provider` discriminator and
-   * tracks a degraded state, so it can switch providers server-side. Anything
-   * hardcoding the Pusher app key keeps working right up until it silently does
-   * not — so the key is never written in this source, and an unrecognised
-   * provider degrades to the DOM path rather than guessing.
-   */
   async function connectRealtime() {
     const channel = state.live.channel;
     if (!channel?.chatroomId || state.live.socket) return;
@@ -6157,9 +4268,6 @@ function createLive(host) {
     state.live.providerVerified = connection.verified;
     let socket;
     try {
-      // The transport owns the URL; everything below is protocol, shared by all
-      // of them, so a second provider is an entry in REALTIME_TRANSPORTS rather
-      // than a second copy of this function.
       socket = new WebSocket(connection.transport.socketUrl(connection));
     } catch {
       state.live.socketState = 'offline';
@@ -6184,9 +4292,6 @@ function createLive(host) {
       if (state.live.socket !== socket) return;
       state.live.socket = null;
       state.live.socketState = 'offline';
-      // An unverified transport that never delivered a frame is a migration this
-      // build has not been proven against. Retrying it forever would keep chat
-      // features broken silently; degrading to the DOM path says so instead.
       if (!state.live.providerVerified && !state.live.lastLiveAt) {
         state.live.socketState = 'unsupported';
         state.live.catalogError = `Kick's ${connection.transport.label} transport did not connect; chat features fall back to the page.`;
@@ -6207,18 +4312,6 @@ function createLive(host) {
     state.live.reconnectAt = window.setTimeout(connectRealtime, delay);
   }
 
-  // -------------------------------------------------------------------------
-  // Merged chat across the grid
-  //
-  // One connection per channel, kept entirely apart from `state.live.socket`.
-  // That single connection belongs to the channel the tab is standing on and
-  // carries the emote harvest, badge queue and deletion handling; reusing it
-  // for nine channels would put all of that on messages from channels the user
-  // is not viewing. These sockets do one thing: read, label, append.
-  //
-  // Strictly read-only, like every other chat surface here — there is no send
-  // path, and Kick refuses sending from an embedded chat anyway.
-  // -------------------------------------------------------------------------
 
   function mergedChatState() {
     if (!state.mergedChat) state.mergedChat = { entries: [], connections: new Map(), errors: [] };
@@ -6233,10 +4326,7 @@ function createLive(host) {
     try {
       entry.socket?.close();
     } catch {
-      // Already gone.
     }
-    // The messages go with the connection: a channel removed from the grid must
-    // stop occupying the reader's attention as well as the network.
     merged.entries = dropMergedChannel(merged.entries, slug);
   }
 
@@ -6263,16 +4353,9 @@ function createLive(host) {
     });
   }
 
-  /**
-   * Open one channel's feed. Every failure is silent and local: a channel whose
-   * realtime credentials Kick will not issue simply contributes nothing, and the
-   * other eight carry on.
-   */
   async function openMergedChannel(slug) {
     const merged = mergedChatState();
     if (merged.connections.has(slug)) return false;
-    // Claim the slot before the first await, so two syncs in the same tick
-    // cannot open two sockets for one channel.
     merged.connections.set(slug, { socket: null });
 
     const channelResponse = await kickFetchJson(endpoints.channel(slug));
@@ -6301,7 +4384,7 @@ function createLive(host) {
     }
     const held = merged.connections.get(slug);
     if (!held) {
-      try { socket.close(); } catch { /* already gone */ }
+      try { socket.close(); } catch {   }
       return false;
     }
     held.socket = socket;
@@ -6312,9 +4395,6 @@ function createLive(host) {
       }
     });
     socket.addEventListener('message', (event) => onMergedFrame(slug, event));
-    // No reconnect ladder here on purpose. The single-channel path reconnects
-    // because losing it degrades features the user is relying on; a merged feed
-    // that quietly drops one of nine is better than nine timers competing.
     socket.addEventListener('close', () => {
       const current = mergedChatState().connections.get(slug);
       if (current?.socket === socket) current.socket = null;
@@ -6322,13 +4402,6 @@ function createLive(host) {
     return true;
   }
 
-  /**
-   * Match the open connections to the grid, opening and closing the difference.
-   *
-   * Called on every grid render, so it must be cheap and idempotent when
-   * nothing changed — which is why it diffs rather than tearing down and
-   * rebuilding.
-   */
   function syncMergedChat(slugs) {
     const merged = mergedChatState();
     const wanted = Array.isArray(slugs) ? slugs.filter((slug) => typeof slug === 'string' && slug) : [];
@@ -6361,8 +4434,6 @@ function createLive(host) {
     state.live.unparsable = 0;
     if (frame.kind === 'established') {
       state.live.socketState = 'live';
-      // Proof this transport actually works, which is what lets an unverified
-      // one reconnect normally instead of degrading on its first close.
       state.live.lastLiveAt = Date.now();
       refreshLiveDiagnostics();
       return;
@@ -6378,14 +4449,8 @@ function createLive(host) {
     const message = normalizeChatMessage(payload);
     if (!message) return;
     if (settings.showChatBadges && message.badges.length) queueChatBadges(message);
-    // Harvest every emote seen in chat — everyone's messages, not just the local
-    // user's — into the library, each validated by an image load before it can
-    // take a cap slot. This is the single biggest untapped collection channel.
     if (wantsHarvest && message.emotes.length) queueChatEmoteHarvest(message.emotes);
     if (!settings.countEmoteUsage || !message.emotes.length) return;
-    // Only the local user's own sends are counted. Counting everyone's would
-    // measure the channel, not the person, and the shelf exists to rank what
-    // *this* user actually reaches for.
     if (!isLocalUser(message.sender)) return;
     const channel = state.live.slug;
     const at = Date.now();
@@ -6415,7 +4480,6 @@ function createLive(host) {
       else if (!chatEmoteHarvest.negative.has(key)) chatEmoteHarvest.queue.push(observation);
     }
     chatEmoteHarvest.buffer.clear();
-    // Already-recorded emotes only need their last-seen refreshed — no image round-trip.
     if (known.length) mergeStickerLibrary(known);
     pumpChatEmoteHarvest();
   }
@@ -6463,16 +4527,6 @@ function createLive(host) {
     return document.querySelector(chatMessageSelector(id));
   }
 
-  /**
-   * Render the badges Kick's own markup left out. Returns whether the message
-   * node was found, which is what decides between done and retry.
-   *
-   * Badges already drawn by Kick are skipped by image URL, so this adds to the
-   * identity rather than duplicating it. Every value here came through
-   * `normalizeChatMessage`, which bounds the strings and accepts an image only
-   * as an https URL on a Kick host; nodes are still built with textContent
-   * rather than markup.
-   */
   function renderChatBadges(message) {
     const node = chatMessageNode(message.id);
     if (!node) return false;
@@ -6496,7 +4550,6 @@ function createLive(host) {
       image.alt = badge.label;
       image.title = badge.label;
       image.loading = 'lazy';
-      // A broken badge image must read as the badge, not as an empty box.
       image.addEventListener('error', () => image.replaceWith(chatBadgeText(badge.label)), { once: true });
       image.src = badge.image;
       strip.append(image);
@@ -6512,17 +4565,11 @@ function createLive(host) {
     return text;
   }
 
-  /**
-   * The DOM only removes a deleted message, so *why* it went is invisible to every
-   * scraping tool. `MessageDeletedEvent` carries it, and Kick's non-disableable AI
-   * moderation is among the loudest documented complaints about the platform.
-   */
   function onRealtimeDeletion(payload) {
     if (!state.settings.content.showModerationReasons) return;
     const deletion = normalizeDeletion(payload);
     if (!deletion) return;
     state.live.deletions.set(deletion.id, deletion);
-    // Bounded: this is a live annotation, not a log.
     if (state.live.deletions.size > 300) {
       const oldest = state.live.deletions.keys().next().value;
       state.live.deletions.delete(oldest);
@@ -6531,8 +4578,6 @@ function createLive(host) {
   }
 
   function annotateDeletedMessage(deletion) {
-    // Before anything is drawn: a session log must not outlive the deletion it
-    // just heard about, and the annotation below can return early.
     host.forgetChatMessage?.(deletion.id);
     const node = document.querySelector(chatMessageSelector(deletion.id));
     if (!node || node.dataset.kfDeletionNoted === 'true') return;
@@ -6545,11 +4590,6 @@ function createLive(host) {
     node.append(note);
   }
 
-  /**
-   * A deletion event can arrive before the message it refers to has rendered, and
-   * chat virtualisation can remount a node after we annotated it. Re-applying on
-   * the apply cycle is cheap and covers both.
-   */
   function replayPendingDeletions() {
     if (!state.settings.content.showModerationReasons || !state.live.deletions.size) return;
     for (const deletion of state.live.deletions.values()) annotateDeletedMessage(deletion);
@@ -6630,33 +4670,12 @@ function createLive(host) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Multi-stream
-//
-// A grid of Kick's own embedded players and chat, so playback, subscriptions
-// and entitlements all stay Kick's. Nothing here reimplements a player or
-// works around an entitlement; it arranges surfaces Kick already publishes.
-//
-// Everything this surface needs from the page — storage, toasts, translation,
-// the shared `state` object — arrives through `host` rather than being read out
-// of the enclosing bundle scope. That boundary is the point: it is what lets
-// this file load on its own under `node --test` with a stub host, where the
-// grid's tile reuse, audio focus and cross-tab merge can be exercised without a
-// browser. The build strips the imports below and relies on concat order.
-// ---------------------------------------------------------------------------
 
 
 function isPlainRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-/**
- * Build the multi-stream surface against a host.
- *
- * `host` supplies the page-owned collaborators: `state`, the GM storage pair,
- * the translation and announcement helpers, and the two live-data functions
- * this surface borrows to resolve channel identity.
- */
 function createMultistream(host) {
   const {
     state,
@@ -6686,35 +4705,19 @@ function createMultistream(host) {
     gmSet(MULTISTREAM_KEY, state.multistream);
   }
 
-  // Re-read, merge, write. The multi-stream store is shared across tabs, so a
-  // blind write drops channels another tab added since this tab booted. This
-  // applies this tab's add/remove on top of the latest stored value.
   function commitMultistream(added = [], removed = []) {
     state.multistream = mergeMultistream(gmGet(MULTISTREAM_KEY, {}), state.multistream, added, removed);
     gmSet(MULTISTREAM_KEY, state.multistream);
-    // A no-op commit is a deliberate re-read (on open, or after a storage
-    // event) and has nothing to tell anyone.
     if (added.length || removed.length) broadcastMultistream(added, removed);
     return state.multistream;
   }
 
-  /**
-   * Converge the other tabs.
-   *
-   * The store is the truth and every commit re-reads it, so this is a nudge,
-   * not the mechanism — which is what makes the origin split survivable.
-   * `BroadcastChannel` and `localStorage` are both scoped to one origin, while
-   * the userscript's GM storage is shared across `kick.com` and `www.kick.com`;
-   * tabs that cannot hear each other therefore still converge the next time
-   * either one opens the grid, rather than diverging silently.
-   */
   function broadcastMultistream(added, removed) {
     const channel = multistreamSyncChannel();
     if (!channel) return;
     try {
       channel.postMessage({ type: 'converge', added: [...added], removed: [...removed], ts: Date.now() });
     } catch {
-      // The next re-read still picks this up.
     }
   }
 
@@ -6733,14 +4736,6 @@ function createMultistream(host) {
     return syncChannel;
   }
 
-  /**
-   * Fold another tab's add/remove into this one.
-   *
-   * The op is re-derived from storage rather than trusted off the wire, and the
-   * same union runs in every tab, so applying a message twice — or applying one
-   * that this tab already saw through a storage event — lands in the same place.
-   * Nothing is written back, because the tab that sent it already did.
-   */
   function applyRemoteMultistream(added = [], removed = []) {
     const addList = (Array.isArray(added) ? added : []).filter((slug) => typeof slug === 'string');
     const removeList = (Array.isArray(removed) ? removed : []).filter((slug) => typeof slug === 'string');
@@ -6754,11 +4749,6 @@ function createMultistream(host) {
     return true;
   }
 
-  /**
-   * The extension build stores in `localStorage`, which raises `storage` in
-   * every other tab on the origin. That makes convergence work even where
-   * `BroadcastChannel` does not, and costs one listener.
-   */
   function installMultistreamStorageSync() {
     if (typeof window?.addEventListener !== 'function') return;
     window.addEventListener('storage', (event) => {
@@ -6767,7 +4757,6 @@ function createMultistream(host) {
     });
   }
 
-  /** Add or remove one channel, from wherever the gesture came from. */
   function toggleMultistreamSlug(raw) {
     const slug = parseChannelInput(raw);
     if (!slug) return { ok: false, error: 'Enter a Kick channel name or a kick.com link.' };
@@ -6782,16 +4771,6 @@ function createMultistream(host) {
     return { ok: true, slug, added: !inGrid, streams: result.streams };
   }
 
-  /**
-   * Ask the other tabs which channel they are on, and collect the answers.
-   *
-   * Zero new permissions: `BroadcastChannel` is same-origin by construction, so
-   * this reaches other kick.com tabs and nothing else, in both the userscript and
-   * the extension builds. Request/response rather than a maintained roster —
-   * there is no join or leave message to miss, a tab that has gone simply does
-   * not answer, and every answer carries its own timestamp so a stale one expires
-   * on its own. Nothing but a channel slug is ever put on the wire.
-   */
   function multistreamPresenceChannel() {
     if (state.presence.channel || typeof BroadcastChannel !== 'function') return state.presence.channel;
     try {
@@ -6800,7 +4779,6 @@ function createMultistream(host) {
         const message = event?.data;
         if (!isPlainRecord(message)) return;
         if (message.type === 'who') {
-          // Answer only from a channel page; nothing else has a slug to report.
           const slug = currentChannelSlug();
           if (slug) channel.postMessage({ type: 'here', slug, ts: Date.now() });
           return;
@@ -6812,7 +4790,6 @@ function createMultistream(host) {
       });
       state.presence.channel = channel;
     } catch {
-      // No cross-tab roll-call; every other multi-stream path is unaffected.
     }
     return state.presence.channel;
   }
@@ -6825,7 +4802,6 @@ function createMultistream(host) {
     try {
       channel.postMessage({ type: 'who', ts: Date.now() });
     } catch {
-      // The offer simply stays empty.
     }
   }
 
@@ -6857,36 +4833,18 @@ function createMultistream(host) {
     if (!backdrop) return;
     state.lastFocused = document.activeElement;
     backdrop.hidden = false;
-    // Re-read on open. A tab that was asleep, on the other origin, or simply
-    // not listening when another one added a channel picks it up here — which
-    // is why the broadcast can be an enhancement rather than a dependency.
     commitMultistream();
-    // Someone asking the system for reduced motion should not be handed nine
-    // autoplaying videos. They mount paused with a visible way to start.
     installMultistreamSuspension();
     if (!state.multistream.paused && matchMedia('(prefers-reduced-motion: reduce)').matches) {
       state.multistream = normalizeMultistream({ ...state.multistream, paused: true });
     }
     renderMultistream();
-    // Asked on open rather than kept up to date in the background: the answer is
-    // only ever looked at here, and a standing roster would mean every tab
-    // chattering for a list nobody is reading.
     requestMultistreamPresence();
     backdrop.querySelector('[data-kf-multistream-input]')?.focus();
     announce(tr('Multi-stream opened'));
-    // Fire-and-forget: live status is an enhancement, and every path already
-    // renders correctly without it.
     resolveMultistreamLive().catch(() => {});
   }
 
-  /**
-   * Resolve channel ids for the grid and every saved layout, then read all of
-   * their live states in one request.
-   *
-   * Identity is looked up once per channel and cached for the session; the live
-   * state, which is the part that actually changes, is a single bulk call no
-   * matter how many layouts are saved.
-   */
   async function resolveMultistreamLive() {
     if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents) return;
     const slugs = [...new Set([
@@ -6899,8 +4857,6 @@ function createMultistream(host) {
       if (!response.ok) continue;
       const channel = normalizeChannel(response.body);
       if (!channel) { recordApiDrift('channel', 'shape-changed'); continue; }
-      // An offline channel has no livestream id, which is already the answer and
-      // costs nothing to record.
       state.multistreamIds.set(slug, channel.livestreamId);
       state.multistreamLive.set(slug, channel.isLive);
     }
@@ -6912,8 +4868,6 @@ function createMultistream(host) {
     const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
     if (!backdrop || backdrop.hidden) return;
     backdrop.hidden = true;
-    // Blanking the grid drops every embedded player, so closing the surface
-    // actually stops the decoding rather than leaving nine streams running.
     const grid = backdrop.querySelector('[data-kf-multistream-grid]');
     if (grid) grid.replaceChildren();
     stopMergedChatPaint();
@@ -6926,16 +4880,6 @@ function createMultistream(host) {
     state.lastFocused?.focus?.();
   }
 
-  /**
-   * Suspend tiles that are not being watched.
-   *
-   * A cross-origin embed cannot be paused or quality-capped, so unloading its
-   * document is the only control over decode cost — and it is the one that
-   * matters, since roughly four to six simultaneous 1080p60 decodes is the
-   * realistic ceiling on integrated graphics. The focused tile is exempt: it
-   * carries the audio, and cutting what someone is listening to because they
-   * switched tabs would cost more than it saves.
-   */
   function installMultistreamSuspension() {
     if (state.multistreamSuspensionInstalled) return;
     state.multistreamSuspensionInstalled = true;
@@ -6951,10 +4895,6 @@ function createMultistream(host) {
     });
   }
 
-  /**
-   * Watch tiles for visibility. Rebuilt per render because the tile set changes;
-   * the observer is cheap and holding a stale one would leak removed nodes.
-   */
   function observeMultistreamVisibility(grid) {
     state.observers.multistream?.disconnect?.();
     if (typeof IntersectionObserver !== 'function') return;
@@ -6963,8 +4903,6 @@ function createMultistream(host) {
       for (const entry of entries) {
         const slug = entry.target.dataset.kfMultistreamTile;
         if (!slug) continue;
-        // Hidden tabs report everything as non-intersecting; visibilitychange
-        // already owns that case, so ignore it here rather than fighting it.
         if (document.hidden) continue;
         const wasSuspended = state.multistreamSuspended.has(slug);
         if (entry.isIntersecting) state.multistreamSuspended.delete(slug);
@@ -6978,7 +4916,6 @@ function createMultistream(host) {
     }
   }
 
-  /** Re-apply playback state without rebuilding the grid. */
   function refreshMultistreamPlayback() {
     const grid = state.shadow?.querySelector('[data-kf-multistream-grid]');
     if (grid) applyMultistreamAudio(grid);
@@ -6989,13 +4926,6 @@ function createMultistream(host) {
     return Boolean(backdrop && !backdrop.hidden);
   }
 
-  /**
-   * Rebuild the grid.
-   *
-   * Tiles are keyed by slug and reused across renders: replacing an `<iframe>`
-   * restarts its stream from scratch, so adding a ninth channel must not
-   * interrupt the eight already playing.
-   */
   function renderMultistream() {
     const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
     if (!backdrop || backdrop.hidden) return;
@@ -7012,9 +4942,6 @@ function createMultistream(host) {
       existing.set(tile.dataset.kfMultistreamTile, tile);
     }
 
-    // Which tiles survive this render is decided in core, where it is tested
-    // without a browser: replacing an iframe restarts its stream, so a channel
-    // that is still wanted must keep the exact element it already had.
     const plan = planMultistreamTiles([...existing.keys()], streams);
     const ordered = [];
     for (const slug of plan.order) {
@@ -7026,15 +4953,10 @@ function createMultistream(host) {
         tile.dataset.kfMultistreamTile = slug;
         tile.className = 'kf-ms-tile';
         const frame = document.createElement('iframe');
-        // Every tile starts muted; audio follows focus, so a nine-way grid is
-        // never nine simultaneous audio streams. A paused grid mounts with no
-        // src at all, which is the only way to stop a cross-origin player.
         frame.src = multistreamTileActive(state.multistream, slug, state.multistreamSuspended)
           ? playerEmbedUrl(slug, { muted: true, autoplay: true })
           : 'about:blank';
         frame.title = `${slug} stream`;
-        // Kick playback is Amazon IVS HLS with no DRM, so encrypted-media would
-        // be a grant with no function.
         frame.allow = 'autoplay; fullscreen; picture-in-picture';
         frame.referrerPolicy = 'origin';
         frame.loading = 'eager';
@@ -7052,7 +4974,6 @@ function createMultistream(host) {
       ordered.push(tile);
     }
 
-    // Anything still in `existing` was removed from the grid.
     for (const stale of existing.values()) stale.remove();
     if (ordered.length) {
       grid.querySelector('[data-kf-multistream-empty]')?.remove();
@@ -7075,21 +4996,11 @@ function createMultistream(host) {
     observeMultistreamVisibility(grid);
   }
 
-  /**
-   * Audio follows focus.
-   *
-   * The embedded player is cross-origin, so its `muted` state cannot be reached
-   * from here — the URL is the only control surface. Reloading a frame restarts
-   * its stream, so only the two frames whose audio state actually changed are
-   * touched, never the whole grid.
-   */
   function applyMultistreamAudio(grid) {
     for (const tile of grid.querySelectorAll('[data-kf-multistream-tile]')) {
       const slug = tile.dataset.kfMultistreamTile;
       const frame = tile.querySelector('iframe');
       if (!frame) continue;
-      // Dropping the document is the only lever a cross-origin embed leaves us:
-      // it cannot be paused, quality-capped, or inspected from here.
       const wanted = multistreamTileActive(state.multistream, slug, state.multistreamSuspended)
         ? playerEmbedUrl(slug, { muted: multistreamTileMuted(state.multistream, slug), autoplay: true })
         : 'about:blank';
@@ -7099,24 +5010,7 @@ function createMultistream(host) {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Chat in an always-on-top window
-  //
-  // Document Picture-in-Picture is the only way a page can put its own DOM in a
-  // window that floats above everything else, which is exactly what a chat you
-  // read while doing something else wants to be.
-  //
-  // The one design decision worth stating: the grid's own chat iframe is never
-  // moved. Measured in Chrome 151 on 2026-08-18 — appending an existing
-  // `<iframe>` into the PiP document destroys and recreates its browsing
-  // context, and moving it back does it again, so a move would cost two chat
-  // reloads per pop-out/pop-in cycle. Giving the window its own frame costs one
-  // load on the way out and *none* on the way back, and it is what makes
-  // "closing returns to the grid without losing the tile" true by construction
-  // rather than by repair.
-  // -------------------------------------------------------------------------
 
-  /** The open pop-out, or null. Never persisted: a window does not survive a reload. */
   let chatWindow = null;
 
   function canPopOutChat() {
@@ -7130,9 +5024,6 @@ function createMultistream(host) {
     return Boolean(chatWindow && !chatWindow.closed);
   }
 
-  // The PiP document starts with no styles at all, and this build's own sheets
-  // are constructed for the page's document — adopting one into another
-  // document throws. So the window gets its own small sheet rather than a copy.
   const POPOUT_CSS = `
     :root { color-scheme: dark; }
     body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: #0d100e; color: #f7f9fa;
@@ -7149,9 +5040,6 @@ function createMultistream(host) {
     style.textContent = POPOUT_CSS;
     doc.head.append(style);
     const notice = doc.createElement('p');
-    // The same statement the in-grid pane makes, for the same reason: Kick
-    // refuses to send from an embedded chat by design, and a window that looks
-    // like a composer but is not one is worse than one that says so.
     notice.textContent = tr('Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.');
     doc.body.append(notice);
     const frame = doc.createElement('iframe');
@@ -7162,13 +5050,6 @@ function createMultistream(host) {
     doc.body.append(frame);
   }
 
-  /**
-   * Follow the focused tile without rebuilding the window.
-   *
-   * Only the frame's `src` changes, and only when the channel actually did —
-   * re-pointing it at the URL it already has would reload the chat on every
-   * unrelated render.
-   */
   function syncChatWindow() {
     if (!chatPoppedOut()) return;
     const slug = state.multistream.chat;
@@ -7194,16 +5075,10 @@ function createMultistream(host) {
     try {
       if (pip && !pip.closed) pip.close();
     } catch {
-      // Already gone.
     }
     renderMultistream();
   }
 
-  /**
-   * `requestWindow` needs transient activation, so this only ever runs from a
-   * real click. It is deliberately not retried and not restored on open: a
-   * window that reappears without being asked for is a popup.
-   */
   async function popOutChat() {
     if (!canPopOutChat() || !multistreamOpen()) return false;
     if (chatPoppedOut()) {
@@ -7216,15 +5091,11 @@ function createMultistream(host) {
     try {
       pip = await window.documentPictureInPicture.requestWindow({ width: 420, height: 620 });
     } catch {
-      // Denied, or no activation left. Nothing changes, and the grid keeps its
-      // own chat exactly where it was.
       showToast(tr('Kick Focus could not open the pop-out chat window.'));
       return false;
     }
     chatWindow = pip;
     fillChatWindow(pip, slug);
-    // `pagehide` rather than `unload`: the latter is unreliable and deprecated,
-    // and the user closing the window is the ordinary path, not an edge case.
     pip.addEventListener('pagehide', () => {
       chatWindow = null;
       renderMultistream();
@@ -7234,18 +5105,6 @@ function createMultistream(host) {
     return true;
   }
 
-  // -------------------------------------------------------------------------
-  // The merged view
-  //
-  // Opt-in, and the per-tile chat stays the default: one channel's chat with
-  // Kick's own emotes and badges is a better reading experience than nine
-  // interleaved, and this is for the case the grid exists for — watching
-  // several at once and not wanting to miss which one just reacted.
-  //
-  // Repainted on a timer while open rather than per message. Nine busy channels
-  // can deliver faster than anyone reads, and a render per message would spend
-  // the whole frame budget on text nobody has seen yet.
-  // -------------------------------------------------------------------------
 
   let mergedTimer = 0;
   let mergedPainted = 0;
@@ -7264,8 +5123,6 @@ function createMultistream(host) {
     const list = backdrop?.querySelector?.('[data-kf-multistream-merged-list]');
     if (!list) return;
     const entries = mergedChatEntries();
-    // Nothing changed since the last paint: a chat that rewrites identical
-    // markup four times a second breaks text selection and burns layout.
     if (entries.length === mergedPainted) return;
     mergedPainted = entries.length;
     setMarkup(list, entries.map((entry) => `
@@ -7274,8 +5131,6 @@ function createMultistream(host) {
         <span class="kf-ms-merged-who"${entry.color ? ` style="color:${escapeHtml(entry.color)}"` : ''}>${escapeHtml(entry.sender)}</span>
         <span class="kf-ms-merged-text">${escapeHtml(entry.text)}</span>
       </li>`).join(''));
-    // Pinned to the newest, which is what a chat reader expects and what the
-    // arrival ordering is for.
     list.scrollTop = list.scrollHeight;
   }
 
@@ -7283,11 +5138,6 @@ function createMultistream(host) {
     const pane = backdrop?.querySelector?.('[data-kf-multistream-merged]');
     if (!pane) return;
     const on = mergedChatOn();
-    // Deliberately not `kfMultistreamMerged`: that is the pane's own marker
-    // attribute, and giving the backdrop the same name made
-    // `querySelector('[data-kf-multistream-merged]')` return the backdrop —
-    // which the live gate caught by counting fifteen buttons inside what it
-    // thought was the chat pane.
     backdrop.dataset.kfMultistreamMergedOn = String(on);
     pane.hidden = !on;
     if (!on) {
@@ -7318,16 +5168,10 @@ function createMultistream(host) {
       host_.replaceChildren();
       return;
     }
-    // While the pop-out has chat, this pane is hidden rather than emptied. Its
-    // iframe stays mounted and connected, so closing the window shows the same
-    // chat it was already showing instead of loading a fresh one.
     backdrop.dataset.kfMultistreamChatPoppedOut = String(chatPoppedOut());
     const current = host_.querySelector('iframe');
     if (current?.dataset.slug === chat) return;
     host_.replaceChildren();
-    // Kick's popout chat refuses to send from inside an iframe — it throws a
-    // CSRF error by design, and only reading works. Saying so is the difference
-    // between a limitation and something that looks broken.
     const notice = document.createElement('p');
     notice.className = 'kf-ms-chat-notice';
     notice.textContent = tr('Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.');
@@ -7344,8 +5188,6 @@ function createMultistream(host) {
     const { streams, chat, showChat, layouts } = state.multistream;
     const count = backdrop.querySelector('[data-kf-multistream-count]');
     if (count) {
-      // Same rule as the command count: composed text on a node that outlives the
-      // render, so it translates here and the localizer is told to skip it.
       count.textContent = streams.length
         ? trf('{count} of {max} streams', { count: streams.length, max: MULTISTREAM_MAX })
         : tr('Ready for your first channel');
@@ -7381,9 +5223,6 @@ function createMultistream(host) {
     }
     const popout = backdrop.querySelector('[data-kf-multistream-popout]');
     if (popout) {
-      // Absent, not disabled, on an engine without a top-layer window: a
-      // control that can never do anything is noise, and the grid must look
-      // exactly as it does today where the API does not exist.
       const offered = canPopOutChat() && Boolean(chat) && showChat;
       popout.hidden = !offered;
       const out = chatPoppedOut();
@@ -7399,8 +5238,6 @@ function createMultistream(host) {
     if (savedList) {
       setMarkup(savedList, layouts.length
         ? layouts.map((layout) => {
-          // Live counts come from one bulk request for every saved channel, so a
-          // shelf of layouts costs the same as a single one.
           const live = layout.streams.filter((slug) => state.multistreamLive.get(slug.toLowerCase())).length;
           const status = state.multistreamLive.size
             ? `<small class="kf-ms-live" data-live="${live > 0}">${live}/${layout.streams.length} live</small>`
@@ -7411,19 +5248,12 @@ function createMultistream(host) {
     }
   }
 
-  /**
-   * Refresh live status for every channel across the grid and saved layouts in
-   * one request. Kick's own sidebar uses this endpoint; per-channel polling for a
-   * shelf of layouts would be dozens of requests for the same answer.
-   */
   async function refreshMultistreamLive() {
     const slugs = [...new Set([
       ...state.multistream.streams,
       ...state.multistream.layouts.flatMap((layout) => layout.streams),
     ].map((slug) => slug.toLowerCase()))];
     if (!slugs.length) return;
-    // The endpoint keys on livestream id, so only channels known to have one are
-    // asked about; a channel with none is already known to be offline.
     const ids = slugs.map((slug) => state.multistreamIds.get(slug)).filter(Boolean);
     if (!ids.length) return;
     const response = await kickFetchJson(endpoints.currentViewers(ids));
@@ -7433,8 +5263,6 @@ function createMultistream(host) {
       recordApiDrift('current-viewers', status.reason);
       return;
     }
-    // Kick returns entries only for channels that are still live, so absence
-    // from the response means the stream ended.
     const stillLive = new Set(status.entries.map((entry) => String(entry.id)));
     for (const [slug, id] of state.multistreamIds) {
       if (id) state.multistreamLive.set(slug, stillLive.has(String(id)));
@@ -7453,7 +5281,6 @@ function createMultistream(host) {
     state.multistreamError = result.ok ? '' : result.error;
     if (result.ok) {
       state.multistream = result.value;
-      // Merge-write so a second tab adding a different channel is not clobbered.
       commitMultistream([slug]);
       syncHeaderMultiState();
       announce(`${slug} added to the multi-stream grid`);
@@ -7461,11 +5288,6 @@ function createMultistream(host) {
     renderMultistream();
   }
 
-  /**
-   * One-click add/remove of the current channel to the multi-stream grid from the
-   * header, with feedback. Stays on the page: it never opens the grid or
-   * navigates, so a viewer can collect several channels and open them together.
-   */
   function toggleCurrentChannelInMulti() {
     const slug = currentChannelSlug();
     if (!slug) return;
@@ -7538,29 +5360,11 @@ const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
 const LAST_CRASH_KEY = 'kick-focus:last-crash';
-// When the daily reward was last claimed on this browser. Persisted because the
-// backoff has to survive a reload — otherwise every navigation would reopen
-// Kick's dialog looking for a reward that was already taken.
 const REWARD_STATE_KEY = 'kick-focus:reward-claims';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
 
-// Declared ahead of `state` because writes can happen while `state` is still in
-// its own initializer, and reading a const in its temporal dead zone throws.
 const storageHealth = { failures: {}, lastError: '' };
 
-/**
- * The emote library behind a provider rather than a single backend.
- *
- * `localStorage` is the only store that answers synchronously, and boot reads
- * the library before the first render — but it is also the one with a ~5MB
- * ceiling a growing library eventually reaches. So a bounded seed is written
- * where boot can read it, the complete record goes to IndexedDB, and
- * `hydrateLibrary` folds the fuller copy back in once the page is up.
- *
- * Declared here for the same reason as `storageHealth` above: `state`'s own
- * initializer reads the library, so this cannot be a const further down the
- * file — which is precisely what the boot gate caught when it was.
- */
 const libraryStore = createLibraryStore({
   readFallback: () => normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {})),
   writeFallback: (seed) => gmSet(STICKER_PREFERENCES_KEY, seed),
@@ -7587,27 +5391,15 @@ const AD_SHELL_SELECTORS = [
   '[class*="advertisement"]',
 ];
 
-// Long enough that typing a name is one render rather than one per keystroke,
-// short enough that the grid still feels attached to the keyboard.
 const STICKER_SEARCH_DEBOUNCE_MS = 120;
 const STICKER_USAGE_SECTION_LIMIT = 24;
-// Must match the organizer grid CSS: tiles are a fixed row height in a
-// minmax(50px, 1fr) auto-fill grid, which is what lets a spacer stand in for a
-// known number of rows without measuring every one of them.
 const STICKER_TILE_HEIGHT = 62;
 const STICKER_GRID_GAP = 7;
 const STICKER_TILE_MIN_WIDTH = 50;
-// How close the viewport may get to the rendered window's edge before the
-// window moves. Four rows of slack keeps a slow scroll from re-rendering
-// continuously while never letting the viewer reach an unrendered gap.
 const STICKER_WINDOW_GUARD_ROWS = 4;
 
 const pageWindow = typeof unsafeWindow === 'object' ? unsafeWindow : window;
 
-// Measured immediately, before this script touches anything: what the page
-// already contained when it started. `@run-at document-start` is a request
-// that Chromium managers cannot always honour, so the real timing is recorded
-// rather than assumed, and reported on the About page.
 const INJECTION = describeInjection({
   readyState: document.readyState,
   scriptCount: document.querySelectorAll('script').length,
@@ -7622,15 +5414,7 @@ const state = {
   siteStyle: null,
   siteSheet: null,
   presence: { channel: null, answers: [], offer: [] },
-  // The viewer hub's one piece of remembered state: the collectible read, which
-  // is the only card that is not read straight off the page. Null means nobody
-  // has opened the hub yet, which is why nothing has been requested.
   viewerHub: { collectibles: null },
-  // Chat comfort, and none of it persisted. The log is other people's
-  // messages: it lives for the session, in memory, and a reload is the same as
-  // clearing it.
-  // Saved discovery views, loaded once. Local, and only ever this build's own
-  // settings.
   discoveryLayouts: [],
   chatComfort: { rows: [], hidden: new Set(), seen: new Set(), sounded: new Set(), lastSoundAt: 0, query: '' },
   modal: null,
@@ -7657,18 +5441,12 @@ const state = {
     chatPaused: false,
     suspended: false,
     routeSource: '',
-    // The route a saved view was last applied for, so it is applied on entering
-    // a page and not on every cycle spent there.
     layoutRoute: '',
     applyRunning: false,
     presenceRequested: false,
     stickerGridScrollTop: null,
     stickerSearchTimer: 0,
-    // The trigger the open completion list is offering against, so accepting
-    // replaces exactly the `:query` that produced it.
     emoteCompletion: null,
-    // Index of the first tile the grid should render around. The organizer
-    // renders a window rather than the whole library, so this is what moves.
     stickerGridAnchor: 0,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
@@ -7716,9 +5494,7 @@ const state = {
     total: 0,
   },
   compatibility: null,
-  // Set once at boot when the build changed under the user; the About page reads it.
   updateNotice: null,
-  // The settings search: the live query, and the index it searches.
   settingsQuery: '',
   settingsIndex: null,
   settingsSearchTimer: 0,
@@ -7730,10 +5506,6 @@ const state = {
     chatStickers: null,
     multistream: null,
   },
-  /**
-   * Everything read from Kick's own API, kept apart from scraped state so a
-   * failure here can never degrade what the DOM path already produced.
-   */
   live: {
     slug: '',
     channel: null,
@@ -7743,11 +5515,7 @@ const state = {
     collisions: [],
     rarity: null,
     inventory: null,
-    // This account's standing in the current channel, from Kick's own /me read.
-    // `subscribed: null` means Kick did not say, which is never "denied".
     standing: { known: false, subscribed: null, following: null, moderator: null },
-    // The VOD this page is showing, once dated. Null on a channel page, and
-    // null whenever the recording could not be dated — see refreshVodRetention.
     vod: null,
     socket: null,
     socketState: 'offline',
@@ -7779,8 +5547,6 @@ const state = {
     };
   })(),
   multistreamError: '',
-  // slug -> Kick channel id, and slug -> live, both filled from Kick's own
-  // responses. Kept apart from `multistream` so neither is ever persisted.
   multistreamIds: new Map(),
   multistreamLive: new Map(),
   multistreamSuspended: new Set(),
@@ -7796,24 +5562,12 @@ const state = {
   remoteSyncInFlight: false,
 };
 
-/**
- * The companion extension proves its presence with a live nonce round-trip
- * (handshakeCompanion), not the page-writable <html> dataset attribute that any
- * page script could set. Its presence means ad requests are blocked at the
- * browser network layer before they are sent, not only at the page layer.
- */
 function companionInfo() {
   return state.companion?.active
     ? { active: true, version: state.companion.version }
     : { active: false, version: '' };
 }
 
-/**
- * Ask the companion to prove it is really here. A fresh nonce must come back on
- * the pong, so a stale reply or a pre-set attribute cannot pass; a page script
- * co-resident on kick.com could still answer, but the bar is a live responder
- * echoing this session's nonce rather than a static attribute set once.
- */
 function handshakeCompanion() {
   const nonce = `kf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const handler = (event) => {
@@ -7825,13 +5579,12 @@ function handshakeCompanion() {
     state.companion = { active: true, version: String(detail.version || '') };
     if (!wasActive) {
       if (state.modal && !state.modal.hidden) renderSettingsPage();
-      try { publishSettingsState(); } catch { /* noop */ }
+      try { publishSettingsState(); } catch {   }
     }
   };
   document.addEventListener('kick-focus:companion-pong', handler);
   const ping = () => document.dispatchEvent(new CustomEvent('kick-focus:companion-ping', { detail: { nonce } }));
   ping();
-  // Ping again shortly in case the bridge began listening after the first ping.
   window.setTimeout(ping, 500);
 }
 
@@ -7854,14 +5607,6 @@ function gmGet(key, fallback) {
   }
 }
 
-/**
- * Persist a value, and never let the failure pass unnoticed.
- *
- * Every call site used to discard the return value except `saveSettings`, so a
- * full or denied storage backend silently dropped the emote library, notes,
- * keyword filters and layout memory. The write result now feeds a registry that
- * raises a warning the user has to acknowledge.
- */
 function gmSet(key, value) {
   let ok = true;
   try {
@@ -7875,11 +5620,6 @@ function gmSet(key, value) {
   return ok;
 }
 
-/**
- * Fold one write result into the failure registry and surface or retire the
- * warning. Keyed by storage key, so a library that fails on every keystroke
- * warns once and a later success clears it.
- */
 function noteStorageResult(key, ok) {
   const before = storageHealth.failures;
   const after = recordStorageResult(before, key, ok, Date.now());
@@ -7888,19 +5628,6 @@ function noteStorageResult(key, ok) {
   renderStorageWarning();
 }
 
-/**
- * Write several stores as one unit, and put everything back if any of them
- * fails.
- *
- * Tampermonkey 5.3+ and Violentmonkey expose `GM_setValues`, which commits the
- * whole object in one call instead of one synchronous write per key. Where it
- * is missing (the extension builds, older managers) the loop below is the same
- * contract at a slower cadence.
- *
- * Rollback restores the values read before the attempt — including deleting
- * keys that did not exist — so a quota failure part-way through leaves the
- * previous configuration whole rather than spliced together with a new one.
- */
 function gmSetMany(entries) {
   const plan = planStorageCommit(entries);
   if (!plan.ok) return plan;
@@ -7937,7 +5664,6 @@ function gmDelete(key) {
     if (typeof GM_deleteValue === 'function') GM_deleteValue(key);
     else localStorage.removeItem(key);
   } catch {
-    // A reset still updates the in-memory state when storage is unavailable.
   }
 }
 
@@ -7946,10 +5672,6 @@ function loadSettings() {
 }
 
 function saveSettings(message = 'Autosaved') {
-  // The search index carries each row's translated terms and the copy that
-  // reflects current state, so any settings change can stale it — a language
-  // switch most obviously, which would otherwise leave a Spanish reader
-  // searching an index built in English.
   state.settingsIndex = null;
   clearTimeout(state.saveTimer);
   state.saveTimer = window.setTimeout(() => {
@@ -7959,27 +5681,12 @@ function saveSettings(message = 'Autosaved') {
   }, 80);
 }
 
-/**
- * Tell the companion extension what the effective settings are.
- *
- * A same-page localStorage write fires no storage event, so this is the bridge's
- * only in-tab signal. It also runs at startup: on a fresh profile nothing has
- * been written yet, and without this the companion would never learn about
- * defaults that are on, leaving its network rulesets disagreeing with the
- * settings the user is actually looking at.
- */
 function publishSettingsState() {
   try {
-    // The settings ride on the event rather than being read back from storage,
-    // so a profile that has never saved still reports its effective defaults.
-    // They travel as a string: an object created in the page world is not
-    // structured-cloneable from the extension's isolated world, so passing one
-    // makes the receiver fail when it forwards the value.
     document.dispatchEvent(new CustomEvent('kick-focus:settings-changed', {
       detail: { settings: JSON.stringify(state.settings) },
     }));
   } catch {
-    // The page keeps working without the companion.
   }
 }
 
@@ -7990,23 +5697,6 @@ function setSaveStatus(message, isError = false) {
   status.dataset.error = String(isError);
 }
 
-/**
- * One parsed stylesheet per CSS text, shared by reference.
- *
- * A `<style>` inside a shadow root's innerHTML serialises the CSS into markup,
- * has the HTML parser tokenise it, then the CSS parser parse it — and does all
- * of that again for every root that needs the same rules and every time a root
- * is rebuilt. The panic switch used to re-parse the entire site sheet on every
- * restore. A constructed sheet is parsed once and adopted by reference; putting
- * it back is a list assignment.
- *
- * Feature-detected, never version-sniffed: Chromium 73 and Firefox 101 both
- * have it, and where it is absent — or where a content-script compartment
- * refuses a sheet constructed in another one, which older Firefox did — a
- * `<style>` element is the same contract at the old cost. Adopted sheets also
- * sit after every document `<link>`/`<style>` in the cascade, so ties that
- * Kick's later-loaded CSS used to win now go this way without more `!important`.
- */
 const CONSTRUCTED_SHEETS = new Map();
 
 function constructedSheet(cssText) {
@@ -8024,7 +5714,6 @@ function constructedSheet(cssText) {
   return sheet;
 }
 
-/** Adopt `cssText` into `root`; returns the fallback <style> element, or null when adopted. */
 function adoptStyles(root, cssText, id = '') {
   const sheet = constructedSheet(cssText);
   if (sheet && Array.isArray(root?.adoptedStyleSheets)) {
@@ -8032,7 +5721,6 @@ function adoptStyles(root, cssText, id = '') {
       if (!root.adoptedStyleSheets.includes(sheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
       return null;
     } catch {
-      // Fall through to the element path.
     }
   }
   const style = document.createElement('style');
@@ -8056,22 +5744,17 @@ function removeSiteStyle() {
   if (state.siteSheet && Array.isArray(document.adoptedStyleSheets)) {
     try {
       document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== state.siteSheet);
-    } catch { /* nothing to remove */ }
+    } catch {   }
   }
   state.siteSheet = null;
 }
 
-/**
- * Nothing observes `document.adoptedStyleSheets`: if Kick's own code ever
- * assigns that list, this sheet is silently gone with no mutation to notice.
- * Re-asserting it once per apply cycle is a single includes() check.
- */
 function ensureSiteStyle() {
   if (!state.siteSheet || !Array.isArray(document.adoptedStyleSheets)) return;
   if (document.adoptedStyleSheets.includes(state.siteSheet)) return;
   try {
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, state.siteSheet];
-  } catch { /* the next cycle tries again */ }
+  } catch {   }
 }
 
 function recordProtection(layer, classification) {
@@ -8098,20 +5781,6 @@ function blockedResponse(win) {
   }
 }
 
-/**
- * Rewrite a playback response read through XHR.
- *
- * The player reads `responseText` repeatedly as readyState advances, so the
- * result is cached against the raw body: transforming on every read would be
- * wasteful, and reporting on every read would flood the protection log.
- */
-/**
- * Make a blocked XHR look like a request that succeeded and returned nothing.
- *
- * Reporting an error instead invites the caller to retry, which is how a
- * blocked telemetry endpoint turns into a request loop that costs more than
- * the telemetry would have.
- */
 function simulateEmptySuccess(xhr, win) {
   const fixed = (name, value) => Object.defineProperty(xhr, name, {
     configurable: true,
@@ -8130,10 +5799,6 @@ function simulateEmptySuccess(xhr, win) {
   }
 }
 
-/**
- * Remember which ad-related keys a playback response carried, so the settings
- * page can say whether Kick's ad stack still looks the way this build expects.
- */
 function notePlaybackShape(rawText) {
   try {
     const payload = JSON.parse(String(rawText || ''));
@@ -8145,7 +5810,6 @@ function notePlaybackShape(rawText) {
     }
     updateAdStackNoticeInPlace();
   } catch {
-    // A non-JSON body tells us nothing about the ad stack.
   }
 }
 
@@ -8217,22 +5881,9 @@ function installPlaybackRewrite(xhr, nativeText, nativeResponse, report) {
       });
     }
   } catch {
-    // Without the override the request still succeeds unmodified.
   }
 }
 
-/**
- * Make an interceptor answer `name` and `toString()` the way the function it
- * replaced does.
- *
- * The ad defense only works while the page cannot trivially detect it, and
- * `window.fetch.name === 'kickFocusFetch'` alongside a non-native `toString()`
- * is the cheapest possible probe. Kick gained a commercial reason to run one
- * when it launched ads on 2026-08-06.
- *
- * This raises the cost of detection; it does not make it impossible, and it is
- * not a claim of undetectability.
- */
 function disguise(wrapper, original, name) {
   try {
     Object.defineProperty(wrapper, 'name', { value: name, configurable: true });
@@ -8244,29 +5895,10 @@ function disguise(wrapper, original, name) {
       configurable: true,
     });
   } catch {
-    // A frozen function object is still a working interceptor.
   }
   return wrapper;
 }
 
-/**
- * Stop a blocked ad preflight script from holding the player hostage.
- *
- * Kick waits on Google PAL, Datazoom and OM before it will request playback.
- * When one of those is blocked, the failed `<script>` stays in the document and
- * a listener Kick attaches *later* never sees the error that already fired, so
- * the player sits out the full preflight timeout before starting.
- *
- * This build causes that directly: `imasdk.googleapis.com` is in its own
- * AD_HOSTS. The block is correct; the wait is an artifact of it.
- *
- * Removing the dead element means Kick's next attempt is created with its error
- * handler already attached, so it fails immediately instead of timing out.
- * Resource errors do not bubble, but they do pass through capture — hence the
- * capture-phase listener on window, installed at document-start.
- *
- * Approach adapted from KickCX/KickFixPlayerLoading (MIT).
- */
 function installPlayerLoadingFix() {
   if (pageWindow.__kickFocusPlayerLoadingV1) return;
   pageWindow.__kickFocusPlayerLoadingV1 = true;
@@ -8275,8 +5907,6 @@ function installPlayerLoadingFix() {
     const script = event.target;
     if (!script || script.tagName !== 'SCRIPT') return;
     if (!isAdPreflightScript(script.getAttribute('src') || script.src, location.origin)) return;
-    // The microtask lets any handler Kick attached directly to this element run
-    // first; only then is the unusable script removed.
     queueMicrotask(() => {
       if (script.isConnected && script.dataset.loaded !== 'true') {
         script.remove();
@@ -8308,14 +5938,11 @@ function installNetworkDefense() {
         detail: { layer, category: result.category, label: result.label },
       }));
     } catch {
-      // Diagnostics are optional; blocking must continue if event creation fails.
     }
   };
 
   try {
     const nativeFetch = pageWindow.fetch?.bind(pageWindow);
-    // Our own API reads go through the unhooked original: routing them back
-    // through this interceptor would classify and log them as page traffic.
     unhookedFetch = nativeFetch;
     if (nativeFetch) {
       pageWindow.fetch = disguise(function kickFocusFetch(input, init) {
@@ -8328,8 +5955,6 @@ function installNetworkDefense() {
         }
         if (!isPlaybackUrl(rawUrl)) return nativeFetch(input, init);
 
-        // Playback is first-party and must be delivered, but the ad flags it
-        // carries are rewritten on the way through.
         return nativeFetch(input, init).then((response) => {
           if (!response?.ok) return response;
           return response.clone().text().then((body) => {
@@ -8350,7 +5975,6 @@ function installNetworkDefense() {
       }, pageWindow.fetch, 'fetch');
     }
   } catch {
-    // Some sandbox/page combinations expose a non-writable fetch binding.
   }
 
   try {
@@ -8370,21 +5994,16 @@ function installNetworkDefense() {
         if (this.__kfPlayback && nativeText?.get) installPlaybackRewrite(this, nativeText, nativeResponse, report);
         if (!this.__kfRequest?.blocked) return nativeSend.apply(this, args);
         report('XHR', this.__kfRequest);
-        // Answer with an empty success rather than an error. Telemetry clients
-        // treat a failed request as worth retrying, and an aggressive retry
-        // loop costs the user far more than the request that was blocked.
         queueMicrotask(() => {
           try {
             simulateEmptySuccess(this, pageWindow);
           } catch {
-            // The caller still receives an unsent XHR with status 0.
           }
         });
         return undefined;
       }, nativeSend, 'send');
     }
   } catch {
-    // Continue with DOM and fetch protection.
   }
 
   try {
@@ -8406,7 +6025,6 @@ function installNetworkDefense() {
       });
     }
   } catch {
-    // Beacon telemetry protection is a supplemental layer.
   }
 
   try {
@@ -8420,7 +6038,7 @@ function installNetworkDefense() {
             nativeSetAttribute.call(this, 'data-kf-blocked-src', result.label);
             report('Element', result);
             queueMicrotask(() => {
-              try { this.dispatchEvent(new pageWindow.Event('error')); } catch { /* noop */ }
+              try { this.dispatchEvent(new pageWindow.Event('error')); } catch {   }
             });
             return undefined;
           }
@@ -8429,7 +6047,6 @@ function installNetworkDefense() {
       };
     }
   } catch {
-    // Parser-created elements are covered by CSS/MutationObserver cleanup.
   }
 
   for (const [constructorName, property] of [
@@ -8449,10 +6066,10 @@ function installNetworkDefense() {
           if (state.runtime.suspended) return descriptor.set.call(this, value);
           const result = classify(value);
           if (result.blocked) {
-            try { this.dataset.kfBlockedSrc = result.label; } catch { /* noop */ }
+            try { this.dataset.kfBlockedSrc = result.label; } catch {   }
             report('Element', result);
             queueMicrotask(() => {
-              try { this.dispatchEvent(new pageWindow.Event('error')); } catch { /* noop */ }
+              try { this.dispatchEvent(new pageWindow.Event('error')); } catch {   }
             });
             return value;
           }
@@ -8460,22 +6077,10 @@ function installNetworkDefense() {
         },
       });
     } catch {
-      // Keep the other constructors protected when one descriptor is sealed.
     }
   }
 }
 
-/**
- * One rule per catalog entry, generated so a new hideable control cannot ship
- * with a settings switch and no stylesheet behind it.
- *
- * `~=` matches one whitespace-separated token, so the whole feature is a single
- * attribute on `<html>` that a settings change rewrites — the tagging pass never
- * has to walk anything again to *unhide*, and an element still carrying a stale
- * `data-kf-element` from a switch that was turned back off simply stops
- * matching. `display: none` rather than `visibility`/`opacity` because a control
- * left occupying its slot is the layout gap people file bugs about.
- */
 function hiddenElementCss() {
   return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
@@ -9601,17 +7206,10 @@ function applySettingsAttributes() {
   root.dataset.kfMatureBlur = String(content.blurMature && !state.runtime.matureVisible);
   root.dataset.kfPoorMode = String(content.hideMonetization);
   root.dataset.kfReduceMotion = String(accessibility.reduceMotion);
-  // An explicit accessibility request framed as seizure risk. The system-level
-  // preference turns it on regardless of the switch.
   root.dataset.kfStaticEmotes = String(content.staticEmotes
     || (accessibility.reduceMotion && matchMedia('(prefers-reduced-motion: reduce)').matches));
   root.dataset.kfFocusVisible = String(accessibility.focusVisible);
   root.dataset.kfLargeTargets = String(accessibility.largeTargets);
-  // The mod's own chrome lives in a shadow root, where a selector rooted at
-  // <html> cannot reach it — so these settings styled Kick's controls and left
-  // ours untouched. `:host-context()` would cross the boundary but Firefox has
-  // never implemented it, so mirror the flags onto the host and key `:host()`
-  // off them instead, which every target engine supports.
   const uiHost = state.shadow?.host;
   if (uiHost) {
     uiHost.dataset.kfLargeTargets = String(accessibility.largeTargets);
@@ -9646,20 +7244,11 @@ function applySettingsAttributes() {
   if (state.root) state.root.style.setProperty('--kf-interface-scale', String(appearance.interfaceScale / 100));
 }
 
-/**
- * Poor mode hides only controls positively identified as spending surfaces.
- * It never searches arbitrary page prose, so a chat message mentioning a gift
- * cannot disappear and free actions such as Follow remain untouched.
- */
 function tagMonetizationSurfaces() {
   for (const node of document.querySelectorAll('[data-kf-monetization]')) {
     delete node.dataset.kfMonetization;
   }
   if (!state.settings.content.hideMonetization) return;
-  // Controls, plus the exact test ids of the surfaces that are not controls —
-  // a balance readout is a `<span>` and the gift shop is a panel, and neither
-  // was reachable while this walked buttons alone. Ids only: `monetizationKind`
-  // never matches prose, so widening the walk cannot widen what it identifies.
   const selector = 'button, a, [role="button"], [data-testid="kicks-value"], [data-testid="gift-shop-panel"]';
   for (const control of document.querySelectorAll(selector)) {
     if (state.root?.contains(control)) continue;
@@ -9673,25 +7262,12 @@ function tagMonetizationSurfaces() {
   }
 }
 
-/**
- * Mark the controls the user asked to hide, so the generated CSS can find them.
- *
- * Only the ids actually in the hidden set are looked for, which keeps this at
- * zero queries for the default configuration and bounds it by what the user
- * chose rather than by the size of the catalog. The tag is a pure
- * classification — it says what an element *is*, never whether it is currently
- * hidden — so re-tagging is idempotent, a leftover tag is inert, and a control
- * Kick re-renders picks its tag back up on the next cycle.
- */
 function tagHideableElements() {
   const hidden = state.settings.layout.hidden;
   if (!hidden.length) return;
   for (const entry of HIDEABLE_ELEMENTS) {
     if (!hidden.includes(entry.id)) continue;
     const { elements } = findAllProbe(document, entry.probe);
-    // Each hideable id is one control or one list container. A fallback
-    // selector that matches a crowd is the wrong node, and hiding it would
-    // take Kick's chrome with it.
     if (elements.length === 0 || elements.length > 4) continue;
     for (const element of elements) {
       if (state.root?.contains(element)) continue;
@@ -9700,14 +7276,13 @@ function tagHideableElements() {
   }
 }
 
-/** Route-local account chrome that Kick does not mark as selected accessibly. */
 function tagSignedInRouteChrome() {
   if (state.route !== 'settings') return;
   const current = location.pathname.replace(/\/$/, '');
   for (const link of document.querySelectorAll('main a[href^="/settings/"]')) {
     link.dataset.kfSettingsTab = 'true';
     let path = '';
-    try { path = new URL(link.href, location.href).pathname.replace(/\/$/, ''); } catch { /* leave unmatched */ }
+    try { path = new URL(link.href, location.href).pathname.replace(/\/$/, ''); } catch {   }
     link.dataset.kfSettingsActive = String(path === current);
     if (path === current) link.setAttribute('aria-current', 'page');
     else if (link.getAttribute('aria-current') === 'page') link.removeAttribute('aria-current');
@@ -9717,10 +7292,6 @@ function tagSignedInRouteChrome() {
 function chatLayoutOwner(separator, panel) {
   const split = separator?.parentElement;
   if (split?.contains(panel)) {
-    // Kick wraps the resizer and #channel-chatroom in a width-bearing flex box,
-    // then wraps that once more as the actual flex item beside the player. The
-    // old tag landed on #channel-chatroom, so its forced width could grow past
-    // the still-narrow outer item and overflow the viewport in Theater mode.
     const outer = split.parentElement;
     if (outer && outer !== document.body && outer.children.length === 1) return outer;
     return split;
@@ -9811,14 +7382,6 @@ function readPersistentRecord(key) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-/**
- * Which scope a favorite action applies to right now.
- *
- * On a channel page that is the channel, so a favorite can be scoped to where
- * it is actually used; anywhere else it is the global scope. New favorites
- * follow the Favorite scope setting, which defaults to global so existing
- * muscle memory is unchanged.
- */
 function favoriteChannel() {
   return favoriteScope(currentChannelSlug());
 }
@@ -9827,7 +7390,6 @@ function newFavoriteChannel() {
   return state.settings.content.favoriteScope === 'channel' ? favoriteChannel() : '';
 }
 
-/** Ordered favorite keys for the current channel: its own first, then global. */
 function favoriteKeysInOrder() {
   return favoritesForChannel(state.stickerPreferences.favorites, favoriteChannel());
 }
@@ -9840,7 +7402,6 @@ function favoriteCount() {
   return favoriteKeysInOrder().length;
 }
 
-/** Which scope a key is favorited in here, for labelling. '' means global. */
 function favoriteScopeOf(key) {
   const channel = favoriteChannel();
   const scoped = state.stickerPreferences.favorites
@@ -9886,14 +7447,6 @@ function persistStickerPreferences() {
   return value;
 }
 
-/**
- * Promote the seed to the full record once the database answers.
- *
- * Runs after boot, never during it: nothing here is allowed to be on the path
- * that puts the interface on screen. If IndexedDB is unavailable — private
- * browsing, a blocked upgrade — this returns nothing and the seed remains the
- * store, which is exactly the behaviour every build had before.
- */
 async function hydrateLibrary() {
   const merged = await libraryStore.hydrate();
   if (!merged) return;
@@ -9907,55 +7460,24 @@ async function hydrateLibrary() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Kick live data
-//
-// The surface itself is src/live.mjs: read-only, same-origin requests to
-// endpoints Kick's own client already calls, inheriting the session the page
-// already has. What stays here is what it is built from — the page's unhooked
-// `fetch`, the current channel, and the wiring that hands them over.
-// ---------------------------------------------------------------------------
 
-// Long enough to outlast the autoplay-policy mute that fires right after attach.
 const VOLUME_GRACE_MS = 1500;
 
 function readEmoteUsage() {
-  // Normalize on boot too: the global rollup used to be capped only on read
-  // through here-nothing, so a stored oversized map was loaded back whole.
   return normalizeEmoteUsage(gmGet(EMOTE_USAGE_KEY, null));
 }
 
-/**
- * The unhooked `fetch`, captured before `installNetworkDefense` wraps it.
- *
- * Routing our own reads through our own interceptor would have them classified,
- * logged as page traffic, and counted in the protection diagnostics.
- */
 let unhookedFetch = null;
 function pageFetch(url, init) {
   return unhookedFetch ? unhookedFetch(url, init) : window.fetch(url, init);
 }
 
-/**
- * The channel this tab is on, or '' anywhere else.
- *
- * Read from the URL rather than the cached `state.route` so it is already
- * correct during a route change, before the apply cycle has caught up.
- */
 function currentChannelSlug() {
   if (routeKind(location.href) !== 'channel') return '';
   const slug = location.pathname.split('/').filter(Boolean)[0] || '';
   return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug) ? slug : '';
 }
 
-/**
- * The VOD this tab is watching, or '' anywhere else.
- *
- * A VOD lives at `/{slug}/videos/{uuid}`, which `routeKind` also calls
- * `channel`, so the path shape is the only thing that separates the two. The
- * UUID is checked rather than trusted: it is pasted straight into a request
- * path, and Kick's own ids are v7 UUIDs.
- */
 function currentVodId() {
   if (routeKind(location.href) !== 'channel') return '';
   const parts = location.pathname.split('/').filter(Boolean);
@@ -9990,14 +7512,6 @@ const {
   replayPendingDeletions,
 } = liveSurface;
 
-// ---------------------------------------------------------------------------
-// Multi-stream
-//
-// The surface itself is src/multistream.mjs, built here against the page-owned
-// collaborators it needs. Keeping the wiring separate from the code is what
-// lets the grid be exercised under node:test with a stub host; only the names
-// the rest of this file calls are unpacked below.
-// ---------------------------------------------------------------------------
 
 const multistreamSurface = createMultistream({
   state,
@@ -10077,10 +7591,7 @@ function cardPath(node) {
 function syncNativeSidebar() {
   if (state.runtime.sidebarHidden || state.runtime.focus || state.runtime.theater) return;
   const mode = state.settings.layout.sidebar;
-  // Dropdown mode owns the rail through CSS. Driving Kick's own collapse
-  // control here as well would collapse the panel the moment it expands.
   if (mode === 'dropdown') {
-    // Leave Kick's rail expanded so the dropdown has its full contents.
     const expand = findProbe(document, 'sidebarExpand').element;
     if (expand && document.documentElement.dataset.kfManagedSidebar === 'true') {
       delete document.documentElement.dataset.kfManagedSidebar;
@@ -10110,21 +7621,6 @@ function cardCandidates() {
   ])];
 }
 
-/**
- * Read the structured evidence a card carries: Kick's category slug, and its
- * short badge texts. Both are far stronger signals than the card's prose, and
- * the slug survives localization.
- */
-/**
- * Silence home-page previews.
- *
- * Pausing once was not enough: the complaint is about sound on arrival, and
- * Kick restarts previews and inserts new ones as the page lives, so a preview
- * added after the first pass would play with audio. Each element is muted and
- * kept muted through a `play` listener, which survives the site restarting it.
- * Muting rather than only pausing means an autoplay Kick insists on restarting
- * is still silent.
- */
 function quietHomeAutoplay() {
   for (const video of document.querySelectorAll('video')) {
     try {
@@ -10147,13 +7643,9 @@ function quietHomeAutoplay() {
       video.addEventListener('play', () => {
         if (state.route !== 'home' || !state.settings.content.pauseHomeAutoplay) return;
         video.muted = true;
-        // A trusted pointer/keyboard gesture marks this media element before
-        // the play event. Keep that explicit preview running until the user
-        // pauses it; background restarts never receive the marker.
         if (video.dataset.kfManualPlayback !== 'true') video.pause();
       });
     } catch {
-      // A detached or cross-origin media element is skipped.
     }
   }
 }
@@ -10165,8 +7657,6 @@ function cardContext(node) {
     if (slug) categories.push(slug.split(/[/?#]/, 1)[0]);
   }
 
-  // Badges are leaf elements with very short text. The cap keeps this cheap:
-  // this runs for every card on every apply cycle.
   const badges = [];
   for (const element of node.querySelectorAll?.('span, button, [class*="badge"], [data-testid*="badge"]') || []) {
     if (element.children.length > 0 || badges.length >= 24) continue;
@@ -10201,18 +7691,12 @@ function applyCardActions(node) {
   }
   const favorite = state.favorites.has(path);
   const dismissed = state.dismissed.has(path);
-  // Collect a channel without opening it. Category tiles and section links wear
-  // the same markup as channel cards, so the chip appears only where the card
-  // actually points at a channel.
   const slug = cardSlugFromPath(path);
   const label = escapeHtml(cardLabel(node));
   const inMulti = Boolean(slug) && multistreamHasSlug(slug);
   const multiChip = slug
     ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${inMulti ? 'Remove' : 'Add'} ${label} ${inMulti ? 'from' : 'to'} the multi-stream grid" title="${inMulti ? 'In Multi' : 'Add to Multi'}">${inMulti ? '⊟' : '⊞'}</button>`
     : '';
-  // Rebuilt only when what it renders changed. The apply cycle runs these over
-  // every card on a discovery page, and replacing the buttons each time both
-  // wasted the work and quietly detached the node under anyone mid-click.
   const signature = `${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
   if (actions.dataset.kfCardSignature === signature) return;
   actions.dataset.kfCardSignature = signature;
@@ -10227,12 +7711,6 @@ function multistreamHasSlug(slug) {
   return state.multistream.streams.some((entry) => entry.toLowerCase() === wanted);
 }
 
-/**
- * Repaint the card chips from the grid, without rebuilding a card.
- *
- * Another tab adding a channel has to show up here too, and the apply cycle is
- * not the right latency for a click that happened in a different window.
- */
 function syncCardMultiState() {
   for (const button of document.querySelectorAll('[data-kf-card-action="multi"]')) {
     const slug = button.dataset.kfCardSlug;
@@ -10243,8 +7721,6 @@ function syncCardMultiState() {
     button.setAttribute('aria-pressed', String(inMulti));
     button.textContent = inMulti ? '⊟' : '⊞';
     button.title = inMulti ? 'In Multi' : 'Add to Multi';
-    // The container's signature has to move with it, or the next apply cycle
-    // would see a stale stamp and rebuild the buttons this just patched.
     const actions = button.parentElement;
     if (actions?.dataset.kfCardSignature) {
       actions.dataset.kfCardSignature = actions.dataset.kfCardSignature.replace(
@@ -10259,9 +7735,6 @@ function syncCardMultiState() {
 }
 
 function handleCardAction(event) {
-  // The per-message dismiss shares this capture listener rather than adding a
-  // second one over the same document. It has to run before Kick's own
-  // handlers, which is what the capture phase is for.
   const hide = event.target.closest?.('[data-kf-chat-hide]');
   if (hide) {
     event.preventDefault();
@@ -10333,7 +7806,7 @@ function applySearchEnhancements() {
   const input = document.querySelector('[data-testid="search"], input[aria-label="Search"], input[type="search"]');
   let query = String(input?.value || '').trim();
   if (!input) {
-    try { query = new URL(location.href).searchParams.get('query') || ''; } catch { /* noop */ }
+    try { query = new URL(location.href).searchParams.get('query') || ''; } catch {   }
   }
   let meta = existing;
   if (!meta) {
@@ -10437,18 +7910,11 @@ function bindMediaElement(video) {
     if (state.settings.content.rememberVodPosition && Number.isFinite(video.duration) && video.duration > 0) {
       const saved = Number(state.mediaPreferences[positionKey]);
       if (Number.isFinite(saved) && saved > 0 && saved < video.duration - 3) {
-        try { video.currentTime = saved; } catch { /* player may not be seekable yet */ }
+        try { video.currentTime = saved; } catch {   }
       }
     }
     video.dataset.kfMediaRestored = 'true';
   };
-  /**
-   * Browser autoplay policy sets `muted = true` immediately after attach, which
-   * fires volumechange. Recording that persisted "muted" for the channel
-   * forever, so the feature eventually locked every stream silent. Ignore
-   * changes during the grace window, and specifically never persist a
-   * mute-only change inside it.
-   */
   const boundAt = Date.now();
   const saveVolume = () => {
     const elapsed = Date.now() - boundAt;
@@ -10456,11 +7922,6 @@ function bindMediaElement(video) {
     saveMediaPreference('volume', { volume: video.volume, muted: video.muted });
   };
 
-  /**
-   * Some players route audio through a gain node and never fire volumechange,
-   * so the event alone is not enough to keep the stored value truthful.
-   * Reconcile against the live element on a timer as well.
-   */
   const reconcile = () => {
     if (!video.isConnected) { clearInterval(timer); return; }
     if (Date.now() - boundAt < VOLUME_GRACE_MS) return;
@@ -10485,50 +7946,10 @@ function bindMediaElement(video) {
   if (video.readyState >= 1) restore();
 }
 
-/**
- * Restore quality where the player actually reads it.
- *
- * Driving Kick's menu with a plain `.click()` is very likely inert: none of the
- * selectors this used appear in the project's verified DOM contract, and Kick's
- * menu is reported to ignore synthetic clicks that are not a full pointer
- * sequence. Kick's player reads its starting quality from
- * `sessionStorage['stream_quality']` at init, so writing that before the player
- * initialises is the path that works, with the menu kept only as a fallback.
- *
- * Deliberately not restored from "whatever the player had a moment ago" — that
- * is how an ad-break or bandwidth downgrade becomes a permanent setting.
- */
 const QUALITY_SESSION_KEY = 'stream_quality';
 
-/**
- * The ladder Kick has been *observed* offering, newline-free and best first.
- *
- * "Always start at the highest quality" needs a name to write into the session
- * key before the player initialises, and the set differs per channel — so this
- * build learns the labels from Kick's own menu instead of hard-coding a
- * resolution list that would be wrong for a 720p streamer and stale the day
- * Kick adds a rung. One consequence worth stating plainly: the preference does
- * nothing until Kick's quality menu has rendered once, because until then there
- * is no honest value to write. This build will not open that menu on the user's
- * behalf to get there sooner.
- *
- * Stored in the media-preferences record, which is already registered, backed
- * up and reset with everything else, as a `|`-joined string so it survives the
- * primitives-only import normalizer. The key is global rather than per-channel:
- * it is a hint about what Kick's menu looks like, not a per-channel choice.
- */
 const QUALITY_LADDER_KEY = 'ladder:global';
 
-/**
- * The rung's own label, not everything inside the row.
- *
- * Kick renders the label in a `<span>` and hangs any entitlement badge beside
- * it in a sibling `<div>`, so on an anonymous session the top row's
- * `textContent` is the rung glued to the badge's sign-in prompt. That string
- * ranks perfectly well and is completely unusable: it is not a label the menu
- * will ever match on restore, and the rung behind it is one this session may
- * not have.
- */
 function qualityControlLabel(control) {
   const spans = control.querySelectorAll?.('span');
   if (!spans?.length) return '';
@@ -10544,16 +7965,6 @@ function qualityControlValue(control) {
     || '').trim();
 }
 
-/**
- * True when Kick attached anything beyond the rung's own label.
- *
- * That extra node is the badge Kick uses to say this session cannot pick this
- * rung — a sign-in prompt while signed out. Detected as "there is content
- * outside the label span" rather than by matching the badge copy, because the
- * copy is translated and the structure is not. Kick sets no `aria-disabled`
- * here, so this is the only marker there is; absent one, no claim is made
- * either way and the rung is treated as offered.
- */
 function qualityOptionGated(control) {
   const label = qualityControlLabel(control);
   if (!label) return false;
@@ -10561,38 +7972,13 @@ function qualityOptionGated(control) {
   return full.replace(/\s+/g, '') !== label.replace(/\s+/g, '');
 }
 
-/** The best option this build has seen Kick offer, or '' if it has seen none. */
-/**
- * The derivers the compatibility snapshot checks its expectations against.
- *
- * Passed in rather than imported: these live here, `compatibility.mjs` is
- * concatenated before this file, and handing them over keeps the same
- * expectations checkable offline against a fixture with stubs.
- */
-/**
- * Publish the compatibility verdict where anything can read it.
- *
- * `html[data-kf-derived]` names every derived value that broke, so a drift that
- * a probe report cannot see — hook matched, computed value did not — is visible
- * without opening a panel or reaching inside the bundle. The live gate asserts
- * on this, and it is the fastest way to answer "is the mod actually deriving
- * anything here" while debugging.
- */
 function publishCompatibility() {
   const root = document.documentElement;
   if (!root || !state.compatibility) return;
   const broken = (state.compatibility.derived || []).filter((entry) => entry.outcome === 'broken');
-  // Both halves of the sentence: which probe, and which derived value. "card"
-  // alone is what made the last one take a research pass to find.
   const verdict = broken.length
     ? broken.map((entry) => `${entry.probe}:${entry.id}`).join(' ')
     : 'ok';
-  // Written only on change. This runs on every apply cycle, and setting an
-  // attribute to the value it already holds still emits a mutation record.
-  // The document observer watches `childList`/`subtree` and not attributes, so
-  // this is not currently a feedback loop — the guard is here so it cannot
-  // become one the day that observer gains `attributes: true`, and so the
-  // attribute only changes when the verdict does.
   if (root.dataset.kfDerived !== verdict) root.dataset.kfDerived = verdict;
 }
 
@@ -10600,9 +7986,6 @@ function compatibilityDerivers() {
   return {
     cardSlug: (card) => cardSlugFromPath(cardPath(card)),
     playerContainer: (video) => playerContainerFor(video),
-    // A gated rung is one this session cannot pick — Kick offers it and refuses
-    // it — so it has no height to yield and 0 is the honest answer rather than
-    // a failure. Auto is 0 too, and the judge accepts it.
     qualityHeight: (control) => (qualityOptionGated(control)
       ? 0
       : Number(qualitySessionValue(qualityControlLabel(control)))),
@@ -10614,12 +7997,6 @@ function bestKnownQuality() {
   return typeof raw === 'string' ? bestQualityOption(raw.split('|')) : '';
 }
 
-/**
- * What the player should start at, or '' to leave Kick's own choice alone.
- * "Highest" wins over "remembered" when both are on — it is the more specific
- * instruction, and the alternative is a switch that appears to do nothing on
- * every channel the user has ever watched.
- */
 function desiredQuality() {
   if (state.settings.content.preferBestQuality) {
     const best = bestKnownQuality();
@@ -10638,20 +8015,10 @@ function applyQualitySessionKey() {
     if (sessionStorage.getItem(QUALITY_SESSION_KEY) === value) return;
     sessionStorage.setItem(QUALITY_SESSION_KEY, value);
   } catch {
-    // Session storage can be denied; the menu fallback below still applies.
   }
 }
 
-/**
- * Remember the rungs, ignoring `Auto` (rank 0) and anything unrankable (-1).
- * A single option is not a ladder — that is a menu still rendering — and the
- * entry is re-inserted rather than updated in place so the writer's 240-key
- * bound evicts stale channels ahead of it.
- */
 function recordQualityLadder(controls) {
-  // A badged rung is one Kick is offering to somebody else. Recording it would
-  // make "the best rung" a rung this session cannot select, which is the same
-  // entitlement inference the emote rules forbid.
   const offered = controls.filter((control) => !qualityOptionGated(control));
   const labels = [...new Set(offered.map(qualityControlValue))].filter((label) => qualityRank(label) > 0);
   if (labels.length < 2) return;
@@ -10666,8 +8033,6 @@ function applyQualityMemory() {
   const { rememberQuality, preferBestQuality } = state.settings.content;
   if (!rememberQuality && !preferBestQuality) return;
   applyQualitySessionKey();
-  // `[role="menuitemradio"]` is what Kick's own quality menu actually renders;
-  // the rest are legacy guesses kept only so an older shell still works.
   const controls = findAllProbe(document, 'qualityOption').elements;
   if (preferBestQuality) recordQualityLadder(controls);
   const wanted = desiredQuality();
@@ -10679,11 +8044,7 @@ function applyQualityMemory() {
       control.addEventListener('change', () => saveMediaPreference('quality', qualityControlValue(control)));
       control.addEventListener('click', () => saveMediaPreference('quality', qualityControlValue(control)));
     }
-    // Never click a rung Kick badged as unavailable to this session, whatever
-    // the stored preference says.
     if (qualityOptionGated(control)) continue;
-    // Kick renders these as `div[role="menuitemradio"]`, so the old
-    // `tagName === 'BUTTON'` test meant this fallback never fired at all.
     if (wanted && control.dataset.kfQualityRestored !== 'true' && value.toLowerCase() === wanted.toLowerCase() && control instanceof HTMLElement && !(control instanceof HTMLSelectElement)) {
       control.click();
       control.dataset.kfQualityRestored = 'true';
@@ -10701,22 +8062,6 @@ function applyMediaMemory() {
   applyQualityMemory();
 }
 
-/**
- * The element an overlay of ours may be appended to, which is never the video.
- *
- * Kick's `<video>` carries `id="video-player"`, and `closest()` tests the
- * element itself first — so the obvious `video.closest('[id*="player" i]')`
- * returns the video. Appending to a `<video>` is not an error: children of a
- * media element are fallback content and are never rendered, so the panel
- * silently does not exist. Measured on a live channel 2026-08-16, that had
- * disabled three features at once — the playback diagnostics panel, the
- * `[data-kf-player] video` contain rule, and the uptime chip added beside them.
- *
- * The walk starts at the parent for that reason, and prefers the nearest
- * ancestor that already establishes a containing block, so an absolutely
- * positioned overlay lands on the video box without this build restyling any
- * of Kick's own elements.
- */
 function playerContainerFor(video) {
   const start = video?.parentElement;
   if (!start) return null;
@@ -10733,7 +8078,6 @@ function playerOverlayHost(video) {
       if (position && position !== 'static') return node;
     }
   } catch {
-    // A stubbed or partial DOM: the container is still a correct answer.
   }
   return container;
 }
@@ -10847,9 +8191,6 @@ function stickerImageInfo(image, options = {}) {
   const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
   const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Emote';
   const src = rawSrc;
-  // Prefixed at the point of creation, not only on persist: the library is
-  // keyed by this string, so a raw key here would miss every stored entry and
-  // record a duplicate beside it.
   const key = platformStickerKey((id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320));
   return { key, id, name, src };
 }
@@ -10906,25 +8247,13 @@ function stickerNativeGroups(picker) {
   return groupsByButton;
 }
 
-/**
- * `lastSeen` alone is not worth a storage write on every apply cycle, so it is
- * only persisted once an hour has passed. The library can hold 2,400 entries
- * and this runs continuously on a live channel.
- */
 const STICKER_LAST_SEEN_WRITE_MS = 60 * 60 * 1000;
 
-/** Equality ignoring `lastSeen`, which moves constantly and means nothing alone. */
 function sameStickerRecord(a, b) {
   const strip = (entry) => { const { lastSeen, ...rest } = entry; return rest; };
   return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 }
 
-/**
- * Writing the whole ~0.5 MB library on every scan cycle was the jank source, so
- * merges from chat and the picker debounce the write. Direct user actions (pin,
- * hide, remove, assign) still persist synchronously through
- * saveStickerOrganization; only the continuous background merges are deferred.
- */
 let stickerPersistTimer = 0;
 function flushStickerPersist() {
   if (stickerPersistTimer) { clearTimeout(stickerPersistTimer); stickerPersistTimer = 0; }
@@ -10937,23 +8266,15 @@ function queueStickerPersist() {
   if (stickerPersistTimer) return;
   stickerPersistTimer = window.setTimeout(flushStickerPersist, 1500);
 }
-// A tab closing mid-debounce would otherwise lose its last observations.
 window.addEventListener('pagehide', () => { if (stickerPersistTimer) flushStickerPersist(); });
 
 function mergeStickerLibrary(observed) {
   let changed = false;
   const now = Date.now();
   for (const sticker of observed) {
-    // A removed emote stays removed: never re-record it, and stop the rewrite
-    // loop where a hidden entry was re-merged and re-persisted every cycle.
     if (state.stickerPreferences.hidden.has(sticker.key)) continue;
     const existing = state.stickerPreferences.library.get(sticker.key);
     const nativeGroups = [...new Set([...(existing?.nativeGroups || []), ...(sticker.nativeGroups || [])])].slice(0, 20);
-    // `available` is the native picker's signal; `access` is the catalog's,
-    // already decided by `catalogEmoteAccess`. Reading only the first meant a
-    // catalog entry that said 'available' — every Global and Emoji emote, and
-    // since entitlement landed, every emote the account actually owns — fell
-    // through to 'locked' and was filed as subscriber-only.
     const incomingAccess = sticker.available || sticker.access === 'available'
       ? 'available'
       : sticker.access === 'observed'
@@ -10962,8 +8283,6 @@ function mergeStickerLibrary(observed) {
           ? 'channel'
           : 'locked';
     const access = preferredStickerAccess(existing?.access, incomingAccess);
-    // Nothing here calls Kick. The record is built from what the page and the
-    // catalog already showed, so no claim is automated and no endpoint replayed.
     const record = recordStickerObservation(existing, {
       key: sticker.key,
       id: sticker.id,
@@ -10975,15 +8294,9 @@ function mergeStickerLibrary(observed) {
       requiresFollow: sticker.requiresFollow === true || existing?.requiresFollow === true,
       followed: sticker.followed === true || existing?.followed === true,
       subscribersOnly: sticker.subscribersOnly === true || existing?.subscribersOnly === true,
-      // Where Kick will accept it, which is not what its access level says: a
-      // free channel emote is `channel` access and works in exactly one chat,
-      // while an owned subscriber emote works in all of them. Absent on records
-      // written before this was known, which reads as "not established".
       ...(sticker.usableEverywhere === undefined ? {} : { usableEverywhere: sticker.usableEverywhere === true }),
       ...(sticker.usableHere === undefined ? {} : { usableHere: sticker.usableHere === true }),
     }, now);
-    // `lastSeen` moves on every pass, so comparing it would rewrite the whole
-    // library on every apply cycle. Only a real change is worth a write.
     if (!existing || !sameStickerRecord(existing, record)) {
       state.stickerPreferences.library.set(sticker.key, record);
       changed = true;
@@ -11058,9 +8371,6 @@ function annotateChatSticker(image, sticker) {
   image.setAttribute('role', 'button');
   image.setAttribute('tabindex', '0');
   image.setAttribute('aria-label', `Save ${sticker.name} to Kick Focus favorites`);
-  // No `title`: the hover card replaces it, and a native tooltip would surface
-  // on top of it a second later saying less. The clear path still removes any
-  // title left by an earlier build.
   image.removeAttribute('title');
 }
 
@@ -11100,36 +8410,11 @@ function flushChatStickerScan() {
   if (observed.size) mergeStickerLibrary(observed.values());
 }
 
-// ---------------------------------------------------------------------------
-// Transient surfaces in the top layer
-//
-// Two surfaces below — the emote hover card and the emote completion list —
-// are body children that place themselves by hand. That is correct only for as
-// long as nothing between them and the viewport establishes a containing block
-// for fixed descendants, and only for as long as this build wins every z-index
-// it is entered into. The top layer is subject to neither.
-// ---------------------------------------------------------------------------
 
-/** The element currently lending its name to each anchored surface. */
 const ANCHORED_ELEMENTS = new Map();
 const EMOTE_CARD_ANCHOR = '--kf-emote-card';
 const EMOTE_COMPLETION_ANCHOR = '--kf-emote-completion';
 
-/**
- * Whether this engine can put an anchored surface in the top layer.
- *
- * Measured in Chrome 151 on 2026-08-18, which is why this path exists at all:
- * giving an ancestor `filter: brightness(1)` moved a `position: fixed` child by
- * exactly that ancestor's offset — (100,100) became (400,300) — while the same
- * element in the top layer did not move. Kick sets no such filter today, so
- * this is insurance against a page change rather than a fix for a live defect.
- *
- * Every property the path uses is detected, never assumed. The names churned
- * during standardisation: `inset-area` became `position-area`, and
- * `position-try-options` became `position-try-fallbacks`. Chrome 151 answers
- * false for both older spellings, so a build that asked for the wrong name
- * would take the fallback forever and look like it simply did not work.
- */
 let anchoredPopoverSupport = null;
 function canAnchorPopover() {
   if (anchoredPopoverSupport !== null) return anchoredPopoverSupport;
@@ -11146,15 +8431,6 @@ function canAnchorPopover() {
   return anchoredPopoverSupport;
 }
 
-/**
- * Mark a host as belonging in the top layer, if this engine has one.
- *
- * `manual` rather than `auto` is what keeps the keyboard promise: an auto
- * popover installs a close watcher, so Escape would be consumed here instead of
- * reaching Kick's composer, and a click anywhere would light-dismiss — which
- * for the hover card means the card fighting the click that was meant for chat.
- * Manual popovers move no focus and watch no keys.
- */
 function markAnchoredSurface(host) {
   if (!canAnchorPopover()) return false;
   host.setAttribute('popover', 'manual');
@@ -11162,23 +8438,9 @@ function markAnchoredSurface(host) {
   return true;
 }
 
-/**
- * Point an open surface at the element it describes.
- *
- * Both properties are set inline, and that is the whole trick. Anchor names are
- * tree-scoped, so a `position-anchor` declared inside the host's own shadow
- * stylesheet resolves against the shadow tree — where a name set on a page
- * element does not exist. Measured in Chrome 151 on 2026-08-18: the
- * shadow-scoped spelling does not throw and does not warn, it simply does not
- * anchor, leaving the card parked in the corner of the viewport. An inline
- * style is in the document tree, where the anchor's name actually lives.
- * `scripts/check.mjs` gates against the shadow-scoped spelling coming back.
- */
 function anchorSurfaceTo(host, anchor, name) {
   if (host?.dataset?.kfAnchored !== 'true' || !anchor?.style) return false;
   const previous = ANCHORED_ELEMENTS.get(name);
-  // One name, one element: leaving it behind on a chat node that scrolls away
-  // would make every card after it resolve against a stale anchor.
   if (previous && previous !== anchor) previous.style.removeProperty('anchor-name');
   ANCHORED_ELEMENTS.set(name, anchor);
   anchor.style.setProperty('anchor-name', name);
@@ -11199,8 +8461,6 @@ function openAnchoredSurface(host) {
     if (!host.matches(':popover-open')) host.showPopover();
     return true;
   } catch {
-    // A disconnected host, or an engine that took the attribute and not the
-    // method. Either way the hand-positioned path below is still correct.
     return false;
   }
 }
@@ -11210,18 +8470,9 @@ function closeAnchoredSurface(host) {
   try {
     if (host.matches(':popover-open')) host.hidePopover();
   } catch {
-    // Already closed.
   }
 }
 
-/**
- * One hover card for the whole chat, reused.
- *
- * Delegated rather than per-emote: a busy chat replaces its messages
- * continuously, so a listener and an element per emote would be created and
- * discarded hundreds of times a minute. Kept in its own shadow root for the
- * same reason the rest of the interface is — Kick's chat CSS cannot reach in.
- */
 const TOOLTIP_CSS = `
   :host {
     position: fixed;
@@ -11288,8 +8539,6 @@ function hideChatEmoteTooltip() {
 
 function showChatEmoteTooltip(image) {
   const key = image?.dataset?.kfChatEmoteSave;
-  // Keyed off the save affordance, so an unrelated injected image never gets a
-  // card even when it happens to sit in a chat message.
   if (!key) return;
   const sticker = state.stickerPreferences.library.get(key) || chatStickerInfo(image);
   const lines = emoteTooltipText(sticker, state.live.collisions, state.stickerPreferences.library.has(key));
@@ -11297,19 +8546,12 @@ function showChatEmoteTooltip(image) {
   const { host, card } = chatEmoteTooltipHost();
   card.replaceChildren(...lines.map((line, index) => {
     const row = document.createElement('div');
-    // The first line is the emote's own name — user data, never translated, or
-    // an emote called "View" would be renamed by a dictionary hit. The rest is
-    // this build's prose; composed lines fall through the forward lookup.
     row.textContent = index === 0 ? line : tr(line);
     if (index > 0 && line.startsWith('Name shadowed')) row.dataset.warn = 'true';
     return row;
   }));
   host.dataset.kfOpen = 'true';
-  // The top layer places it against the emote itself: no measure, no clamp, no
-  // second pass, and nothing Kick can clip it with.
   if (anchorSurfaceTo(host, image, EMOTE_CARD_ANCHOR) && openAnchoredSurface(host)) return;
-  // Otherwise, clamped after the card is measurable, so a wide entry near an
-  // edge is pulled back on screen instead of being cut off by the viewport.
   const anchor = image.getBoundingClientRect();
   const box = host.getBoundingClientRect();
   const left = Math.min(Math.max(8, anchor.left), Math.max(8, window.innerWidth - box.width - 8));
@@ -11443,12 +8685,6 @@ function stickerDescriptors(picker) {
   return [...descriptors.values()];
 }
 
-/**
- * The rarity of a collectible, when the join was confident enough to say.
- *
- * Returns an empty string otherwise, so a tile with unresolved rarity renders
- * exactly as it did before this feature existed.
- */
 function rarityBadge(descriptor) {
   if (!state.settings.content.showEmoteRarity || !state.live.rarity) return '';
   const match = state.live.rarity.matched.find((entry) => entry.emote.id === descriptor.id);
@@ -11456,12 +8692,6 @@ function rarityBadge(descriptor) {
   return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="Kick rarity, matched by ${escapeHtml(match.basis)}">${escapeHtml(match.rarity)}</span>`;
 }
 
-/**
- * Collectible emotes can be 2:1 and every third-party renderer squashes them,
- * because the aspect rule lives only in Kick's own client. Measured from the
- * loaded image rather than assumed from the name, since the prefix alone would
- * stretch ordinary square collectibles.
- */
 function emoteImageAttrs(descriptor) {
   return isCollectibleEmote(descriptor.name)
     ? ' data-kf-emote-measure="true"'
@@ -11485,12 +8715,8 @@ function stickerProxyMarkup(descriptor) {
   const hidden = state.stickerPreferences.hidden.has(descriptor.key);
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
-  // Reorder controls only where order is visible and means something. Kick
-  // ranks nothing, so this is the only place an explicit order exists.
   const ordering = pinned && state.stickerPreferences.view === 'pinned';
   const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
-  // The state stamp is what lets a favorite toggle patch this tile in place
-  // instead of re-serialising the window it sits in.
   return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-state="${pinned}:${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
     <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use emote ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <div data-kf-sticker-tools>
@@ -11590,8 +8816,6 @@ function renderStickerOrganizer() {
   const search = stickerSearchInput(picker);
   if (search && search.dataset.kfStickerSearchBound !== 'true') {
     search.dataset.kfStickerSearchBound = 'true';
-    // Debounced: every keystroke used to re-filter and re-serialise the whole
-    // library, so typing a five-letter name rebuilt the grid five times.
     search.addEventListener('input', () => {
       clearTimeout(state.runtime.stickerSearchTimer);
       state.runtime.stickerSearchTimer = window.setTimeout(() => {
@@ -11604,8 +8828,6 @@ function renderStickerOrganizer() {
   if (!organizer) {
     organizer = document.createElement('section');
     organizer.dataset.kfStickerOrganizer = 'true';
-    // A stable skeleton: the chrome and the grid are rebuilt on their own
-    // signatures, so a favorite toggle never re-serialises the whole library.
     const chrome = document.createElement('div');
     chrome.dataset.kfStickerChrome = 'true';
     const gridHost = document.createElement('div');
@@ -11622,8 +8844,6 @@ function renderStickerOrganizer() {
   const matches = (descriptor) => (!query || descriptor.name.toLowerCase().includes(query))
     && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
   const allVisible = descriptors.filter(matches);
-  // Favorites render in their explicit order, not in picker order — that
-  // ordering is the whole point, and the picker's own order is Kick's.
   const favoriteOrder = favoriteKeysInOrder();
   const byFavoriteOrder = (left, right) => favoriteOrder.indexOf(left.key) - favoriteOrder.indexOf(right.key);
   const quickFavorites = descriptors
@@ -11636,16 +8856,10 @@ function renderStickerOrganizer() {
       : allVisible;
   const unavailableCount = unavailableStickerCount(picker, descriptors);
 
-  // Usage counts are keyed by Kick's emote id; the organizer is keyed by
-  // storage key, so the two shelves are a lookup rather than a second store.
   const byId = new Map();
   for (const descriptor of descriptors) {
     if (descriptor.id && !byId.has(String(descriptor.id))) byId.set(String(descriptor.id), descriptor);
   }
-  // Presentational, over counts this build already records: these two shelves
-  // order emotes the user sent by hand. Nothing here sends, repeats, or
-  // schedules a send — the hold-to-spam, turbo and pyramid features other
-  // clients pair with a Most Used shelf are deliberately absent.
   const fromUsage = (ranked) => ranked
     .map((entry) => byId.get(String(entry.id)))
     .filter((descriptor) => descriptor && !state.stickerPreferences.hidden.has(descriptor.key))
@@ -11658,9 +8872,6 @@ function renderStickerOrganizer() {
   const gridHost = organizer.querySelector('[data-kf-sticker-grid-host]');
   const view = state.stickerPreferences.view;
 
-  // The chrome and the grid carry separate signatures. Toggling one favorite
-  // changes a toolbar count and a shelf, both cheap; re-serialising a library
-  // at the 2400 cap to show it is not, and the split is what stops that.
   const signature = [
     view,
     state.stickerPreferences.activeGroup,
@@ -11672,16 +8883,12 @@ function renderStickerOrganizer() {
     mostUsed.map((descriptor) => descriptor.key).join(','),
     recent.map((descriptor) => descriptor.key).join(','),
     String(unavailableCount),
-    // Order is part of the signature: reordering changes nothing else, so
-    // without it the shelf would keep the stale arrangement on screen.
     favoriteOrder.join(','),
     [...state.stickerPreferences.hidden].join(','),
     state.stickerPreferences.groups.map((group) => `${group.id}:${group.name}`).join(','),
     [...state.stickerPreferences.assignments].map(([key, groupId]) => `${key}:${groupId}`).join(','),
   ].join('\u0001');
   if (chrome.dataset.kfStickerSignature === signature) {
-    // The chrome is current; the grid may still need a different window, and a
-    // pinned/removed tile inside the current one needs its own state refreshed.
     renderStickerGrid(gridHost, visible, view);
     restoreStickerGridScroll(organizer, previousGridScrollTop);
     return;
@@ -11735,19 +8942,12 @@ function renderStickerOrganizer() {
   measureEmoteAspect(organizer);
 }
 
-/** How many columns the auto-fill grid resolves to at its current width. */
 function stickerGridColumns(grid) {
   const width = grid?.clientWidth || 0;
   if (!width) return 1;
   return Math.max(1, Math.floor((width + STICKER_GRID_GAP) / (STICKER_TILE_MIN_WIDTH + STICKER_GRID_GAP)));
 }
 
-/**
- * One grid item standing in for a whole block of rows nobody can see.
- *
- * Not virtualization: the browser keeps doing the scrolling, and the spacer's
- * height is what keeps the scrollbar honest about how much library is there.
- */
 function stickerSpacerMarkup(count, columns, side) {
   const rows = Math.ceil(Math.max(0, count) / Math.max(1, columns));
   if (rows <= 0) return '';
@@ -11755,14 +8955,6 @@ function stickerSpacerMarkup(count, columns, side) {
   return `<div data-kf-sticker-spacer="${side}" aria-hidden="true" style="height:${height}px"></div>`;
 }
 
-/**
- * Render the window of the grid that is actually near the viewport.
- *
- * A library at the cap is 2400 tiles, each a button, an image and two controls.
- * Serialising all of them cost more than the picker itself, so what goes in the
- * DOM is one window plus two spacers, and the window moves when the viewer gets
- * within a few rows of its edge.
- */
 function renderStickerGrid(gridHost, visible, view) {
   if (view === 'native') {
     setStickerGridHost(gridHost, 'native', '<div data-kf-sticker-empty>Kick’s native emote groups are shown below.</div>');
@@ -11781,7 +8973,6 @@ function renderStickerGrid(gridHost, visible, view) {
   const signature = [view, String(visible.length), String(columns), String(slice.start), String(slice.end),
     slice.items.map((descriptor) => descriptor.key).join(',')].join('\u0001');
   if (gridHost.dataset.kfStickerGridSignature === signature) {
-    // Same tiles, possibly different state on one of them.
     patchStickerTileStates(gridHost);
     return;
   }
@@ -11793,8 +8984,6 @@ function renderStickerGrid(gridHost, visible, view) {
   }${slice.items.map(stickerProxyMarkup).join('')}${
     stickerSpacerMarkup(slice.after, columns, 'after')
   }</div>`);
-  // Replacing the grid element resets its scroll; the window only moved because
-  // the viewer scrolled, so putting it back is what makes the swap invisible.
   const next = gridHost.querySelector('[data-kf-sticker-grid]');
   if (next && scrollTop !== null) next.scrollTop = scrollTop;
   measureEmoteAspect(gridHost);
@@ -11807,13 +8996,6 @@ function setStickerGridHost(gridHost, signature, markup) {
   setMarkup(gridHost, markup);
 }
 
-/**
- * Bring rendered tiles up to date without re-serialising the grid.
- *
- * Favoriting or removing an emote changes two glyphs and an attribute on one
- * tile. Rebuilding the window to show that would throw away every image the
- * browser had already decoded, so the tile is patched where it stands.
- */
 function patchStickerTileStates(gridHost) {
   for (const tile of gridHost.querySelectorAll('[data-kf-sticker-item]')) {
     const key = tile.dataset.kfStickerKey;
@@ -11840,20 +9022,13 @@ function patchStickerTileStates(gridHost) {
   }
 }
 
-/**
- * Move the window when the viewer approaches its edge.
- *
- * Scroll does not bubble, so this is bound in the capture phase on the host
- * that outlives every grid rebuild — binding to the grid itself would be lost
- * the first time the window moved.
- */
 function bindStickerGridScroll(gridHost) {
   gridHost.addEventListener('scroll', (event) => {
     const grid = event.target;
     if (!grid?.dataset || grid.dataset.kfStickerTotal === undefined) return;
     const total = Number(grid.dataset.kfStickerTotal) || 0;
     const [start, end] = String(gridHost.dataset.kfStickerWindow || '0-0').split('-').map(Number);
-    if (end - start >= total) return; // everything is rendered; nothing to move
+    if (end - start >= total) return;
     const columns = stickerGridColumns(grid);
     const rowHeight = STICKER_TILE_HEIGHT + STICKER_GRID_GAP;
     const first = Math.floor(grid.scrollTop / rowHeight) * columns;
@@ -11884,8 +9059,6 @@ function resetStickerPreferences(options = {}) {
   if (keepLibrary) persistStickerPreferences();
   else {
     gmDelete(STICKER_PREFERENCES_KEY);
-    // The database holds the fuller copy, so deleting only the seed would let
-    // the discarded library walk straight back in on the next hydrate.
     libraryStore.clear().catch((error) => logAppError('library reset', error));
   }
 }
@@ -11916,8 +9089,6 @@ function handleStickerAction(event) {
   }
   if ((action === 'pin' || action === 'hide') && key) rememberStickerGridScroll(target);
   if (action === 'pin' && key) {
-    // Removing clears whichever scope this channel actually sees it through, so
-    // un-favoriting a global from a channel page does not silently do nothing.
     const scope = isFavorited(key) ? favoriteScopeOf(key) : newFavoriteChannel();
     state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferences.favorites, key, scope);
     if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
@@ -11937,8 +9108,6 @@ function handleStickerAction(event) {
     if (state.stickerPreferences.hidden.has(key)) state.stickerPreferences.hidden.delete(key);
     else {
       state.stickerPreferences.hidden.add(key);
-      // Hidden wins over favorited in every scope, or the shelf would keep
-      // offering an emote the user just removed.
       state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
     }
     persistStickerPreferences();
@@ -11964,9 +9133,6 @@ function handleStickerAction(event) {
     }
   }
   applySettingsAttributes();
-  // Straight to the organizer rather than through the apply cycle: a toggle
-  // changes the chrome and one tile, and renderStickerOrganizer now patches
-  // that tile in place instead of re-serialising the whole window.
   renderStickerOrganizer();
   scheduleApply(0);
 }
@@ -12090,7 +9256,6 @@ function chatKeywordsForChannel() {
 const KEYWORD_HIGHLIGHT_NAME = 'kick-focus-keyword';
 const KEYWORD_RANGE_LIMIT = 400;
 
-/** The Custom Highlight registry, or null where the engine has none. */
 function highlightRegistry() {
   try {
     return typeof Highlight === 'function' && typeof CSS !== 'undefined' && CSS.highlights ? CSS.highlights : null;
@@ -12100,20 +9265,9 @@ function highlightRegistry() {
 }
 
 function clearKeywordHighlight() {
-  try { highlightRegistry()?.delete(KEYWORD_HIGHLIGHT_NAME); } catch { /* nothing registered */ }
+  try { highlightRegistry()?.delete(KEYWORD_HIGHLIGHT_NAME); } catch {   }
 }
 
-/**
- * Mark the messages that match, and paint the matched words themselves.
- *
- * The row marker is an attribute Kick's tree already tolerated. The words are
- * new, and they cost the tree nothing: the Custom Highlight API paints ranges
- * from a registry the browser owns, so not one node is written into chat —
- * no <mark> for React to reconcile against, nothing to undo when a message is
- * recycled, and a message that Kick re-renders simply gets fresh ranges on
- * the next cycle. Feature-detected; without the API the row marker alone is
- * what it always was.
- */
 function applyChatHighlights() {
   const messages = document.querySelector('[data-testid="chatroom-messages"], #chatroom-messages');
   const registry = highlightRegistry();
@@ -12123,9 +9277,6 @@ function applyChatHighlights() {
   }
   const keywords = state.settings.content.chatHighlights ? chatKeywordsForChannel() : [];
   const ranges = [];
-  // Everything the comfort switches need that is the same for every row, worked
-  // out once. Inside the loop these are reads of a local, not of settings, a
-  // username out of the header, or a channel slug off the URL.
   const comfort = {
     settings: state.settings.content,
     people: state.settings.content.chatPriorityPeople || [],
@@ -12150,27 +9301,9 @@ function applyChatHighlights() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Chat comfort
-//
-// Five switches, each independent, each off until asked for, and all of them
-// carried by the pass that already walks chat once per apply cycle rather than
-// by a second walk of the same nodes.
-// ---------------------------------------------------------------------------
 
-/**
- * Kick renders a timestamp on every message already and hides it behind its own
- * custom property, measured in a capture of the live chatroom:
- * `<span style="display: var(--chatroom-timestamps-display)">06:43 PM</span>`.
- *
- * So the switch reveals Kick's timestamp rather than writing one. That matters
- * for more than tidiness: Kick's span holds the time the message was *sent*,
- * and anything this build wrote would hold the time it was first *seen*, which
- * is a different number and a wrong one for anybody scrolling back.
- */
 const CHAT_TIMESTAMP_VAR = '--chatroom-timestamps-display';
 
-/** The author button, by what it is rather than by a class that will change. */
 const CHAT_AUTHOR_PROBES = ['button[data-prevent-expand="true"]', 'button.font-bold', 'button'];
 
 function chatMessageAuthor(node) {
@@ -12182,7 +9315,6 @@ function chatMessageAuthor(node) {
   return '';
 }
 
-/** The message itself: the row's text with the author's own name taken back off. */
 function chatMessageText(node, author) {
   const raw = String(node.textContent || '').replace(/\s+/g, ' ').trim();
   if (!author) return raw;
@@ -12190,19 +9322,10 @@ function chatMessageText(node, author) {
   return at === -1 ? raw : raw.slice(at + author.length).replace(/^\s*:\s*/, '').trim();
 }
 
-/** The id a deletion would later arrive with, or '' when the row carries none. */
 function chatMessageId(node) {
   return String(node.dataset?.messageId || node.dataset?.chatEntry || node.dataset?.index || '').trim();
 }
 
-/**
- * A short tone, synthesised rather than shipped.
- *
- * No audio file means no asset to fetch, nothing to cache, and nothing that can
- * be pointed at a remote host later. Built on the click, torn down after it, and
- * quiet if the engine refuses an AudioContext without a gesture — a browser
- * declining to make noise is not an error worth logging.
- */
 function playMentionTone() {
   try {
     const Ctor = window.AudioContext || window.webkitAudioContext;
@@ -12220,40 +9343,21 @@ function playMentionTone() {
     oscillator.stop(context.currentTime + 0.2);
     oscillator.onended = () => { context.close?.(); };
   } catch {
-    // An engine that will not make a sound without a gesture is not a failure.
   }
 }
 
-/** The names that count as a mention: your own, and anyone you asked to notice. */
 function mentionNames() {
   const people = state.settings.content.chatPriorityPeople || [];
   const own = liveLocalUsername();
   return own ? [...people, own] : [...people];
 }
 
-/**
- * One message, given everything the caller already worked out about it.
- *
- * Called from inside the highlight walk rather than from a walk of its own:
- * this runs over every rendered message on every apply cycle, and a second
- * `querySelectorAll` over the same rows is the kind of cost that turns a busy
- * channel into a slow one.
- */
 function applyChatComfortToMessage(node, { keywordHit, settings, people, own, channel, now }) {
   const id = chatMessageId(node);
-  // `people` rather than the setting: a settings record written by an older
-  // build, or one arriving through the import path, can be missing a key this
-  // version added, and reading `.length` off that undefined threw inside the
-  // apply cycle — which took keyword highlighting and the header control down
-  // with it, because everything after the throw in that cycle never ran.
   const author = (people.length > 0 || settings.chatHistory || settings.chatMentionSound)
     ? chatMessageAuthor(node)
     : '';
   const priority = people.length > 0 && isPriorityPerson(people, author);
-  // Written only when the feature is on. Marking every row "false" for a reader
-  // who listed nobody is an attribute write per message per cycle on a tree
-  // React owns, and it breaks the promise the rest of this build keeps: chat
-  // markup is left exactly as Kick sent it unless something asked otherwise.
   if (people.length > 0) {
     if (node.dataset.kfChatPriority !== String(priority)) node.dataset.kfChatPriority = String(priority);
   } else if (node.dataset.kfChatPriority) {
@@ -12264,8 +9368,6 @@ function applyChatComfortToMessage(node, { keywordHit, settings, people, own, ch
     const hidden = id !== '' && state.chatComfort.hidden.has(id);
     if (node.dataset.kfChatHidden !== String(hidden)) {
       node.dataset.kfChatHidden = String(hidden);
-      // The replacement line is written as an attribute the stylesheet reads,
-      // so the row keeps its shape and the words still translate.
       if (hidden) node.dataset.kfHiddenNote = tr('Hidden by you');
       else delete node.dataset.kfHiddenNote;
     }
@@ -12313,17 +9415,6 @@ function applyChatComfortToMessage(node, { keywordHit, settings, people, own, ch
   playMentionTone();
 }
 
-/**
- * Reveal or re-hide Kick's own timestamps, and keep the seen-message sets from
- * growing without bound.
- *
- * The two sets exist to make the per-message work idempotent — a message must
- * be recorded once and may only ring once — and Kick recycles rows as chat
- * scrolls, so without a ceiling they would be the one part of this feature that
- * grows all session. Cleared wholesale rather than trimmed: they are an
- * optimisation, and re-recording a handful of messages after a clear is
- * cheaper than tracking their ages.
- */
 function syncChatComfortShell(messages) {
   const settings = state.settings.content;
   if (messages) {
@@ -12337,7 +9428,6 @@ function syncChatComfortShell(messages) {
   }
 }
 
-/** Hide one message locally, for this session and this reader only. */
 function hideChatMessage(id) {
   if (!id) return;
   state.chatComfort.hidden.add(id);
@@ -12352,7 +9442,6 @@ function hideChatMessage(id) {
   }]);
 }
 
-/** Forget a message this session recorded, because Kick removed it. */
 function forgetChatMessage(id) {
   if (!state.chatComfort.rows.length) return;
   state.chatComfort.rows = dropChatMessage(state.chatComfort.rows, id);
@@ -12374,13 +9463,6 @@ function renderChatHistoryResults() {
   localizeInterface();
 }
 
-/**
- * Hand the log over, once, because somebody pressed the button.
- *
- * A download rather than a clipboard write or an upload: it stays on the
- * machine, it is a file the reader can look at before doing anything with it,
- * and there is no path here that sends chat anywhere.
- */
 function exportChatHistory() {
   const rows = state.chatComfort.rows;
   if (!rows.length) {
@@ -12398,7 +9480,6 @@ function exportChatHistory() {
   showToast(trf('Saved {n} messages from this session.', { n: rows.length }), false);
 }
 
-/** Drop everything this session recorded, without waiting for the caps. */
 function clearChatHistory() {
   state.chatComfort.rows = [];
   state.chatComfort.seen.clear();
@@ -12406,7 +9487,6 @@ function clearChatHistory() {
   showToast('Session chat log cleared.', false);
 }
 
-/** Ranges over the text nodes of one message where a keyword occurs. */
 function collectKeywordRanges(root, keywords, ranges) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let textNode = walker.nextNode(); textNode; textNode = walker.nextNode()) {
@@ -12421,33 +9501,6 @@ function collectKeywordRanges(root, keywords, ranges) {
   }
 }
 
-/**
- * How long this stream has been live, which Kick's own page never says.
- *
- * The value rides along on the channel payload the live surface already reads,
- * so this costs no request: `state.live.channel.startedAt`. It ticks locally
- * from that one timestamp rather than re-reading anything, and it removes
- * itself the moment the channel is offline or the route changes — an uptime
- * left on screen for a stream that ended is worse than no uptime.
- */
-/**
- * When the current stream started, from whichever source can answer.
- *
- * The channel API is preferred and is not depended on: Kick's bot defence
- * answers 429 to it often enough that a feature reading only that does nothing
- * at all for some sessions — which is exactly how this shipped broken and how
- * the live gate caught it. Kick's own `VideoObject` in the page carries the
- * same start, needs no request, and is absent on an offline channel, so its
- * absence is the liveness answer.
- *
- * The linked-data fallback is confined to a bare channel page. A VOD lives at
- * `/{slug}/videos/{id}`, which `routeKind` also calls `channel`, so without the
- * path check an offline recording would be timed as a live stream. (Measured
- * 2026-08-18: a VOD page carries no `VideoObject` at all — only `Organization`
- * and `WebSite` — so the guard is belt and braces rather than the only thing
- * standing between this and a wrong answer. It stays: the absence is Kick's
- * current markup, not a contract.)
- */
 function streamStartedAt() {
   const channel = state.live.channel;
   if (channel?.isLive && channel.startedAt) return channel.startedAt;
@@ -12458,7 +9511,6 @@ function streamStartedAt() {
   );
 }
 
-/** Prefer the player Kick is actually painting over hidden preload media. */
 function primaryVideo() {
   const videos = [...document.querySelectorAll('video')];
   for (const video of videos) {
@@ -12467,7 +9519,6 @@ function primaryVideo() {
       const style = getComputedStyle(video);
       if (box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden') return video;
     } catch {
-      // A partial DOM still gets the first media element as the fallback below.
     }
   }
   return videos[0] || null;
@@ -12492,8 +9543,6 @@ function applyStreamUptime() {
   if (!chip) {
     chip = document.createElement('div');
     chip.dataset.kfUptime = 'true';
-    // Announced, not decorative: a screen reader user has no other way to know
-    // this text exists, and it changes every second — polite, never assertive.
     chip.setAttribute('role', 'status');
     chip.setAttribute('aria-live', 'off');
     owner.append(chip);
@@ -12514,20 +9563,6 @@ function applyStreamUptime() {
   if (!state.uptimeTimer) state.uptimeTimer = window.setInterval(update, 1000);
 }
 
-/**
- * How long Kick will keep this recording.
- *
- * Kick deletes VODs after 7 days, or 30 for a verified channel, offers no
- * download to anyone including the broadcaster, and shows the deadline
- * nowhere — the largest documented gap a read-only client can close.
- *
- * Everything here is conditional on knowing, and knowing is not assumed at any
- * step: `state.live.vod` is null unless the recording was found in Kick's own
- * list, and `verified` must be a real boolean before `vodExpiry` will answer.
- * A missing answer renders nothing. Guessing between 7 and 30 would put a
- * confident wrong date on screen, which is worse than the silence Kick already
- * offers.
- */
 function applyVodExpiry() {
   const existing = document.querySelector('[data-kf-vod-expiry]');
   const vod = state.live.vod;
@@ -12547,8 +9582,6 @@ function applyVodExpiry() {
   if (!chip) {
     chip = document.createElement('div');
     chip.dataset.kfVodExpiry = 'true';
-    // Announced like the uptime chip: a screen reader user has no other way to
-    // learn this exists. It changes by the hour at most, so polite is enough.
     chip.setAttribute('role', 'status');
     chip.setAttribute('aria-live', 'off');
     owner.append(chip);
@@ -12630,16 +9663,7 @@ function clearRemoteBlocklist() {
   scheduleApply(0);
 }
 
-/**
- * Fetch text from a URL using the best available transport:
- *   1. Companion background (CORS-free, service-worker fetch)
- *   2. GM_xmlhttpRequest (CORS-free, userscript manager)
- *   3. Page-realm fetch (subject to CORS, last resort)
- *
- * Returns { text, method } on success; throws on failure.
- */
 function fetchBlocklistText(href) {
-  // Strategy 1: companion extension background fetch (CORS-free).
   if (companionInfo().active) {
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => reject(new Error('companion timeout')), 10000);
@@ -12659,14 +9683,11 @@ function fetchBlocklistText(href) {
     });
   }
 
-  // Strategy 2: GM_xmlhttpRequest (CORS-free, userscript sandbox).
   if (typeof GM_xmlhttpRequest === 'function') {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: 'GET',
         url: href,
-        // No ambient cookies: @connect * would otherwise let a blocklist URL on
-        // any host receive the user's credentials for that host.
         anonymous: true,
         timeout: 8000,
         onload(response) {
@@ -12679,7 +9700,6 @@ function fetchBlocklistText(href) {
     });
   }
 
-  // Strategy 3: page-realm fetch (subject to CORS).
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8000);
   return fetch(href, { credentials: 'omit', cache: 'no-store', signal: controller.signal })
@@ -12756,9 +9776,6 @@ function applyContentFilters() {
   const settings = state.settings.content;
   for (const node of mainCardCandidates()) applyCardActions(node);
 
-  // Decide first, apply second. Filtering is scored across the whole grid so a
-  // run that would hide most of the page can be suspended before anything
-  // disappears.
   const scored = [];
   for (const node of cardCandidates()) {
     delete node.dataset.kfFiltered;
@@ -12768,7 +9785,7 @@ function applyContentFilters() {
     const labels = detectContentLabels(node.textContent, context);
     const link = node.matches?.('a[href]') ? node : node.querySelector?.('a[href]');
     let path = '';
-    try { path = observedChannelPath(link ? new URL(link.href, location.origin).pathname : ''); } catch { /* noop */ }
+    try { path = observedChannelPath(link ? new URL(link.href, location.origin).pathname : ''); } catch {   }
     if (labels.casino && path) state.casinoPaths.add(path);
     if (path && state.casinoPaths.has(path)) labels.casino = true;
     node.dataset.kfWatched = String(Boolean(path && state.watched.has(path)));
@@ -12793,11 +9810,6 @@ function applyContentFilters() {
   if (settings.pauseHomeAutoplay && state.route === 'home') quietHomeAutoplay();
 }
 
-/**
- * Record the outcome of a filtering run, and say so when filtering was
- * suspended. Silence here would leave the user looking at unfiltered content
- * with no idea why, which is the same confusion the ceiling exists to prevent.
- */
 function recordFilterDecision(decision) {
   const previous = state.filter.suspended;
   state.filter = {
@@ -12850,14 +9862,6 @@ function removeAdShells() {
   }
 }
 
-/**
- * Queue an apply cycle.
- *
- * The delay is capped by how long work has already been waiting. Kick mutates
- * its DOM continuously, so an uncapped debounce is reset by every mutation and
- * the cycle never runs at all — which silently disabled card filtering, ad
- * shell removal, chat detection, and sidebar sync after first paint.
- */
 function scheduleApply(delay = 50) {
   if (state.runtime.suspended) return;
   const now = Date.now();
@@ -12867,7 +9871,6 @@ function scheduleApply(delay = 50) {
   state.applyTimer = window.setTimeout(runApplyCycle, effective);
 }
 
-/** Hand control back to the browser mid-cycle, where the engine offers it. */
 function yieldToInput() {
   try {
     return typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function' ? scheduler.yield() : null;
@@ -12876,24 +9879,7 @@ function yieldToInput() {
   }
 }
 
-/**
- * One pass over the page.
- *
- * Split in two with a yield between: the first half is everything the user
- * would see as broken if it lagged — ad shells, filters, layout, chrome — and
- * the second is bookkeeping that can wait a task. `scheduler.yield()` returns
- * to the browser so a click or keystroke queued behind this work is handled,
- * then resumes at the front of the queue rather than the back, which is what
- * separates it from a `setTimeout(0)` that would put this work behind
- * everything else on the page.
- *
- * Where the API is absent the two halves run in one task exactly as before, so
- * no engine gets slower. The cost measure sums the two halves and excludes the
- * yield, so the number stays comparable to the pre-yield baseline.
- */
 async function runApplyCycle() {
-  // A cycle already mid-yield must not be joined by a second one: they would
-  // interleave writes to the same DOM. The pending timer reschedules anyway.
   if (state.runtime.suspended || state.runtime.applyRunning) return;
   state.runtime.applyRunning = true;
   let elapsed = 0;
@@ -12934,16 +9920,12 @@ async function runApplyCycle() {
     applyPlayerResilience();
     applyChatPause();
     observeChatStickerDiscovery();
-    // Fire-and-forget: every live path already falls back to the DOM, so a
-    // rejected promise here must never interrupt the apply cycle.
     refreshLiveChannel().catch(() => {});
 
     const resume = yieldToInput();
     if (resume) {
       elapsed += performance.now() - started;
       await resume;
-      // The panic switch, a route change, or a teardown can all land during the
-      // yield. Re-read rather than trusting what was true a task ago.
       if (state.runtime.suspended) return;
       started = performance.now();
     }
@@ -12967,30 +9949,15 @@ async function runApplyCycle() {
     state.runtime.applyRunning = false;
     state.diagnostics.apply = recordApplyCost(state.diagnostics.apply, elapsed + (performance.now() - started));
     updateApplyCostInPlace();
-    // Only while the hub is the page on screen. Off it there is nothing to
-    // repaint, and the whole point of the hub is that it reads when looked at.
     if (state.currentPage === 'viewer' && state.modal && !state.modal.hidden) renderViewerHubInPlace();
   }
 }
 
 function updateApplyCostInPlace() {
   const node = state.shadow?.querySelector('[data-kf-apply-cost]');
-  // The empty-state sentence is a dictionary key; a composed count phrase is
-  // its own answer. Marked no-translate on the node, so translate at write.
   if (node) node.textContent = tr(applyCostSummary(state.diagnostics.apply));
 }
 
-/**
- * Learn about route changes from the browser, not from a wrapper around history.
- *
- * The Navigation API reports every same-document URL change — pushState,
- * replaceState, back/forward, hash — as one `currententrychange` event, fired
- * synchronously by the browser at the same moment the old wrapper fired.
- * Where it exists the wrapper is not installed at all: two fewer page globals
- * replaced, and this build's function name no longer appears in
- * `history.pushState.toString()`. Feature-detected; the wrapper stays as the
- * fallback for engines without it.
- */
 function installSpaHooks() {
   if (pageWindow.__kickFocusSpaHooksV1) return;
   pageWindow.__kickFocusSpaHooksV1 = true;
@@ -13009,7 +9976,6 @@ function installSpaHooks() {
           return result;
         };
       } catch {
-        // Popstate and the document observer still cover navigation.
       }
     }
     pageWindow.addEventListener('popstate', routeChanged);
@@ -13064,7 +10030,6 @@ function rememberWatchedCard(event) {
     const values = [...state.watched].slice(-200);
     sessionStorage.setItem(WATCHED_KEY, JSON.stringify(values));
   } catch {
-    // Session-only watched state is an optional enhancement.
   }
 }
 
@@ -13117,8 +10082,6 @@ function updateSetting(path, value, message = 'Autosaved') {
   });
   if (path === 'content.rememberVolume' && !state.settings.content.rememberVolume) clearMediaPreferenceKind('volume');
   if (path === 'content.rememberQuality' && !state.settings.content.rememberQuality) clearMediaPreferenceKind('quality');
-  // The ladder is observed for this one feature and for nothing else, so
-  // switching the feature off is also the instruction to forget it.
   if (path === 'content.preferBestQuality' && !state.settings.content.preferBestQuality) clearMediaPreferenceKind('ladder');
   if (path === 'content.rememberVodPosition' && !state.settings.content.rememberVodPosition) clearMediaPreferenceKind('position');
   if (path === 'content.stickyChatPause' && !state.settings.content.stickyChatPause) {
@@ -13135,22 +10098,6 @@ function updateSetting(path, value, message = 'Autosaved') {
   renderCommands();
 }
 
-/**
- * Trusted Types, if the page ever enforces them.
- *
- * Trusted Types reached Baseline in February 2026. kick.com ships no CSP at all
- * today (Mozilla Observatory graded it D/30 on 2026-08-16), but the day it adds
- * `require-trusted-types-for 'script'` every `innerHTML` assignment in the page
- * world starts throwing a TypeError — including all of this build's own UI,
- * which would simply stop rendering.
- *
- * Feature-detected, never version-sniffed, and created once. The policy is an
- * identity function on purpose: this markup is assembled here from values
- * already escaped by `escapeHtml`, so the policy is the browser's ceremony for
- * "this string came from application code", not a sanitiser. A *default* policy
- * is deliberately not created — that would silently vouch for every other
- * script on the page, including Kick's.
- */
 const TRUSTED_HTML_POLICY = (() => {
   try {
     const api = typeof window !== 'undefined' ? window.trustedTypes : undefined;
@@ -13158,9 +10105,6 @@ const TRUSTED_HTML_POLICY = (() => {
       ? api.createPolicy('kick-focus', { createHTML: (value) => value })
       : null;
   } catch {
-    // A `trusted-types` CSP directive can refuse this policy name. Fall back to
-    // the plain string: where enforcement is on, the write throws and the
-    // existing guard() reports it, which is louder than a blank interface.
     return null;
   }
 })();
@@ -13169,31 +10113,6 @@ function trustedHTML(value) {
   return TRUSTED_HTML_POLICY ? TRUSTED_HTML_POLICY.createHTML(String(value)) : value;
 }
 
-/**
- * The one place markup enters the DOM.
- *
- * Every surface writes through here, and `scripts/check.mjs` asserts exactly one
- * `innerHTML` assignment survives into a bundle — this one. That makes the
- * chokepoint enforceable rather than conventional: the next panel someone adds
- * cannot quietly assign markup on its own.
- *
- * It deliberately does *not* sanitise. `Element.setHTML()` reached both target
- * engines in 2026 and looks like an obvious upgrade over a Trusted Types policy
- * that is an identity function — but measured against Chrome 151 on 2026-08-18,
- * its default configuration removed **all 39 attributes** from a representative
- * slice of this interface and dropped `<button>`, `<input>`, `<select>`,
- * `<option>`, `<label>`, `<img>` and `<span>` outright: 27 elements in, 15 out,
- * no `data-set` bindings, no `aria-pressed`, no `data:` brand mark. The default
- * config is a document sanitiser for untrusted content, not a filter for
- * application-authored UI.
- *
- * A custom `Sanitizer` config would work, and would have to allow-list every
- * element and attribute this interface already uses — a second list that rots
- * every time a control is added, buying only protection against `<script>` and
- * event-handler attributes that `escapeHtml` already prevents from being
- * constructible. Not worth it. If that calculus changes, this function is the
- * single place it changes.
- */
 function setMarkup(node, value) {
   if (!node) return;
   node.innerHTML = trustedHTML(String(value));
@@ -14283,30 +11202,6 @@ const NAV_ITEMS = [
   ['about', 'About', 'Status, privacy, and diagnostics', 'info'],
 ];
 
-/*
- * Feather Icons v4.29.0 — https://feathericons.com
- * Copyright (c) 2013-2017 Cole Bemis
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- * Paths stay inline so the userscript remains dependency-free.
- */
 const FEATHER_ICONS = Object.freeze({
   layout: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="9" y1="9" x2="21" y2="9"></line>',
   sliders: '<line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line>',
@@ -14461,8 +11356,6 @@ const TRANSLATIONS = {
     'Language': 'Idioma',
     'Choose the language for Kick Focus settings and commands.': 'Elige el idioma de la configuración y los comandos de Kick Focus.',
     'Auto': 'Automático',
-    // Language names stay as endonyms in every locale: a picker that renames
-    // "Português" to "Portugués" is harder to use, not easier.
     'Sidebar mode': 'Modo de barra lateral',
     'Chat layout': 'Diseño del chat',
     'Chat width': 'Ancho del chat',
@@ -15034,7 +11927,6 @@ const TRANSLATIONS = {
     'Language': 'Idioma',
     'Choose the language for Kick Focus settings and commands.': 'Escolha o idioma das configurações e comandos do Kick Focus.',
     'Auto': 'Automático',
-    // Endonyms; see the note in the Spanish dictionary.
     'Sidebar mode': 'Modo da barra lateral',
     'Chat layout': 'Layout do chat',
     'Chat width': 'Largura do chat',
@@ -15482,70 +12374,25 @@ function activeLocale() {
   return 'en';
 }
 
-/**
- * The English source of a node this build has already translated.
- *
- * Held off the DOM, so nothing is serialised into markup and an entry is
- * collected with its node. This is what makes a second pass a forward lookup of
- * the same key instead of a reverse scan: without it, re-localising had to map
- * a possibly-already-translated value back to English by searching every
- * dictionary — ambiguous by construction, because several English source
- * strings are also translated values of other strings.
- */
 const TEXT_SOURCE = new WeakMap();
 const ATTRIBUTE_SOURCE = new WeakMap();
 
-/** One forward lookup. An unknown string is its own answer. */
 function tr(value) {
   const source = String(value);
   return TRANSLATIONS[activeLocale()]?.[source] || source;
 }
 
-/**
- * Locale-aware count word: es and pt have a "many" category English lacks.
- *
- * The chosen form is translated too. A count phrase is assembled by
- * interpolation, so the finished string ("12 emotes") can never match a
- * dictionary key — the only translatable unit is the form itself, which is why
- * both forms are dictionary entries and the i18n-coverage gate scans for them.
- */
 function plural(count, one, other) {
   return tr(pluralForm(count, { one, other }, activeLocale()));
 }
 
-/**
- * A sentence that carries values and is still translatable.
- *
- * Interpolating first yields a string no dictionary can ever match, which is
- * why every count sentence stayed English. Translating the *template* and
- * substituting afterwards keeps one lookup key per sentence and lets a locale
- * put the placeholders wherever its grammar needs them. An unknown placeholder
- * is left visible rather than blanked, so a typo shows up instead of hiding.
- */
 function trf(template, values) {
   return tr(template).replace(/\{(\w+)\}/g, (whole, key) => (
     Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : whole));
 }
 
-/**
- * Say which language this build's own interface is written in.
- *
- * Kick's document is `<html lang="en">`, and `lang` inherits through the flat
- * tree into a shadow root — so with the interface set to Español, a screen
- * reader was announcing ~200 Spanish strings with English phonemes. That is
- * WCAG 2.2 SC 3.1.2 (Language of Parts, AA), and it is a real failure on the
- * one build in this space that ships an accessibility page.
- *
- * Stamped on the host rather than inside the shadow root, because the host is
- * the element Kick's `lang` would otherwise reach through. The popup is not
- * included on purpose: its copy is English and it correctly declares `en`.
- */
 function applyInterfaceLanguage() {
   const locale = activeLocale();
-  // The list is inline rather than a module const on purpose: the hover-card
-  // host is built during boot, and a `const` declared this far down the file
-  // would still be in its temporal dead zone when that runs. Function
-  // declarations hoist; `const` does not. See test/boot.test.js.
   for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control', 'kick-focus-streamer-stats']) {
     const host = document.getElementById(id);
     if (host && host.lang !== locale) host.lang = locale;
@@ -15558,8 +12405,6 @@ function localizeInterface(root = state.shadow) {
   if (!root) return;
   const walk = (node) => {
     if (node.nodeType === 3) {
-      // Always translate from the recorded English, never from what is on
-      // screen, so a re-render or a language change cannot compound.
       const recorded = TEXT_SOURCE.get(node);
       const text = recorded === undefined ? node.nodeValue : recorded;
       const trimmed = text.trim();
@@ -15583,10 +12428,6 @@ function localizeInterface(root = state.shadow) {
         }
         node.setAttribute(attribute, tr(value));
       }
-      // Content that is user data rather than this build's own prose. An emote
-      // or channel named "Reset" is not the button label "Reset", and must not
-      // be renamed by a dictionary hit. The element's own attributes above are
-      // still this build's chrome, so they are translated first.
       if (node.hasAttribute('data-kf-no-translate')) return;
     }
     for (const child of node.childNodes || []) walk(child);
@@ -15600,8 +12441,6 @@ function buildInterface() {
   root.id = 'kick-focus-root';
   root.lang = activeLocale();
   const shadow = root.attachShadow({ mode: 'open' });
-  // Adopted after the markup lands: innerHTML replaces every child, which would
-  // take the fallback <style> element with it if it were appended first.
   setMarkup(shadow, `
     <button type="button" class="kf-quick" data-kf-quick data-action="open-settings" aria-label="Open Kick Focus settings">Focus</button>
     <div class="kf-backdrop" data-kf-settings-backdrop hidden>
@@ -15709,7 +12548,6 @@ function buildInterface() {
   state.commandInput.addEventListener('input', renderCommands);
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
-  // Enter is how anyone actually adds a channel; the button is the backup.
   for (const [selector, action] of [
     ['[data-kf-multistream-input]', 'multistream-add'],
     ['[data-kf-multistream-layout-name]', 'multistream-save'],
@@ -15726,12 +12564,8 @@ function buildInterface() {
     renderMultistream();
   });
   renderSettingsPage();
-  // Writes can fail before the interface exists — startup reads and migrations
-  // both persist. Replay whatever failed so it is not lost to mount ordering.
   renderStorageWarning();
   renderCommands();
-  // The host's accessibility flags are written by applySettingsAttributes, which
-  // has already run at least once by now against a host that did not exist yet.
   applySettingsAttributes();
 
   try {
@@ -15740,14 +12574,10 @@ function buildInterface() {
       GM_registerMenuCommand('Open Kick Focus commands', () => openCommandMenu());
     }
   } catch {
-    // The in-page controls remain available.
   }
 
   document.addEventListener('keydown', onGlobalKeydown, true);
   document.addEventListener('click', rememberWatchedCard, true);
-  // Colon completion. Delegated at the document because Kick replaces its
-  // composer on every route change, and deliberately only on events the user
-  // already caused — no keydown listener, so no keystroke can be captured.
   document.addEventListener('input', (event) => {
     if (!event.target?.closest?.('[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"]')) return;
     updateEmoteCompletion();
@@ -15759,17 +12589,9 @@ function buildInterface() {
     const row = event.target?.closest?.('#kick-focus-emote-complete');
     if (!row) hideEmoteCompletion();
   }, true);
-  // Opened at boot, not on demand: a tab has to be listening to answer a
-  // roll-call it never asked for.
   multistreamPresenceChannel();
-  // Same reason, for convergence: a tab that is not listening when another one
-  // adds a channel would show a stale chip until something else re-rendered it.
-  // Both are enhancements — every commit re-reads the store, which is the truth.
   multistreamSyncChannel();
   installMultistreamStorageSync();
-  // Delegated at the document: chat replaces its own nodes constantly, so a
-  // per-emote listener would be attached and dropped hundreds of times a
-  // minute. Keyboard users get the same card on focus.
   document.addEventListener('mouseover', guard('emote tooltip', onChatEmoteHover), true);
   document.addEventListener('focusin', guard('emote tooltip', onChatEmoteHover), true);
   for (const type of ['mouseleave', 'blur', 'wheel', 'scroll']) {
@@ -15797,8 +12619,6 @@ function row(title, description, control, options = {}) {
 }
 
 function range(path, current, minimum, maximum, left, right, suffix = '') {
-  // A readable accessible name instead of the dotted setting path, and
-  // aria-valuetext so a screen reader hears "70%" rather than a bare "70".
   const label = path.split('.').pop().replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
   const valueText = `${current}${suffix}`;
   return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" aria-label="${escapeHtml(label)}" aria-valuetext="${escapeHtml(valueText)}"></div><span>${escapeHtml(right)}</span></div>`;
@@ -15808,13 +12628,6 @@ function selectControl(path, current, choices, label) {
   return `<select class="kf-select" data-set="${escapeHtml(path)}" aria-label="${escapeHtml(label)}">${choices.map(([value, optionLabel]) => `<option value="${escapeHtml(value)}"${selected(current, value) ? ' selected' : ''}>${escapeHtml(optionLabel)}</option>`).join('')}</select>`;
 }
 
-/**
- * A grid of multi-select chips, one per catalog entry, grouped by surface.
- *
- * `aria-pressed` rather than a checkbox because these are independent
- * on/off actions rather than a form to submit, and the same pattern the rest of
- * this panel already uses for a pressed state.
- */
 function hideElementGrid(hidden) {
   return `<div class="kf-hide-grid">${HIDEABLE_GROUPS.map((group) => `<div class="kf-hide-group"><span class="kf-hide-heading">${escapeHtml(tr(group.label))}</span><div class="kf-hide-chips" role="group" aria-label="${escapeHtml(tr(group.label))}">${HIDEABLE_ELEMENTS
     .filter((entry) => entry.group === group.id)
@@ -15826,17 +12639,6 @@ function pageHeader(title, description, metaLabel, metaValue) {
   return `<div class="kf-page-header"><div><span class="kf-eyebrow">Kick Focus settings</span><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><div class="kf-page-meta"><span>${escapeHtml(metaLabel)}</span><strong>${escapeHtml(metaValue)}</strong></div></div>`;
 }
 
-// ---------------------------------------------------------------------------
-// Discovery layouts
-//
-// Named snapshots of the settings that decide how a discovery page looks, each
-// optionally tied to the routes it belongs to. Browse can be dense and
-// unfiltered while Home stays calm.
-//
-// Local, and only ever this build's own settings applied to markup Kick has
-// already sent. Nothing here asks Kick for different cards or reorders a rail,
-// and no copy in the interface suggests otherwise.
-// ---------------------------------------------------------------------------
 
 const DISCOVERY_LAYOUTS_KEY = 'kick-focus:discovery-layouts';
 
@@ -15849,13 +12651,6 @@ function saveDiscoveryLayouts() {
   state.settingsIndex = null;
 }
 
-/**
- * Apply the layout this route belongs to, if the route changed into one.
- *
- * Guarded on the route actually being different, because the apply cycle runs
- * constantly and re-applying a layout on every pass would fight anybody
- * adjusting a slider while they are on that page.
- */
 function applyRouteLayout() {
   const route = state.route;
   if (state.runtime.layoutRoute === route) return;
@@ -15867,8 +12662,6 @@ function applyRouteLayout() {
   saveSettings();
   applySettingsAttributes();
   renderSettingsPage();
-  // Said out loud: a view that changes under somebody without a word is the
-  // thing that makes a feature like this feel broken rather than helpful.
   showToast(trf('Applied {name} for this page.', { name: layout.name }), false);
   announce(trf('Applied {name} for this page.', { name: layout.name }));
 }
@@ -15916,7 +12709,6 @@ function deleteDiscoveryLayout(name) {
   showToast(trf('Deleted {name}.', { name }), false);
 }
 
-/** The saved-view panel on the Layout page. */
 function renderDiscoveryLayouts() {
   const layouts = state.discoveryLayouts;
   const routeChips = DISCOVERY_LAYOUT_ROUTES.map((route) => `<button type="button" class="kf-chip" data-kf-layout-route="${route}" aria-pressed="false">${escapeHtml(tr(DISCOVERY_ROUTE_LABELS[route]))}</button>`).join('');
@@ -16022,12 +12814,6 @@ function renderAppearancePage() {
     </div>`;
 }
 
-/**
- * Observability for the mod's own failures. A client mod on a churning site
- * fails silently otherwise. Uncaught errors from the mod's own entry points are
- * captured to a bounded local ring buffer the user can view and copy (sanitized,
- * no query strings), and the last one persists across reload. Nothing is sent.
- */
 function logAppError(context, error) {
   const record = {
     at: Date.now(),
@@ -16037,14 +12823,13 @@ function logAppError(context, error) {
   state.diagnostics.errors.unshift(record);
   state.diagnostics.errors = state.diagnostics.errors.slice(0, 30);
   state.diagnostics.lastCrash = record;
-  try { gmSet(LAST_CRASH_KEY, record); } catch { /* a failed write must not recurse */ }
+  try { gmSet(LAST_CRASH_KEY, record); } catch {   }
   const panel = state.shadow?.querySelector('[data-kf-error-log]');
   if (panel) setMarkup(panel, errorLogRows());
   const summary = state.shadow?.querySelector('[data-kf-last-crash]');
   if (summary) summary.textContent = lastCrashSummary();
 }
 
-/** Wrap one of the mod's own entry points so a throw is logged, not lost. */
 function guard(label, fn) {
   return function guarded(...args) {
     try {
@@ -16114,14 +12899,6 @@ function remoteBlocklistControls() {
     </section>`;
 }
 
-/**
- * What this account may actually send, in one line.
- *
- * Kick never states this anywhere: its picker shows the emotes of the channel
- * you are standing in, so the answer to "what do I own" is only reachable by
- * visiting every channel you subscribe to. The authenticated catalog answers it
- * in one read — see `applyAccountEntitlement`.
- */
 function emoteInventorySummary() {
   const account = state.live.catalog?.account;
   if (!account?.authenticated) return '';
@@ -16143,7 +12920,6 @@ function stickerLibrarySummary() {
   return `${library.length} recorded · ${favoriteCount()} favorites · ${state.stickerPreferences.hidden.size} removed · ${state.stickerPreferences.groups.length} custom groups${channel ? ` · ${channel} channel-only` : ''}${observed ? ` · ${observed} seen in chat` : ''}${locked ? ` · ${locked} subscriber-only` : ''}${changed ? ` · ${changed} changed by Kick` : ''}${atCapacity ? ` · full (${STICKER_LIBRARY_LIMIT}); oldest chat-only emotes drop first` : ''}`;
 }
 
-/** First/last capture in the user's terms; '' for entries recorded before schema 4. */
 function stickerSeenSummary(sticker) {
   if (!sticker.firstSeen) return '';
   const day = (time) => new Date(time).toISOString().slice(0, 10);
@@ -16175,16 +12951,11 @@ function stickerLibraryCard(sticker) {
   const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
   const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
   const searchText = `${sticker.name} ${nativeGroups} ${sticker.sourceSlug || ''}`.toLowerCase();
-  // Shared with the chat hover card, so the two cannot describe the same
-  // emote differently.
   const accessLabel = emoteAccessLabel(sticker.access);
-  // Reach, not ownership — the two are independent, and Kick shows neither.
   const reach = emoteReach(sticker);
   const reachNote = reach.text ? trf(reach.text, { channel: reach.channel }) : '';
   const changeNote = describeStickerChange(sticker);
   const seenNote = stickerSeenSummary(sticker);
-  // A greyed tile with no explanation teaches nothing. Nothing here enables
-  // or sends anything; it names the reason and links to Kick's own page.
   const lock = sticker.access === 'locked'
     ? emoteLockState({ ...sticker, locked: true }, sticker.nativeGroups[0] || '')
     : { locked: false, reason: '', unlockUrl: '' };
@@ -16384,19 +13155,6 @@ function startChannelEmoteImport() {
   });
 }
 
-/**
- * The settings surface for everything read from Kick's own API.
- *
- * Every switch here is on by default and every one degrades to the existing DOM
- * behaviour when turned off, so the section can be read as "how much of Kick's
- * own data should this use" rather than "which features work".
- */
-/**
- * What Kick leaves unexplained about collectibles, plus the only numbers the
- * local record can actually support. Where Kick's response carries no
- * quantity, the duplicate count says so rather than presenting the distinct
- * count as though it answered the question.
- */
 function renderCollectiblePanel() {
   const inventory = state.live.inventory;
   const changed = countChangedStickers(state.stickerPreferences.library);
@@ -16559,12 +13317,6 @@ function renderAccessibilityPage() {
     </section>`;
 }
 
-/**
- * Report what this build is actually storing, and anything it failed to store.
- *
- * The emote library is by far the largest payload and the one most likely to hit
- * a quota, so its size is worth showing before the write starts failing.
- */
 function renderStorageHealthPanel() {
   const report = storageDiagnostics();
   const failures = describeStorageFailures(storageHealth.failures);
@@ -16583,26 +13335,11 @@ function renderStorageHealthPanel() {
     </section>`;
 }
 
-// ---------------------------------------------------------------------------
-// Viewer hub
-//
-// Reads what Kick is already showing this account and shows it in one place.
-// It writes nothing, claims nothing, and adds no endpoint: five of the six
-// values come off the page, and the sixth is the collectible read this build
-// already makes.
-//
-// Nothing here runs while the hub is closed. The facts are gathered when the
-// page is opened and again on the apply cycle only while it is the page being
-// looked at, which is the difference between a summary and a background poller.
-// ---------------------------------------------------------------------------
 
-// From a signed-in capture: Kick renders the exact figure in a `title` and an
-// abbreviated one ("1.2K") in the text, so the attribute is read first.
 const POINTS_VALUE = '[data-testid="channel-points-value"]';
 const DROPS_NAV = '[data-testid="sidebar-drops"]';
 const DROPS_CAMPAIGN = 'main a[href^="/drops/"]';
 
-/** A whole number out of Kick's own markup, or null when there is nothing to read. */
 function readNumber(text) {
   const raw = String(text ?? '').replace(/[\s,]/g, '');
   if (!/^\d+$/.test(raw)) return null;
@@ -16613,20 +13350,10 @@ function readNumber(text) {
 function readChannelPoints() {
   const node = document.querySelector(POINTS_VALUE);
   if (!node) return null;
-  // The title carries the unrounded number. Text is the fallback, and an
-  // abbreviated one fails `readNumber` rather than becoming a wrong figure.
   const titled = node.querySelector('[title]')?.getAttribute('title') ?? node.getAttribute('title');
   return readNumber(titled) ?? readNumber(node.textContent);
 }
 
-/**
- * Level and streak, read only from the reward dialog this build itself opened.
- *
- * Kick shows both there and nowhere else on the page, and neither is persisted
- * between openings: a level kept from yesterday is a number that looks live and
- * is not. Matched on Kick's own label text rather than on a test id, because
- * the dialog carries no id for either.
- */
 function readRewardDialogFigures() {
   const dialog = rewardDialog();
   if (!dialog) return { dialogOpen: false, level: null, streak: null };
@@ -16640,13 +13367,6 @@ function readRewardDialogFigures() {
   };
 }
 
-/**
- * Everything the hub knows right now, gathered in one pass.
- *
- * Deliberately dumb: it observes and records, and every decision about what a
- * missing observation means belongs to `viewerHubCards` in core, where it is
- * testable without a browser.
- */
 function collectViewerFacts() {
   const now = Date.now();
   const record = rewardRecord();
@@ -16658,8 +13378,6 @@ function collectViewerFacts() {
       trigger: Boolean(document.querySelector(REWARD_TRIGGER)),
       lastClaimAt: record.lastClaimAt,
       nextCheckAt: record.nextCheckAt,
-      // The rollover this reward belongs to, so a claim from yesterday is not
-      // reported as today's.
       previousResetAt: nextClaimResetAt(now) - 24 * 60 * 60 * 1000,
       observedAt: now,
     },
@@ -16678,13 +13396,6 @@ function collectViewerFacts() {
   };
 }
 
-/**
- * Ask Kick for the collectible inventory, once, because the hub was opened.
- *
- * Guarded so reopening the panel does not re-request: a value read a minute ago
- * is still the answer, and the card labels it as an older reading rather than
- * this fetching again to refresh a number that barely moves.
- */
 async function refreshViewerCollectibles() {
   const current = state.viewerHub.collectibles;
   if (current?.loading) return;
@@ -16699,22 +13410,18 @@ async function refreshViewerCollectibles() {
   renderViewerHubInPlace();
 }
 
-/** Grouped by the reader's own locale: 12,480 rather than 12480. */
 function hubNumber(value) {
   return Number(value).toLocaleString();
 }
 
 function hubCardValue(card) {
   if (card.id === 'reward') return tr(VIEWER_HUB_REWARD_WORDS[card.value] || VIEWER_HUB_REWARD_WORDS.available);
-  // Distinct collectibles first, total copies in brackets, and only when the
-  // two differ — "21 (21)" says nothing that "21" does not.
   if (card.id === 'collectibles' && Number.isFinite(card.copies) && card.copies > card.value) {
     return `${hubNumber(card.value)} (${hubNumber(card.copies)})`;
   }
   return hubNumber(card.value);
 }
 
-/** The line under each value: where it came from, and how old the reading is. */
 function hubCardSource(card, now) {
   if (card.state !== 'ready') return '';
   const source = card.source === 'api' ? tr('From Kick’s API') : tr('Read from the page');
@@ -16734,7 +13441,6 @@ function renderViewerHubCards() {
     </div>`).join('');
 }
 
-/** Repaint the cards without rebuilding the page, so scroll and focus survive. */
 function renderViewerHubInPlace() {
   const host = state.shadow?.querySelector('[data-kf-hub-cards]');
   if (!host) return;
@@ -16753,7 +13459,6 @@ function renderViewerPage() {
     </section>`;
 }
 
-/** One sentence naming which values were read off the page and which came from an endpoint. */
 function hubSourceSummary(summary) {
   if (!summary.ready) return 'Nothing has been read yet. Each card above says why.';
   const parts = [];
@@ -16786,28 +13491,10 @@ function renderAboutPage() {
     <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr></tbody></table></div></section>`;
 }
 
-// A stable selector for the focused control, so focus can be restored to the
-// equivalent element after the page's innerHTML is replaced.
 function focusRestoreKey(element) {
   return settingsFocusSelector(element);
 }
 
-/**
- * Every setting this build renders, as searchable rows.
- *
- * Built by rendering each page into a detached node and reading the real DOM
- * rather than pattern-matching the markup strings — a regex over generated HTML
- * would rot the first time a row gained a wrapper.
- *
- * Each row is indexed under both its English source *and* its translation, which
- * is FrankerFaceZ's trick and the reason its search still works in a localized
- * interface: this build assembles markup in English and translates it afterwards,
- * so an index built from the markup alone would never match what a Spanish or
- * Portuguese user is actually reading.
- *
- * Cached until something invalidates it, because rendering five pages on every
- * keystroke would be the most expensive thing this panel does.
- */
 function settingsSearchIndex() {
   if (state.settingsIndex) return state.settingsIndex;
   const scratch = document.createElement('div');
@@ -16826,8 +13513,6 @@ function settingsSearchIndex() {
     try {
       setMarkup(scratch, renderer());
     } catch {
-      // A page that cannot render is a bug worth seeing on the page itself, not
-      // one worth taking the whole search down with.
       continue;
     }
     for (const row of scratch.querySelectorAll('.kf-row, .kf-action-row, .kf-subsection-header')) {
@@ -16847,7 +13532,6 @@ function settingsSearchIndex() {
   return index;
 }
 
-/** Results for a query, grouped under the page each setting lives on. */
 function renderSettingsSearchResults(query) {
   const matches = rankSettingsMatches(query, settingsSearchIndex());
   const header = pageHeader('Search', 'Every page, searched at once.', 'Matches', String(matches.length));
@@ -16865,14 +13549,9 @@ function renderSettingsPage() {
   if (!state.shadow) return;
   const page = state.shadow.querySelector('[data-kf-page]');
   const previousPage = page.dataset.kfCurrentPage;
-  // Preserve focus and scroll across the innerHTML replacement, or a keyboard
-  // user toggling a setting deep in a page is thrown back to the top on every
-  // change and loses their place entirely.
   const active = state.shadow.activeElement;
   const focusKey = active && page.contains(active) ? focusRestoreKey(active) : '';
   const scrollTop = page.scrollTop;
-  // A query replaces the page body with results from every page, so the
-  // renderer below is skipped entirely while searching.
   if (state.settingsQuery) {
     setMarkup(page, renderSettingsSearchResults(state.settingsQuery));
     page.dataset.kfCurrentPage = 'search';
@@ -16905,7 +13584,6 @@ function renderSettingsPage() {
     }
   }
   for (const button of state.shadow.querySelectorAll('[data-page]')) {
-    // While results are showing, no page is the current one.
     button.setAttribute('aria-current', !state.settingsQuery && button.dataset.page === state.currentPage ? 'page' : 'false');
   }
   state.shadow.querySelector(`[data-page="${state.currentPage}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -16917,7 +13595,6 @@ function renderSettingsPage() {
     applyStickerLibrarySearch();
     renderChatHistoryResults();
   }
-  // One read, on opening. Nothing is requested while the hub is closed.
   if (state.currentPage === 'viewer') refreshViewerCollectibles();
 }
 
@@ -16993,9 +13670,6 @@ function coerceSetting(path, raw) {
   const current = getSetting(path);
   if (typeof current === 'boolean') return raw === true || raw === 'true';
   if (typeof current === 'number') return Number(raw);
-  // One field holds a list. Parsed on the way in rather than on the way out, so
-  // what is stored is already the cleaned, de-duplicated set of names and every
-  // reader gets the same answer.
   if (path === 'content.chatPriorityPeople') return parsePeopleList(raw);
   return String(raw);
 }
@@ -17071,9 +13745,6 @@ function toggleLibrarySticker(target, kind) {
     saveStickerOrganization(isFavorited(key) ? 'Emote favorited.' : 'Emote favorite removed.');
     return;
   }
-  // Remove frees the library slot for real: delete the record, remember the key
-  // so a live scan does not re-record it, and drop any favorite or assignment
-  // that referenced it. Restore is a bulk action in the Removed view.
   state.stickerPreferences.hidden.add(key);
   state.stickerPreferences.library.delete(key);
   state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
@@ -17111,9 +13782,6 @@ function selectViewingPreset(presetId) {
 }
 
 function onInterfaceClick(event) {
-  // The route chips on a saved view are a pressed-state group, not settings:
-  // they say what the view being saved should apply to, and nothing is stored
-  // until the save button is pressed.
   const routeChip = event.target.closest('[data-kf-layout-route]');
   if (routeChip) {
     routeChip.setAttribute('aria-pressed', String(routeChip.getAttribute('aria-pressed') !== 'true'));
@@ -17195,9 +13863,6 @@ function onInterfaceClick(event) {
     renderMultistream();
   }
   else if (action === 'multistream-focus') {
-    // Focus moves the audio and, unless the user picked a different chat, the
-    // chat with it — watching one stream while reading another's chat is a
-    // deliberate choice, not something to reset on every click.
     const slug = actionTarget.dataset.slug;
     const followChat = state.multistream.chat === state.multistream.focus;
     state.multistream = normalizeMultistream({
@@ -17230,8 +13895,6 @@ function onInterfaceClick(event) {
     announce(state.multistream.mergedChat ? 'Showing one merged chat for every channel in the grid' : 'Showing the focused channel chat');
   }
   else if (action === 'multistream-popout-chat') {
-    // Awaited nowhere: `requestWindow` needs the transient activation this
-    // click carries, and the surface re-renders itself when it resolves.
     popOutChat();
   }
   else if (action === 'multistream-toggle-chat') {
@@ -17266,8 +13929,6 @@ function onInterfaceClick(event) {
     if (!layout) return;
     const link = multistreamLayoutLink(layout.streams);
     if (!link) { showToast('That board has no usable channels.', true); return; }
-    // The link carries channel names and nothing else — no settings, no
-    // identifiers, nothing from this machine.
     navigator.clipboard?.writeText(link)
       .then(() => showToast(`Copied a link to ${layout.name}.`))
       .catch(() => showToast('Could not reach the clipboard.', true));
@@ -17282,8 +13943,6 @@ function onInterfaceClick(event) {
     renderMultistream();
   }
   else if (action === 'dismiss-storage-alert') {
-    // Acknowledging this exact set of failures; a different key failing later
-    // raises the warning again rather than staying silent.
     const alert = state.shadow?.querySelector('[data-kf-storage-alert]');
     storageHealth.acknowledged = alert?.dataset.kfStorageSignature || '';
     if (alert) alert.hidden = true;
@@ -17300,8 +13959,6 @@ function onInterfaceClick(event) {
   else if (action === 'export-chat-history') exportChatHistory();
   else if (action === 'clear-chat-history') clearChatHistory();
   else if (action === 'refresh-hub') {
-    // An explicit ask, so the freshness guard is cleared first: the point of
-    // the button is to re-read, not to be told the last reading is recent.
     state.viewerHub.collectibles = null;
     refreshViewerCollectibles();
     renderViewerHubInPlace();
@@ -17390,7 +14047,6 @@ function onInterfaceChange(event) {
   updateSetting(input.dataset.set, coerceSetting(input.dataset.set, input.value));
 }
 
-/** Drop the query and put the input back in step with it. */
 function clearSettingsSearch() {
   clearTimeout(state.settingsSearchTimer);
   state.settingsQuery = '';
@@ -17410,8 +14066,6 @@ function onInterfaceInput(event) {
 
   const settingsSearch = event.target.closest('input[data-kf-settings-search]');
   if (settingsSearch) {
-    // Debounced: re-rendering the results on every keystroke re-serialises the
-    // whole page body, and the index behind it renders five pages the first time.
     clearTimeout(state.settingsSearchTimer);
     const value = settingsSearch.value;
     state.settingsSearchTimer = window.setTimeout(() => {
@@ -17419,8 +14073,6 @@ function onInterfaceInput(event) {
       if (query === state.settingsQuery) return;
       state.settingsQuery = query;
       renderSettingsPage();
-      // The input is inside the nav, which the page render does not replace, so
-      // focus and caret survive without the restore dance the page body needs.
     }, 160);
   }
 }
@@ -17447,13 +14099,11 @@ function closeSettings() {
   closeResetConfirmation();
   state.shortcutCapture = null;
   state.shortcutError = '';
-  try { state.lastFocused?.focus?.(); } catch { /* noop */ }
+  try { state.lastFocused?.focus?.(); } catch {   }
 }
 
 function openResetConfirmation(scope) {
   state.resetPending = scope;
-  // Where focus came from, so cancelling returns the user to the control they
-  // pressed rather than to the top of the dialog's container.
   state.resetOpener = state.shadow.activeElement || null;
   const container = state.shadow.querySelector('[data-kf-confirm]');
   const title = state.shadow.querySelector('[data-kf-confirm-title]');
@@ -17469,22 +14119,15 @@ function closeResetConfirmation() {
   const container = state.shadow?.querySelector('[data-kf-confirm]');
   if (container) container.hidden = true;
   state.resetPending = false;
-  // The opener can be inside the settings page, which a following render
-  // replaces; renderSettingsPage re-restores by key from there, so handing
-  // focus back here is correct in both cases.
   const opener = state.resetOpener;
   state.resetOpener = null;
   if (opener?.isConnected) {
-    try { opener.focus(); } catch { /* noop */ }
+    try { opener.focus(); } catch {   }
   } else {
-    try { state.shadow?.querySelector('[data-kf-page]')?.focus?.(); } catch { /* noop */ }
+    try { state.shadow?.querySelector('[data-kf-page]')?.focus?.(); } catch {   }
   }
 }
 
-// A factory reset clears every private store the registry marks reset:true, but
-// keeps the emote library: its first-seen/wasName/wasSrc provenance is the one
-// thing here that cannot be regenerated, so it is preserved rather than
-// destroyed. Settings and the library are handled by their own resets above.
 function clearPrivateData() {
   state.emoteUsage = { global: {}, channels: {} };
   gmDelete(EMOTE_USAGE_KEY);
@@ -17512,8 +14155,6 @@ function confirmReset() {
   if (scope === 'all') {
     state.settings = normalizeSettings(DEFAULT_SETTINGS);
     gmDelete(STORAGE_KEY);
-    // keepLibrary is required, not optional: disclosure is not an acceptable
-    // substitute for destroying unregenerable provenance.
     resetStickerPreferences({ keepLibrary: true });
     clearPrivateData();
     saveSettings('All settings reset');
@@ -17531,8 +14172,6 @@ function confirmReset() {
   announce('Settings reset');
 }
 
-// Everything the About page says is stored travels with the backup, or the
-// backup is not one. Every store the registry marks `backup` is included here.
 function currentExportPayload() {
   return buildSettingsExport({
     settings: state.settings,
@@ -17568,25 +14207,9 @@ function exportSettings() {
   }
 }
 
-// Apply every store a validated import provided. Each store the file omitted is
-// left untouched (its result field is null), so a partial backup never wipes
-// what it did not carry.
-/**
- * Apply an import as one transaction.
- *
- * Every store the file provided is staged and sized first, then committed
- * together. In-memory state is only advanced once the write has succeeded, so a
- * refusal leaves both storage and the running session on the previous
- * configuration instead of a half-imported mixture of the two.
- */
 function applyImportedStores(result) {
   const entries = [];
   if (result.settings) entries.push([STORAGE_KEY, result.settings]);
-  // The transaction has to stay one sized write, so what it commits is the
-  // bounded seed; the complete library follows into the database once the
-  // commit succeeds. Pushing the whole library through here instead would both
-  // blow the size budget the transaction is checking and leave the database
-  // holding a backup the user had just replaced.
   if (result.stickers) entries.push([STICKER_PREFERENCES_KEY, planLibraryPersist(result.stickers).seed]);
   if (result.usage) entries.push([EMOTE_USAGE_KEY, result.usage]);
   if (result.multistream) entries.push([MULTISTREAM_KEY, result.multistream]);
@@ -17647,8 +14270,6 @@ async function onImportFile(event) {
     gmSet(PRE_IMPORT_BACKUP_KEY, snapshot);
     renderSettingsPage();
     scheduleApply(0);
-    // Naming what was not kept, because an import that silently drops half a
-    // configuration still reports success otherwise.
     const notes = result.notes || [];
     const undoHint = ' Previous settings backed up — use Undo import to restore them.';
     if (notes.length === 0) {
@@ -17675,7 +14296,6 @@ function undoImport() {
   }
   const commit = applyImportedStores(result);
   if (!commit.ok) {
-    // The backup is kept: a failed restore must stay retryable.
     showToast('The backup could not be restored.', true);
     return;
   }
@@ -17708,24 +14328,6 @@ async function copyStickerName(target) {
   showToast(plan.warning ? `Copied ${plan.text}. ${plan.warning}` : `Copied ${plan.text}.`, Boolean(plan.warning));
 }
 
-/**
- * Kick's own message box for the channel you are on.
- *
- * Deliberately not the multi-stream grid: those chats are cross-origin
- * `player.kick.com` frames whose documents cannot be reached, and Kick blocks
- * sending from an embedded chat anyway. Typing into the page's own input is the
- * only target, and it must be the real one — a contenteditable that is not
- * Kick's would be an arbitrary write into the page.
- */
-// ---------------------------------------------------------------------------
-// Colon-trigger emote completion
-//
-// Mouse-only by design. Every other client accepts with Tab or Enter, which
-// means capturing keys the composer is entitled to — and a completion list that
-// eats a keystroke is worse than no completion list. This one is clicked, so it
-// can never take a key that was meant for Kick, and it never sends: accepting
-// puts the plain name at the caret, exactly as the Type-in-chat action does.
-// ---------------------------------------------------------------------------
 
 const EMOTE_COMPLETION_LIMIT = 8;
 
@@ -17800,8 +14402,6 @@ function emoteCompletionHost() {
   list.dataset.kfCompleteList = 'true';
   list.setAttribute('role', 'listbox');
   list.setAttribute('aria-label', 'Emote suggestions');
-  // Click, never key: bound inside the shadow root so accepting cannot depend
-  // on anything the page might stop from bubbling.
   list.addEventListener('click', (event) => {
     const button = event.target?.closest?.('[data-kf-complete-key]');
     if (!button) return;
@@ -17823,7 +14423,6 @@ function hideEmoteCompletion() {
   releaseSurfaceAnchor(host, EMOTE_COMPLETION_ANCHOR);
 }
 
-/** The text between the start of the caret's own text node and the caret. */
 function textBeforeCaret(input) {
   if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
     return String(input.value ?? '').slice(0, input.selectionStart ?? 0);
@@ -17838,7 +14437,6 @@ function textBeforeCaret(input) {
   return probe.toString();
 }
 
-/** Everything this build knows the user could type, as completion candidates. */
 function emoteCompletionCandidates() {
   const candidates = [];
   for (const sticker of state.stickerPreferences.library.values()) {
@@ -17871,12 +14469,6 @@ function updateEmoteCompletion() {
     </button>`).join(''));
   state.runtime.emoteCompletion = { length: trigger.length, keys: matches.map((sticker) => sticker.key) };
 
-  // Anchored to the composer rather than the caret, deliberately. Anchor
-  // positioning needs a real element, and the only element at the caret would
-  // be one written into Kick's own contenteditable — which could end up in the
-  // sent message. Pinning to the composer is also steadier: the list stops
-  // sliding sideways on every keystroke, which is where FrankerFaceZ and
-  // Twitch both put theirs.
   if (anchorSurfaceTo(host, input, EMOTE_COMPLETION_ANCHOR) && openAnchoredSurface(host)) {
     host.dataset.kfOpen = 'true';
     host.style.visibility = 'visible';
@@ -17886,8 +14478,6 @@ function updateEmoteCompletion() {
   const anchor = caretRect(input) || input.getBoundingClientRect();
   host.dataset.kfOpen = 'true';
   host.style.visibility = 'hidden';
-  // Measured after the rows exist, so the list is placed by its real height
-  // rather than an assumed one.
   const height = host.shadowRoot.querySelector('[data-kf-complete-list]').getBoundingClientRect().height || 0;
   const top = anchor.top - height - 6;
   host.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - 260))}px`;
@@ -17900,16 +14490,9 @@ function caretRect(input) {
   const selection = document.getSelection();
   if (!selection || selection.rangeCount === 0) return null;
   const rect = selection.getRangeAt(0).getBoundingClientRect();
-  // A collapsed range in an empty text node reports zeros; the input's own box
-  // is the honest fallback.
   return rect && (rect.width || rect.height || rect.top) ? rect : null;
 }
 
-/**
- * Accept a suggestion: replace the `:query` that triggered it with the plain
- * name and a space. Never the wire token, never an id, and it never sends —
- * the same boundary the Type-in-chat action enforces.
- */
 function acceptEmoteCompletion(key) {
   const sticker = state.stickerPreferences.library.get(key);
   const plan = emoteInsertionPlan(sticker);
@@ -17926,8 +14509,6 @@ function acceptEmoteCompletion(key) {
     const selection = document.getSelection();
     if (!selection || selection.rangeCount === 0) return;
     const range = selection.getRangeAt(0).cloneRange();
-    // Walk back over the trigger. Kick's composer can split a word across text
-    // nodes, so this consumes characters rather than assuming one node.
     for (let index = 0; index < trigger.length; index += 1) {
       try { range.setStart(range.startContainer, range.startOffset - 1); } catch { break; }
       if (range.startOffset === 0 && range.toString().length < index + 1) break;
@@ -17943,29 +14524,11 @@ function acceptEmoteCompletion(key) {
   if (plan.warning) showToast(plan.warning, true);
 }
 
-// ---------------------------------------------------------------------------
-// Daily reward auto-claim
-//
-// Kick's reward is a header button that opens a dialog holding one action
-// button, disabled until the account has watched enough. The claim POST lives
-// inside Kick's own bundle, so this drives that dialog instead of the endpoint —
-// no new permission, no replayed private request, and no way to claim something
-// the account has not earned: a disabled button is Kick refusing, and this
-// never clicks one.
-//
-// Selectors and the action verbs come from a capture of the real dialog. The
-// nested `<div class="contents">Claim</div>` is why the label is read from
-// `textContent` rather than a child node, and the button carries both `disabled`
-// and `aria-disabled="true"` when it is not ready — both are honoured.
-// ---------------------------------------------------------------------------
 
 const REWARD_TRIGGER = 'button[aria-label="Claim Your Daily Reward"]';
 const REWARD_DIALOG = '[role="dialog"]';
 
 function rewardDialog() {
-  // Only a dialog this build actually opened counts. Kick reuses `role="dialog"`
-  // for other surfaces, and clicking a button in the wrong one would be a real
-  // misfire rather than a missed claim.
   for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
     if (dialog.dataset.kfRewardDialog === 'true') return dialog;
   }
@@ -17983,7 +14546,6 @@ function rewardActionDisabled(button) {
   return Boolean(button.disabled) || button.getAttribute('aria-disabled') === 'true';
 }
 
-/** Close what we opened, and put focus back where the user left it. */
 function closeRewardDialog(dialog, restoreTo) {
   if (dialog) {
     delete dialog.dataset.kfRewardDialog;
@@ -17991,35 +14553,15 @@ function closeRewardDialog(dialog, restoreTo) {
     if (close) close.click();
   }
   const trigger = document.querySelector(REWARD_TRIGGER);
-  // Radix keeps the dialog open while its trigger reports expanded; toggling the
-  // trigger is the path that always works, Escape is not (this build adds no
-  // key handling, and synthesising one would be a keystroke the page did not get).
   if (trigger?.getAttribute('aria-expanded') === 'true') trigger.click();
   if (restoreTo?.isConnected) restoreTo.focus?.();
 }
 
-/**
- * One pass of the reward check, driven from the apply cycle.
- *
- * Deliberately does nothing while the user is mid-interaction: opening Kick's
- * dialog moves focus, and doing that under someone typing in chat or reading a
- * Kick Focus panel would cost more than the reward is worth.
- */
-/**
- * The claim timestamps, read from storage rather than memory.
- *
- * Both are shared: someone with four Kick tabs open would otherwise have four
- * independent cooldowns, and all four would open Kick's reward dialog. Reading
- * the record each pass means one tab claiming backs every tab off, and the
- * recheck interval survives a reload instead of restarting with it.
- */
 function rewardRecord() {
   const stored = gmGet(REWARD_STATE_KEY, null);
   const record = isPlainRecord(stored) ? stored : {};
   return {
     lastClaimAt: Number(record.lastClaimAt) || 0,
-    // When to look again. A record written by an older build has none, which
-    // reads as zero and means "look now" — the right answer for an upgrade.
     nextCheckAt: Number(record.nextCheckAt) || 0,
     claims: Number(record.claims) || 0,
   };
@@ -18052,22 +14594,13 @@ function runRewardClaim() {
   if (decision.action === 'absent' || decision.action === 'cooling') return;
 
   if (decision.action === 'open') {
-    // Never take focus out from under someone. The next cycle will try again.
-    // `state.modal` is the settings panel's own container — the shadow host is
-    // not it, because the host also carries the always-visible quick button and
-    // is therefore never hidden. Keying off the host meant the panel always read
-    // as open and the claim could never run at all.
     const panelOpen = Boolean(state.modal && !state.modal.hidden);
     if (multistreamOpen() || panelOpen || document.activeElement?.closest?.(
       '[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"], input, textarea',
     )) return;
-    // Hold the slot before opening, so a tab that is torn down mid-open does
-    // not leave every other tab thinking a check is still due.
     writeRewardRecord({ nextCheckAt: now + CLAIM_RECHECK_MS });
     state.reward.restoreFocusTo = document.activeElement;
     trigger.click();
-    // Radix mounts the dialog synchronously off the click; claim on the next
-    // cycle so a half-rendered dialog is never acted on.
     for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
       if (dialog.contains(trigger)) continue;
       dialog.dataset.kfRewardDialog = 'true';
@@ -18078,8 +14611,6 @@ function runRewardClaim() {
   if (decision.action === 'wait') {
     const dialogText = open.textContent || '';
     const minutes = parseClaimCountdown(dialogText);
-    // Schedule from what Kick just said, not from a timer: the countdown when
-    // there is one, and the nightly rollover when the reward is already gone.
     const nextCheckAt = nextRewardCheckAt({ outcome: 'not-ready', now, minutesRemaining: minutes, dialogText });
     writeRewardRecord({ nextCheckAt });
     state.reward.minutesRemaining = minutes;
@@ -18091,19 +14622,12 @@ function runRewardClaim() {
     return;
   }
 
-  // The only click this feature ever makes. Recorded before it happens, so a
-  // reward that claims but throws on the way out is still not claimed twice.
   writeRewardRecord({
     lastClaimAt: now,
     claims: record.claims + 1,
     nextCheckAt: nextRewardCheckAt({ outcome: 'claimed', now }),
   });
   state.reward.minutesRemaining = 0;
-  // Disown the dialog *before* clicking. It stays on screen for the reveal, and
-  // the apply cycle runs every few seconds — so while it is still marked as
-  // ours, every one of those passes sees a claimable dialog and presses the
-  // button again. The stored schedule cannot stop that on its own, because an
-  // open dialog is exactly the state that is allowed to skip it.
   delete open.dataset.kfRewardDialog;
   action.click();
   state.reward.lastMessage = `Daily reward claimed at ${new Date(now).toLocaleTimeString()}.`;
@@ -18111,8 +14635,6 @@ function runRewardClaim() {
     { label: 'View', onClick: () => window.open('https://kick.com/collectibles', '_blank', 'noopener') },
   ]);
   announce('Daily reward claimed.');
-  // Let the reveal animation run before closing, the way a person would. The
-  // reference is held rather than re-looked-up, because it is no longer marked.
   window.setTimeout(() => closeRewardDialog(open, state.reward.restoreFocusTo), 6000);
   updateRewardStatusInPlace();
 }
@@ -18133,7 +14655,6 @@ function rewardStatusSummary() {
     parts.push('Nothing claimed yet on this browser.');
   }
   if (state.reward.lastMessage) parts.push(state.reward.lastMessage);
-  // The whole point of the schedule is that it is knowable, so say it.
   if (record.nextCheckAt > Date.now()) {
     parts.push(`Next check ${new Date(record.nextCheckAt).toLocaleString()}.`);
   } else if (!record.nextCheckAt) {
@@ -18149,19 +14670,7 @@ function chatMessageInput() {
   return input.isContentEditable || input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input : null;
 }
 
-/**
- * Type the plain name at the caret. Never sends.
- *
- * `execCommand('insertText')` is the only path: it goes through the editor's own
- * input handling, so Kick's composer sees a real edit and keeps its state
- * consistent. There is deliberately no `textContent` fallback — writing text
- * directly into a rich editor leaves its internal model out of sync with the
- * DOM, and a message assembled that way is not one the user composed. No
- * synthetic Enter, no send-button click, anywhere in this path.
- */
 function insertStickerName(target) {
-  // The setting gates the action, not just the button. Hiding a control is
-  // presentation; this path types into someone's message box.
   if (!state.settings.content.insertEmoteName) return;
   const sticker = libraryStickerFor(target);
   const plan = emoteInsertionPlan(sticker);
@@ -18249,7 +14758,6 @@ function runSelfCheck() {
   const companion = companionInfo();
   const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
   updateCompatibilityInPlace();
-  // The companion is optional, so its absence is reported but never a failure.
   const layer = companion.active ? `network + page (companion v${companion.version})` : 'page only';
   const timing = `injected ${INJECTION.summary}`;
   showToast(failures.length
@@ -18336,13 +14844,6 @@ function togglePanicSwitch() {
   }
 }
 
-/**
- * Raise or retire the persistent storage warning.
- *
- * Deliberately not a toast: a toast that disappears after 3.6 seconds is how
- * this failure stayed invisible. Dismissing it clears the acknowledgement for
- * the *current* set of failing keys only, so a new failure raises it again.
- */
 function renderStorageWarning() {
   const alert = state.shadow?.querySelector('[data-kf-storage-alert]');
   if (!alert) return;
@@ -18375,8 +14876,6 @@ function showToast(message, isError = false, actions = []) {
   toast.textContent = '';
   const text = document.createElement('span');
   text.className = 'kf-toast-text';
-  // Toasts write straight to textContent, so localizeInterface never gets a
-  // chance at them on the render pass — they translate here or not at all.
   text.textContent = tr(message);
   toast.append(text);
   for (const action of actions) {
@@ -18392,12 +14891,10 @@ function showToast(message, isError = false, actions = []) {
     toast.append(button);
   }
   toast.dataset.error = String(isError);
-  // Errors interrupt (assertive); routine confirmations wait their turn (polite).
   toast.setAttribute('role', isError ? 'alert' : 'status');
   toast.setAttribute('aria-live', isError ? 'assertive' : 'polite');
   toast.hidden = false;
   clearTimeout(showToast.timer);
-  // Action toasts stay long enough to be clicked; plain toasts clear quickly.
   showToast.timer = setTimeout(() => { toast.hidden = true; }, actions.length ? 7000 : 3600);
 }
 
@@ -18422,10 +14919,6 @@ function renderCommands() {
   const query = (state.commandInput?.value || '').trim().toLowerCase();
   const commands = commandDefinitions().filter((command) => `${command.label} ${command.description}`.toLowerCase().includes(query));
   const count = state.shadow?.querySelector('[data-kf-command-count]');
-  // Marked data-kf-no-translate: this text is a number plus an already-chosen
-  // plural form, so the localizer must leave it alone. Otherwise it records the
-  // English on first render and every later pass rewrites the translated form
-  // back from that recorded source.
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
   setMarkup(state.commandList, commands.length
     ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
@@ -18517,14 +15010,6 @@ function isTypingTarget(target) {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
 }
 
-/**
- * Keep Tab inside whichever overlay is on top.
- *
- * Every modal surface needs this, not just settings: tabbing out of a dialog
- * lands on a page the user cannot see, and in the multi-stream grid the next
- * stops are cross-origin player frames whose interiors cannot be focus-managed
- * at all. Containment at the host is the only control available there.
- */
 function resetConfirmationOpen() {
   const container = state.shadow?.querySelector('[data-kf-confirm]');
   return Boolean(container && !container.hidden);
@@ -18550,9 +15035,6 @@ function trapFocus(event) {
   if (!shell) return false;
   const candidates = [...shell.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])')]
     .filter((element) => !element.closest('[hidden]'));
-  // Visibility filtering is a refinement, never a way to end up with nothing:
-  // a positioning quirk that emptied this list would silently switch the trap
-  // off, which is worse than trapping onto an offscreen control.
   const visible = candidates.filter((element) => element.checkVisibility?.() ?? true);
   const focusable = visible.length ? visible : candidates;
   if (!focusable.length) return false;
@@ -18598,9 +15080,6 @@ function onGlobalKeydown(event) {
     return;
   }
 
-  // Escape cancels the innermost open surface, off the same ladder the focus
-  // trap uses. Closing all of Settings from a confirmation prompt discards the
-  // page the user was working on to answer a question they only declined.
   if (event.key === 'Escape') {
     const top = topmostOverlayLayer(overlayOpenState())?.layer;
     if (top) {
@@ -18754,13 +15233,12 @@ function openStreamerStats(slug = currentChannelSlug()) {
     popup.location.replace(url);
     popup.focus();
   } catch {
-    try { popup.location.href = url; } catch { /* the toast still names the destination */ }
+    try { popup.location.href = url; } catch {   }
   }
   showToast(trf('Opened {channel} in StreamerStats.', { channel: slug }));
   return true;
 }
 
-/** Mount the StreamerStats action inside Kick's channel-profile action row. */
 function ensureProfileStatsControl() {
   const slug = currentChannelSlug();
   const anchor = slug && document.querySelector('[data-testid="follow-button"], [data-testid="sub-button"], [data-testid="gift-sub-button"]');
@@ -18840,14 +15318,9 @@ function ensureHeaderQuickControl() {
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      // Straight to settings. This is the one visible entry point most people
-      // ever press, and a command palette is a poor front door for it — the
-      // menu is still a keystroke away on the configured shortcut.
       if (state.runtime.suspended) togglePanicSwitch();
       else openSettings();
     });
-    // Multi-stream is a headline feature; burying it in a settings page is not
-    // "easily add multiple streams".
     shadow.querySelector('[data-kf-header-multi]').addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -18872,11 +15345,6 @@ function ensureHeaderQuickControl() {
   return state.headerControlHost.isConnected;
 }
 
-/**
- * Keep the header's "+ Multi" button and the "Multi (n)" count in sync with the
- * grid and the current route. The add button only appears on a channel page,
- * and flips to an "In Multi" toggle once the channel is in the grid.
- */
 function syncHeaderMultiState() {
   const count = state.multistream.streams.length;
   if (state.headerMultiLabel) state.headerMultiLabel.textContent = count ? `Multi (${count})` : 'Multi';
@@ -18926,18 +15394,6 @@ function syncQuickButton() {
   syncEarnedState(accessibleLabel);
 }
 
-/**
- * Mark the one earned state Kick actually publishes: a reward waiting.
- *
- * Read from the page each apply cycle, which costs one `querySelector` and one
- * storage read and adds no timer. Signed out there is no reward control, so
- * `earnedState` returns null and nothing is marked at all — a client inventing
- * a badge for an account that has none is pressure, not delight.
- *
- * The status is carried in the accessible name, which is the part that has to
- * work: the dot and the motion-safe pulse the stylesheet adds on top of the
- * attribute are decoration, and neither is the message.
- */
 function syncEarnedState(accessibleLabel) {
   const earned = earnedState(viewerHubCards(collectViewerFacts(), Date.now()));
   const kind = earned ? earned.kind : '';
@@ -18955,30 +15411,16 @@ function syncEarnedState(accessibleLabel) {
 state.discoveryLayouts = loadDiscoveryLayouts();
 addStyle(SITE_CSS);
 installNetworkDefense();
-// Before anything else can append a preflight script.
 installPlayerLoadingFix();
 installSpaHooks();
 installCompanionBridge();
 applySettingsAttributes();
-// Must run before Kick's player initialises, because the player reads its
-// starting quality once at init and never looks again.
 applyQualitySessionKey();
 
-/**
- * Wire up the optional companion extension.
- *
- * These listeners are installed during bootstrap rather than with the rest of
- * the interface: the two scripts are injected independently, so neither can
- * assume the other is listening yet. The companion asks for the settings once
- * it is ready, and this side answers, which makes the exchange independent of
- * which script wins the injection race.
- */
 function installCompanionBridge() {
   document.addEventListener('kick-focus:request-settings', () => publishSettingsState());
   document.addEventListener('kick-focus:open-settings', () => openSettings());
   document.addEventListener('kick-focus:open-commands', () => openCommandMenu());
-  // Reachable without depending on Kick's header markup, which the header
-  // control does. The companion popup uses this too.
   document.addEventListener('kick-focus:open-multistream', () => {
     if (multistreamOpen()) closeMultistream();
     else openMultistream();
@@ -18988,24 +15430,12 @@ function installCompanionBridge() {
   });
   handshakeCompanion();
   openSharedLayoutFromUrl();
-  // Off the boot path deliberately: the interface is already on screen, and the
-  // fuller library arrives when the database answers.
   hydrateLibrary().catch((error) => logAppError('library hydrate', error));
 }
 
-/**
- * Open a layout someone shared as a link.
- *
- * Every slug is revalidated by `parseMultistreamLink` before use — a link is
- * untrusted input regardless of who sent it — and the grid is only replaced
- * when the link actually names channels. The parameter is then stripped from
- * the address bar so a reload does not silently reopen it.
- */
 function openSharedLayoutFromUrl() {
   const shared = parseMultistreamLink(location.href);
   if (!shared.length) return;
-  // A shared link replaces the grid outright. Someone half way through
-  // collecting channels deserves to be told, and to be able to get them back.
   const previous = state.multistream;
   const overwritten = previous.streams.filter((slug) => !shared.some((entry) => entry.toLowerCase() === slug.toLowerCase()));
   state.multistream = normalizeMultistream({
@@ -19021,7 +15451,6 @@ function openSharedLayoutFromUrl() {
     url.searchParams.delete(MULTISTREAM_LINK_PARAM);
     history.replaceState(history.state, '', url.href);
   } catch {
-    // A URL this build cannot rewrite is not a reason to refuse the layout.
   }
   openMultistream();
   announce(`Opened a shared layout with ${shared.length} ${plural(shared.length, 'channel', 'channels')}.`);
@@ -19044,10 +15473,6 @@ function openSharedLayoutFromUrl() {
 
 function startWhenBodyExists() {
   if (!document.body) {
-    // The observer is held in a binding rather than read from the callback's
-    // first argument, which is the mutation list. Taking it from there threw on
-    // every mutation, so the script never started on any load where it won the
-    // document-start race and <body> did not exist yet.
     const bodyObserver = new MutationObserver(() => {
       if (!document.body) return;
       bodyObserver.disconnect();
@@ -19063,24 +15488,10 @@ function startWhenBodyExists() {
   installDocumentObserver();
   installRemoteBlocklistTimer();
   scheduleApply(0);
-  // Both content scripts have certainly registered their listeners by now, so
-  // this is the announcement the companion can rely on receiving.
   publishSettingsState();
   announceUpdate();
 }
 
-/**
- * Say so when the build changed under the user.
- *
- * An update that alters behaviour without a word is the pattern Kick itself was
- * criticised for when ads appeared unannounced in May 2026; this build should
- * not do the same to its own users. Deliberately quiet on a first install and on
- * a profile that predates the recorded version — in neither case can this
- * honestly claim to know what changed.
- *
- * Recorded before the toast is shown, not after, so a notice that is never
- * clicked still counts as delivered and cannot repeat on every page load.
- */
 function announceUpdate() {
   const notice = updateNotice(state.settings.lastSeenVersion, VERSION);
   if (state.settings.lastSeenVersion !== VERSION) {

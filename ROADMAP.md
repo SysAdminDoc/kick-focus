@@ -78,14 +78,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
 
 ### P0
 
-- [ ] P0 — R-72 — Cut `dist/kick-focus.user.js` below 850,000 bytes
-  Why: the file is 972,051 bytes (97.2% of the 1,000,000-byte Violentmonkey Alternative page mode ceiling); `scripts/check.mjs` already warns above 85%, and CHANGELOG 1.21.0 recorded ~25 KB growth per release, so the next medium feature silently loses real `document-start` on that path.
-  Evidence: `dir` on `dist/kick-focus.user.js` 2026-08-21 (972,359 bytes after the v1.32.0 audit); `scripts/check.mjs` `SIZE_BUDGETS`; Violentmonkey v2.46.0 notes (still in v2.48.0, 2026-08-17).
-  Touches: `src/runtime.js` (`TRANSLATIONS` at line 6796, `SITE_CSS`, settings markup), `scripts/build.mjs`, `scripts/check.mjs`; keep `test/i18n-coverage.test.js` green.
-  Acceptance: userscript length < 850,000; `npm run check` prints no 85% WARN; `npm run verify` green; live Chromium gate still reports no failures at 1440×900; es/pt coverage still complete.
-  Complexity: M
-  Note (2026-08-21): VM’s advisory is script **plus** storage/resources. Cutting the file does not close that. Pair with R-91.
-
 - [ ] P0 — R-74 — Live-gate CSP on Home and a channel document
   Why: the Firefox companion injects the page bundle inline because Kick had no `script-src`; only homepage `HEAD` was measured on 2026-08-20, and Chrome 153 (2026-09-08) doubles front-end churn.
   Evidence: README Firefox companion section; homepage HEAD 2026-08-20 (no CSP); https://developer.chrome.com/blog/chrome-two-week-release
