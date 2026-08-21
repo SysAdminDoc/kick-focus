@@ -10,6 +10,7 @@ All notable changes are documented here. Dates use ISO 8601.
 - Chat can now sit on the left side of the player. The existing separator stays on the player-facing edge, drags in the expected direction from 320 to 520 px, and switching back to Right restores the original order.
 - An optional composer recall keeps the last five public messages sent from the current tab in memory. Shift+Up cycles them, ordinary Arrow Up stays with Kick, whispers are skipped, and a reload clears the list.
 - Hovering or focusing a followed channel in the sidebar now opens a compact preview from the image Kick already loaded. It stays inside the viewport, closes on Escape, and becomes a canvas still when Reduced Motion is active.
+- The Viewer page now includes a local session watch clock. It counts only active playback in a visible channel tab, pauses with playback or visibility, identifies itself as browser-session-only, and resets on reload without writing a Kick level.
 
 ### Fixed
 

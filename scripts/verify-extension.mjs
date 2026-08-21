@@ -567,6 +567,61 @@ try {
       ? `${discoveryUptime.slug} reads ${discoveryUptime.text}, ${Math.abs(discoveryUptime.shownSeconds - discoveryUptime.expectedSeconds)}s from its observed start; ${discoveryUptime.width}x${discoveryUptime.height}px at ${discoveryUptime.fontSize}px; ${discoveryUptime.feedReads} feed read(s), ${discoveryUptime.eligible} eligible card(s), contained=${discoveryUptime.contained}, page fits=${discoveryUptime.pageFits}`
       : discoveryUptime.why);
 
+  // R-88: stand up a visible media element on a channel-shaped route, let the
+  // session clock cross a second, then stop playback and prove the card stops
+  // with it. The storage assertion is the reload contract: there is no record
+  // that a fresh page could restore.
+  const sessionWatchProbe = await evaluate(pageClient, `(async () => {
+    const host = document.getElementById('kick-focus-root');
+    const shadow = await __kfWait(() => host && host.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = (ms = 120) => new Promise((done) => setTimeout(done, ms));
+    const beforePath = location.pathname;
+    const video = document.createElement('video');
+    video.dataset.kfSessionWatchProbe = 'true';
+    video.style.cssText = 'position:fixed;inset:80px auto auto 240px;width:640px;height:360px;visibility:visible';
+    let playing = true;
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => !playing });
+    Object.defineProperty(video, 'ended', { configurable: true, get: () => false });
+    Object.defineProperty(video, 'readyState', { configurable: true, get: () => 4 });
+    document.body.prepend(video);
+    try {
+      history.pushState({}, '', '/xqc');
+      const route = await __kfWait(() => document.documentElement.dataset.kfRoute === 'channel');
+      if (!route) return { ok: false, why: 'the synthetic channel route never reached the runtime' };
+      video.dispatchEvent(new Event('playing'));
+      await settle(1350);
+      shadow.querySelector('[data-kf-quick]')?.click();
+      await settle(250);
+      shadow.querySelector('[data-page="viewer"]')?.click();
+      await settle(250);
+      const card = shadow.querySelector('[data-kf-hub-card="watch"]');
+      const first = String(card?.querySelector('strong')?.textContent || '').trim();
+      const source = String(card?.querySelector('em')?.textContent || '').trim();
+      const localSource = card?.dataset.kfSource === 'local';
+      playing = false;
+      video.dispatchEvent(new Event('waiting'));
+      await settle(1250);
+      const second = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      const storageKeys = [...Object.keys(localStorage), ...Object.keys(sessionStorage)]
+        .filter((key) => key.startsWith('kick-focus:') && /watch|session/i.test(key));
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      return { ok: true, first, second, source, localSource, storageKeys };
+    } finally {
+      video.remove();
+      history.pushState({}, '', beforePath || '/');
+    }
+  })()`);
+  const sessionWatch = sessionWatchProbe.value || {};
+  record('Viewer labels a playback-gated watch clock as browser-session-only and stores nothing',
+    sessionWatch.ok === true && /^\d+:\d{2}(?::\d{2})?$/.test(sessionWatch.first || '')
+      && sessionWatch.first !== '0:00' && sessionWatch.second === sessionWatch.first
+      && sessionWatch.localSource === true && /session|sesión|sessão/i.test(sessionWatch.source || '')
+      && Array.isArray(sessionWatch.storageKeys) && sessionWatch.storageKeys.length === 0,
+    sessionWatch.ok
+      ? `playing=${sessionWatch.first}, paused=${sessionWatch.second}, source="${sessionWatch.source}", storage=${JSON.stringify(sessionWatch.storageKeys)}`
+      : sessionWatch.why);
+
   // The accessibility settings and the modal focus ladder are about this mod's
   // own chrome, not Kick's markup, so they are proven by driving the real UI
   // rather than by reading source. Both were defects a green offline build

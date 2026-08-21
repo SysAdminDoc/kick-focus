@@ -33,6 +33,7 @@ export function createSettings(host) {
     escapeHtml,
     favoriteCount,
     formatBytes,
+    formatSessionWatchTime,
     gmGet,
     HIDEABLE_ELEMENTS,
     HIDEABLE_GROUPS,
@@ -699,9 +700,9 @@ export function createSettings(host) {
   // Viewer hub
   //
   // Reads what Kick is already showing this account and shows it in one place.
-  // It writes nothing, claims nothing, and adds no endpoint: five of the six
-  // values come off the page, and the sixth is the collectible read this build
-  // already makes.
+  // It writes nothing, claims nothing, and adds no endpoint: five values come
+  // off the page, one is the collectible read this build already makes, and
+  // the seventh is a clock kept only in this tab.
   //
   // Nothing here runs while the hub is closed. The facts are gathered when the
   // page is opened and again on the apply cycle only while it is the page being
@@ -718,6 +719,7 @@ export function createSettings(host) {
 
   function hubCardValue(card) {
     if (card.id === 'reward') return tr(VIEWER_HUB_REWARD_WORDS[card.value] || VIEWER_HUB_REWARD_WORDS.available);
+    if (card.id === 'watch') return formatSessionWatchTime(card.value);
     // Distinct collectibles first, total copies in brackets, and only when the
     // two differ — "21 (21)" says nothing that "21" does not.
     if (card.id === 'collectibles' && Number.isFinite(card.copies) && card.copies > card.value) {
@@ -730,6 +732,7 @@ export function createSettings(host) {
 
   function hubCardSource(card, now) {
     if (card.state !== 'ready') return '';
+    if (card.source === 'local') return tr('This browser session only');
     const source = card.source === 'api' ? tr('From Kick’s API') : tr('Read from the page');
     if (!card.stale) return source;
     const minutes = Math.max(1, Math.round((now - card.observedAt) / 60_000));
@@ -741,7 +744,7 @@ export function createSettings(host) {
     const now = Date.now();
     const cards = viewerHubCards(collectViewerFacts(), now);
     return cards.map((card) => `
-      <div class="kf-mini-card kf-hub-card" data-kf-hub-card="${card.id}" data-state="${card.state}">
+      <div class="kf-mini-card kf-hub-card" data-kf-hub-card="${card.id}" data-state="${card.state}" data-kf-source="${card.source}">
         <span>${escapeHtml(tr(VIEWER_HUB_TITLES[card.id]))}</span>
         <strong>${card.state === 'ready' ? escapeHtml(hubCardValue(card)) : escapeHtml(tr(card.state === 'loading' ? 'Reading…' : '—'))}</strong>
         <em>${escapeHtml(card.state === 'ready' ? hubCardSource(card, now) : tr(VIEWER_HUB_REASONS[card.reason] || VIEWER_HUB_REASONS['not-read']))}</em>
@@ -753,7 +756,7 @@ export function createSettings(host) {
   function renderViewerPage() {
     const summary = viewerHubSummary(viewerHubCards(collectViewerFacts(), Date.now()));
     return `
-      ${pageHeader('Viewer', 'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.', 'Reading', `${summary.ready}/${summary.total}`)}
+      ${pageHeader('Viewer', 'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.', 'Reading', `${summary.ready}/${summary.total}`)}
       <div class="kf-hub-grid" data-kf-hub-cards>${renderViewerHubCards()}</div>
       <section class="kf-panel">
         <div class="kf-action-row"><div><h3>Where these come from</h3><p data-kf-hub-sources>${escapeHtml(hubSourceSummary(summary))}</p></div><button type="button" class="kf-button" data-action="refresh-hub">Read again</button></div>
@@ -770,6 +773,7 @@ export function createSettings(host) {
       .format(ids.map((id) => tr(VIEWER_HUB_TITLES[id])));
     if (summary.fromDom.length) parts.push(trf('{items} read from the page', { items: list(summary.fromDom) }));
     if (summary.fromApi.length) parts.push(trf('{items} from Kick’s API', { items: list(summary.fromApi) }));
+    if (summary.fromLocal.length) parts.push(trf('{items} kept in this browser session', { items: list(summary.fromLocal) }));
     const stale = summary.stale ? ` ${trf('{n} showing an older reading.', { n: summary.stale })}` : '';
     const errors = summary.errors ? ` ${trf('{n} could not be built.', { n: summary.errors })}` : '';
     return `${parts.join('; ')}.${stale}${errors}`;

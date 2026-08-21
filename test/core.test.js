@@ -17,6 +17,9 @@ import {
   dropChatMessage,
   formatChatTime,
   floatingPreviewPosition,
+  advanceSessionWatchTime,
+  sessionWatchElapsed,
+  formatSessionWatchTime,
   isPriorityPerson,
   parsePeopleList,
   pruneChatHistory,
@@ -2769,8 +2772,9 @@ test('an anonymous page says so, and says it per card', { tag: 'unit' }, () => {
     drops: { navPresent: false },
     level: { dialogOpen: false },
     streak: { dialogOpen: false },
+    watch: { elapsedMs: 65_000, active: false, observedAt: 1000 },
   }, 1000);
-  const reasons = Object.fromEntries(cards.map((entry) => [entry.id, entry.reason]));
+  const reasons = Object.fromEntries(cards.filter((entry) => entry.id !== 'watch').map((entry) => [entry.id, entry.reason]));
   assert.deepEqual(reasons, {
     reward: 'anonymous',
     points: 'anonymous',
@@ -2779,8 +2783,28 @@ test('an anonymous page says so, and says it per card', { tag: 'unit' }, () => {
     level: 'dialog-closed',
     streak: 'dialog-closed',
   });
-  assert.ok(cards.every((entry) => entry.state === 'unavailable'));
-  assert.deepEqual(viewerHubSummary(cards), { ready: 0, total: 6, errors: 0, stale: 0, fromDom: [], fromApi: [] });
+  assert.ok(cards.filter((entry) => entry.id !== 'watch').every((entry) => entry.state === 'unavailable'));
+  const local = cards.find((entry) => entry.id === 'watch');
+  assert.equal(local.state, 'ready');
+  assert.equal(local.source, 'local');
+  assert.equal(local.value, 65_000);
+  assert.deepEqual(viewerHubSummary(cards), {
+    ready: 1, total: 7, errors: 0, stale: 0, fromDom: [], fromApi: [], fromLocal: ['watch'],
+  });
+});
+
+test('session watch time advances only across active playback and formats as a clock', { tag: 'unit' }, () => {
+  let record = advanceSessionWatchTime({}, 1000, true);
+  assert.deepEqual(record, { elapsedMs: 0, activeSince: 1000 });
+  assert.equal(sessionWatchElapsed(record, 61_500), 60_500);
+  record = advanceSessionWatchTime(record, 61_500, false);
+  assert.deepEqual(record, { elapsedMs: 60_500, activeSince: 0 });
+  assert.equal(sessionWatchElapsed(record, 90_000), 60_500, 'paused time kept advancing');
+  record = advanceSessionWatchTime(record, 90_000, true);
+  assert.equal(sessionWatchElapsed(record, 3_750_000), 3_720_500);
+  assert.equal(formatSessionWatchTime(0), '0:00');
+  assert.equal(formatSessionWatchTime(60_500), '1:00');
+  assert.equal(formatSessionWatchTime(3_720_500), '1:02:00');
 });
 
 test('level and streak are only read while Kick has the reward dialog open', { tag: 'unit' }, () => {
@@ -2845,6 +2869,7 @@ test('the hub summary tells DOM-derived values from API-derived ones', { tag: 'u
   assert.equal(summary.ready, 3);
   assert.deepEqual(summary.fromApi, ['collectibles']);
   assert.deepEqual(summary.fromDom.sort(), ['points', 'reward']);
+  assert.deepEqual(summary.fromLocal, []);
   // A card with no reading names no source, so "where did this come from" can
   // never be answered for a value that does not exist.
   assert.ok(cards.filter((entry) => entry.state !== 'ready').every((entry) => entry.source === 'none'));

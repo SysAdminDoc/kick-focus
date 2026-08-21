@@ -129,5 +129,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md), run against v1.3
   Why: Kick Augmenter and Enhancer both ship watch-time; Kick Levels remain unreadable without the reward dialog, and a local counter must not be presented as Kick’s level.
   Evidence: Kick Augmenter CWS; enhancer.at Kick features; `VIEWER_HUB_REASONS.dialog-closed` in `src/core.mjs`.
   Touches: `src/core.mjs` Viewer Hub card registry, `src/runtime.js`, i18n.
+  Implementation note (2026-08-21): a seventh Viewer card shows a clock sourced as local and labelled “This browser session only.” It advances while the primary channel video is actively playing in a visible tab, banks time on pause, buffering, hiding, route exit, or panic, and keeps its entire record in `state.viewerHub`. Reload starts at zero, and the card is independent of Kick level and sign-in state. Spanish and Portuguese cover the title, source, header, and source summary. Offline verification passes 363/363 with 188 artifact checks and 80 red probes. The browser probe drives a playback boundary, confirms the clock freezes, and asserts no watch key exists in either web storage; the checkbox remains open until the headed Kick gate completes it.
   Acceptance: the card says it is this browser session’s timer; it resets on reload; it never writes a Kick level; signed-out still explains itself.
   Complexity: S

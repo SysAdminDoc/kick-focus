@@ -99,7 +99,13 @@ const state = {
   // The viewer hub's one piece of remembered state: the collectible read, which
   // is the only card that is not read straight off the page. Null means nobody
   // has opened the hub yet, which is why nothing has been requested.
-  viewerHub: { collectibles: null },
+  viewerHub: {
+    collectibles: null,
+    watch: { elapsedMs: 0, activeSince: 0 },
+    watchVideo: null,
+    watchPlayback: false,
+    watchTimer: 0,
+  },
   // Chat comfort, and none of it persisted. The log is other people's
   // messages: it lives for the session, in memory, and a reload is the same as
   // clearing it.
@@ -6126,6 +6132,7 @@ async function runApplyCycle() {
     applySearchEnhancements();
     applyDropsEnhancements();
     applyMediaMemory();
+    syncSessionWatchTime();
     applyPlayerResilience();
     applyChatPause();
     observeChatStickerDiscovery();
@@ -7535,10 +7542,12 @@ const TRANSLATIONS = {
     'Viewer': 'Cuenta',
     'What Kick tells this account': 'Lo que Kick indica de esta cuenta',
     'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'Lo que Kick ya indica de esta cuenta, reunido en un sitio. Aquí no se cambia nada, no se reclama nada y no se envía nada a ninguna parte.',
+    'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.': 'Lecturas de la cuenta y esta sesión del navegador, reunidas en un sitio. Aquí no se reclama ni se envía nada.',
     'Reading': 'Lecturas',
     'Reading…': 'Leyendo…',
     'From Kick’s API': 'Desde la API de Kick',
     'Read from the page': 'Leído de la página',
+    'This browser session only': 'Solo esta sesión del navegador',
     '{n} min ago': 'hace {n} min',
     'Daily reward': 'Recompensa diaria',
     'Channel points': 'Puntos del canal',
@@ -7546,6 +7555,7 @@ const TRANSLATIONS = {
     'Drops': 'Drops',
     'Level': 'Nivel',
     'Streak': 'Racha',
+    'Session watch time': 'Tiempo visto en esta sesión',
     'Not read yet on this page.': 'Todavía no se ha leído en esta página.',
     'Kick shows this to a signed-in account only.': 'Kick solo muestra esto a una cuenta con sesión iniciada.',
     'Open a channel to see its points.': 'Abre un canal para ver sus puntos.',
@@ -7598,6 +7608,7 @@ const TRANSLATIONS = {
     'Exporting now is the only way to keep these changes.': 'Exportar ahora es la única forma de conservar estos cambios.',
     '{items} read from the page': '{items}, leídos de la página',
     '{items} from Kick’s API': '{items}, desde la API de Kick',
+    '{items} kept in this browser session': '{items}, guardado en esta sesión del navegador',
     '{n} showing an older reading.': '{n} con una lectura anterior.',
     '{n} could not be built.': 'No se pudieron crear: {n}.',
     '{shortcut} is already used by {action}.': '{shortcut} ya lo usa {action}.',
@@ -8181,10 +8192,12 @@ const TRANSLATIONS = {
     'Viewer': 'Conta',
     'What Kick tells this account': 'O que a Kick informa desta conta',
     'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'O que a Kick já informa desta conta, reunido num só lugar. Aqui nada é alterado, nada é resgatado e nada é enviado para lugar nenhum.',
+    'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.': 'Leituras da conta e esta sessão do navegador, reunidas num só lugar. Aqui nada é resgatado ou enviado.',
     'Reading': 'Leituras',
     'Reading…': 'A ler…',
     'From Kick’s API': 'Da API da Kick',
     'Read from the page': 'Lido da página',
+    'This browser session only': 'Apenas esta sessão do navegador',
     '{n} min ago': 'há {n} min',
     'Daily reward': 'Recompensa diária',
     'Channel points': 'Pontos do canal',
@@ -8192,6 +8205,7 @@ const TRANSLATIONS = {
     'Drops': 'Drops',
     'Level': 'Nível',
     'Streak': 'Sequência',
+    'Session watch time': 'Tempo assistido nesta sessão',
     'Not read yet on this page.': 'Ainda não foi lido nesta página.',
     'Kick shows this to a signed-in account only.': 'A Kick só mostra isto a uma conta com sessão iniciada.',
     'Open a channel to see its points.': 'Abre um canal para ver os seus pontos.',
@@ -8244,6 +8258,7 @@ const TRANSLATIONS = {
     'Exporting now is the only way to keep these changes.': 'Exportar agora é a única forma de manter essas alterações.',
     '{items} read from the page': '{items}, lidos da página',
     '{items} from Kick’s API': '{items}, da API da Kick',
+    '{items} kept in this browser session': '{items}, guardado nesta sessão do navegador',
     '{n} showing an older reading.': '{n} com uma leitura anterior.',
     '{n} could not be built.': 'Não foi possível criar: {n}.',
     '{shortcut} is already used by {action}.': '{shortcut} já é usado por {action}.',
@@ -9051,6 +9066,10 @@ function buildInterface() {
   document.addEventListener('submit', guard('composer recall', onComposerSubmit), true);
   document.addEventListener('click', guard('composer recall', onComposerSendClick), true);
   document.addEventListener('click', rememberWatchedCard, true);
+  document.addEventListener('visibilitychange', () => {
+    syncSessionWatchTime();
+    repaintViewerWatchCard();
+  });
   // Colon completion. Delegated at the document because Kick replaces its
   // composer on every route change, and deliberately only on events the user
   // already caused — no keydown listener, so no keystroke can be captured.
@@ -9115,6 +9134,7 @@ const settingsSurface = createSettings({
   escapeHtml,
   favoriteCount,
   formatBytes,
+  formatSessionWatchTime,
   gmGet,
   HIDEABLE_ELEMENTS,
   HIDEABLE_GROUPS,
@@ -9428,6 +9448,63 @@ const POINTS_VALUE = '[data-testid="channel-points-value"]';
 const DROPS_NAV = '[data-testid="sidebar-drops"]';
 const DROPS_CAMPAIGN = 'main a[href^="/drops/"]';
 
+const SESSION_WATCH_MEDIA_EVENTS = Object.freeze(['playing', 'waiting', 'stalled', 'pause', 'ended', 'emptied']);
+
+function repaintViewerWatchCard() {
+  if (state.currentPage === 'viewer' && state.modal && !state.modal.hidden) renderViewerHubInPlace();
+}
+
+function onSessionWatchMedia(event) {
+  state.viewerHub.watchPlayback = event.type === 'playing';
+  syncSessionWatchTime();
+  repaintViewerWatchCard();
+}
+
+function bindSessionWatchVideo(video) {
+  if (state.viewerHub.watchVideo === video) return;
+  if (state.viewerHub.watchVideo) {
+    for (const type of SESSION_WATCH_MEDIA_EVENTS) {
+      state.viewerHub.watchVideo.removeEventListener(type, onSessionWatchMedia);
+    }
+  }
+  state.viewerHub.watchVideo = video || null;
+  state.viewerHub.watchPlayback = Boolean(video && !video.paused && !video.ended && video.readyState >= 3);
+  if (video) {
+    for (const type of SESSION_WATCH_MEDIA_EVENTS) video.addEventListener(type, onSessionWatchMedia);
+  }
+}
+
+function sessionWatchIsActive(video) {
+  return !state.runtime.suspended
+    && state.route === 'channel'
+    && document.visibilityState !== 'hidden'
+    && Boolean(video?.isConnected)
+    && state.viewerHub.watchPlayback;
+}
+
+function syncSessionWatchTime(now = Date.now()) {
+  const video = state.route === 'channel' ? primaryVideo() : null;
+  bindSessionWatchVideo(video);
+  const active = sessionWatchIsActive(video);
+  state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, now, active);
+  if (active && !state.viewerHub.watchTimer) {
+    state.viewerHub.watchTimer = window.setInterval(() => {
+      syncSessionWatchTime();
+      repaintViewerWatchCard();
+    }, 1000);
+  } else if (!active && state.viewerHub.watchTimer) {
+    clearInterval(state.viewerHub.watchTimer);
+    state.viewerHub.watchTimer = 0;
+  }
+}
+
+function stopSessionWatchTime() {
+  state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, Date.now(), false);
+  clearInterval(state.viewerHub.watchTimer);
+  state.viewerHub.watchTimer = 0;
+  bindSessionWatchVideo(null);
+}
+
 /** A whole number out of Kick's own markup, or null when there is nothing to read. */
 function readNumber(text) {
   const raw = String(text ?? '').replace(/[\s,]/g, '');
@@ -9501,6 +9578,11 @@ function collectViewerFacts() {
     },
     level: { dialogOpen: figures.dialogOpen, value: figures.level, observedAt: now },
     streak: { dialogOpen: figures.dialogOpen, value: figures.streak, observedAt: now },
+    watch: {
+      elapsedMs: sessionWatchElapsed(state.viewerHub.watch, now),
+      active: Boolean(state.viewerHub.watch.activeSince),
+      observedAt: now,
+    },
   };
 }
 
@@ -10999,6 +11081,7 @@ function clearEnhancedPage() {
   state.chatResizeCleanup?.();
   state.chatResizeCleanup = null;
   clearStickerUI();
+  stopSessionWatchTime();
   hideFollowingPreview();
   state.followingPreview?.remove?.();
   state.followingPreview = null;

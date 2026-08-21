@@ -649,6 +649,7 @@ const VIEWER_HUB_CARDS = Object.freeze([
   Object.freeze({ id: 'drops', source: 'dom' }),
   Object.freeze({ id: 'level', source: 'dom' }),
   Object.freeze({ id: 'streak', source: 'dom' }),
+  Object.freeze({ id: 'watch', source: 'local' }),
 ]);
 
 const VIEWER_HUB_TITLES = Object.freeze({
@@ -658,6 +659,7 @@ const VIEWER_HUB_TITLES = Object.freeze({
   drops: 'Drops',
   level: 'Level',
   streak: 'Streak',
+  watch: 'Session watch time',
 });
 
 const VIEWER_HUB_REASONS = Object.freeze({
@@ -678,6 +680,34 @@ const VIEWER_HUB_REWARD_WORDS = Object.freeze({
 });
 
 const VIEWER_HUB_STALE_MS = 60_000;
+
+function advanceSessionWatchTime(record = {}, now = 0, active = false) {
+  const at = Math.max(0, Number.isFinite(Number(now)) ? Number(now) : 0);
+  let elapsedMs = Math.max(0, Number.isFinite(Number(record.elapsedMs)) ? Number(record.elapsedMs) : 0);
+  const activeSince = Math.max(0, Number.isFinite(Number(record.activeSince)) ? Number(record.activeSince) : 0);
+  if (!active) {
+    if (activeSince && at >= activeSince) elapsedMs += at - activeSince;
+    return Object.freeze({ elapsedMs, activeSince: 0 });
+  }
+  return Object.freeze({ elapsedMs, activeSince: activeSince || at });
+}
+
+function sessionWatchElapsed(record = {}, now = 0) {
+  const elapsedMs = Math.max(0, Number.isFinite(Number(record.elapsedMs)) ? Number(record.elapsedMs) : 0);
+  const activeSince = Math.max(0, Number.isFinite(Number(record.activeSince)) ? Number(record.activeSince) : 0);
+  const at = Math.max(0, Number.isFinite(Number(now)) ? Number(now) : 0);
+  return Math.round(elapsedMs + (activeSince && at >= activeSince ? at - activeSince : 0));
+}
+
+function formatSessionWatchTime(elapsedMs) {
+  const seconds = Math.max(0, Math.floor((Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) : 0) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
 
 function measured(value) {
   return Number.isFinite(value) ? Number(value) : null;
@@ -750,6 +780,18 @@ const BUILDERS = {
     if (campaigns === null) return card('drops', 'dom', 'unavailable', { reason: 'not-read' });
     return card('drops', 'dom', 'ready', { value: campaigns, ...freshness(fact.observedAt, now) });
   },
+
+  watch(fact, now) {
+    if (!fact) return card('watch', 'local', 'unavailable', { reason: 'not-read' });
+    const value = measured(fact.elapsedMs);
+    if (value === null) return card('watch', 'local', 'unavailable', { reason: 'not-read' });
+    return card('watch', 'local', 'ready', {
+      value: Math.max(0, value),
+      active: Boolean(fact.active),
+      observedAt: measured(fact.observedAt) || now,
+      stale: false,
+    });
+  },
 };
 
 function fromRewardDialog(id) {
@@ -793,6 +835,7 @@ function viewerHubSummary(cards = []) {
     stale: list.filter((entry) => entry.state === 'ready' && entry.stale).length,
     fromDom: list.filter((entry) => entry.state === 'ready' && entry.source === 'dom').map((entry) => entry.id),
     fromApi: list.filter((entry) => entry.state === 'ready' && entry.source === 'api').map((entry) => entry.id),
+    fromLocal: list.filter((entry) => entry.state === 'ready' && entry.source === 'local').map((entry) => entry.id),
   };
 }
 
@@ -5625,6 +5668,7 @@ function createSettings(host) {
     escapeHtml,
     favoriteCount,
     formatBytes,
+    formatSessionWatchTime,
     gmGet,
     HIDEABLE_ELEMENTS,
     HIDEABLE_GROUPS,
@@ -6226,6 +6270,7 @@ function createSettings(host) {
 
   function hubCardValue(card) {
     if (card.id === 'reward') return tr(VIEWER_HUB_REWARD_WORDS[card.value] || VIEWER_HUB_REWARD_WORDS.available);
+    if (card.id === 'watch') return formatSessionWatchTime(card.value);
     if (card.id === 'collectibles' && Number.isFinite(card.copies) && card.copies > card.value) {
       return `${hubNumber(card.value)} (${hubNumber(card.copies)})`;
     }
@@ -6235,6 +6280,7 @@ function createSettings(host) {
 
   function hubCardSource(card, now) {
     if (card.state !== 'ready') return '';
+    if (card.source === 'local') return tr('This browser session only');
     const source = card.source === 'api' ? tr('From Kick’s API') : tr('Read from the page');
     if (!card.stale) return source;
     const minutes = Math.max(1, Math.round((now - card.observedAt) / 60_000));
@@ -6246,7 +6292,7 @@ function createSettings(host) {
     const now = Date.now();
     const cards = viewerHubCards(collectViewerFacts(), now);
     return cards.map((card) => `
-      <div class="kf-mini-card kf-hub-card" data-kf-hub-card="${card.id}" data-state="${card.state}">
+      <div class="kf-mini-card kf-hub-card" data-kf-hub-card="${card.id}" data-state="${card.state}" data-kf-source="${card.source}">
         <span>${escapeHtml(tr(VIEWER_HUB_TITLES[card.id]))}</span>
         <strong>${card.state === 'ready' ? escapeHtml(hubCardValue(card)) : escapeHtml(tr(card.state === 'loading' ? 'Reading…' : '—'))}</strong>
         <em>${escapeHtml(card.state === 'ready' ? hubCardSource(card, now) : tr(VIEWER_HUB_REASONS[card.reason] || VIEWER_HUB_REASONS['not-read']))}</em>
@@ -6257,7 +6303,7 @@ function createSettings(host) {
   function renderViewerPage() {
     const summary = viewerHubSummary(viewerHubCards(collectViewerFacts(), Date.now()));
     return `
-      ${pageHeader('Viewer', 'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.', 'Reading', `${summary.ready}/${summary.total}`)}
+      ${pageHeader('Viewer', 'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.', 'Reading', `${summary.ready}/${summary.total}`)}
       <div class="kf-hub-grid" data-kf-hub-cards>${renderViewerHubCards()}</div>
       <section class="kf-panel">
         <div class="kf-action-row"><div><h3>Where these come from</h3><p data-kf-hub-sources>${escapeHtml(hubSourceSummary(summary))}</p></div><button type="button" class="kf-button" data-action="refresh-hub">Read again</button></div>
@@ -6273,6 +6319,7 @@ function createSettings(host) {
       .format(ids.map((id) => tr(VIEWER_HUB_TITLES[id])));
     if (summary.fromDom.length) parts.push(trf('{items} read from the page', { items: list(summary.fromDom) }));
     if (summary.fromApi.length) parts.push(trf('{items} from Kick’s API', { items: list(summary.fromApi) }));
+    if (summary.fromLocal.length) parts.push(trf('{items} kept in this browser session', { items: list(summary.fromLocal) }));
     const stale = summary.stale ? ` ${trf('{n} showing an older reading.', { n: summary.stale })}` : '';
     const errors = summary.errors ? ` ${trf('{n} could not be built.', { n: summary.errors })}` : '';
     return `${parts.join('; ')}.${stale}${errors}`;
@@ -6490,7 +6537,13 @@ const state = {
   siteStyle: null,
   siteSheet: null,
   presence: { channel: null, answers: [], offer: [] },
-  viewerHub: { collectibles: null },
+  viewerHub: {
+    collectibles: null,
+    watch: { elapsedMs: 0, activeSince: 0 },
+    watchVideo: null,
+    watchPlayback: false,
+    watchTimer: 0,
+  },
   discoveryLayouts: [],
   chatComfort: {
     rows: [], hidden: new Set(), seen: new Set(), sounded: new Set(), lastSoundAt: 0, query: '',
@@ -7215,7 +7268,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              833785') || 0;
+const BUNDLE_BYTES = Number('              839631') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -11600,6 +11653,7 @@ async function runApplyCycle() {
     applySearchEnhancements();
     applyDropsEnhancements();
     applyMediaMemory();
+    syncSessionWatchTime();
     applyPlayerResilience();
     applyChatPause();
     observeChatStickerDiscovery();
@@ -12938,10 +12992,12 @@ const TRANSLATIONS = {
     'Viewer': 'Cuenta',
     'What Kick tells this account': 'Lo que Kick indica de esta cuenta',
     'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'Lo que Kick ya indica de esta cuenta, reunido en un sitio. Aquí no se cambia nada, no se reclama nada y no se envía nada a ninguna parte.',
+    'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.': 'Lecturas de la cuenta y esta sesión del navegador, reunidas en un sitio. Aquí no se reclama ni se envía nada.',
     'Reading': 'Lecturas',
     'Reading…': 'Leyendo…',
     'From Kick’s API': 'Desde la API de Kick',
     'Read from the page': 'Leído de la página',
+    'This browser session only': 'Solo esta sesión del navegador',
     '{n} min ago': 'hace {n} min',
     'Daily reward': 'Recompensa diaria',
     'Channel points': 'Puntos del canal',
@@ -12949,6 +13005,7 @@ const TRANSLATIONS = {
     'Drops': 'Drops',
     'Level': 'Nivel',
     'Streak': 'Racha',
+    'Session watch time': 'Tiempo visto en esta sesión',
     'Not read yet on this page.': 'Todavía no se ha leído en esta página.',
     'Kick shows this to a signed-in account only.': 'Kick solo muestra esto a una cuenta con sesión iniciada.',
     'Open a channel to see its points.': 'Abre un canal para ver sus puntos.',
@@ -13001,6 +13058,7 @@ const TRANSLATIONS = {
     'Exporting now is the only way to keep these changes.': 'Exportar ahora es la única forma de conservar estos cambios.',
     '{items} read from the page': '{items}, leídos de la página',
     '{items} from Kick’s API': '{items}, desde la API de Kick',
+    '{items} kept in this browser session': '{items}, guardado en esta sesión del navegador',
     '{n} showing an older reading.': '{n} con una lectura anterior.',
     '{n} could not be built.': 'No se pudieron crear: {n}.',
     '{shortcut} is already used by {action}.': '{shortcut} ya lo usa {action}.',
@@ -13582,10 +13640,12 @@ const TRANSLATIONS = {
     'Viewer': 'Conta',
     'What Kick tells this account': 'O que a Kick informa desta conta',
     'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'O que a Kick já informa desta conta, reunido num só lugar. Aqui nada é alterado, nada é resgatado e nada é enviado para lugar nenhum.',
+    'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.': 'Leituras da conta e esta sessão do navegador, reunidas num só lugar. Aqui nada é resgatado ou enviado.',
     'Reading': 'Leituras',
     'Reading…': 'A ler…',
     'From Kick’s API': 'Da API da Kick',
     'Read from the page': 'Lido da página',
+    'This browser session only': 'Apenas esta sessão do navegador',
     '{n} min ago': 'há {n} min',
     'Daily reward': 'Recompensa diária',
     'Channel points': 'Pontos do canal',
@@ -13593,6 +13653,7 @@ const TRANSLATIONS = {
     'Drops': 'Drops',
     'Level': 'Nível',
     'Streak': 'Sequência',
+    'Session watch time': 'Tempo assistido nesta sessão',
     'Not read yet on this page.': 'Ainda não foi lido nesta página.',
     'Kick shows this to a signed-in account only.': 'A Kick só mostra isto a uma conta com sessão iniciada.',
     'Open a channel to see its points.': 'Abre um canal para ver os seus pontos.',
@@ -13645,6 +13706,7 @@ const TRANSLATIONS = {
     'Exporting now is the only way to keep these changes.': 'Exportar agora é a única forma de manter essas alterações.',
     '{items} read from the page': '{items}, lidos da página',
     '{items} from Kick’s API': '{items}, da API da Kick',
+    '{items} kept in this browser session': '{items}, guardado nesta sessão do navegador',
     '{n} showing an older reading.': '{n} com uma leitura anterior.',
     '{n} could not be built.': 'Não foi possível criar: {n}.',
     '{shortcut} is already used by {action}.': '{shortcut} já é usado por {action}.',
@@ -14392,6 +14454,10 @@ function buildInterface() {
   document.addEventListener('submit', guard('composer recall', onComposerSubmit), true);
   document.addEventListener('click', guard('composer recall', onComposerSendClick), true);
   document.addEventListener('click', rememberWatchedCard, true);
+  document.addEventListener('visibilitychange', () => {
+    syncSessionWatchTime();
+    repaintViewerWatchCard();
+  });
   document.addEventListener('input', onComposerInput, true);
   document.addEventListener('selectionchange', () => {
     if (state.runtime.emoteCompletion) updateEmoteCompletion();
@@ -14445,6 +14511,7 @@ const settingsSurface = createSettings({
   escapeHtml,
   favoriteCount,
   formatBytes,
+  formatSessionWatchTime,
   gmGet,
   HIDEABLE_ELEMENTS,
   HIDEABLE_GROUPS,
@@ -14734,6 +14801,63 @@ const POINTS_VALUE = '[data-testid="channel-points-value"]';
 const DROPS_NAV = '[data-testid="sidebar-drops"]';
 const DROPS_CAMPAIGN = 'main a[href^="/drops/"]';
 
+const SESSION_WATCH_MEDIA_EVENTS = Object.freeze(['playing', 'waiting', 'stalled', 'pause', 'ended', 'emptied']);
+
+function repaintViewerWatchCard() {
+  if (state.currentPage === 'viewer' && state.modal && !state.modal.hidden) renderViewerHubInPlace();
+}
+
+function onSessionWatchMedia(event) {
+  state.viewerHub.watchPlayback = event.type === 'playing';
+  syncSessionWatchTime();
+  repaintViewerWatchCard();
+}
+
+function bindSessionWatchVideo(video) {
+  if (state.viewerHub.watchVideo === video) return;
+  if (state.viewerHub.watchVideo) {
+    for (const type of SESSION_WATCH_MEDIA_EVENTS) {
+      state.viewerHub.watchVideo.removeEventListener(type, onSessionWatchMedia);
+    }
+  }
+  state.viewerHub.watchVideo = video || null;
+  state.viewerHub.watchPlayback = Boolean(video && !video.paused && !video.ended && video.readyState >= 3);
+  if (video) {
+    for (const type of SESSION_WATCH_MEDIA_EVENTS) video.addEventListener(type, onSessionWatchMedia);
+  }
+}
+
+function sessionWatchIsActive(video) {
+  return !state.runtime.suspended
+    && state.route === 'channel'
+    && document.visibilityState !== 'hidden'
+    && Boolean(video?.isConnected)
+    && state.viewerHub.watchPlayback;
+}
+
+function syncSessionWatchTime(now = Date.now()) {
+  const video = state.route === 'channel' ? primaryVideo() : null;
+  bindSessionWatchVideo(video);
+  const active = sessionWatchIsActive(video);
+  state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, now, active);
+  if (active && !state.viewerHub.watchTimer) {
+    state.viewerHub.watchTimer = window.setInterval(() => {
+      syncSessionWatchTime();
+      repaintViewerWatchCard();
+    }, 1000);
+  } else if (!active && state.viewerHub.watchTimer) {
+    clearInterval(state.viewerHub.watchTimer);
+    state.viewerHub.watchTimer = 0;
+  }
+}
+
+function stopSessionWatchTime() {
+  state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, Date.now(), false);
+  clearInterval(state.viewerHub.watchTimer);
+  state.viewerHub.watchTimer = 0;
+  bindSessionWatchVideo(null);
+}
+
 function readNumber(text) {
   const raw = String(text ?? '').replace(/[\s,]/g, '');
   if (!/^\d+$/.test(raw)) return null;
@@ -14787,6 +14911,11 @@ function collectViewerFacts() {
     },
     level: { dialogOpen: figures.dialogOpen, value: figures.level, observedAt: now },
     streak: { dialogOpen: figures.dialogOpen, value: figures.streak, observedAt: now },
+    watch: {
+      elapsedMs: sessionWatchElapsed(state.viewerHub.watch, now),
+      active: Boolean(state.viewerHub.watch.activeSince),
+      observedAt: now,
+    },
   };
 }
 
@@ -16102,6 +16231,7 @@ function clearEnhancedPage() {
   state.chatResizeCleanup?.();
   state.chatResizeCleanup = null;
   clearStickerUI();
+  stopSessionWatchTime();
   hideFollowingPreview();
   state.followingPreview?.remove?.();
   state.followingPreview = null;

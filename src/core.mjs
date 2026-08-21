@@ -993,7 +993,7 @@ export function decideRewardClaim(facts = {}) {
 // runtime supplies the facts and turns the returned codes into copy.
 // ---------------------------------------------------------------------------
 
-/** The six cards, in the order they are shown. `source` is where the value comes from. */
+/** The seven cards, in the order they are shown. `source` is where the value comes from. */
 export const VIEWER_HUB_CARDS = Object.freeze([
   Object.freeze({ id: 'reward', source: 'dom' }),
   Object.freeze({ id: 'points', source: 'dom' }),
@@ -1001,6 +1001,7 @@ export const VIEWER_HUB_CARDS = Object.freeze([
   Object.freeze({ id: 'drops', source: 'dom' }),
   Object.freeze({ id: 'level', source: 'dom' }),
   Object.freeze({ id: 'streak', source: 'dom' }),
+  Object.freeze({ id: 'watch', source: 'local' }),
 ]);
 
 /**
@@ -1018,6 +1019,7 @@ export const VIEWER_HUB_TITLES = Object.freeze({
   drops: 'Drops',
   level: 'Level',
   streak: 'Streak',
+  watch: 'Session watch time',
 });
 
 /** What a card says instead of a number. One sentence, and it names the cause. */
@@ -1048,6 +1050,43 @@ export const VIEWER_HUB_REWARD_WORDS = Object.freeze({
  * quietly wrong.
  */
 export const VIEWER_HUB_STALE_MS = 60_000;
+
+/**
+ * Advance the in-memory watch clock at one playback boundary.
+ *
+ * The record deliberately contains no wall-clock start for the browser
+ * session itself and is never a storage shape. `activeSince` exists only so a
+ * pause, hidden tab, or route change can bank the interval that just ended.
+ */
+export function advanceSessionWatchTime(record = {}, now = 0, active = false) {
+  const at = Math.max(0, Number.isFinite(Number(now)) ? Number(now) : 0);
+  let elapsedMs = Math.max(0, Number.isFinite(Number(record.elapsedMs)) ? Number(record.elapsedMs) : 0);
+  const activeSince = Math.max(0, Number.isFinite(Number(record.activeSince)) ? Number(record.activeSince) : 0);
+  if (!active) {
+    if (activeSince && at >= activeSince) elapsedMs += at - activeSince;
+    return Object.freeze({ elapsedMs, activeSince: 0 });
+  }
+  return Object.freeze({ elapsedMs, activeSince: activeSince || at });
+}
+
+/** The elapsed value including the interval that is still running. */
+export function sessionWatchElapsed(record = {}, now = 0) {
+  const elapsedMs = Math.max(0, Number.isFinite(Number(record.elapsedMs)) ? Number(record.elapsedMs) : 0);
+  const activeSince = Math.max(0, Number.isFinite(Number(record.activeSince)) ? Number(record.activeSince) : 0);
+  const at = Math.max(0, Number.isFinite(Number(now)) ? Number(now) : 0);
+  return Math.round(elapsedMs + (activeSince && at >= activeSince ? at - activeSince : 0));
+}
+
+/** A clock-like session duration, kept separate from Kick's level vocabulary. */
+export function formatSessionWatchTime(elapsedMs) {
+  const seconds = Math.max(0, Math.floor((Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) : 0) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
 
 /** A measured number, or null. `0` is a real answer here and survives; absent does not. */
 function measured(value) {
@@ -1142,6 +1181,19 @@ const BUILDERS = {
     if (campaigns === null) return card('drops', 'dom', 'unavailable', { reason: 'not-read' });
     return card('drops', 'dom', 'ready', { value: campaigns, ...freshness(fact.observedAt, now) });
   },
+
+  /** This browser tab's own playback clock. It is not a Kick level or account reading. */
+  watch(fact, now) {
+    if (!fact) return card('watch', 'local', 'unavailable', { reason: 'not-read' });
+    const value = measured(fact.elapsedMs);
+    if (value === null) return card('watch', 'local', 'unavailable', { reason: 'not-read' });
+    return card('watch', 'local', 'ready', {
+      value: Math.max(0, value),
+      active: Boolean(fact.active),
+      observedAt: measured(fact.observedAt) || now,
+      stale: false,
+    });
+  },
 };
 
 /**
@@ -1225,6 +1277,7 @@ export function viewerHubSummary(cards = []) {
     // reasons and are worth telling apart when one of them stops arriving.
     fromDom: list.filter((entry) => entry.state === 'ready' && entry.source === 'dom').map((entry) => entry.id),
     fromApi: list.filter((entry) => entry.state === 'ready' && entry.source === 'api').map((entry) => entry.id),
+    fromLocal: list.filter((entry) => entry.state === 'ready' && entry.source === 'local').map((entry) => entry.id),
   };
 }
 

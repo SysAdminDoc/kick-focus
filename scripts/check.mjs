@@ -727,6 +727,19 @@ const checks = [
       && source.includes('#kick-focus-following-preview')
       && !/\bfetch\s*\(|GM_xmlhttpRequest|XMLHttpRequest/.test(region);
   })()],
+  ['session watch time is tab-local, playback-gated, and never presented as a Kick level', (() => {
+    const start = source.indexOf('const SESSION_WATCH_MEDIA_EVENTS');
+    const end = source.indexOf('function readNumber', start);
+    const region = start >= 0 && end > start ? source.slice(start, end) : '';
+    return source.includes("Object.freeze({ id: 'watch', source: 'local' })")
+      && source.includes("watch: { elapsedMs: 0, activeSince: 0 }")
+      && source.includes("'Session watch time'")
+      && source.includes("'This browser session only'")
+      && region.includes("state.route === 'channel'")
+      && region.includes("document.visibilityState !== 'hidden'")
+      && region.includes('state.viewerHub.watchPlayback')
+      && !/gm(?:Set|Delete)|localStorage|sessionStorage|\bfetch\s*\(/.test(region);
+  })()],
   ['settings page composition lives behind an explicit factory instead of runtime wrappers',
     settingsModuleSource.includes('export function createSettings(host)')
     && ['renderLayoutPage', 'renderAppearancePage', 'renderContentPage', 'renderAccessibilityPage', 'renderViewerPage', 'renderAboutPage']
