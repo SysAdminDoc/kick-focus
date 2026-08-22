@@ -4475,17 +4475,17 @@ const TOOLTIP_CSS = `
   }
   .card {
     padding: 8px 10px;
-    border: 1px solid #59645c;
-    border-radius: 8px;
-    background: #151917;
-    color: #f4f7f5;
+    border: 1px solid var(--kf-border-strong, #59645c);
+    border-radius: var(--kf-radius, 7px);
+    background: var(--kf-panel-raised, #151917);
+    color: var(--kf-text, #f4f7f5);
     box-shadow: 0 10px 28px rgba(0,0,0,.45);
     font: 12px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .card div { white-space: normal; overflow-wrap: anywhere; }
   .card div:first-child { font-weight: 700; }
-  .card div + div { color: #a5aea8; }
-  .card div[data-warn="true"] { color: #f6b943; }
+  .card div + div { color: var(--kf-text-muted, #a5aea8); }
+  .card div[data-warn="true"] { color: var(--kf-warning, #f6b943); }
 `;
 
 function chatEmoteTooltipHost() {
@@ -6739,6 +6739,10 @@ const UI_CSS = `
   .kf-switch:hover { border-color: var(--border-strong); background: var(--surface-hover); }
   .kf-switch[aria-checked="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .12); }
   .kf-switch:disabled { opacity: .72; cursor: not-allowed; }
+  /* Pinned rather than left to the engine: color-scheme picks the UA
+     placeholder, and that is one engine change away from being unreadable
+     on an inset that is near-black in all three themes. */
+  .kf-text::placeholder, .kf-textarea::placeholder { color: var(--muted); opacity: 1; }
 
   .kf-lock { display: inline-block; margin-left: 7px; padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .5); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 850; text-transform: uppercase; }
 
@@ -6887,7 +6891,7 @@ const UI_CSS = `
   .kf-tool-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
   .kf-channel-input-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 9px; align-items: center; }
   .kf-channel-list { display: grid; gap: 6px; margin-top: 10px; max-height: 280px; overflow: auto; scrollbar-gutter: stable; }
-  .kf-channel-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; font-size: 13px; }
+  .kf-channel-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); font-size: 13px; }
   .kf-channel-entry span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .kf-sticker-library-shell { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
   .kf-sticker-library-controls { display: grid; grid-template-columns: minmax(220px, 1fr) 180px; gap: 9px; }
@@ -6910,9 +6914,9 @@ const UI_CSS = `
      paint for those entirely; contain-intrinsic-size supplies the height it
      would have had, so the scrollbar stays honest and does not jump as cards
      are rendered. Unsupported engines ignore both and render as before. */
-  .kf-sticker-library-item { min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: 4px; background: #0a0d0b; content-visibility: auto; contain-intrinsic-size: auto 86px; }
+  .kf-sticker-library-item { min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); content-visibility: auto; contain-intrinsic-size: auto 86px; }
   .kf-sticker-library-item[data-removed="true"] { opacity: .58; }
-  .kf-sticker-library-image { width: 52px; height: 52px; display: grid; place-items: center; padding: 5px; border: 1px solid #343a36; border-radius: 4px; background: #151916; }
+  .kf-sticker-library-image { width: 52px; height: 52px; display: grid; place-items: center; padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
   .kf-sticker-library-image img { width: 100%; height: 100%; object-fit: contain; }
   .kf-sticker-library-copy { min-width: 0; }
   .kf-sticker-library-copy strong { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -7057,6 +7061,7 @@ const UI_CSS = `
   .kf-button-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
   .kf-button-primary:hover { border-color: var(--accent); background: var(--accent); filter: brightness(1.08); }
   .kf-button:disabled { opacity: .48; cursor: not-allowed; transform: none; box-shadow: none; }
+  .kf-button-primary:disabled { opacity: 1; border-color: var(--border); background: var(--surface-hover); color: var(--muted); }
   .kf-button-small { min-height: 32px; padding-inline: 10px; font-size: 11px; }
   .kf-button .kf-icon { width: 16px; height: 16px; }
   .kf-button-group { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
