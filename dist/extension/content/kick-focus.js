@@ -7294,7 +7294,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              843196') || 0;
+const BUNDLE_BYTES = Number('              844428') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -13484,16 +13484,16 @@ const TRANSLATIONS = {
     'Add channel': 'Añadir canal',
     'Save board': 'Guardar tablero',
     'Saved boards will appear here.': 'Los tableros guardados aparecerán aquí.',
-    'Could not reach the clipboard.': 'No se pudo acceder al portapapeles.',
+    'Could not reach the clipboard. Check the clipboard permission for kick.com.': 'No se pudo acceder al portapapeles. Revisa el permiso del portapapeles para kick.com.',
     'Cached blocklist removed.': 'Se eliminó la lista de bloqueo almacenada en caché.',
     'Enter a channel name or URL.': 'Escribe un nombre de canal o una URL.',
     'That does not look like a Kick channel.': 'Eso no parece un canal de Kick.',
     'That channel is already hidden.': 'Ese canal ya está oculto.',
-    'Hidden channel list is full (200).': 'La lista de canales ocultos está llena (200).',
+    'Hidden channel list is full (200). Remove a channel before hiding another.': 'La lista de canales ocultos está llena (200). Quita un canal antes de ocultar otro.',
     'Favorites cleared.': 'Favoritos borrados.',
     'Not-interested channels restored.': 'Se restauraron los canales marcados como no interesantes.',
-    'Could not export settings.': 'No se pudo exportar la configuración.',
-    'Could not read that settings file.': 'No se pudo leer ese archivo de configuración.',
+    'Could not export settings. Check that your browser allows downloads from kick.com.': 'No se pudo exportar la configuración. Comprueba que tu navegador permita descargas desde kick.com.',
+    'Could not read that settings file. Pick a JSON file exported by Kick Focus.': 'No se pudo leer ese archivo de configuración. Elige un archivo JSON exportado por Kick Focus.',
     'That backup is too large for this browser’s storage. Nothing was changed.': 'Esa copia de seguridad es demasiado grande para el almacenamiento de este navegador. No se cambió nada.',
     'The import could not be saved. Your previous settings are unchanged.': 'No se pudo guardar la importación. Tu configuración anterior no ha cambiado.',
     'Settings imported.': 'Configuración importada.',
@@ -13516,7 +13516,7 @@ const TRANSLATIONS = {
     'Content filter saved': 'Filtro de contenido guardado',
     'Poor mode saved': 'Modo sin gastos guardado',
     'No import to undo.': 'No hay ninguna importación que deshacer.',
-    'The backup could not be restored.': 'No se pudo restaurar la copia de seguridad.',
+    'The backup could not be restored. Your current settings are unchanged.': 'No se pudo restaurar la copia de seguridad. Tu configuración actual no ha cambiado.',
     'Import undone. Your previous settings are back.': 'Importación deshecha: tu configuración anterior está de vuelta.',
     'Kick Focus restored.': 'Kick Focus restaurado.',
     'Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.': 'Kick Focus en pausa. Usa el botón Reanudar o Ctrl+Mayús+F para restaurarlo.',
@@ -14132,16 +14132,16 @@ const TRANSLATIONS = {
     'Add channel': 'Adicionar canal',
     'Save board': 'Salvar painel',
     'Saved boards will appear here.': 'Os painéis salvos aparecerão aqui.',
-    'Could not reach the clipboard.': 'Não foi possível acessar a área de transferência.',
+    'Could not reach the clipboard. Check the clipboard permission for kick.com.': 'Não foi possível acessar a área de transferência. Verifique a permissão da área de transferência para kick.com.',
     'Cached blocklist removed.': 'Lista de bloqueio em cache removida.',
     'Enter a channel name or URL.': 'Digite um nome de canal ou uma URL.',
     'That does not look like a Kick channel.': 'Isso não parece um canal do Kick.',
     'That channel is already hidden.': 'Esse canal já está oculto.',
-    'Hidden channel list is full (200).': 'A lista de canais ocultos está cheia (200).',
+    'Hidden channel list is full (200). Remove a channel before hiding another.': 'A lista de canais ocultos está cheia (200). Remova um canal antes de ocultar outro.',
     'Favorites cleared.': 'Favoritos limpos.',
     'Not-interested channels restored.': 'Canais marcados como sem interesse restaurados.',
-    'Could not export settings.': 'Não foi possível exportar as configurações.',
-    'Could not read that settings file.': 'Não foi possível ler esse arquivo de configurações.',
+    'Could not export settings. Check that your browser allows downloads from kick.com.': 'Não foi possível exportar as configurações. Verifique se o navegador permite downloads de kick.com.',
+    'Could not read that settings file. Pick a JSON file exported by Kick Focus.': 'Não foi possível ler esse arquivo de configurações. Escolha um arquivo JSON exportado pelo Kick Focus.',
     'That backup is too large for this browser’s storage. Nothing was changed.': 'Esse backup é grande demais para o armazenamento deste navegador. Nada foi alterado.',
     'The import could not be saved. Your previous settings are unchanged.': 'Não foi possível salvar a importação. Suas configurações anteriores não foram alteradas.',
     'Settings imported.': 'Configurações importadas.',
@@ -14164,7 +14164,7 @@ const TRANSLATIONS = {
     'Content filter saved': 'Filtro de conteúdo salvo',
     'Poor mode saved': 'Modo sem gastos salvo',
     'No import to undo.': 'Não há importação para desfazer.',
-    'The backup could not be restored.': 'Não foi possível restaurar o backup.',
+    'The backup could not be restored. Your current settings are unchanged.': 'Não foi possível restaurar o backup. Suas configurações atuais não foram alteradas.',
     'Import undone. Your previous settings are back.': 'Importação desfeita: suas configurações anteriores voltaram.',
     'Kick Focus restored.': 'Kick Focus restaurado.',
     'Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.': 'Kick Focus pausado. Use o botão Retomar ou Ctrl+Shift+F para restaurar.',
@@ -15327,7 +15327,7 @@ function onInterfaceClick(event) {
     if (!link) { showToast('That board has no usable channels.', true); return; }
     navigator.clipboard?.writeText(link)
       .then(() => showToast(`Copied a link to ${layout.name}.`))
-      .catch(() => showToast('Could not reach the clipboard.', true));
+      .catch(() => showToast('Could not reach the clipboard. Check the clipboard permission for kick.com.', true));
   }
   else if (action === 'multistream-delete-layout') {
     const name = actionTarget.dataset.layout;
@@ -15375,7 +15375,7 @@ function onInterfaceClick(event) {
     if (!path) { showToast('That does not look like a Kick channel.', true); return; }
     const current = state.settings.content.hiddenChannels;
     if (current.includes(path)) { showToast('That channel is already hidden.', true); return; }
-    if (current.length >= 200) { showToast('Hidden channel list is full (200).', true); return; }
+    if (current.length >= 200) { showToast('Hidden channel list is full (200). Remove a channel before hiding another.', true); return; }
     state.settings.content.hiddenChannels = [...current, path];
     saveSettings(trf('Hidden {channel}', { channel: path.replace(/^\//, '') }));
     scheduleApply(0);
@@ -15626,7 +15626,7 @@ function exportSettings() {
     const counted = Object.keys(state.emoteUsage.global || {}).length;
     showToast(`Exported settings, ${state.stickerPreferences.library.size} emotes, ${counted} usage counts, ${state.multistream.layouts.length} layouts, and your channels, notes, and filters.`);
   } catch {
-    showToast('Could not export settings.', true);
+    showToast('Could not export settings. Check that your browser allows downloads from kick.com.', true);
   }
 }
 
@@ -15711,7 +15711,7 @@ async function onImportFile(event) {
       announce(`${imported} ${notes.join(' ')} ${undoHint}`);
     }
   } catch {
-    showToast('Could not read that settings file.', true);
+    showToast('Could not read that settings file. Pick a JSON file exported by Kick Focus.', true);
   }
 }
 
@@ -15723,12 +15723,12 @@ function undoImport() {
   }
   const result = validateImportedSettings(JSON.stringify(backup));
   if (!result.ok) {
-    showToast('The backup could not be restored.', true);
+    showToast('The backup could not be restored. Your current settings are unchanged.', true);
     return;
   }
   const commit = applyImportedStores(result);
   if (!commit.ok) {
-    showToast('The backup could not be restored.', true);
+    showToast('The backup could not be restored. Your current settings are unchanged.', true);
     return;
   }
   gmDelete(PRE_IMPORT_BACKUP_KEY);
@@ -15754,7 +15754,7 @@ async function copyStickerName(target) {
     return;
   }
   if (!await copyText(plan.text)) {
-    showToast('Could not reach the clipboard.', true);
+    showToast('Could not reach the clipboard. Check the clipboard permission for kick.com.', true);
     return;
   }
   showToast(plan.warning ? `Copied ${plan.text}. ${plan.warning}` : `Copied ${plan.text}.`, Boolean(plan.warning));

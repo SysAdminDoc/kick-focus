@@ -112,17 +112,17 @@
     <span class="version" id="version"></span>
   </header>
 
-  <div class="card">
+  <div class="card" role="status">
     <div class="status">
       <span class="state" id="network-state" data-state="off">Checking</span>
       <span class="status-text">
         <strong id="network-title">Checking companion</strong>
-        <span id="network-detail">Reading the active protection state.</span>
+        <span id="network-detail">Reading the network layer state.</span>
       </span>
     </div>
   </div>
 
-  <div class="card stats">
+  <div class="card stats" role="status">
     <div class="stat"><span>Blocked</span><strong id="blocked">Not available</strong></div>
     <div class="stat"><span>Rulesets</span><strong id="rulesets">Not available</strong></div>
   </div>
@@ -133,7 +133,7 @@
         <label for="telemetry">Reduce tracking telemetry</label>
         <p>Also blocks video and error telemetry hosts.</p>
       </span>
-      <input type="checkbox" id="telemetry" disabled title="Checking the current protection state">
+      <input type="checkbox" id="telemetry" disabled title="Checking the network layer">
     </div>
   </div>
 

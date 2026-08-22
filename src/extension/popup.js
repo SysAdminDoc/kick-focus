@@ -123,7 +123,7 @@ async function render() {
   els.title.textContent = adsOn ? 'Network layer active' : 'Network layer off';
   els.detail.textContent = adsOn
     ? 'Ad requests are blocked before they are sent.'
-    : 'The ad ruleset is not enabled.';
+    : 'The ad blocking rules are not enabled.';
 
   els.telemetry.checked = Boolean(status?.settings?.content?.reduceTelemetry);
   els.telemetry.disabled = !onKick;
@@ -134,7 +134,7 @@ async function render() {
   if (!onKick) {
     els.note.textContent = 'Open a Kick tab to change settings.';
   } else if (!status?.countsAvailable) {
-    els.note.textContent = 'Blocked counts need an unpacked install.';
+    els.note.textContent = 'Blocked counts are only available when the extension is loaded unpacked.';
   } else {
     els.note.textContent = '';
   }
@@ -147,7 +147,7 @@ els.telemetry.addEventListener('change', async () => {
   const wanted = els.telemetry.checked;
   els.telemetry.disabled = true;
   els.telemetry.setAttribute('aria-busy', 'true');
-  els.note.textContent = 'Updating network protection…';
+  els.note.textContent = 'Updating the network layer…';
   const result = await send(tab.id, { type: 'kick-focus:set-telemetry', enabled: wanted });
   if (!result.ok) els.note.textContent = 'Could not reach this Kick tab. Reload it and try again.';
   // Re-read rather than assume: the page is the authority on whether it stuck.
