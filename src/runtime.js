@@ -1071,6 +1071,14 @@ const SITE_CSS = `
   html[data-kf-accent="cyan"] { --kf-accent: #38d7d0; --kf-accent-rgb: 56, 215, 208; }
   html[data-kf-accent="violet"] { --kf-accent: #9667ff; --kf-accent-rgb: 150, 103, 255; }
   html[data-kf-accent="gold"] { --kf-accent: #ffbe2e; --kf-accent-rgb: 255, 190, 46; }
+  /* Slate's raised surfaces are the lightest in the build, and violet is the
+     only accent that does not clear 4.5:1 as text on them: 4.01:1 on both the
+     toast action and the merged-chat channel label, which are 14px and 11px.
+     The shipped "chat" viewing preset is slate plus violet, so that pairing is
+     one somebody lands on deliberately. Lifted 22% toward white for this theme
+     only, which reaches 4.62:1 at worst and leaves the accent untouched on
+     Studio and OLED, where it already passes. */
+  html[data-kf-theme="slate"][data-kf-accent="violet"] { --kf-accent: #ad88ff; --kf-accent-rgb: 173, 136, 255; }
 
   /*
    * The ink on top of an accent, picked by the engine where it can be.

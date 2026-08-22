@@ -370,3 +370,32 @@ test('the high-contrast control setting raises every border it promises to raise
     }
   }
 });
+
+test('every preset accent is readable as text on every theme surface', { tag: 'artifact' }, async () => {
+  // The four preset accents were never contrast-checked; only a custom accent
+  // was. --kf-accent is used as text at 11px and 14px (the toast action and the
+  // merged-chat channel label), and violet measured 4.01:1 on Slate's raised
+  // surfaces, under the 4.5:1 AA asks of small text. The shipped "chat" viewing
+  // preset is slate plus violet, so that is a pairing people land on.
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+
+  const accentFor = (theme, accent) => {
+    const scoped = new RegExp(
+      String.raw`html\[data-kf-theme="${theme}"\]\[data-kf-accent="${accent}"\][^{]*\{[^}]*--kf-accent:\s*(#[0-9a-f]{6})`, 'i');
+    const plain = new RegExp(
+      String.raw`html\[data-kf-accent="${accent}"\][^{]*\{[^}]*--kf-accent:\s*(#[0-9a-f]{6})`, 'i');
+    return (scoped.exec(source) || plain.exec(source))?.[1];
+  };
+
+  // The lightest surface --kf-accent is drawn on as text, per theme.
+  const SURFACES = { studio: '#18201B', oled: '#0E1110', slate: '#263544' };
+  for (const [theme, surface] of Object.entries(SURFACES)) {
+    for (const accent of ['cyan', 'violet', 'gold']) {
+      const hex = accentFor(theme, accent);
+      assert.ok(hex, `no --kf-accent found for ${accent} on ${theme}`);
+      const ratio = colorContrastRatio(hex.toUpperCase(), surface);
+      assert.ok(ratio >= 4.5,
+        `${accent} on ${theme} is ${ratio.toFixed(2)}:1 against ${surface}, under the 4.5:1 small text needs`);
+    }
+  }
+});
