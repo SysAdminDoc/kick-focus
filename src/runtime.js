@@ -6966,7 +6966,10 @@ const UI_CSS = `
   .kf-sticker-library-copy strong { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
   .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
   .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-  .kf-sticker-access[data-access="available"] { border-color: rgba(var(--accent-rgb), .55); color: var(--accent); }
+  /* Fixed, not the accent. A status that follows the branding colour collided
+     with its neighbours on gold and on cyan; these three hues stay 58deg and
+     77deg apart whatever the accent is. */
+  .kf-sticker-access[data-access="available"] { border-color: rgba(139,232,92,.55); color: #8be85c; }
   .kf-sticker-access[data-access="channel"] { border-color: rgba(255,190,46,.58); color: #ffcf61; }
   .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
   .kf-emote-catalog-browser { display: grid; gap: 8px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
