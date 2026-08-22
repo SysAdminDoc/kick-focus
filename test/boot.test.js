@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import { HIDEABLE_ELEMENTS } from '../src/core.mjs';
+import { HIDEABLE_ELEMENTS, colorContrastRatio } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -328,4 +328,45 @@ test('a mis-ordered const in the bundle is caught by the boot gate (red test)', 
   const broken = bundle.replace(marker, `${marker}\nvoid KF_TDZ_PROBE;\nconst KF_TDZ_PROBE = 1;`);
   const context = makeBootEnvironment();
   assert.throws(() => vm.runInNewContext(broken, context), /KF_TDZ_PROBE|before initialization/);
+});
+
+test('the high-contrast control setting raises every border it promises to raise', { tag: 'artifact' }, async () => {
+  // The setting says "Increase separation for controls, borders, and surfaces".
+  // It used to share one attribute with the text-contrast setting and style
+  // nothing but a text-shadow, so the promise was unmet and the two toggles
+  // were not independent. Every control edge in this build resolves through
+  // --kf-border or --kf-border-strong, so raising those two per theme is what
+  // makes the words true. WCAG 1.4.11 asks 3:1 of a control boundary.
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+
+  // The two settings must not collapse back into one attribute.
+  assert.match(source, /root\.dataset\.kfContrast = String\(appearance\.strongContrast\);/);
+  assert.match(source, /root\.dataset\.kfControlContrast = String\(accessibility\.highContrast\);/);
+
+  const readPair = (selector) => {
+    const at = source.indexOf(selector);
+    assert.notEqual(at, -1, `missing rule for ${selector}`);
+    const block = source.slice(at, source.indexOf('}', at));
+    const border = /--kf-border:\s*(#[0-9a-f]{6})/i.exec(block);
+    const strong = /--kf-border-strong:\s*(#[0-9a-f]{6})/i.exec(block);
+    assert.ok(border && strong, `${selector} must raise both border tokens`);
+    return { border: border[1], strong: strong[1] };
+  };
+
+  // Surfaces a control edge is drawn against, per theme.
+  const THEMES = [
+    ['html[data-kf-control-contrast="true"] {', ['#171e19', '#080b09', '#0b100d']],
+    ['html[data-kf-control-contrast="true"][data-kf-theme="oled"] {', ['#0a0c0d', '#000000', '#030404']],
+    ['html[data-kf-control-contrast="true"][data-kf-theme="slate"] {', ['#1c2934', '#0f161d']],
+  ];
+  for (const [selector, surfaces] of THEMES) {
+    const tokens = readPair(selector);
+    for (const surface of surfaces) {
+      for (const edge of [tokens.border, tokens.strong]) {
+        const ratio = colorContrastRatio(edge.toUpperCase(), surface.toUpperCase());
+        assert.ok(ratio >= 3,
+          `${selector} ${edge} on ${surface} is ${ratio.toFixed(2)}:1, under the 3:1 a control boundary needs`);
+      }
+    }
+  }
 });

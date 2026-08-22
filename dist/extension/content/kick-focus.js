@@ -7294,7 +7294,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              842236') || 0;
+const BUNDLE_BYTES = Number('              843196') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -8313,6 +8313,18 @@ const SITE_CSS = `
 
     html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
 
+    /* "High-contrast controls" promises separation for controls, borders and
+       surfaces, and for a long time shared one attribute with the text setting
+       above and styled nothing but that text-shadow. Raising the two border
+       tokens is what the promise actually needs: every control edge in this
+       build resolves through them, in Kick's page and in the mod's own chrome,
+       so one declaration per theme reaches all of it. Measured edges sat at
+       1.15 to 2.78 against their surfaces, under the 3:1 that WCAG 1.4.11 asks
+       of a control boundary. */
+    html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; }
+    html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
+    html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
+
     html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible {
       outline: 3px solid var(--kf-accent) !important;
       outline-offset: 3px !important;
@@ -8537,7 +8549,8 @@ function applySettingsAttributes() {
   root.dataset.kfRadius = appearance.radius;
   root.dataset.kfDimWatched = String(appearance.dimWatched);
   root.dataset.kfLiveColor = String(appearance.colorizeLive);
-  root.dataset.kfContrast = String(appearance.strongContrast || accessibility.highContrast);
+  root.dataset.kfContrast = String(appearance.strongContrast);
+  root.dataset.kfControlContrast = String(accessibility.highContrast);
   root.dataset.kfMatureBlur = String(content.blurMature && !state.runtime.matureVisible);
   root.dataset.kfPoorMode = String(content.hideMonetization);
   root.dataset.kfReduceMotion = String(accessibility.reduceMotion);
