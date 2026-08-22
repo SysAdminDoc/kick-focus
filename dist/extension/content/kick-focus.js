@@ -5345,16 +5345,29 @@ function createMultistream(host) {
 
   const POPOUT_CSS = `
     :root { color-scheme: dark; }
-    body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: #0d100e; color: #f7f9fa;
+    body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--kf-panel, #0d100e); color: var(--kf-text, #f7f9fa);
       font: 12px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-    p { margin: 0; padding: 6px 8px; background: #151917; border-bottom: 1px solid #2a312c; color: #a5aea8; font-size: 11px; }
+    p { margin: 0; padding: 6px 8px; background: var(--kf-panel-raised, #151917); border-bottom: 1px solid var(--kf-border, #2a312c); color: var(--kf-text-muted, #a5aea8); font-size: 11px; }
     iframe { flex: 1 1 auto; width: 100%; border: 0; }
   `;
+
+  const POPOUT_TOKENS = ['--kf-panel', '--kf-panel-raised', '--kf-border', '--kf-text', '--kf-text-muted'];
+
+  function copyThemeTokens(doc) {
+    try {
+      const computed = getComputedStyle(document.documentElement);
+      for (const token of POPOUT_TOKENS) {
+        const value = computed.getPropertyValue(token).trim();
+        if (value) doc.documentElement.style.setProperty(token, value);
+      }
+    } catch {   }
+  }
 
   function fillChatWindow(pip, slug) {
     const doc = pip.document;
     doc.title = `${slug} chat`;
     doc.documentElement.lang = document.documentElement.lang || 'en';
+    copyThemeTokens(doc);
     const style = doc.createElement('style');
     style.textContent = POPOUT_CSS;
     doc.head.append(style);
@@ -7294,7 +7307,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              845819') || 0;
+const BUNDLE_BYTES = Number('              846453') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -7474,9 +7487,9 @@ const SITE_CSS = `
       overflow: hidden !important;
       border: 1px solid rgba(255,255,255,.12) !important;
       border-radius: 10px !important;
-      background: #0b100d !important;
+      background: var(--kf-panel, #0b100d) !important;
       box-shadow: 0 20px 54px rgba(0,0,0,.58), 0 2px 12px rgba(0,0,0,.3) !important;
-      color: #f7f9f8 !important;
+      color: var(--kf-text, #f7f9f8) !important;
       opacity: 0 !important;
       transform: translateX(-4px) scale(.985) !important;
       transform-origin: center left !important;
@@ -7495,7 +7508,7 @@ const SITE_CSS = `
       width: 100% !important;
       aspect-ratio: 16 / 9 !important;
       object-fit: cover !important;
-      background: #111713 !important;
+      background: var(--kf-panel-raised, #111713) !important;
     }
     #kick-focus-following-preview > :is(img, canvas)[hidden] { display: none !important; }
     #kick-focus-following-preview figcaption {
@@ -7506,7 +7519,7 @@ const SITE_CSS = `
       gap: 12px !important;
       padding: 9px 11px 10px !important;
       border-top: 1px solid rgba(255,255,255,.08) !important;
-      background: #101612 !important;
+      background: var(--kf-surface-hover, #101612) !important;
       font: 500 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
     }
     #kick-focus-following-preview strong {
