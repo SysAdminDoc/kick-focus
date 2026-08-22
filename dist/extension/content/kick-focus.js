@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              843219') || 0;
+const BUNDLE_BYTES = Number('              843935') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -10269,7 +10269,7 @@ function chatEmoteTooltipHost() {
   const host = document.createElement('div');
   host.id = 'kick-focus-emote-tooltip';
   host.lang = activeLocale();
-  host.setAttribute('aria-hidden', 'true');
+  host.setAttribute('role', 'tooltip');
   const shadow = host.attachShadow({ mode: 'open' });
   setMarkup(shadow, '<div class="card" data-kf-tooltip-card></div>');
   adoptStyles(shadow, TOOLTIP_CSS);
@@ -10279,9 +10279,20 @@ function chatEmoteTooltipHost() {
   return state.chatEmoteTooltip;
 }
 
+function setChatEmoteDescription(image, enabled) {
+  if (!image?.getAttribute) return;
+  const tokens = new Set((image.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+  if (enabled) tokens.add('kick-focus-emote-tooltip');
+  else tokens.delete('kick-focus-emote-tooltip');
+  if (tokens.size) image.setAttribute('aria-describedby', [...tokens].join(' '));
+  else image.removeAttribute('aria-describedby');
+}
+
 function hideChatEmoteTooltip() {
   const tooltip = state.chatEmoteTooltip;
   if (!tooltip?.host) return;
+  setChatEmoteDescription(tooltip.describedImage, false);
+  tooltip.describedImage = null;
   tooltip.host.dataset.kfOpen = 'false';
   closeAnchoredSurface(tooltip.host);
   releaseSurfaceAnchor(tooltip.host, EMOTE_CARD_ANCHOR);
@@ -10301,6 +10312,12 @@ function showChatEmoteTooltip(image) {
     return row;
   }));
   host.dataset.kfOpen = 'true';
+  const tooltip = state.chatEmoteTooltip;
+  if (tooltip) {
+    setChatEmoteDescription(tooltip.describedImage, false);
+    tooltip.describedImage = image;
+  }
+  setChatEmoteDescription(image, true);
   if (anchorSurfaceTo(host, image, EMOTE_CARD_ANCHOR) && openAnchoredSurface(host)) return;
   const anchor = image.getBoundingClientRect();
   const box = host.getBoundingClientRect();

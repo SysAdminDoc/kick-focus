@@ -500,3 +500,25 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tag:
   assert.doesNotMatch(source, /class="kf-sticker-proxy"/,
     'nothing styles that class; the attribute is what SITE_CSS keys on');
 });
+
+test('the emote hover card is described to a screen reader, not hidden from one', { tag: 'artifact' }, async () => {
+  // The host carried aria-hidden="true" and nothing referenced it, so the
+  // access, reach, ownership and shadowing lines were sighted-only. It opens on
+  // focusin as well as hover, so keyboard readers could see it and not hear it.
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const host = source.slice(source.indexOf('function chatEmoteTooltipHost'));
+  const block = host.slice(0, host.indexOf('\n}'));
+
+  assert.doesNotMatch(block, /aria-hidden/, 'the card must not be hidden from assistive technology');
+  assert.match(block, /setAttribute\('role', 'tooltip'\)/, 'the card needs a role that says what it is');
+
+  // Two-way, like the followed-channel preview beside it: one card is reused
+  // for every emote, so whoever opens it has to claim it and give it back.
+  assert.match(source, /function setChatEmoteDescription/);
+  for (const state of ['true', 'false']) {
+    assert.ok(source.includes(`setChatEmoteDescription(image, ${state})`)
+      || source.includes(`setChatEmoteDescription(tooltip.describedImage, ${state})`),
+    `nothing sets the description to ${state}`);
+  }
+  assert.match(source, /tooltip\.describedImage = null;/, 'hiding the card must release the reference');
+});

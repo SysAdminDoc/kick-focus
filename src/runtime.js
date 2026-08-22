@@ -4522,7 +4522,7 @@ function chatEmoteTooltipHost() {
   const host = document.createElement('div');
   host.id = 'kick-focus-emote-tooltip';
   host.lang = activeLocale();
-  host.setAttribute('aria-hidden', 'true');
+  host.setAttribute('role', 'tooltip');
   const shadow = host.attachShadow({ mode: 'open' });
   setMarkup(shadow, '<div class="card" data-kf-tooltip-card></div>');
   adoptStyles(shadow, TOOLTIP_CSS);
@@ -4532,9 +4532,28 @@ function chatEmoteTooltipHost() {
   return state.chatEmoteTooltip;
 }
 
+/**
+ * Point an emote at the card describing it, or stop pointing at it.
+ *
+ * The same two-way token set the followed-channel preview uses: the card is
+ * one element reused for every emote, so the emote under the pointer has to
+ * claim it and give it back. Merging into whatever Kick already put on the
+ * element rather than overwriting, because this is Kick's img.
+ */
+function setChatEmoteDescription(image, enabled) {
+  if (!image?.getAttribute) return;
+  const tokens = new Set((image.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+  if (enabled) tokens.add('kick-focus-emote-tooltip');
+  else tokens.delete('kick-focus-emote-tooltip');
+  if (tokens.size) image.setAttribute('aria-describedby', [...tokens].join(' '));
+  else image.removeAttribute('aria-describedby');
+}
+
 function hideChatEmoteTooltip() {
   const tooltip = state.chatEmoteTooltip;
   if (!tooltip?.host) return;
+  setChatEmoteDescription(tooltip.describedImage, false);
+  tooltip.describedImage = null;
   tooltip.host.dataset.kfOpen = 'false';
   closeAnchoredSurface(tooltip.host);
   releaseSurfaceAnchor(tooltip.host, EMOTE_CARD_ANCHOR);
@@ -4559,6 +4578,14 @@ function showChatEmoteTooltip(image) {
     return row;
   }));
   host.dataset.kfOpen = 'true';
+  // Claimed after the card is filled, so a reader that follows the reference
+  // finds the lines for this emote rather than the previous one's.
+  const tooltip = state.chatEmoteTooltip;
+  if (tooltip) {
+    setChatEmoteDescription(tooltip.describedImage, false);
+    tooltip.describedImage = image;
+  }
+  setChatEmoteDescription(image, true);
   // The top layer places it against the emote itself: no measure, no clamp, no
   // second pass, and nothing Kick can clip it with.
   if (anchorSurfaceTo(host, image, EMOTE_CARD_ANCHOR) && openAnchoredSurface(host)) return;

@@ -9,10 +9,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 Added 2026-08-21 by an engineering and product-quality audit pass. Everything
 above P3 here was measured, not guessed; each item names where it was traced to.
 
-- [ ] P3 — The emote hover card is aria-hidden, so its content is sighted-only
-  Why: the tooltip host carries `aria-hidden="true"` and nothing references it from the emote, so the access, reach and ownership lines never reach a screen reader. It fires on `focusin` as well as hover, so keyboard users do see it. The followed-channel preview beside it already does this correctly with a two-way `aria-describedby`, which is the pattern to copy. Lower priority because the most important line it carries, the shadowed-name warning, is also surfaced as prose on the Content page.
-  Where: src/runtime.js (`chatEmoteTooltipHost`, `showChatEmoteTooltip`, `hideChatEmoteTooltip`)
-
 ## Explicitly deferred
 
 - Full mobile-site support; the settings surface still reflows at narrow window sizes

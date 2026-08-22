@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- The emote hover card is announced instead of hidden. Its host carried aria-hidden and nothing referenced it, so everything the card says about access, reach, ownership and shadowed names reached sighted readers only, even though it opens on keyboard focus as well as hover. The emote now points at it while it is open and lets go when it closes, the same way the followed-channel preview beside it already did.
 - Every toast and announcement is translated. Twenty-one were built as template literals, which no scanner can look up, so they stayed English in Spanish and Portuguese: the emote save and follow messages, the export summary, the shared-board handler, the filter-suspension announcement and the whole multi-stream set. A gate now refuses a toast template that carries prose outside its placeholders, so the class cannot come back.
 - Interface scale no longer pushes the settings dialog off screen at 110%. The two responsive overrides restate width and height in viewport units, and a media query evaluates against the real viewport while zoom multiplies whatever it resolves to, so at 110% the panel hung 68px past the right edge on a narrow window. The size floors had the same problem.
 - Toggling a favorite or a hide on an emote tile keeps its translated label. The in-place patch wrote raw English over the name the tile had just rendered from the dictionary, and it dropped the channel scope while doing it.
