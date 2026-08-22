@@ -495,12 +495,12 @@ const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
  *
  * This list used to hold three near-black values, chosen as "the darkest
  * surface per theme". That samples the wrong end of the range: a bright accent
- * has its *easiest* contrast against black, and its hardest against the raised
+ * has its *easiest* contrast against black, and its hardest against the high
  * panels and hover states it also has to survive on. So the gate was checking
  * the cases that could not fail and skipping the ones that could, and let
  * accents through that fell to 2.22:1 on Slate's hover surface and 2.95:1 on
- * Studio's raised panel, which is exactly the disappearing focus ring the gate
- * exists to prevent. Values are the --kf-panel-high and --kf-surface-hover
+ * Studio's --kf-panel-high, which is exactly the disappearing focus ring the
+ * gate exists to prevent. Values are the --kf-panel-high and --kf-surface-hover
  * tokens from SITE_CSS, which are the lightest pair in every theme and so the
  * binding constraint, plus black for the true backdrop. The darker surfaces
  * (--kf-panel, --kf-panel-raised) are not listed because anything clearing
