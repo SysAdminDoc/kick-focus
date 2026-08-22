@@ -31,6 +31,8 @@ measurably wrong rather than something that looked untidy.
 
 ### Changed
 
+- Opening the command palette no longer pulls focus out of Kick's chat box. It closes Settings unconditionally to be sure the other surface is down, and once focus restoration started working that turned every open into a focus jump.
+- The multi-stream grid keeps its own record of what opened it. It shared one slot with Settings, so opening the grid from a button inside Settings overwrote where Settings had to return to.
 - "Clear hidden" is now "Clear not-interested", which is the list it clears. A separate hidden-channel list exists on the Content page, so the old label pointed at the wrong feature.
 - "Export library" and "Export all settings" are both "Export settings". All three buttons ran the same full export, and one of them promised a library-only file.
 - Five error messages that named a failure and stopped now say what to do next. The import, restore, clipboard, export and hidden-list-full messages each carry a next step.

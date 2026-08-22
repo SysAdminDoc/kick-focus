@@ -500,14 +500,17 @@ const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
  * the cases that could not fail and skipping the ones that could, and let
  * accents through that fell to 2.22:1 on Slate's hover surface and 2.95:1 on
  * Studio's raised panel, which is exactly the disappearing focus ring the gate
- * exists to prevent. Values are the --kf-panel, --kf-panel-high and
- * --kf-surface-hover tokens from SITE_CSS, plus black for the true backdrop.
+ * exists to prevent. Values are the --kf-panel-high and --kf-surface-hover
+ * tokens from SITE_CSS, which are the lightest pair in every theme and so the
+ * binding constraint, plus black for the true backdrop. The darker surfaces
+ * (--kf-panel, --kf-panel-raised) are not listed because anything clearing
+ * these clears those.
  */
 const CUSTOM_ACCENT_SURFACES = Object.freeze([
   '#000000',
-  '#18201b', '#171f1a', // studio raised, studio hover
-  '#0e1110', '#111613', // oled raised, oled hover
-  '#1c2934', '#263544', // slate raised, slate hover
+  '#18201b', '#171f1a', // studio panel-high, studio hover
+  '#0e1110', '#111613', // oled panel-high, oled hover
+  '#1c2934', '#263544', // slate panel-high, slate hover
 ]);
 
 function rgbFromHex(value) {
@@ -2669,6 +2672,11 @@ const KICK_ASSET_BASE = 'https://kick.com/';
 function cleanStickerAssetUrl(value) {
   const raw = cleanStickerText(value, 500);
   if (!raw || !/\/emotes\//i.test(raw)) return '';
+  // Only two shapes were ever stored: an absolute URL, or a root-relative path.
+  // Anything else stays refused, so this cannot start rewriting `./emotes/x`
+  // into an absolute kick.com URL and freezing it to today's asset host.
+  const rooted = raw.startsWith('/');
+  if (!rooted && !/^[a-z][a-z0-9+.-]*:/i.test(raw)) return '';
   let url;
   try {
     url = new URL(raw, KICK_ASSET_BASE);
@@ -2677,11 +2685,11 @@ function cleanStickerAssetUrl(value) {
   }
   const host = url.hostname.toLowerCase();
   if (url.protocol !== 'https:' || (host !== 'kick.com' && !host.endsWith('.kick.com'))) return '';
-  if (!/\/emotes\//i.test(url.pathname)) return '';
   url.hash = '';
   // A path stays a path, so a stored library keeps working if Kick moves the
-  // host it serves assets from.
-  return raw.startsWith('/') && !raw.startsWith('//')
+  // host it serves assets from. `//host` is protocol-relative, not a path, and
+  // has already been sent through the origin check above by the parser.
+  return rooted && !raw.startsWith('//')
     ? `${url.pathname}${url.search}`.slice(0, 500)
     : url.href.slice(0, 500);
 }
@@ -3212,10 +3220,13 @@ export const IMPORT_NOTE_MESSAGES = Object.freeze({
  * `Number(true)` is 1, and neither array nor boolean is a version.
  */
 function numericSchema(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string' || value.trim() === '') return null;
+  if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === '')) return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  // NaN is not a version and reads as unversioned. Infinity is: a stamp of
+  // 1e999 parses to it, and it really is greater than anything this build
+  // supports, so it keeps taking the refusal it always took rather than being
+  // waved through as unstamped.
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 export function validateImportedSettings(jsonText) {

@@ -1395,11 +1395,22 @@ test('an emote asset is pinned to Kick by the URL parser, not by how the string 
     assert.equal(src(hostile), '(dropped)', `${JSON.stringify(hostile)} must not survive`);
   }
 
+  // A relative path that is not root-relative stays refused. Resolving one
+  // would rewrite it to an absolute kick.com URL, freezing a stored library to
+  // today's asset host, which is the opposite of why paths are kept as paths.
+  for (const relative of ['./emotes/x.png', '../emotes/x.png', 'emotes/x.png']) {
+    assert.equal(src(relative), '(dropped)', `${relative} must not be rewritten to an absolute URL`);
+  }
+
   // What the cleaner exists to keep still gets through, and a path stays a path.
   assert.equal(src('/emotes/1/fullsize'), '/emotes/1/fullsize');
   assert.equal(src('https://files.kick.com/emotes/1/fullsize'), 'https://files.kick.com/emotes/1/fullsize');
   // The kick.com host itself resolves to an origin match rather than a prefix one.
   assert.equal(src('https://kick.com/emotes/1/fullsize'), 'https://kick.com/emotes/1/fullsize');
+  // The marker may sit in the query rather than the path; that shape was stored
+  // before this function learned to parse and must not start being dropped.
+  assert.equal(src('https://files.kick.com/asset.png?src=/emotes/1.png'),
+    'https://files.kick.com/asset.png?src=/emotes/1.png');
 });
 
 test('eviction protects available, favorited, and assigned emotes and drops oldest chat-only first', { tag: 'unit' }, () => {
@@ -1670,6 +1681,14 @@ test('a schema stamp that is not a number reads as unversioned', { tag: 'unit' }
   const sticker = validateImportedSettings('{"schema":1,"stickers":{"schema":"abc","library":[]}}');
   assert.equal(sticker.ok, true);
   assert.ok(sticker.notes.some((note) => /Upgraded emotes to schema/.test(note)));
+
+  // Infinity is not junk, it is a number bigger than anything this build reads.
+  // A stamp of 1e999 parses to it, and treating that as "no stamp" would turn a
+  // refusal into a silent import.
+  for (const stamp of ['Infinity', '1e999']) {
+    assert.equal(validateImportedSettings(JSON.stringify({ schema: stamp })).ok, false,
+      `schema ${stamp} must still be refused as newer than this build`);
+  }
 });
 
 test('settings import round-trips the sticker library without treating it as an unknown section', { tag: 'unit' }, () => {

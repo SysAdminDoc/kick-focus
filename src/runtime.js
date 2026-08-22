@@ -130,6 +130,7 @@ const state = {
   chatResizeCleanup: null,
   lastFocused: null,
   commandOpener: null,
+  multistreamOpener: null,
   applyTimer: 0,
   applyPendingSince: 0,
   saveTimer: 0,
@@ -2074,7 +2075,7 @@ const SITE_CSS = `
        so one declaration per theme reaches all of it. Measured edges sat at
        1.15 to 2.78 against their surfaces, under the 3:1 that WCAG 1.4.11 asks
        of a control boundary. */
-    html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; }
+    html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; }
     html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
     html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
 
@@ -7969,7 +7970,6 @@ const TRANSLATIONS = {
     'Remove spending prompts without changing your Kick account': 'Oculta las invitaciones de gasto sin cambiar tu cuenta de Kick',
     'Browse any channel’s emotes': 'Explorar los emotes de cualquier canal',
     'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Pega un nombre de canal o una URL de Kick. Las imágenes son públicas, pero importarlas nunca evita el acceso del chat: los emotes gratuitos siguen siendo solo del canal y los de suscriptor permanecen bloqueados hasta que Kick confirme que tu cuenta puede usarlos.',
-    'channel or kick.com URL': 'canal o URL de kick.com',
     'Channel emote catalog': 'Catálogo de emotes del canal',
     'Loading…': 'Cargando…',
     'Load emotes': 'Cargar emotes',
@@ -8186,7 +8186,6 @@ const TRANSLATIONS = {
     'Click to save': 'Haz clic para guardar',
     'Saved. Click to open in the library': 'Guardado: haz clic para abrirlo en la biblioteca',
     'Name shadowed by another set': 'Nombre eclipsado por otro conjunto',
-    'No streams yet. Add a channel to start.': 'Aún no hay transmisiones: añade un canal para empezar.',
     '{count} of {max} streams': '{count} de {max} transmisiones',
   },
   pt: {
@@ -8620,7 +8619,6 @@ const TRANSLATIONS = {
     'Remove spending prompts without changing your Kick account': 'Oculta os convites de gasto sem alterar sua conta do Kick',
     'Browse any channel’s emotes': 'Explorar os emotes de qualquer canal',
     'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Cole um nome de canal ou uma URL do Kick. As imagens são públicas, mas importá-las nunca contorna o acesso do chat: os emotes gratuitos continuam restritos ao canal e os de assinante permanecem bloqueados até o Kick confirmar que sua conta pode usá-los.',
-    'channel or kick.com URL': 'canal ou URL do kick.com',
     'Channel emote catalog': 'Catálogo de emotes do canal',
     'Loading…': 'Carregando…',
     'Load emotes': 'Carregar emotes',
@@ -8836,7 +8834,6 @@ const TRANSLATIONS = {
     'Click to save': 'Clique para salvar',
     'Saved. Click to open in the library': 'Salvo: clique para abrir na biblioteca',
     'Name shadowed by another set': 'Nome ofuscado por outro conjunto',
-    'No streams yet. Add a channel to start.': 'Ainda não há transmissões: adicione um canal para começar.',
     '{count} of {max} streams': '{count} de {max} transmissões',
   },
 };
@@ -10219,7 +10216,16 @@ function deepActiveElement() {
   return node;
 }
 
-/** Return focus to the recorded opener, if it is still somewhere focusable. */
+/**
+ * Return focus to the recorded opener, and report whether it actually landed.
+ *
+ * Asking whether `focus()` threw is not the same question. `HTMLElement.focus()`
+ * on an element inside a `display: none` subtree does nothing at all and
+ * reports nothing, and that is the common case here: the opener is frequently a
+ * control on the surface being closed. Answering "yes" there skipped the
+ * fallback in the one situation it exists for and left focus on the body. So
+ * the answer is read back from the document instead of inferred.
+ */
 function restoreFocus(target) {
   if (!target || typeof target.focus !== 'function' || target.isConnected === false) return false;
   try {
@@ -10227,7 +10233,7 @@ function restoreFocus(target) {
   } catch {
     return false;
   }
-  return true;
+  return deepActiveElement() === target;
 }
 
 function openSettings(page = state.currentPage) {
@@ -10241,7 +10247,12 @@ function openSettings(page = state.currentPage) {
 }
 
 function closeSettings() {
-  if (!state.modal) return;
+  // Closing something already closed must not move focus. Several callers,
+  // openCommandMenu among them, call this unconditionally to make sure the
+  // other surface is down, and once the restore below started working that
+  // turned every command-palette open into a focus jump out of Kick's chat box
+  // and, if Settings had ever been opened from a card, a scroll back to it.
+  if (!state.modal || state.modal.hidden) return;
   state.modal.hidden = true;
   closeResetConfirmation();
   state.shortcutCapture = null;
@@ -11611,7 +11622,7 @@ const HEADER_CONTROL_CSS = `
     justify-content: center;
     gap: 7px;
     padding: 0 11px;
-    border: 1px solid rgba(var(--kf-accent-rgb, 124,255,43), .38);
+    border: 1px solid rgba(var(--kf-accent-rgb, 124,255,43), var(--kf-header-edge-alpha, .38));
     border-radius: 5px;
     background: linear-gradient(180deg, rgba(var(--kf-accent-rgb, 124,255,43), .12), rgba(var(--kf-accent-rgb, 124,255,43), .055));
     color: #f4f7f5;

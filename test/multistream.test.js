@@ -505,10 +505,13 @@ test('closing the grid hands focus back to whatever opened it', { tag: 'unit' },
   calls.focusOpener = opener;
 
   surface.openMultistream();
-  assert.equal(state.lastFocused, opener, 'the real opener is what gets recorded');
+  assert.equal(state.multistreamOpener, opener, 'the real opener is what gets recorded');
+  assert.equal(state.lastFocused, null,
+    'the grid keeps its own slot, so opening it cannot overwrite where Settings has to return to');
 
   surface.closeMultistream();
   assert.deepEqual(calls.focusRestored, [opener], 'closing returns focus to it');
+  assert.equal(state.multistreamOpener, null, 'and the slot is released');
 });
 
 test('the card chip toggles one channel and refuses a full grid', { tag: 'unit' }, () => {

@@ -1800,6 +1800,8 @@ const KICK_ASSET_BASE = 'https://kick.com/';
 function cleanStickerAssetUrl(value) {
   const raw = cleanStickerText(value, 500);
   if (!raw || !/\/emotes\//i.test(raw)) return '';
+  const rooted = raw.startsWith('/');
+  if (!rooted && !/^[a-z][a-z0-9+.-]*:/i.test(raw)) return '';
   let url;
   try {
     url = new URL(raw, KICK_ASSET_BASE);
@@ -1808,9 +1810,8 @@ function cleanStickerAssetUrl(value) {
   }
   const host = url.hostname.toLowerCase();
   if (url.protocol !== 'https:' || (host !== 'kick.com' && !host.endsWith('.kick.com'))) return '';
-  if (!/\/emotes\//i.test(url.pathname)) return '';
   url.hash = '';
-  return raw.startsWith('/') && !raw.startsWith('//')
+  return rooted && !raw.startsWith('//')
     ? `${url.pathname}${url.search}`.slice(0, 500)
     : url.href.slice(0, 500);
 }
@@ -2247,10 +2248,9 @@ const IMPORT_NOTE_MESSAGES = Object.freeze({
 });
 
 function numericSchema(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string' || value.trim() === '') return null;
+  if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === '')) return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function validateImportedSettings(jsonText) {
@@ -5174,7 +5174,7 @@ function createMultistream(host) {
   function openMultistream() {
     const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
     if (!backdrop) return;
-    state.lastFocused = deepActiveElement();
+    state.multistreamOpener = deepActiveElement();
     backdrop.hidden = false;
     commitMultistream();
     installMultistreamSuspension();
@@ -5220,7 +5220,8 @@ function createMultistream(host) {
     state.observers.multistream?.disconnect?.();
     state.observers.multistream = null;
     state.multistreamSuspended.clear();
-    restoreFocus(state.lastFocused);
+    restoreFocus(state.multistreamOpener);
+    state.multistreamOpener = null;
   }
 
   function installMultistreamSuspension() {
@@ -6625,6 +6626,7 @@ const state = {
   chatResizeCleanup: null,
   lastFocused: null,
   commandOpener: null,
+  multistreamOpener: null,
   applyTimer: 0,
   applyPendingSince: 0,
   saveTimer: 0,
@@ -7331,7 +7333,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              847362') || 0;
+const BUNDLE_BYTES = Number('              847195') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -8366,7 +8368,7 @@ const SITE_CSS = `
        so one declaration per theme reaches all of it. Measured edges sat at
        1.15 to 2.78 against their surfaces, under the 3:1 that WCAG 1.4.11 asks
        of a control boundary. */
-    html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; }
+    html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; }
     html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
     html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
 
@@ -13470,7 +13472,6 @@ const TRANSLATIONS = {
     'Remove spending prompts without changing your Kick account': 'Oculta las invitaciones de gasto sin cambiar tu cuenta de Kick',
     'Browse any channel’s emotes': 'Explorar los emotes de cualquier canal',
     'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Pega un nombre de canal o una URL de Kick. Las imágenes son públicas, pero importarlas nunca evita el acceso del chat: los emotes gratuitos siguen siendo solo del canal y los de suscriptor permanecen bloqueados hasta que Kick confirme que tu cuenta puede usarlos.',
-    'channel or kick.com URL': 'canal o URL de kick.com',
     'Channel emote catalog': 'Catálogo de emotes del canal',
     'Loading…': 'Cargando…',
     'Load emotes': 'Cargar emotes',
@@ -13687,7 +13688,6 @@ const TRANSLATIONS = {
     'Click to save': 'Haz clic para guardar',
     'Saved. Click to open in the library': 'Guardado: haz clic para abrirlo en la biblioteca',
     'Name shadowed by another set': 'Nombre eclipsado por otro conjunto',
-    'No streams yet. Add a channel to start.': 'Aún no hay transmisiones: añade un canal para empezar.',
     '{count} of {max} streams': '{count} de {max} transmisiones',
   },
   pt: {
@@ -14120,7 +14120,6 @@ const TRANSLATIONS = {
     'Remove spending prompts without changing your Kick account': 'Oculta os convites de gasto sem alterar sua conta do Kick',
     'Browse any channel’s emotes': 'Explorar os emotes de qualquer canal',
     'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Cole um nome de canal ou uma URL do Kick. As imagens são públicas, mas importá-las nunca contorna o acesso do chat: os emotes gratuitos continuam restritos ao canal e os de assinante permanecem bloqueados até o Kick confirmar que sua conta pode usá-los.',
-    'channel or kick.com URL': 'canal ou URL do kick.com',
     'Channel emote catalog': 'Catálogo de emotes do canal',
     'Loading…': 'Carregando…',
     'Load emotes': 'Carregar emotes',
@@ -14336,7 +14335,6 @@ const TRANSLATIONS = {
     'Click to save': 'Clique para salvar',
     'Saved. Click to open in the library': 'Salvo: clique para abrir na biblioteca',
     'Name shadowed by another set': 'Nome ofuscado por outro conjunto',
-    'No streams yet. Add a channel to start.': 'Ainda não há transmissões: adicione um canal para começar.',
     '{count} of {max} streams': '{count} de {max} transmissões',
   },
 };
@@ -15559,7 +15557,7 @@ function restoreFocus(target) {
   } catch {
     return false;
   }
-  return true;
+  return deepActiveElement() === target;
 }
 
 function openSettings(page = state.currentPage) {
@@ -15573,7 +15571,7 @@ function openSettings(page = state.currentPage) {
 }
 
 function closeSettings() {
-  if (!state.modal) return;
+  if (!state.modal || state.modal.hidden) return;
   state.modal.hidden = true;
   closeResetConfirmation();
   state.shortcutCapture = null;
@@ -16757,7 +16755,7 @@ const HEADER_CONTROL_CSS = `
     justify-content: center;
     gap: 7px;
     padding: 0 11px;
-    border: 1px solid rgba(var(--kf-accent-rgb, 124,255,43), .38);
+    border: 1px solid rgba(var(--kf-accent-rgb, 124,255,43), var(--kf-header-edge-alpha, .38));
     border-radius: 5px;
     background: linear-gradient(180deg, rgba(var(--kf-accent-rgb, 124,255,43), .12), rgba(var(--kf-accent-rgb, 124,255,43), .055));
     color: #f4f7f5;

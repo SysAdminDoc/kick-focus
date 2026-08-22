@@ -245,7 +245,10 @@ export function createMultistream(host) {
   function openMultistream() {
     const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
     if (!backdrop) return;
-    state.lastFocused = deepActiveElement();
+    // Its own slot, not the one Settings uses. The grid can be opened from a
+    // button inside Settings, and sharing one slot meant that click overwrote
+    // where Settings had to return to.
+    state.multistreamOpener = deepActiveElement();
     backdrop.hidden = false;
     // Re-read on open. A tab that was asleep, on the other origin, or simply
     // not listening when another one added a channel picks it up here — which
@@ -313,7 +316,8 @@ export function createMultistream(host) {
     state.observers.multistream?.disconnect?.();
     state.observers.multistream = null;
     state.multistreamSuspended.clear();
-    restoreFocus(state.lastFocused);
+    restoreFocus(state.multistreamOpener);
+    state.multistreamOpener = null;
   }
 
   /**
