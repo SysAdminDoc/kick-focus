@@ -1,9 +1,9 @@
-/* Kick Focus 1.35.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.36.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.35.0';
+const VERSION = '1.36.0';
 const SETTINGS_SCHEMA = 5;
 
 const VERSION_NOTES = Object.freeze({
@@ -53,6 +53,10 @@ const VERSION_NOTES = Object.freeze({
   }),
   '1.34.0': Object.freeze({
     summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
+    defaults: Object.freeze([]),
+  }),
+  '1.36.0': Object.freeze({
+    summary: 'Interface scale resizes the controls it names, every toast and accessible name is translated, keyboard focus looks the same everywhere, and the build stopped shipping 12 KB of stylesheet comments.',
     defaults: Object.freeze([]),
   }),
   '1.35.0': Object.freeze({
@@ -7313,7 +7317,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              843935') || 0;
+const BUNDLE_BYTES = Number('              844215') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `

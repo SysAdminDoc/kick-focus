@@ -1,4 +1,4 @@
-export const VERSION = '1.35.0';
+export const VERSION = '1.36.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -57,6 +57,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.34.0': Object.freeze({
     summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
+    defaults: Object.freeze([]),
+  }),
+  '1.36.0': Object.freeze({
+    summary: 'Interface scale resizes the controls it names, every toast and accessible name is translated, keyboard focus looks the same everywhere, and the build stopped shipping 12 KB of stylesheet comments.',
     defaults: Object.freeze([]),
   }),
   '1.35.0': Object.freeze({

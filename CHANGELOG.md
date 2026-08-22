@@ -4,6 +4,11 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.36.0, 2026-08-21
+
+A roadmap drain. Eleven tracked items, plus the defects an adversarial review
+found in the work itself.
+
 ### Fixed
 
 - The emote hover card is announced instead of hidden. Its host carried aria-hidden and nothing referenced it, so everything the card says about access, reach, ownership and shadowed names reached sighted readers only, even though it opens on keyboard focus as well as hover. The emote now points at it while it is open and lets go when it closes, the same way the followed-channel preview beside it already did.

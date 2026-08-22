@@ -6,9 +6,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 
 ## Next, ordered by value
 
-Added 2026-08-21 by an engineering and product-quality audit pass. Everything
-above P3 here was measured, not guessed; each item names where it was traced to.
-
 ## Explicitly deferred
 
 - Full mobile-site support; the settings surface still reflows at narrow window sizes
