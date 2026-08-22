@@ -139,3 +139,36 @@ One route-specific target was created for each main Kick surface. The shared dir
 - The final live capture has no document-level horizontal overflow, no surviving ad shell, and no actionable P0, P1, or P2 visual mismatch in the implemented theme system.
 
 final result: passed
+
+## Emote workspace, v1.37.0
+
+### Comparison setup
+
+- Baseline and final captures use the same 1440 × 900 CSS viewport at DPR 1.
+- The isolated `sticker-scroll.html` fixture supplied 143 picker emotes, including one locked entry. The recorded library state supplied realistic artwork and access labels.
+- `design/qa/comparison-emote-picker-v1.37.png` places the old and final picker together.
+- `design/qa/comparison-emote-library-v1.37.png` does the same for group management.
+- Final standalone captures are `design/screenshots/emote-picker.png` and `design/screenshots/emote-library.png`.
+- Narrow checks are recorded in `design/qa/emote-responsive-900-v1.37.png` and `design/qa/emote-responsive-680-v1.37.png`.
+
+### Findings
+
+- P1: Manage opened Content & Ads at its top. The emote manager was several screens below unrelated controls. Emotes now has a navigation entry, and Open library lands there directly.
+- P1: custom picker views hid the native shell that owned search. Search now stays above the organizer while native groups and tabs remain hidden until Native is selected.
+- P1: group assignment worked one card at a time. The library now supports card selection, Select shown, a shared group target, batch Move, batch Remove, and Clear.
+- P2: an empty quick shelf consumed most of the picker header. It is now one compact explanatory row. Most used and Recent stay with the favorites editing view.
+- P2: library metadata sat at 8 to 11 pixels and repeated an Open artwork button on every card. Names and metadata are larger, the artwork itself is the link, and selection has a visible accent boundary plus `aria-pressed`.
+
+### Functional verification
+
+- Searched the picker and reduced 143 entries to one result without losing input focus.
+- Filled the 24-entry quick shelf from the fixture and confirmed every favorite had a one-click action and removal label.
+- Created a group, selected two cards, moved both together, and confirmed both direct group selectors updated.
+- Renamed the group with Enter, then deleted it and confirmed its assignments returned to Ungrouped.
+- Removed one selected emote, opened Removed, restored the list, and confirmed the removed count returned to zero.
+- Compared the picker and manager before and after in paired images. No clipping, broken alignment, incorrect radii, or actionable P0, P1, or P2 visual defect remains at the audited viewport.
+- Rechecked the library at 900 × 800 and 680 × 760. The narrow layout stacks channel import and batch actions, keeps the footer reachable, and turns settings navigation into a clean horizontal strip. The mobile search box was removed from that strip after it compressed and overlapped page labels in the first narrow capture.
+- `npm run verify` passed 379 tests, 189 artifact checks, and 81 deliberate negative probes. Firefox passed 8 of 8 live checks with its popup check skipped by WebDriver BiDi.
+- The broader Chromium live gate reached Kick and passed 90 of 97 available checks. Its first three failures, all in the unrelated followed-channel preview probe, reproduced against untouched v1.36.0. The emote workflow above was exercised in the isolated browser fixture so those live-page failures couldn't hide a result here.
+
+final result: passed

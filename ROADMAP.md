@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-21**
+Updated: **2026-08-22**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 
@@ -70,7 +70,7 @@ Cross-references to existing work: R-56's derived-value assertions belong with "
 
 Added from the authenticated journey, competitor, accessibility, and platform research recorded in [RESEARCH.md](RESEARCH.md), run against v1.26.0. Continues the R-NN scheme from R-62. The existing “My emotes” Next item remains authoritative and is not duplicated below.
 
-R-62 through R-71 from that pass are no longer listed here: they shipped in v1.27.0–v1.29.0 or were closed in RESEARCH.md (R-70). Auto-update, signed-in live gate, SSAI scrub, predictions payload, keyboard emote completion, and first-run tour remain in [Roadmap_Blocked.md](Roadmap_Blocked.md).
+R-62 through R-71 from that pass are no longer listed here: they shipped from v1.27.0 through v1.29.0 or were closed in RESEARCH.md (R-70). Auto-update, signed-in live gate, SSAI scrub, predictions payload, keyboard emote completion, and first-run tour remain in [Roadmap_Blocked.md](Roadmap_Blocked.md).
 
 ## Research-Driven Additions, 2026-08-20 (v1.31.0 pass)
 

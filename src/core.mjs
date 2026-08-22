@@ -1,4 +1,4 @@
-export const VERSION = '1.36.0';
+export const VERSION = '1.37.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 5;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.37.0': Object.freeze({
+    summary: 'Emotes now have a dedicated workspace, visible picker search, and batch controls for creating groups, moving selections, removing entries, and restoring them.',
+    defaults: Object.freeze([]),
+  }),
   '1.21.0': Object.freeze({
     summary: 'The live gate waits for what it asserts, the Firefox package no longer leaks a per-install identifier to Kick, and the interface declares the language it is written in.',
     defaults: Object.freeze([]),

@@ -4,6 +4,25 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.37.0, 2026-08-22
+
+### Added
+
+- Emotes now have a first-class settings page. The picker opens it directly, so managing a library no longer lands at the top of Content & Ads.
+- The library can select one emote or every visible match, then move or remove the selection as one action. The batch target defaults to a group you just created. Clear selection and Removed recovery keep mistakes easy to reverse.
+- Custom groups have a permanent panel with counts. Names edit in place, Enter commits a rename, deletion takes effect immediately, and the interface stops cleanly at the stored limit of 40 groups.
+
+### Changed
+
+- Kick's emote search stays visible above the custom shelf. The empty favorites state is one compact row, and usage shelves appear while editing favorites instead of taking space from every view.
+- Library cards use larger metadata and a clear selected state. Artwork opens from the image, freeing the action row for selection, copying, favorites, removal, optional chat insertion, and direct one-emote grouping.
+- Generated JavaScript drops code indentation and blank code lines while preserving template whitespace. The readable source is unchanged, and the userscript plus its 150 KB library seed now sits about 40 KB under the injection ceiling.
+
+### Fixed
+
+- The picker fixture now fills the quick shelf using the names its own emotes expose, so the populated state can be exercised again.
+- The artifact checks read compacted function boundaries correctly and keep enforcing that a remote multi-stream update never writes or broadcasts back.
+
 ## 1.36.0, 2026-08-21
 
 A roadmap drain. Eleven tracked items, plus the defects an adversarial review
