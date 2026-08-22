@@ -9,10 +9,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 Added 2026-08-21 by an engineering and product-quality audit pass. Everything
 above P3 here was measured, not guessed; each item names where it was traced to.
 
-- [ ] P2 — Interpolated aria-labels are English in every locale
-  Why: the i18n coverage gate's attribute scanner deliberately skips any attribute containing `${`, because a template is not a fixed string. That is the right call for the scanner and the wrong outcome for the strings: roughly 28 accessible names built by interpolation never got a dictionary entry, so a screen reader on Español or Português is read English throughout the emote library, the discovery cards and the grid. Fix shape is `trf('Open {name} artwork', { name })` with the template as the dictionary key, which is the pattern the rest of the build already uses.
-  Where: src/runtime.js (card and emote shelf labels), src/settings.mjs (library tile actions), src/multistream.mjs (tile and saved-board actions)
-
 - [ ] P2 — Two accessible names reach the DOM outside every scanner
   Why: `list.setAttribute('aria-label', 'Emote suggestions')` is a `setAttribute` call rather than markup, so no scanner matches it and the string has no entry in either locale. The multi-stream add and remove toasts are template literals for the same reason. Neither is caught by the gate, so both will drift again.
   Where: src/runtime.js (the emote completion list), src/multistream.mjs (the two grid toasts)
@@ -36,10 +32,6 @@ above P3 here was measured, not guessed; each item names where it was traced to.
 - [ ] P3 — Two emote access badges collide with two accents
   Why: available uses `var(--accent)` while channel is a fixed `#ffcf61` and observed a fixed `#70e9e3`. On the gold accent, available against channel is 1.13:1; on cyan, available against observed is 1.22:1. Meaning is not carried by colour alone (each badge renders a text label), so this degrades the glance rather than the information, which is why it sits at P3.
   Where: src/runtime.js (`[data-access]` rules in `UI_CSS`)
-
-- [ ] P3 — About 26 dead translation keys
-  Why: both locales carry entries with no call site left in `src/`, mostly leftovers from the layout-to-board and hidden-to-not-interested renames. They cost nothing at runtime but they hide which strings are really in use, and two of them turned out to be the correct wording that the visible UI had drifted away from. Worth a sweep that removes the dead ones and a gate that keeps them from accumulating.
-  Where: src/runtime.js (the es and pt blocks)
 
 - [ ] P3 — The saved multi-stream arrangement is called four things
   Why: the live UI says "board", `STORAGE_STORES` says "multi-stream layouts", two import messages say "layouts", and the grid toasts said "Multi". An incomplete rename. The user-facing half should settle on "board".

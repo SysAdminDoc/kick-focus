@@ -438,8 +438,8 @@ export function createMultistream(host) {
         setMarkup(bar, `
         <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
         <span class="kf-ms-spacer"></span>
-        <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
-        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid">Remove</button>`);
+        <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="${escapeHtml(trf('Open {name} on Kick', { name: slug }))}">Open</a>
+        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="${escapeHtml(trf('Remove {name} from the grid', { name: slug }))}">Remove</button>`);
         tile.append(bar);
       }
       tile.dataset.kfMultistreamFocused = String(slug === focus);
@@ -822,7 +822,7 @@ export function createMultistream(host) {
           const status = state.multistreamLive.size
             ? `<small class="kf-ms-live" data-live="${live > 0}">${live}/${layout.streams.length} live</small>`
             : `<small>${layout.streams.length}</small>`;
-          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to board ${escapeHtml(layout.name)}">Copy</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete board ${escapeHtml(layout.name)}">Remove</button></span>`;
+          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="${escapeHtml(trf('Copy a link to board {name}', { name: layout.name }))}">Copy</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="${escapeHtml(trf('Delete board {name}', { name: layout.name }))}">Remove</button></span>`;
         }).join('')
         : '<span class="kf-ms-empty">Saved boards will appear here.</span>');
     }

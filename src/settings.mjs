@@ -425,12 +425,12 @@ export function createSettings(host) {
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
       <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${reachNote ? `<span class="kf-sticker-access kf-sticker-reach" data-reach="${sticker.usableEverywhere ? 'anywhere' : 'local'}">${escapeHtml(reachNote)}</span>` : ''}${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}${lock.locked ? `<small class="kf-sticker-lock">${escapeHtml(lock.reason)}${lock.unlockUrl ? ` <a href="${escapeHtml(lock.unlockUrl)}" target="_blank" rel="noopener">Unlock on Kick</a>` : ''}</small>` : ''}</div>
       <div class="kf-sticker-library-actions">
-        <a class="kf-button kf-button-small" href="${escapeHtml(sticker.src)}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(sticker.name)} artwork">Open artwork</a>
-        <button type="button" class="kf-button kf-button-small" data-action="copy-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="Copy the name ${escapeHtml(sticker.name)}">Copy name</button>
-        ${state.settings.content.insertEmoteName ? `<button type="button" class="kf-button kf-button-small" data-action="insert-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="Type the name ${escapeHtml(sticker.name)} into chat">Type in chat</button>` : ''}
-        <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
-        <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>
-        <select class="kf-select" data-kf-sticker-assignment="${escapeHtml(sticker.key)}" aria-label="Custom group for ${escapeHtml(sticker.name)}">${stickerGroupOptions(groupId)}</select>
+        <a class="kf-button kf-button-small" href="${escapeHtml(sticker.src)}" target="_blank" rel="noopener" aria-label="${escapeHtml(trf('Open {name} artwork', { name: sticker.name }))}">Open artwork</a>
+        <button type="button" class="kf-button kf-button-small" data-action="copy-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf('Copy the name {name}', { name: sticker.name }))}">Copy name</button>
+        ${state.settings.content.insertEmoteName ? `<button type="button" class="kf-button kf-button-small" data-action="insert-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf('Type the name {name} into chat', { name: sticker.name }))}">Type in chat</button>` : ''}
+        <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${escapeHtml(trf(favorite ? 'Remove favorite {name}' : 'Favorite {name}', { name: sticker.name }))}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
+        <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf(removed ? 'Restore {name}' : 'Remove {name}', { name: sticker.name }))}">${removed ? 'Restore' : 'Remove'}</button>
+        <select class="kf-select" data-kf-sticker-assignment="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf('Custom group for {name}', { name: sticker.name }))}">${stickerGroupOptions(groupId)}</select>
       </div>
     </article>`;
   }
@@ -464,7 +464,7 @@ export function createSettings(host) {
     const groupRows = state.stickerPreferences.groups.map((group) => {
       const count = [...state.stickerPreferences.assignments.values()].filter((groupId) => groupId === group.id).length;
       return `<div class="kf-sticker-group-row">
-        <input class="kf-text" value="${escapeHtml(group.name)}" maxlength="60" data-kf-sticker-group-name="${escapeHtml(group.id)}" aria-label="Rename ${escapeHtml(group.name)}">
+        <input class="kf-text" value="${escapeHtml(group.name)}" maxlength="60" data-kf-sticker-group-name="${escapeHtml(group.id)}" aria-label="${escapeHtml(trf('Rename {name}', { name: group.name }))}">
         <button type="button" class="kf-button kf-button-small" data-action="rename-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}">Save name</button>
         <button type="button" class="kf-button kf-button-small kf-danger" data-action="delete-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}">Delete (${count})</button>
       </div>`;
@@ -592,7 +592,7 @@ export function createSettings(host) {
             <button type="button" class="kf-button kf-button-small" data-action="add-hidden-channel">Hide</button>
           </div>
         </div></div>
-        ${value.hiddenChannels.length ? `<div class="kf-channel-list" data-kf-hidden-channel-list>${value.hiddenChannels.map((channel) => `<div class="kf-channel-entry"><span>${escapeHtml(channel.replace(/^\//, ''))}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-hidden-channel" data-channel="${escapeHtml(channel)}" aria-label="Show ${escapeHtml(channel.replace(/^\//, ''))} again">✕</button></div>`).join('')}</div>` : '<p class="kf-status-note">No channels hidden. Use the input above or the ✕ action on a card.</p>'}
+        ${value.hiddenChannels.length ? `<div class="kf-channel-list" data-kf-hidden-channel-list>${value.hiddenChannels.map((channel) => `<div class="kf-channel-entry"><span>${escapeHtml(channel.replace(/^\//, ''))}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-hidden-channel" data-channel="${escapeHtml(channel)}" aria-label="${escapeHtml(trf('Show {name} again', { name: channel.replace(/^\//, '') }))}">✕</button></div>`).join('')}</div>` : '<p class="kf-status-note">No channels hidden. Use the input above or the ✕ action on a card.</p>'}
         <p class="kf-meta">${value.hiddenChannels.length} ${plural(value.hiddenChannels.length, 'channel hidden. These count toward the fail-open ceiling.', 'channels hidden. These count toward the fail-open ceiling.')}</p>
       </div></section>
       <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">

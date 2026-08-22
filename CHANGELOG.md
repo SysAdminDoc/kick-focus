@@ -6,6 +6,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Every accessible name this build renders is translated. Twenty-six of them were assembled by interpolation, which the coverage gate skips because a template is not a fixed string, so a screen reader on Español or Português was read English throughout the emote library, the discovery cards and the multi-stream grid. They go through the same template lookup the toasts already use, and the gate now sees them.
+- Twenty-five dictionary entries with no call site left are gone from both locales. Two of them turned out to be the correct wording that the visible UI had drifted away from, and a gate now refuses a key nothing renders.
 - The Firefox package asks for Kick over https only. It requested `*://kick.com/*`, which includes an http half that never runs: the content-script matches and the background’s own origin set are both https-only. The ad and telemetry hosts keep both schemes on purpose, because a blocker has to refuse those either way.
 - Interface scale now resizes the whole settings surface instead of only its root font size. The panel carries about 120 absolute font sizes and a ladder of fixed control heights, so at 90% or 110% no control ever changed size. It scales with zoom now, which takes the fonts, control heights, padding and dialog chrome together.
 

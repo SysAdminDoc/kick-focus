@@ -101,3 +101,34 @@ test('every locale covers the same strings', { tag: 'unit' }, async () => {
     );
   }
 });
+
+test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
+  // Dead entries cost nothing at runtime, but they hide which strings are
+  // really in use and they are not free in a build that sits against a 1 MB
+  // injection ceiling. Two of the twenty-five removed when this gate was
+  // written turned out to be the correct wording that the visible UI had
+  // drifted away from, which is the more expensive half of the problem.
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const esStart = source.indexOf('  es: {');
+  const ptStart = source.indexOf('  pt: {');
+  assert.ok(esStart > 0 && ptStart > esStart, 'locale blocks not found');
+  const ptEnd = source.indexOf('\n  },\n};', ptStart);
+  assert.ok(ptEnd > ptStart, 'end of the pt block not found');
+
+  // Everything that can name a key: the rest of runtime plus every other module
+  // whose constants are looked up by value.
+  const others = await Promise.all([
+    'src/settings.mjs', 'src/multistream.mjs', 'src/core.mjs',
+    'src/api.mjs', 'src/live.mjs', 'src/storage.mjs', 'src/compatibility.mjs',
+    'test/i18n-coverage.test.js',
+  ].map((file) => readFile(resolve(root, file), 'utf8')));
+  const usage = source.slice(0, esStart) + source.slice(ptEnd) + others.join('\n');
+
+  const keys = [...source.slice(esStart, ptStart).matchAll(/^ {4}'((?:[^'\\]|\\.)*)':/gm)]
+    .map((match) => match[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\'));
+  assert.ok(keys.length > 100, `parsed only ${keys.length} keys — suspect the parser, not the dictionary`);
+
+  const dead = keys.filter((key) => !usage.includes(key));
+  assert.deepEqual(dead, [],
+    `${dead.length} dictionary key(s) have no call site, starting with: ${dead.slice(0, 5).map((k) => JSON.stringify(k)).join(' | ')}`);
+});

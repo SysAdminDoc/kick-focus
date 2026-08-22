@@ -5290,8 +5290,8 @@ function createMultistream(host) {
         setMarkup(bar, `
         <button type="button" class="kf-ms-name" data-action="multistream-focus" data-slug="${escapeHtml(slug)}" title="Give this stream the audio and chat">${escapeHtml(slug)}</button>
         <span class="kf-ms-spacer"></span>
-        <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="Open ${escapeHtml(slug)} on Kick">Open</a>
-        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)} from the grid">Remove</button>`);
+        <a class="kf-ms-link" href="/${encodeURIComponent(slug)}" target="_blank" rel="noopener" title="${escapeHtml(trf('Open {name} on Kick', { name: slug }))}">Open</a>
+        <button type="button" data-action="multistream-remove" data-slug="${escapeHtml(slug)}" aria-label="${escapeHtml(trf('Remove {name} from the grid', { name: slug }))}">Remove</button>`);
         tile.append(bar);
       }
       tile.dataset.kfMultistreamFocused = String(slug === focus);
@@ -5579,7 +5579,7 @@ function createMultistream(host) {
           const status = state.multistreamLive.size
             ? `<small class="kf-ms-live" data-live="${live > 0}">${live}/${layout.streams.length} live</small>`
             : `<small>${layout.streams.length}</small>`;
-          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Copy a link to board ${escapeHtml(layout.name)}">Copy</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="Delete board ${escapeHtml(layout.name)}">Remove</button></span>`;
+          return `<span class="kf-ms-layout"><button type="button" data-action="multistream-load" data-layout="${escapeHtml(layout.name)}" title="${escapeHtml(layout.streams.join(', '))}">${escapeHtml(layout.name)} ${status}</button><button type="button" data-action="multistream-copy-layout" data-layout="${escapeHtml(layout.name)}" aria-label="${escapeHtml(trf('Copy a link to board {name}', { name: layout.name }))}">Copy</button><button type="button" data-action="multistream-delete-layout" data-layout="${escapeHtml(layout.name)}" aria-label="${escapeHtml(trf('Delete board {name}', { name: layout.name }))}">Remove</button></span>`;
         }).join('')
         : '<span class="kf-ms-empty">Saved boards will appear here.</span>');
     }
@@ -6037,12 +6037,12 @@ function createSettings(host) {
       <div class="kf-sticker-library-image"><img src="${escapeHtml(sticker.src)}" alt="${escapeHtml(sticker.name)}" loading="lazy"></div>
       <div class="kf-sticker-library-copy"><strong data-kf-no-translate title="${escapeHtml(sticker.name)}">${escapeHtml(sticker.name)}</strong><small title="${escapeHtml(nativeGroups)}">${escapeHtml(nativeGroups)}</small>${seenNote ? `<small title="${escapeHtml(seenNote)}">${escapeHtml(seenNote)}</small>` : ''}<span class="kf-sticker-access" data-access="${escapeHtml(sticker.access)}">${accessLabel}</span>${reachNote ? `<span class="kf-sticker-access kf-sticker-reach" data-reach="${sticker.usableEverywhere ? 'anywhere' : 'local'}">${escapeHtml(reachNote)}</span>` : ''}${changeNote ? `<span class="kf-sticker-changed" title="${escapeHtml(changeNote)}">Changed by Kick</span>` : ''}${lock.locked ? `<small class="kf-sticker-lock">${escapeHtml(lock.reason)}${lock.unlockUrl ? ` <a href="${escapeHtml(lock.unlockUrl)}" target="_blank" rel="noopener">Unlock on Kick</a>` : ''}</small>` : ''}</div>
       <div class="kf-sticker-library-actions">
-        <a class="kf-button kf-button-small" href="${escapeHtml(sticker.src)}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(sticker.name)} artwork">Open artwork</a>
-        <button type="button" class="kf-button kf-button-small" data-action="copy-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="Copy the name ${escapeHtml(sticker.name)}">Copy name</button>
-        ${state.settings.content.insertEmoteName ? `<button type="button" class="kf-button kf-button-small" data-action="insert-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="Type the name ${escapeHtml(sticker.name)} into chat">Type in chat</button>` : ''}
-        <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${escapeHtml(sticker.name)}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
-        <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${removed ? 'Restore' : 'Remove'} ${escapeHtml(sticker.name)}">${removed ? 'Restore' : 'Remove'}</button>
-        <select class="kf-select" data-kf-sticker-assignment="${escapeHtml(sticker.key)}" aria-label="Custom group for ${escapeHtml(sticker.name)}">${stickerGroupOptions(groupId)}</select>
+        <a class="kf-button kf-button-small" href="${escapeHtml(sticker.src)}" target="_blank" rel="noopener" aria-label="${escapeHtml(trf('Open {name} artwork', { name: sticker.name }))}">Open artwork</a>
+        <button type="button" class="kf-button kf-button-small" data-action="copy-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf('Copy the name {name}', { name: sticker.name }))}">Copy name</button>
+        ${state.settings.content.insertEmoteName ? `<button type="button" class="kf-button kf-button-small" data-action="insert-sticker-name" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf('Type the name {name} into chat', { name: sticker.name }))}">Type in chat</button>` : ''}
+        <button type="button" class="kf-button kf-button-small" data-action="favorite-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-pressed="${favorite}" aria-label="${escapeHtml(trf(favorite ? 'Remove favorite {name}' : 'Favorite {name}', { name: sticker.name }))}">${favorite ? '★ Favorite' : '☆ Favorite'}</button>
+        <button type="button" class="kf-button kf-button-small${removed ? '' : ' kf-danger'}" data-action="remove-library-sticker" data-kf-sticker-key="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf(removed ? 'Restore {name}' : 'Remove {name}', { name: sticker.name }))}">${removed ? 'Restore' : 'Remove'}</button>
+        <select class="kf-select" data-kf-sticker-assignment="${escapeHtml(sticker.key)}" aria-label="${escapeHtml(trf('Custom group for {name}', { name: sticker.name }))}">${stickerGroupOptions(groupId)}</select>
       </div>
     </article>`;
   }
@@ -6076,7 +6076,7 @@ function createSettings(host) {
     const groupRows = state.stickerPreferences.groups.map((group) => {
       const count = [...state.stickerPreferences.assignments.values()].filter((groupId) => groupId === group.id).length;
       return `<div class="kf-sticker-group-row">
-        <input class="kf-text" value="${escapeHtml(group.name)}" maxlength="60" data-kf-sticker-group-name="${escapeHtml(group.id)}" aria-label="Rename ${escapeHtml(group.name)}">
+        <input class="kf-text" value="${escapeHtml(group.name)}" maxlength="60" data-kf-sticker-group-name="${escapeHtml(group.id)}" aria-label="${escapeHtml(trf('Rename {name}', { name: group.name }))}">
         <button type="button" class="kf-button kf-button-small" data-action="rename-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}">Save name</button>
         <button type="button" class="kf-button kf-button-small kf-danger" data-action="delete-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}">Delete (${count})</button>
       </div>`;
@@ -6204,7 +6204,7 @@ function createSettings(host) {
             <button type="button" class="kf-button kf-button-small" data-action="add-hidden-channel">Hide</button>
           </div>
         </div></div>
-        ${value.hiddenChannels.length ? `<div class="kf-channel-list" data-kf-hidden-channel-list>${value.hiddenChannels.map((channel) => `<div class="kf-channel-entry"><span>${escapeHtml(channel.replace(/^\//, ''))}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-hidden-channel" data-channel="${escapeHtml(channel)}" aria-label="Show ${escapeHtml(channel.replace(/^\//, ''))} again">✕</button></div>`).join('')}</div>` : '<p class="kf-status-note">No channels hidden. Use the input above or the ✕ action on a card.</p>'}
+        ${value.hiddenChannels.length ? `<div class="kf-channel-list" data-kf-hidden-channel-list>${value.hiddenChannels.map((channel) => `<div class="kf-channel-entry"><span>${escapeHtml(channel.replace(/^\//, ''))}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-hidden-channel" data-channel="${escapeHtml(channel)}" aria-label="${escapeHtml(trf('Show {name} again', { name: channel.replace(/^\//, '') }))}">✕</button></div>`).join('')}</div>` : '<p class="kf-status-note">No channels hidden. Use the input above or the ✕ action on a card.</p>'}
         <p class="kf-meta">${value.hiddenChannels.length} ${plural(value.hiddenChannels.length, 'channel hidden. These count toward the fail-open ceiling.', 'channels hidden. These count toward the fail-open ceiling.')}</p>
       </div></section>
       <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">
@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              848208') || 0;
+const BUNDLE_BYTES = Number('              847782') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -9120,18 +9120,19 @@ function applyCardActions(node) {
   const favorite = state.favorites.has(path);
   const dismissed = state.dismissed.has(path);
   const slug = cardSlugFromPath(path);
-  const label = escapeHtml(cardLabel(node));
+  const name = cardLabel(node);
+  const label = escapeHtml(name);
   const inMulti = Boolean(slug) && multistreamHasSlug(slug);
   const multiChip = slug
-    ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${inMulti ? 'Remove' : 'Add'} ${label} ${inMulti ? 'from' : 'to'} the multi-stream grid" title="${inMulti ? 'In Multi' : 'Add to Multi'}">${inMulti ? '⊟' : '⊞'}</button>`
+    ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${escapeHtml(trf(inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid', { name }))}" title="${escapeHtml(tr(inMulti ? 'In Multi' : 'Add to Multi'))}">${inMulti ? '⊟' : '⊞'}</button>`
     : '';
   const signature = `${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
   if (actions.dataset.kfCardSignature === signature) return;
   actions.dataset.kfCardSignature = signature;
   setMarkup(actions, `
-    <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${favorite ? 'Remove favorite' : 'Favorite'} ${label}">${favorite ? '★' : '☆'}</button>
+    <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${escapeHtml(trf(favorite ? 'Remove favorite {name}' : 'Favorite {name}', { name }))}">${favorite ? '★' : '☆'}</button>
     ${multiChip}
-    <button type="button" data-kf-card-action="dismiss" aria-label="${dismissed ? 'Restore' : 'Not interested'} ${label}">${dismissed ? '↶' : '×'}</button>`);
+    <button type="button" data-kf-card-action="dismiss" aria-label="${escapeHtml(trf(dismissed ? 'Restore {name}' : 'Not interested in {name}', { name }))}">${dismissed ? '↶' : '×'}</button>`);
 }
 
 function multistreamHasSlug(slug) {
@@ -10491,7 +10492,7 @@ function rarityBadge(descriptor) {
   if (!state.settings.content.showEmoteRarity || !state.live.rarity) return '';
   const match = state.live.rarity.matched.find((entry) => entry.emote.id === descriptor.id);
   if (!match) return '';
-  return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="Kick rarity, matched by ${escapeHtml(match.basis)}">${escapeHtml(match.rarity)}</span>`;
+  return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="${escapeHtml(trf('Kick rarity, matched by {basis}', { basis: match.basis }))}">${escapeHtml(match.rarity)}</span>`;
 }
 
 function emoteImageAttrs(descriptor) {
@@ -10520,12 +10521,12 @@ function stickerProxyMarkup(descriptor) {
   const ordering = pinned && state.stickerPreferences.view === 'pinned';
   const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
   return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-state="${pinned}:${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="Use emote ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="${escapeHtml(trf('Use emote {name}', { name: descriptor.name }))}" title="${escapeHtml(trf('Use {name}', { name: descriptor.name }))}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <div data-kf-sticker-tools>
-      ${ordering ? `<button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="up" data-kf-sticker-key="${safeKey}" aria-label="Move ${safeName} earlier" title="Move earlier">‹</button>
-      <button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="down" data-kf-sticker-key="${safeKey}" aria-label="Move ${safeName} later" title="Move later">›</button>` : ''}
-      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${pinned ? 'Remove favorite' : 'Favorite'} ${safeName}" title="${pinned ? `Remove favorite${scope ? ` (this channel)` : ''}` : 'Favorite'}">${pinned ? '★' : '☆'}</button>
-      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${hidden ? 'Restore' : 'Remove'} ${safeName}" title="${hidden ? 'Restore' : 'Remove'}">${hidden ? '↶' : '×'}</button>
+      ${ordering ? `<button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="up" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Move {name} earlier', { name: descriptor.name }))}" title="${escapeHtml(tr('Move earlier'))}">‹</button>
+      <button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="down" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Move {name} later', { name: descriptor.name }))}" title="${escapeHtml(tr('Move later'))}">›</button>` : ''}
+      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? 'Remove favorite {name}' : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${pinned ? '★' : '☆'}</button>
+      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf(hidden ? 'Restore {name}' : 'Remove {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}">${hidden ? '↶' : '×'}</button>
     </div>
   </div>`;
 }
@@ -10534,8 +10535,8 @@ function stickerQuickProxyMarkup(descriptor) {
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
   return `<div data-kf-sticker-quick-item="true">
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" aria-label="Use favorite emote ${safeName}" title="Use ${safeName}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
-    <div data-kf-sticker-quick-tools><button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-label="Remove ${safeName} from quick favorites" title="Remove from quick favorites">×</button></div>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Use favorite emote {name}', { name: descriptor.name }))}" title="${escapeHtml(trf('Use {name}', { name: descriptor.name }))}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"></button>
+    <div data-kf-sticker-quick-tools><button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Remove {name} from quick favorites', { name: descriptor.name }))}" title="${escapeHtml(tr('Remove from quick favorites'))}">×</button></div>
   </div>`;
 }
 
@@ -10706,7 +10707,7 @@ function renderStickerOrganizer() {
   const usageShelf = (entries, label, hint) => (entries.length
     ? `<section data-kf-sticker-usage-shelf="${label.toLowerCase().replace(/\s+/g, '-')}">
       <div data-kf-sticker-quick-header><strong>${escapeHtml(label)}</strong><span>${escapeHtml(hint)}</span></div>
-      <div data-kf-sticker-quick-grid role="group" aria-label="${escapeHtml(label)} emotes">${entries.map(stickerQuickProxyMarkup).join('')}</div>
+      <div data-kf-sticker-quick-grid role="group" aria-label="${escapeHtml(trf('{name} emotes', { name: label }))}">${entries.map(stickerQuickProxyMarkup).join('')}</div>
     </section>`
     : '');
   const customGroups = state.stickerPreferences.groups.map((group) => {
@@ -13089,8 +13090,6 @@ const TRANSLATIONS = {
     'Clear the log': 'Borrar el registro',
     'Daily reward ready': 'Recompensa diaria lista',
     'Viewer': 'Cuenta',
-    'What Kick tells this account': 'Lo que Kick indica de esta cuenta',
-    'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'Lo que Kick ya indica de esta cuenta, reunido en un sitio. Aquí no se cambia nada, no se reclama nada y no se envía nada a ninguna parte.',
     'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.': 'Lecturas de la cuenta y esta sesión del navegador, reunidas en un sitio. Aquí no se reclama ni se envía nada.',
     'Reading': 'Lecturas',
     'Reading…': 'Leyendo…',
@@ -13129,6 +13128,37 @@ const TRANSLATIONS = {
     'Page reset': 'Se restableció la página',
     'Shortcuts restored': 'Se restauraron los atajos',
     'Shortcut saved': 'Atajo guardado',
+    'Add to Multi': 'Añadir a Multi',
+    'In Multi': 'En Multi',
+    'Add {name} to the multi-stream grid': 'Añadir {name} a la cuadrícula multi-stream',
+    'Remove {name} from the multi-stream grid': 'Quitar {name} de la cuadrícula multi-stream',
+    'Favorite {name}': 'Marcar {name} como favorito',
+    'Remove favorite {name}': 'Quitar {name} de favoritos',
+    'Not interested in {name}': 'No me interesa {name}',
+    'Restore {name}': 'Restaurar {name}',
+    'Remove {name}': 'Quitar {name}',
+    'Restore': 'Restaurar',
+    'Remove favorite': 'Quitar de favoritos',
+    'Remove favorite (this channel)': 'Quitar de favoritos (este canal)',
+    'Use emote {name}': 'Usar el emote {name}',
+    'Use favorite emote {name}': 'Usar el emote favorito {name}',
+    'Use {name}': 'Usar {name}',
+    'Move {name} earlier': 'Mover {name} antes',
+    'Move {name} later': 'Mover {name} después',
+    'Remove {name} from quick favorites': 'Quitar {name} de los favoritos rápidos',
+    '{name} emotes': 'Emotes de {name}',
+    'Kick rarity, matched by {basis}': 'Rareza de Kick, encontrada por {basis}',
+    'Insert {name}': 'Insertar {name}',
+    'Open {name} artwork': 'Abrir la imagen de {name}',
+    'Copy the name {name}': 'Copiar el nombre {name}',
+    'Type the name {name} into chat': 'Escribir el nombre {name} en el chat',
+    'Custom group for {name}': 'Grupo personalizado para {name}',
+    'Rename {name}': 'Cambiar el nombre de {name}',
+    'Show {name} again': 'Mostrar {name} de nuevo',
+    'Open {name} on Kick': 'Abrir {name} en Kick',
+    'Remove {name} from the grid': 'Quitar {name} de la cuadrícula',
+    'Copy a link to board {name}': 'Copiar un enlace al tablero {name}',
+    'Delete board {name}': 'Eliminar el tablero {name}',
     'Press keys, or Escape to cancel': 'Pulsa las teclas, o Escape para cancelar',
     '{preset} preset applied': 'Preajuste {preset} aplicado',
     'Hidden {channel}': '{channel} oculto',
@@ -13184,7 +13214,6 @@ const TRANSLATIONS = {
     'Core protection always stays on': 'La protección principal permanece siempre activada',
     'About has no page settings to reset': 'Acerca de no tiene ajustes de página para restablecer',
     'Restore page defaults': 'Restaurar los valores predeterminados de la página',
-    'Filter commands…': 'Filtrar comandos…',
     'Find a command': 'Buscar un comando',
     'Type an action or setting…': 'Escribe una acción o ajuste…',
     'Available commands': 'Comandos disponibles',
@@ -13192,21 +13221,15 @@ const TRANSLATIONS = {
     'Try “chat”, “layout”, “casino”, or “settings”.': 'Prueba “chat”, “diseño”, “casino” o “configuración”.',
     'command available': 'comando disponible',
     'commands available': 'comandos disponibles',
-    'Open Kick Focus command menu': 'Abrir menú de comandos de Kick Focus',
     'Focus': 'Enfoque',
     'Resume': 'Reanudar',
     'Resume Kick Focus': 'Reanudar Kick Focus',
     'Kick Focus settings': 'Configuración de Kick Focus',
     'Layout': 'Diseño',
-    'Structure and positioning': 'Estructura y posición',
     'Appearance': 'Apariencia',
-    'Themes, colors, and style': 'Temas, colores y estilo',
     'Content & Ads': 'Contenido y anuncios',
-    'Filter and hide elements': 'Filtrar y ocultar elementos',
     'Accessibility & Shortcuts': 'Accesibilidad y atajos',
-    'Shortcuts and accessibility': 'Atajos y accesibilidad',
     'About': 'Acerca de',
-    'Version, diagnostics, and privacy': 'Versión, diagnósticos y privacidad',
     'Shell, player, and chat': 'Estructura, reproductor y chat',
     'Theme, color, and scale': 'Tema, color y escala',
     'Privacy, filters, and playback': 'Privacidad, filtros y reproducción',
@@ -13215,13 +13238,10 @@ const TRANSLATIONS = {
     'Status, privacy, and diagnostics': 'Estado, privacidad y diagnósticos',
     'Control how Kick is arranged across your desktop.': 'Controla cómo se organiza Kick en tu escritorio.',
     'Choose how the left discovery rail behaves.': 'Elige cómo funciona la barra de descubrimiento izquierda.',
-    'Choose the overall surface treatment.': 'Elige el tratamiento general de las superficies.',
-    'Set a premium visual style without replacing Kick’s identity.': 'Define un estilo visual premium sin reemplazar la identidad de Kick.',
     'Keep the page calm, private, and focused on streams.': 'Mantén la página tranquila, privada y centrada en los streams.',
     'Improve comfort and keep core actions within reach.': 'Mejora la comodidad y mantén las acciones principales al alcance.',
     'A desktop-first layout and control layer for Kick.': 'Una capa de diseño y control para Kick pensada para escritorio.',
     'Language': 'Idioma',
-    'Choose the language for Kick Focus settings and commands.': 'Elige el idioma de la configuración y los comandos de Kick Focus.',
     'Auto': 'Automático',
     'Sidebar mode': 'Modo de barra lateral',
     'Left': 'Izquierda',
@@ -13257,8 +13277,6 @@ const TRANSLATIONS = {
     'Move mini-player clear of controls': 'Mover el minirreproductor lejos de los controles',
     'Recover player after resize': 'Recuperar el reproductor tras cambiar el tamaño',
     'Keep ultrawide video uncropped': 'Mantener el video panorámico sin recortar',
-    'Premium stream card preview': 'Vista previa premium de tarjeta de stream',
-    'Clear hierarchy, restrained motion, and one consistent accent.': 'Jerarquía clara, movimiento moderado y un solo acento consistente.',
     'Theme': 'Tema',
     'Choose a clear visual direction, then tune only what matters to you.': 'Elige una dirección visual clara y ajusta solo lo que te importe.',
     'Quick directions': 'Direcciones rápidas',
@@ -13277,7 +13295,6 @@ const TRANSLATIONS = {
     'Your current theme, accent, scale, and card treatment.': 'Tu tema, acento, escala y tratamiento de tarjetas actuales.',
     'Accent color': 'Color de acento',
     'Viewing presets': 'Preajustes de visualización',
-    'Apply a complete layout and style in one click. Content filters and account choices stay untouched.': 'Aplica una disposición y un estilo completos con un clic. Los filtros de contenido y las opciones de la cuenta no cambian.',
     'Preset': 'Preajuste',
     'Calm': 'Calma',
     'Cinema': 'Cine',
@@ -13289,7 +13306,6 @@ const TRANSLATIONS = {
     'More stream cards, vivid thumbnails, and both discovery rails.': 'Más tarjetas de streams, miniaturas intensas y ambas barras de descubrimiento.',
     'Custom': 'Personalizado',
     'Custom accent': 'Acento personalizado',
-    'Pick any color. Values that cannot keep controls and focus rings visible fall back to a safe rose.': 'Elige cualquier color. Los valores que no mantengan visibles los controles y anillos de foco vuelven a un rosa seguro.',
     'Custom accent color': 'Color de acento personalizado',
     'Contrast protected': 'Contraste protegido',
     '{preset} preset applied. Content filters were not changed.': 'Se aplicó el preajuste {preset}. Los filtros de contenido no cambiaron.',
@@ -13303,7 +13319,6 @@ const TRANSLATIONS = {
     'Network + page': 'Red + página',
     'Page only': 'Solo página',
     'Local channel tools': 'Herramientas locales del canal',
-    'Favorites, not-interested choices, keywords, and notes stay on this device.': 'Favoritos, opciones de no me interesa, palabras clave y notas permanecen en este dispositivo.',
     'Clear favorites': 'Borrar favoritos',
     'Clear not-interested': 'Borrar no me interesa',
     'Protection log': 'Registro de protección',
@@ -13358,8 +13373,6 @@ const TRANSLATIONS = {
     'Blur mature thumbnails': 'Desenfocar miniaturas maduras',
     'Reveal mature thumbnails': 'Mostrar miniaturas maduras',
     'Temporarily override mature-card blur': 'Anula temporalmente el desenfoque de tarjetas maduras',
-    'Use comfortable density': 'Usar densidad cómoda',
-    'Use compact density': 'Usar densidad compacta',
     'Change discovery spacing and save it': 'Cambia y guarda el espaciado del descubrimiento',
     'New favorites apply to': 'Los nuevos favoritos se aplican a',
     'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.': 'Los favoritos globales te acompañan en todas partes. Los favoritos por canal solo aparecen en el canal donde los guardaste, encima de los globales. Los favoritos existentes son globales y no se mueven.',
@@ -13375,7 +13388,6 @@ const TRANSLATIONS = {
     'Filter clearly labeled casino streams': 'Filtra streams marcados claramente como casino',
     'Open Kick Focus settings': 'Abrir configuración de Kick Focus',
     'Customize layout, appearance, content, and access': 'Personaliza el diseño, la apariencia, el contenido y el acceso',
-    'No matching commands.': 'No hay comandos coincidentes.',
     'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.': 'Elige cómo se comporta la barra de descubrimiento izquierda. Desplegable la reduce a una pestaña que se expande al pasar el cursor, dando a la cuadrícula todo el ancho. Solo en anchos de escritorio.',
     'Place chat on either side, float it as a dock, or hide it.': 'Coloca el chat a cualquier lado, como panel flotante, u ocúltalo.',
     'Set the width of the live chat column.': 'Define el ancho de la columna del chat en vivo.',
@@ -13521,8 +13533,6 @@ const TRANSLATIONS = {
     'Enter a custom emote group name.': 'Escribe un nombre para el grupo personalizado de emotes.',
     'That emote group already exists.': 'Ese grupo de emotes ya existe.',
     'Enter a valid emote group name.': 'Escribe un nombre de grupo de emotes válido.',
-    'Layout saved.': 'Diseño guardado.',
-    'That layout has no usable channels.': 'Ese diseño no tiene canales utilizables.',
     'Board saved.': 'Tablero guardado.',
     'That board has no usable channels.': 'Ese tablero no tiene canales utilizables.',
     'Channel name or kick.com link': 'Nombre del canal o enlace de kick.com',
@@ -13578,7 +13588,6 @@ const TRANSLATIONS = {
     'Kick Focus restored': 'Kick Focus restaurado',
     'Give this stream the audio and chat': 'Dar a esta transmisión el audio y el chat',
     'Remove': 'Quitar',
-    'Copy link': 'Copiar enlace',
     'Delete': 'Eliminar',
     'Clear search': 'Borrar la búsqueda',
     'Campaign status': 'Estado de la campaña',
@@ -13604,9 +13613,7 @@ const TRANSLATIONS = {
     'Emote views and filters': 'Vistas y filtros de emotes',
     'Kick Focus command menu': 'Menú de comandos de Kick Focus',
     'Kick Focus multi-stream': 'Multitransmisión de Kick Focus',
-    'Add a channel or paste a kick.com link…': 'Añade un canal o pega un enlace de kick.com…',
     'Which chat to show': 'Qué chat mostrar',
-    'Name this layout…': 'Ponle nombre a este diseño…',
     'Live style preview': 'Vista previa del estilo en vivo',
     'release, giveaway, raid': 'estreno, sorteo, raid',
     'Chat keywords for this channel': 'Palabras clave del chat para este canal',
@@ -13736,8 +13743,6 @@ const TRANSLATIONS = {
     'Clear the log': 'Apagar o registo',
     'Daily reward ready': 'Recompensa diária pronta',
     'Viewer': 'Conta',
-    'What Kick tells this account': 'O que a Kick informa desta conta',
-    'What Kick already tells this account, in one place. Nothing here is changed, claimed, or sent anywhere.': 'O que a Kick já informa desta conta, reunido num só lugar. Aqui nada é alterado, nada é resgatado e nada é enviado para lugar nenhum.',
     'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.': 'Leituras da conta e esta sessão do navegador, reunidas num só lugar. Aqui nada é resgatado ou enviado.',
     'Reading': 'Leituras',
     'Reading…': 'A ler…',
@@ -13776,6 +13781,37 @@ const TRANSLATIONS = {
     'Page reset': 'A página foi redefinida',
     'Shortcuts restored': 'Atalhos restaurados',
     'Shortcut saved': 'Atalho salvo',
+    'Add to Multi': 'Adicionar ao Multi',
+    'In Multi': 'No Multi',
+    'Add {name} to the multi-stream grid': 'Adicionar {name} à grade multi-stream',
+    'Remove {name} from the multi-stream grid': 'Remover {name} da grade multi-stream',
+    'Favorite {name}': 'Marcar {name} como favorito',
+    'Remove favorite {name}': 'Remover {name} dos favoritos',
+    'Not interested in {name}': 'Não tenho interesse em {name}',
+    'Restore {name}': 'Restaurar {name}',
+    'Remove {name}': 'Remover {name}',
+    'Restore': 'Restaurar',
+    'Remove favorite': 'Remover dos favoritos',
+    'Remove favorite (this channel)': 'Remover dos favoritos (este canal)',
+    'Use emote {name}': 'Usar o emote {name}',
+    'Use favorite emote {name}': 'Usar o emote favorito {name}',
+    'Use {name}': 'Usar {name}',
+    'Move {name} earlier': 'Mover {name} para antes',
+    'Move {name} later': 'Mover {name} para depois',
+    'Remove {name} from quick favorites': 'Remover {name} dos favoritos rápidos',
+    '{name} emotes': 'Emotes de {name}',
+    'Kick rarity, matched by {basis}': 'Raridade da Kick, encontrada por {basis}',
+    'Insert {name}': 'Inserir {name}',
+    'Open {name} artwork': 'Abrir a imagem de {name}',
+    'Copy the name {name}': 'Copiar o nome {name}',
+    'Type the name {name} into chat': 'Digitar o nome {name} no chat',
+    'Custom group for {name}': 'Grupo personalizado para {name}',
+    'Rename {name}': 'Renomear {name}',
+    'Show {name} again': 'Mostrar {name} novamente',
+    'Open {name} on Kick': 'Abrir {name} na Kick',
+    'Remove {name} from the grid': 'Remover {name} da grade',
+    'Copy a link to board {name}': 'Copiar um link para o painel {name}',
+    'Delete board {name}': 'Excluir o painel {name}',
     'Press keys, or Escape to cancel': 'Pressione as teclas, ou Escape para cancelar',
     '{preset} preset applied': 'Predefinição {preset} aplicada',
     'Hidden {channel}': '{channel} oculto',
@@ -13831,7 +13867,6 @@ const TRANSLATIONS = {
     'Core protection always stays on': 'A proteção principal permanece sempre ativada',
     'About has no page settings to reset': 'Sobre não tem configurações de página para redefinir',
     'Restore page defaults': 'Restaurar os padrões da página',
-    'Filter commands…': 'Filtrar comandos…',
     'Find a command': 'Buscar um comando',
     'Type an action or setting…': 'Digite uma ação ou configuração…',
     'Available commands': 'Comandos disponíveis',
@@ -13839,21 +13874,15 @@ const TRANSLATIONS = {
     'Try “chat”, “layout”, “casino”, or “settings”.': 'Tente “chat”, “layout”, “cassino” ou “configurações”.',
     'command available': 'comando disponível',
     'commands available': 'comandos disponíveis',
-    'Open Kick Focus command menu': 'Abrir menu de comandos do Kick Focus',
     'Focus': 'Foco',
     'Resume': 'Retomar',
     'Resume Kick Focus': 'Retomar Kick Focus',
     'Kick Focus settings': 'Configurações do Kick Focus',
     'Layout': 'Layout',
-    'Structure and positioning': 'Estrutura e posicionamento',
     'Appearance': 'Aparência',
-    'Themes, colors, and style': 'Temas, cores e estilo',
     'Content & Ads': 'Conteúdo e anúncios',
-    'Filter and hide elements': 'Filtrar e ocultar elementos',
     'Accessibility & Shortcuts': 'Acessibilidade e atalhos',
-    'Shortcuts and accessibility': 'Atalhos e acessibilidade',
     'About': 'Sobre',
-    'Version, diagnostics, and privacy': 'Versão, diagnósticos e privacidade',
     'Shell, player, and chat': 'Estrutura, player e chat',
     'Theme, color, and scale': 'Tema, cor e escala',
     'Privacy, filters, and playback': 'Privacidade, filtros e reprodução',
@@ -13861,14 +13890,11 @@ const TRANSLATIONS = {
     'Read-only account signals': 'Sinais da conta somente para leitura',
     'Status, privacy, and diagnostics': 'Status, privacidade e diagnósticos',
     'Control how Kick is arranged across your desktop.': 'Controle como o Kick é organizado na sua área de trabalho.',
-    'Choose the overall surface treatment.': 'Escolha o tratamento geral das superfícies.',
-    'Set a premium visual style without replacing Kick’s identity.': 'Defina um estilo visual premium sem substituir a identidade do Kick.',
     'Keep the page calm, private, and focused on streams.': 'Mantenha a página calma, privada e focada nas transmissões.',
     'Choose how the left discovery rail behaves.': 'Escolha como a barra lateral de descoberta se comporta.',
     'Improve comfort and keep core actions within reach.': 'Melhore o conforto e mantenha as ações principais ao alcance.',
     'A desktop-first layout and control layer for Kick.': 'Uma camada de layout e controle para Kick pensada para desktop.',
     'Language': 'Idioma',
-    'Choose the language for Kick Focus settings and commands.': 'Escolha o idioma das configurações e comandos do Kick Focus.',
     'Auto': 'Automático',
     'Sidebar mode': 'Modo da barra lateral',
     'Left': 'Esquerda',
@@ -13904,8 +13930,6 @@ const TRANSLATIONS = {
     'Move mini-player clear of controls': 'Mover miniplayer para longe dos controles',
     'Recover player after resize': 'Recuperar player após redimensionar',
     'Keep ultrawide video uncropped': 'Manter vídeo ultrawide sem corte',
-    'Premium stream card preview': 'Prévia premium de cartão de transmissão',
-    'Clear hierarchy, restrained motion, and one consistent accent.': 'Hierarquia clara, movimento discreto e um único destaque consistente.',
     'Theme': 'Tema',
     'Choose a clear visual direction, then tune only what matters to you.': 'Escolha uma direção visual clara e ajuste apenas o que importa para você.',
     'Quick directions': 'Direções rápidas',
@@ -13924,7 +13948,6 @@ const TRANSLATIONS = {
     'Your current theme, accent, scale, and card treatment.': 'Seu tema, destaque, escala e tratamento de cartões atuais.',
     'Accent color': 'Cor de destaque',
     'Viewing presets': 'Predefinições de visualização',
-    'Apply a complete layout and style in one click. Content filters and account choices stay untouched.': 'Aplica um layout e um estilo completos com um clique. Os filtros de conteúdo e as escolhas da conta não mudam.',
     'Preset': 'Predefinição',
     'Calm': 'Calmo',
     'Cinema': 'Cinema',
@@ -13936,7 +13959,6 @@ const TRANSLATIONS = {
     'More stream cards, vivid thumbnails, and both discovery rails.': 'Mais cartões de transmissão, miniaturas vivas e as duas barras de descoberta.',
     'Custom': 'Personalizado',
     'Custom accent': 'Destaque personalizado',
-    'Pick any color. Values that cannot keep controls and focus rings visible fall back to a safe rose.': 'Escolha qualquer cor. Valores que não mantiverem controles e anéis de foco visíveis voltam a um rosa seguro.',
     'Custom accent color': 'Cor de destaque personalizada',
     'Contrast protected': 'Contraste protegido',
     '{preset} preset applied. Content filters were not changed.': 'A predefinição {preset} foi aplicada. Os filtros de conteúdo não mudaram.',
@@ -13950,7 +13972,6 @@ const TRANSLATIONS = {
     'Network + page': 'Rede + página',
     'Page only': 'Somente página',
     'Local channel tools': 'Ferramentas locais do canal',
-    'Favorites, not-interested choices, keywords, and notes stay on this device.': 'Favoritos, opções de não tenho interesse, palavras-chave e notas ficam neste dispositivo.',
     'Clear favorites': 'Limpar favoritos',
     'Clear not-interested': 'Limpar não tenho interesse',
     'Protection log': 'Registro de proteção',
@@ -14005,8 +14026,6 @@ const TRANSLATIONS = {
     'Blur mature thumbnails': 'Desfocar miniaturas maduras',
     'Reveal mature thumbnails': 'Revelar miniaturas maduras',
     'Temporarily override mature-card blur': 'Substitui temporariamente o desfoque de cartões maduros',
-    'Use comfortable density': 'Usar densidade confortável',
-    'Use compact density': 'Usar densidade compacta',
     'Change discovery spacing and save it': 'Altera e salva o espaçamento da descoberta',
     'New favorites apply to': 'Novos favoritos se aplicam a',
     'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.': 'Os favoritos globais acompanham você em todos os lugares. Os favoritos por canal aparecem apenas no canal onde foram salvos, acima dos globais. Os favoritos existentes são globais e não são movidos.',
@@ -14022,7 +14041,6 @@ const TRANSLATIONS = {
     'Filter clearly labeled casino streams': 'Filtra transmissões claramente marcadas como cassino',
     'Open Kick Focus settings': 'Abrir configurações do Kick Focus',
     'Customize layout, appearance, content, and access': 'Personalize layout, aparência, conteúdo e acesso',
-    'No matching commands.': 'Nenhum comando correspondente.',
     'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.': 'Escolha como a barra lateral de descoberta se comporta. Suspensa reduz a barra a uma aba que se expande ao passar o cursor, dando à grade toda a largura. Apenas em larguras de desktop.',
     'Place chat on either side, float it as a dock, or hide it.': 'Coloque o chat em qualquer lado, como painel flutuante, ou oculte-o.',
     'Set the width of the live chat column.': 'Defina a largura da coluna do chat ao vivo.',
@@ -14168,8 +14186,6 @@ const TRANSLATIONS = {
     'Enter a custom emote group name.': 'Digite um nome para o grupo personalizado de emotes.',
     'That emote group already exists.': 'Esse grupo de emotes já existe.',
     'Enter a valid emote group name.': 'Digite um nome de grupo de emotes válido.',
-    'Layout saved.': 'Layout salvo.',
-    'That layout has no usable channels.': 'Esse layout não tem canais utilizáveis.',
     'Board saved.': 'Painel salvo.',
     'That board has no usable channels.': 'Esse painel não tem canais utilizáveis.',
     'Channel name or kick.com link': 'Nome do canal ou link do kick.com',
@@ -14225,7 +14241,6 @@ const TRANSLATIONS = {
     'Kick Focus restored': 'Kick Focus restaurado',
     'Give this stream the audio and chat': 'Dar a esta transmissão o áudio e o chat',
     'Remove': 'Remover',
-    'Copy link': 'Copiar link',
     'Delete': 'Excluir',
     'Clear search': 'Limpar a busca',
     'Campaign status': 'Status da campanha',
@@ -14251,9 +14266,7 @@ const TRANSLATIONS = {
     'Emote views and filters': 'Visualizações e filtros de emotes',
     'Kick Focus command menu': 'Menu de comandos do Kick Focus',
     'Kick Focus multi-stream': 'Multitransmissão do Kick Focus',
-    'Add a channel or paste a kick.com link…': 'Adicione um canal ou cole um link do kick.com…',
     'Which chat to show': 'Qual chat mostrar',
-    'Name this layout…': 'Dê um nome a este layout…',
     'Live style preview': 'Prévia do estilo ao vivo',
     'release, giveaway, raid': 'lançamento, sorteio, raid',
     'Chat keywords for this channel': 'Palavras-chave do chat para este canal',
@@ -15946,7 +15959,7 @@ function updateEmoteCompletion() {
   const host = emoteCompletionHost();
   const list = host.shadowRoot.querySelector('[data-kf-complete-list]');
   setMarkup(list, matches.map((sticker) => `
-    <button type="button" role="option" aria-selected="false" data-kf-complete-key="${escapeHtml(sticker.key)}" title="Insert ${escapeHtml(sticker.name)}">
+    <button type="button" role="option" aria-selected="false" data-kf-complete-key="${escapeHtml(sticker.key)}" title="${escapeHtml(trf('Insert {name}', { name: sticker.name }))}">
       <img src="${escapeHtml(sticker.src)}" alt="" loading="lazy">
       <span>${escapeHtml(sticker.name)}</span>
     </button>`).join(''));
