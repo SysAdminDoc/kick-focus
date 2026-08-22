@@ -912,8 +912,9 @@ const checks = [
     && source.includes('data-kf-sticker-native-shell')
     && source.includes("nativeList.dataset.kfStickerNativeList = 'true'")
     && source.includes("shell.dataset.kfStickerNativeShell = 'true'")],
-  ['labels the emote shelf as account-authorized', source.includes('New Kick emotes save automatically')
-    && source.includes('max-height: min(720px, 76vh)')
+  ['separates available emotes from Kick-locked ones', source.includes("trf('{count} available'")
+    && source.includes("trf(', {count} locked by Kick'")
+    && source.includes('max-height: min(640px, calc(100vh - 132px))')
     && source.includes('stickerButtonUnavailable')],
   ['persists and exports the complete sticker library', source.includes('mergeStickerLibrary')
     && source.includes('observeStickerPicker')
@@ -973,9 +974,11 @@ const checks = [
   ['userscript blocklist transport omits ambient cookies', source.includes('anonymous: true')],
   ['blocklist URL is https-validated at normalize time', source.includes('function normalizeBlocklistUrl')
     && source.includes('normalizeBlocklistUrl(content.blocklistUrl)')],
-  ['offers a three-row one-click favorites shelf', source.includes('stickerQuickProxyMarkup')
-    && source.includes('data-kf-sticker-quick-grid')
-    && source.includes('max-height: 156px')],
+  ['offers direct favorites, recent, all, group, and Kick views', source.includes("tab('pinned', tr('Favorites')")
+    && source.includes("tab('recent', tr('Recent')")
+    && source.includes("tab('all', tr('All')")
+    && source.includes('data-kf-sticker-view="group"')
+    && source.includes("tab('native', tr('Kick'))")],
   ['styles the current semantic Kick shell', source.includes(':is(main, #main-container)')
     && source.includes('[data-testid="livestream-results-card"]')
     && source.includes('#channel-chatroom')],
@@ -1091,16 +1094,17 @@ const checks = [
   ['spacer arithmetic agrees with the grid CSS it stands in for', spacerMathMatchesCss(source)],
   ['organizer search is debounced rather than firing on every keystroke', organizerDebouncesSearch(source)],
   ['a favorite or removal patches its tile instead of rebuilding the window', organizerPatchesInPlace(source)],
-  ['the picker offers Most used and Recent shelves over recorded usage',
-    source.includes('rankEmoteUsage(state.emoteUsage') && source.includes('recentEmoteUsage(state.emoteUsage')
-    && source.includes('data-kf-sticker-usage-shelf')],
+  ['the picker offers a Recent view over recorded usage',
+    source.includes('recentEmoteUsage(state.emoteUsage')
+    && source.includes("view === 'recent'")
+    && source.includes("tab('recent', tr('Recent')")],
   ['favorites are scoped per channel and explicitly ordered',
     source.includes('favoritesForChannel')
     && source.includes('toggleStickerFavorite')
     && source.includes('moveStickerFavorite')
     && source.includes('byFavoriteOrder')
     && organizerSignatureCovers(source)
-    && source.includes("data-kf-sticker-move=\"up\"")],
+    && source.includes('data-kf-sticker-batch-reorder="up"')],
 
   // A locked tile must explain itself and link to Kick's own unlock path —
   // and must never enable anything. The link is the only action offered.

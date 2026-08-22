@@ -1,4 +1,4 @@
-export const VERSION = '1.37.0';
+export const VERSION = '1.38.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 5;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.38.0': Object.freeze({
+    summary: 'The profile comment-box emote picker now handles favorites, recent emotes, custom groups, batch moves, removal, recovery, and normal emote insertion in place.',
+    defaults: Object.freeze([]),
+  }),
   '1.37.0': Object.freeze({
     summary: 'Emotes now have a dedicated workspace, visible picker search, and batch controls for creating groups, moving selections, removing entries, and restoring them.',
     defaults: Object.freeze([]),
@@ -2961,7 +2965,7 @@ export function normalizeStickerPreferences(input) {
   const groups = cleanStickerGroups(source.groups);
   const groupIds = new Set(groups.map((group) => group.id));
   const activeGroup = groupIds.has(source.activeGroup) ? source.activeGroup : '';
-  const view = enumValue(source.view, ['all', 'pinned', 'native', 'group'], 'all');
+  const view = enumValue(source.view, ['all', 'pinned', 'recent', 'native', 'group'], 'all');
   const favorites = cleanStickerFavorites(source.favorites, source.pinned, hiddenSet);
   const assignments = cleanStickerAssignments(source.assignments, groupIds);
   // Favorited or assigned emotes are protected from eviction: the user filed them.

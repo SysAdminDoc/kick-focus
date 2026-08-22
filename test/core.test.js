@@ -1370,6 +1370,7 @@ test('sticker library keeps portable metadata, catalog access, custom groups, an
   assert.equal(value.library[1].access, 'observed');
   assert.equal(value.library[2].access, 'channel');
   assert.equal(normalizeStickerPreferences({ view: 'group', activeGroup: 'missing' }).view, 'all');
+  assert.equal(normalizeStickerPreferences({ view: 'recent' }).view, 'recent');
 });
 
 test('an emote asset is pinned to Kick by the URL parser, not by how the string starts', { tag: 'unit' }, () => {
