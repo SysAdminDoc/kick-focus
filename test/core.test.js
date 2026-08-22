@@ -1595,6 +1595,46 @@ test('settings import names whatever it could not keep', { tag: 'unit' }, () => 
   assert.deepEqual(clean.noteDetails, []);
 });
 
+test('this build’s own export imports back without a single note', { tag: 'unit' }, () => {
+  // The export spreads the whole settings record, so it carries lastSeenVersion
+  // alongside schema. That key was missing from the importer's known set, and a
+  // plain round trip therefore accused the app's own file of holding an unknown
+  // section. The notes are the only signal that an import lost something, so a
+  // false one costs more than a missing one.
+  const exported = buildSettingsExport({ settings: normalizeSettings({}) });
+  assert.ok(Object.hasOwn(exported, 'lastSeenVersion'), 'the export is expected to carry this key');
+  const round = validateImportedSettings(JSON.stringify(exported));
+  assert.equal(round.ok, true);
+  assert.deepEqual(round.notes, [], 'a round trip of an untouched export must be silent');
+  assert.deepEqual(round.noteDetails, []);
+});
+
+test('a schema stamp that is not a number reads as unversioned', { tag: 'unit' }, () => {
+  // Number('abc') is NaN, and NaN fails both `> SETTINGS_SCHEMA` and
+  // `< SETTINGS_SCHEMA`, so a junk stamp used to clear the "too new" refusal and
+  // skip the upgrade note as well, importing as though it were already current.
+  for (const stamp of ['abc', '5abc', 'NaN', '', '   ', {}, [], true, null]) {
+    const result = validateImportedSettings(JSON.stringify({ schema: stamp, layout: { chatWidth: 410 } }));
+    assert.equal(result.ok, true, `schema ${JSON.stringify(stamp)} should still import`);
+    assert.ok(
+      result.notes.some((note) => /Upgraded from an unversioned file/.test(note)),
+      `schema ${JSON.stringify(stamp)} should report as unversioned, got ${JSON.stringify(result.notes)}`,
+    );
+  }
+
+  // A real number still takes the numbered upgrade path, and still refuses a
+  // stamp from a build newer than this one.
+  assert.ok(validateImportedSettings('{"schema":1,"layout":{"chatWidth":410}}').notes
+    .some((note) => /Upgraded from schema 1 to schema/.test(note)));
+  assert.equal(validateImportedSettings('{"schema":99}').ok, false);
+  assert.equal(validateImportedSettings('{"schema":"99"}').ok, false, 'a numeric string stamp is still a version');
+
+  // The same hole existed on the emote library's own stamp.
+  const sticker = validateImportedSettings('{"schema":1,"stickers":{"schema":"abc","library":[]}}');
+  assert.equal(sticker.ok, true);
+  assert.ok(sticker.notes.some((note) => /Upgraded emotes to schema/.test(note)));
+});
+
 test('settings import round-trips the sticker library without treating it as an unknown section', { tag: 'unit' }, () => {
   const imported = validateImportedSettings(JSON.stringify({
     schema: 1,

@@ -3152,6 +3152,24 @@ export const IMPORT_NOTE_MESSAGES = Object.freeze({
   adjustedLayouts: 'Adjusted saved layouts to {count} supported entries.',
 });
 
+/**
+ * Read a schema stamp a file may have written as anything at all.
+ *
+ * `Number('abc')` is NaN, and NaN is neither greater nor less than the current
+ * schema, so a file stamped with junk slipped past the "too new" refusal *and*
+ * the "upgraded from" note and imported as though it were already current. A
+ * stamp that is not a finite number is no stamp, so it reads as unversioned and
+ * takes the upgrade path every other unstamped file takes. Non-numeric types
+ * are rejected before `Number` sees them, because `Number([])` is 0 and
+ * `Number(true)` is 1, and neither array nor boolean is a version.
+ */
+function numericSchema(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function validateImportedSettings(jsonText) {
   let parsed;
   try {
@@ -3160,12 +3178,13 @@ export function validateImportedSettings(jsonText) {
     return { ok: false, error: IMPORT_ERROR_MESSAGES.invalidJson, errorKey: IMPORT_ERROR_MESSAGES.invalidJson };
   }
   if (!isRecord(parsed)) return { ok: false, error: IMPORT_ERROR_MESSAGES.settingsObject, errorKey: IMPORT_ERROR_MESSAGES.settingsObject };
-  if (parsed.schema != null && Number(parsed.schema) > SETTINGS_SCHEMA) {
+  const fileSchema = numericSchema(parsed.schema);
+  if (fileSchema != null && fileSchema > SETTINGS_SCHEMA) {
     return {
       ok: false,
-      error: `Settings schema ${parsed.schema} is newer than this build supports.`,
+      error: `Settings schema ${fileSchema} is newer than this build supports.`,
       errorKey: IMPORT_ERROR_MESSAGES.settingsSchema,
-      errorValues: { schema: parsed.schema },
+      errorValues: { schema: fileSchema },
     };
   }
   if (parsed.stickers != null && !isRecord(parsed.stickers)) {
@@ -3177,12 +3196,13 @@ export function validateImportedSettings(jsonText) {
   if (parsed.multistream != null && !isRecord(parsed.multistream)) {
     return { ok: false, error: IMPORT_ERROR_MESSAGES.multistreamObject, errorKey: IMPORT_ERROR_MESSAGES.multistreamObject };
   }
-  if (parsed.stickers?.schema != null && Number(parsed.stickers.schema) > STICKER_PREFERENCES_SCHEMA) {
+  const stickerSchema = numericSchema(parsed.stickers?.schema);
+  if (stickerSchema != null && stickerSchema > STICKER_PREFERENCES_SCHEMA) {
     return {
       ok: false,
-      error: `Emote schema ${parsed.stickers.schema} is newer than this build supports.`,
+      error: `Emote schema ${stickerSchema} is newer than this build supports.`,
       errorKey: IMPORT_ERROR_MESSAGES.stickerSchema,
-      errorValues: { schema: parsed.stickers.schema },
+      errorValues: { schema: stickerSchema },
     };
   }
 
@@ -3197,7 +3217,11 @@ export function validateImportedSettings(jsonText) {
   };
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
   const hasSettings = sections.some((section) => isRecord(parsed[section]));
-  const known = new Set(['schema', 'stickers', 'usage', 'multistream', 'channelLayouts',
+  // `lastSeenVersion` is carried by every export this build writes, because the
+  // export spreads the whole settings record. Leaving it out of this set made
+  // the app's own file report "Ignored unknown section" against itself on a
+  // plain round trip, which is the one place the notes have to be trustworthy.
+  const known = new Set(['schema', 'lastSeenVersion', 'stickers', 'usage', 'multistream', 'channelLayouts',
     'favoriteChannels', 'dismissedChannels', 'chatKeywords', 'channelNotes', 'mediaPreferences']);
 
   for (const key of Object.keys(parsed)) {
@@ -3223,8 +3247,8 @@ export function validateImportedSettings(jsonText) {
     }
   }
 
-  if (parsed.schema == null || Number(parsed.schema) < SETTINGS_SCHEMA) {
-    if (parsed.schema == null) {
+  if (fileSchema == null || fileSchema < SETTINGS_SCHEMA) {
+    if (fileSchema == null) {
       addNote(
         `Upgraded from an unversioned file to schema ${SETTINGS_SCHEMA}.`,
         IMPORT_NOTE_MESSAGES.upgradedUnversioned,
@@ -3233,9 +3257,9 @@ export function validateImportedSettings(jsonText) {
       );
     } else {
       addNote(
-        `Upgraded from schema ${parsed.schema} to schema ${SETTINGS_SCHEMA}.`,
+        `Upgraded from schema ${fileSchema} to schema ${SETTINGS_SCHEMA}.`,
         IMPORT_NOTE_MESSAGES.upgradedSchema,
-        { from: parsed.schema, to: SETTINGS_SCHEMA },
+        { from: fileSchema, to: SETTINGS_SCHEMA },
         true,
       );
     }
@@ -3274,7 +3298,7 @@ export function validateImportedSettings(jsonText) {
         );
       }
     }
-    if (parsed.stickers.schema == null || Number(parsed.stickers.schema) < STICKER_PREFERENCES_SCHEMA) {
+    if (stickerSchema == null || stickerSchema < STICKER_PREFERENCES_SCHEMA) {
       addNote(
         `Upgraded emotes to schema ${STICKER_PREFERENCES_SCHEMA}.`,
         IMPORT_NOTE_MESSAGES.upgradedEmotes,

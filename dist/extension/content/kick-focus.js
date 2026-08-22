@@ -2212,6 +2212,13 @@ const IMPORT_NOTE_MESSAGES = Object.freeze({
   adjustedLayouts: 'Adjusted saved layouts to {count} supported entries.',
 });
 
+function numericSchema(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function validateImportedSettings(jsonText) {
   let parsed;
   try {
@@ -2220,12 +2227,13 @@ function validateImportedSettings(jsonText) {
     return { ok: false, error: IMPORT_ERROR_MESSAGES.invalidJson, errorKey: IMPORT_ERROR_MESSAGES.invalidJson };
   }
   if (!isRecord(parsed)) return { ok: false, error: IMPORT_ERROR_MESSAGES.settingsObject, errorKey: IMPORT_ERROR_MESSAGES.settingsObject };
-  if (parsed.schema != null && Number(parsed.schema) > SETTINGS_SCHEMA) {
+  const fileSchema = numericSchema(parsed.schema);
+  if (fileSchema != null && fileSchema > SETTINGS_SCHEMA) {
     return {
       ok: false,
-      error: `Settings schema ${parsed.schema} is newer than this build supports.`,
+      error: `Settings schema ${fileSchema} is newer than this build supports.`,
       errorKey: IMPORT_ERROR_MESSAGES.settingsSchema,
-      errorValues: { schema: parsed.schema },
+      errorValues: { schema: fileSchema },
     };
   }
   if (parsed.stickers != null && !isRecord(parsed.stickers)) {
@@ -2237,12 +2245,13 @@ function validateImportedSettings(jsonText) {
   if (parsed.multistream != null && !isRecord(parsed.multistream)) {
     return { ok: false, error: IMPORT_ERROR_MESSAGES.multistreamObject, errorKey: IMPORT_ERROR_MESSAGES.multistreamObject };
   }
-  if (parsed.stickers?.schema != null && Number(parsed.stickers.schema) > STICKER_PREFERENCES_SCHEMA) {
+  const stickerSchema = numericSchema(parsed.stickers?.schema);
+  if (stickerSchema != null && stickerSchema > STICKER_PREFERENCES_SCHEMA) {
     return {
       ok: false,
-      error: `Emote schema ${parsed.stickers.schema} is newer than this build supports.`,
+      error: `Emote schema ${stickerSchema} is newer than this build supports.`,
       errorKey: IMPORT_ERROR_MESSAGES.stickerSchema,
-      errorValues: { schema: parsed.stickers.schema },
+      errorValues: { schema: stickerSchema },
     };
   }
 
@@ -2257,7 +2266,7 @@ function validateImportedSettings(jsonText) {
   };
   const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
   const hasSettings = sections.some((section) => isRecord(parsed[section]));
-  const known = new Set(['schema', 'stickers', 'usage', 'multistream', 'channelLayouts',
+  const known = new Set(['schema', 'lastSeenVersion', 'stickers', 'usage', 'multistream', 'channelLayouts',
     'favoriteChannels', 'dismissedChannels', 'chatKeywords', 'channelNotes', 'mediaPreferences']);
 
   for (const key of Object.keys(parsed)) {
@@ -2279,8 +2288,8 @@ function validateImportedSettings(jsonText) {
     }
   }
 
-  if (parsed.schema == null || Number(parsed.schema) < SETTINGS_SCHEMA) {
-    if (parsed.schema == null) {
+  if (fileSchema == null || fileSchema < SETTINGS_SCHEMA) {
+    if (fileSchema == null) {
       addNote(
         `Upgraded from an unversioned file to schema ${SETTINGS_SCHEMA}.`,
         IMPORT_NOTE_MESSAGES.upgradedUnversioned,
@@ -2289,9 +2298,9 @@ function validateImportedSettings(jsonText) {
       );
     } else {
       addNote(
-        `Upgraded from schema ${parsed.schema} to schema ${SETTINGS_SCHEMA}.`,
+        `Upgraded from schema ${fileSchema} to schema ${SETTINGS_SCHEMA}.`,
         IMPORT_NOTE_MESSAGES.upgradedSchema,
-        { from: parsed.schema, to: SETTINGS_SCHEMA },
+        { from: fileSchema, to: SETTINGS_SCHEMA },
         true,
       );
     }
@@ -2324,7 +2333,7 @@ function validateImportedSettings(jsonText) {
         );
       }
     }
-    if (parsed.stickers.schema == null || Number(parsed.stickers.schema) < STICKER_PREFERENCES_SCHEMA) {
+    if (stickerSchema == null || stickerSchema < STICKER_PREFERENCES_SCHEMA) {
       addNote(
         `Upgraded emotes to schema ${STICKER_PREFERENCES_SCHEMA}.`,
         IMPORT_NOTE_MESSAGES.upgradedEmotes,
@@ -7272,7 +7281,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              840047') || 0;
+const BUNDLE_BYTES = Number('              840332') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
