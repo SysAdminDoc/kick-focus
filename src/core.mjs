@@ -1,4 +1,4 @@
-export const VERSION = '1.34.0';
+export const VERSION = '1.35.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -57,6 +57,10 @@ export const VERSION_NOTES = Object.freeze({
   }),
   '1.34.0': Object.freeze({
     summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
+    defaults: Object.freeze([]),
+  }),
+  '1.35.0': Object.freeze({
+    summary: 'High-contrast controls now raise every border, the accent reaches the header buttons and the emote popover, and an imported emote library can no longer point its artwork at an outside origin.',
     defaults: Object.freeze([]),
   }),
   '1.31.0': Object.freeze({

@@ -4,6 +4,41 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.35.0, 2026-08-21
+
+An audit pass. No new features, and every change here closes something that was
+measurably wrong rather than something that looked untidy.
+
+### Security
+
+- An imported emote library can no longer point its artwork at an outside origin. The asset cleaner returned any relative path unparsed as long as it did not start with two slashes, but a browser reads a backslash as a slash for a special scheme, so a stored `/\host/emotes/x.png` resolved to `https://host/`. Opening the library then fired one request per emote at whatever origin the file named. Origin is now decided by resolving the value and comparing origins rather than by inspecting the start of the string.
+
+### Fixed
+
+- Importing a settings file exported by this build no longer reports that part of it was ignored. The export carries `lastSeenVersion`, which the importer did not recognise, so a plain round trip accused its own file of holding an unknown section.
+- A settings file whose schema stamp is not a number now imports as unversioned instead of silently passing as current. `Number('abc')` is `NaN`, and `NaN` failed both the "too new" refusal and the "upgraded from" note, so a junk stamp cleared both.
+- "High-contrast controls" now raises every border it promises to. It shared one attribute with the separate text-contrast setting, and the only rule reading that attribute was a text-shadow on Kick's main element, so it touched no control, border or surface. Sharing the attribute also meant switching either one off did nothing while the other was on. Control edges moved from between 1.15:1 and 2.78:1 up to at least 3.75:1 in all three themes.
+- Closing Settings, the multi-stream grid or the command palette returns keyboard focus to the control that opened it. `document.activeElement` reports the shadow host, not the button inside it, so the recorded opener was an element that cannot take focus and the restore did nothing.
+- The header Focus and Multi buttons, the Drops call to action, the emote autocomplete popover, the emote hover card, the followed-channel preview, the library tiles and the pop-out chat window all follow the chosen theme and accent. Each carried Studio's palette or Kick green as literals.
+- The custom accent gate checks the surfaces an accent is actually drawn on. It sampled three near-black values, described as the darkest per theme, but an accent has its easiest contrast against black; accents that cleared it fell to 2.22:1 on Slate's hover surface.
+- The violet accent is lightened on Slate, where it measured 4.01:1 as text against the raised surfaces, under the 4.5:1 that small text needs. Studio and OLED keep the original.
+- Shortcut capture no longer traps the keyboard. Tab was swallowed as a shortcut candidate, leaving Escape as the only exit and the Cancel button unreachable, and the row never said so.
+- The earned-reward dot draws its separator ring again. It referenced a custom property that this build does not define, and an undefined `var()` with no fallback invalidates the whole shorthand.
+- A range slider's readout and its `aria-valuetext` follow the thumb during a drag instead of reporting the pre-drag value until release.
+- The discovery card's uptime chip is announced with its label. It carried `aria-label` on a bare `span`, which gets no accessible name, so a screen reader heard the bare duration.
+- The companion popup announces its status. It painted "Checking", rewrote the status and both stats after a message round trip, and only the footnote was a live region.
+- "Corner radius" now reaches this build's own panel, whose rounded edges all resolved through a fixed ladder. The 7px default renders exactly as before.
+
+### Changed
+
+- "Clear hidden" is now "Clear not-interested", which is the list it clears. A separate hidden-channel list exists on the Content page, so the old label pointed at the wrong feature.
+- "Export library" and "Export all settings" are both "Export settings". All three buttons ran the same full export, and one of them promised a library-only file.
+- Five error messages that named a failure and stopped now say what to do next. The import, restore, clipboard, export and hidden-list-full messages each carry a next step.
+- The companion popup uses one name for the network layer. It called the same thing the protection state, the network layer, network protection and the ad ruleset within one panel.
+- Em and en dashes are gone from user-facing text, and multi-stream counts read the same way everywhere.
+- The two dropped-entry import messages say "emote" rather than the internal word "sticker". Both translations already did.
+- The header button announces "Resume Kick Focus" while it reads "Resume", so its accessible name contains its visible label.
+
 ## 1.34.0, 2026-08-21
 
 ### Added

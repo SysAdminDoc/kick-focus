@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.34.0
+// @version      1.35.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -23,7 +23,7 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.34.0';
+const VERSION = '1.35.0';
 const SETTINGS_SCHEMA = 5;
 
 const VERSION_NOTES = Object.freeze({
@@ -73,6 +73,10 @@ const VERSION_NOTES = Object.freeze({
   }),
   '1.34.0': Object.freeze({
     summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
+    defaults: Object.freeze([]),
+  }),
+  '1.35.0': Object.freeze({
+    summary: 'High-contrast controls now raise every border, the accent reaches the header buttons and the emote popover, and an imported emote library can no longer point its artwork at an outside origin.',
     defaults: Object.freeze([]),
   }),
   '1.31.0': Object.freeze({
@@ -7327,7 +7331,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              847087') || 0;
+const BUNDLE_BYTES = Number('              847362') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
