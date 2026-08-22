@@ -6478,10 +6478,16 @@ const UI_CSS = `
     --danger-text: #ffaaa4;
     --warning: var(--kf-warning, #f6b943);
     --success: var(--accent);
-    --radius-sm: 4px;
-    --radius-md: 6px;
-    --radius-lg: 10px;
-    --radius: var(--kf-radius, 10px);
+    /* Derived from the Corner radius setting rather than fixed, because these
+       three carry every rounded edge in this build's own chrome and only the
+       bare --radius below was wired to the setting, on a single element. The
+       offsets are chosen so the 7px default reproduces the previous 4/6/10
+       exactly: this changes nothing until somebody moves the setting, and then
+       it moves the whole panel instead of one corner. */
+    --radius-sm: calc(var(--kf-radius, 7px) - 3px);
+    --radius-md: calc(var(--kf-radius, 7px) - 1px);
+    --radius-lg: calc(var(--kf-radius, 7px) + 3px);
+    --radius: var(--kf-radius, 7px);
     --shadow-dialog: 0 38px 110px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.015);
     --shadow-control: 0 10px 28px rgba(0,0,0,.24);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -7610,6 +7616,7 @@ const TRANSLATIONS = {
     'Page reset': 'Se restableció la página',
     'Shortcuts restored': 'Se restauraron los atajos',
     'Shortcut saved': 'Atajo guardado',
+    'Press keys, or Escape to cancel': 'Pulsa las teclas, o Escape para cancelar',
     '{preset} preset applied': 'Preajuste {preset} aplicado',
     'Hidden {channel}': '{channel} oculto',
     'Showing {channel} again': '{channel} vuelve a mostrarse',
@@ -8260,6 +8267,7 @@ const TRANSLATIONS = {
     'Page reset': 'A página foi redefinida',
     'Shortcuts restored': 'Atalhos restaurados',
     'Shortcut saved': 'Atalho salvo',
+    'Press keys, or Escape to cancel': 'Pressione as teclas, ou Escape para cancelar',
     '{preset} preset applied': 'Predefinição {preset} aplicada',
     'Hidden {channel}': '{channel} oculto',
     'Showing {channel} again': '{channel} voltou a ser exibido',
@@ -11496,6 +11504,12 @@ function onGlobalKeydown(event) {
     return;
   }
   if (state.shortcutCapture) {
+    // Tab is left alone so capture is not a keyboard trap. Every other key is
+    // swallowed as a shortcut candidate, and Tab used to be too, which meant
+    // the only way out was Escape and the Cancel button beside the row had
+    // become unreachable. A shortcut bound to a bare Tab would take Tab away
+    // from the whole page anyway, so nothing is lost by refusing it here.
+    if (event.key === 'Tab') return;
     if (event.key === 'Escape') {
       event.preventDefault();
       state.shortcutCapture = null;

@@ -6281,7 +6281,7 @@ function createSettings(host) {
         <div class="kf-panel"><table class="kf-table"><thead><tr><th>Action</th><th>Current shortcut</th><th>Status</th><th class="kf-table-actions">Change</th></tr></thead><tbody>${rows.map(([key,label]) => {
           const conflict = state.shortcutError && state.shortcutCapture === key;
           const capture = state.shortcutCapture === key && !state.shortcutError;
-          return `<tr class="${conflict ? 'kf-conflict' : ''}"><td>${label}</td><td><span class="kf-shortcut">${capture ? 'Press keys…' : escapeHtml(shortcuts[key])}</span></td><td>${conflict ? `<span class="kf-conflict-message">${escapeHtml(state.shortcutError)}</span>` : capture ? 'Listening' : '<span class="kf-active">OK</span>'}</td><td class="kf-table-actions">${conflict ? '<button type="button" class="kf-button kf-button-small" data-action="cancel-shortcut">Cancel</button>' : `<button type="button" class="kf-button kf-button-small" data-shortcut="${key}">${capture ? 'Cancel' : 'Change'}</button>`}</td></tr>`;
+          return `<tr class="${conflict ? 'kf-conflict' : ''}"><td>${label}</td><td><span class="kf-shortcut">${capture ? 'Press keys, or Escape to cancel' : escapeHtml(shortcuts[key])}</span></td><td>${conflict ? `<span class="kf-conflict-message">${escapeHtml(state.shortcutError)}</span>` : capture ? 'Listening' : '<span class="kf-active">OK</span>'}</td><td class="kf-table-actions">${conflict ? '<button type="button" class="kf-button kf-button-small" data-action="cancel-shortcut">Cancel</button>' : `<button type="button" class="kf-button kf-button-small" data-shortcut="${key}">${capture ? 'Cancel' : 'Change'}</button>`}</td></tr>`;
         }).join('')}</tbody></table></div>
       </section>`;
   }
@@ -7314,7 +7314,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              844428') || 0;
+const BUNDLE_BYTES = Number('              845192') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -11964,10 +11964,16 @@ const UI_CSS = `
     --danger-text: #ffaaa4;
     --warning: var(--kf-warning, #f6b943);
     --success: var(--accent);
-    --radius-sm: 4px;
-    --radius-md: 6px;
-    --radius-lg: 10px;
-    --radius: var(--kf-radius, 10px);
+    /* Derived from the Corner radius setting rather than fixed, because these
+       three carry every rounded edge in this build's own chrome and only the
+       bare --radius below was wired to the setting, on a single element. The
+       offsets are chosen so the 7px default reproduces the previous 4/6/10
+       exactly: this changes nothing until somebody moves the setting, and then
+       it moves the whole panel instead of one corner. */
+    --radius-sm: calc(var(--kf-radius, 7px) - 3px);
+    --radius-md: calc(var(--kf-radius, 7px) - 1px);
+    --radius-lg: calc(var(--kf-radius, 7px) + 3px);
+    --radius: var(--kf-radius, 7px);
     --shadow-dialog: 0 38px 110px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.015);
     --shadow-control: 0 10px 28px rgba(0,0,0,.24);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -13096,6 +13102,7 @@ const TRANSLATIONS = {
     'Page reset': 'Se restableció la página',
     'Shortcuts restored': 'Se restauraron los atajos',
     'Shortcut saved': 'Atajo guardado',
+    'Press keys, or Escape to cancel': 'Pulsa las teclas, o Escape para cancelar',
     '{preset} preset applied': 'Preajuste {preset} aplicado',
     'Hidden {channel}': '{channel} oculto',
     'Showing {channel} again': '{channel} vuelve a mostrarse',
@@ -13744,6 +13751,7 @@ const TRANSLATIONS = {
     'Page reset': 'A página foi redefinida',
     'Shortcuts restored': 'Atalhos restaurados',
     'Shortcut saved': 'Atalho salvo',
+    'Press keys, or Escape to cancel': 'Pressione as teclas, ou Escape para cancelar',
     '{preset} preset applied': 'Predefinição {preset} aplicada',
     'Hidden {channel}': '{channel} oculto',
     'Showing {channel} again': '{channel} voltou a ser exibido',
@@ -16633,6 +16641,7 @@ function onGlobalKeydown(event) {
     return;
   }
   if (state.shortcutCapture) {
+    if (event.key === 'Tab') return;
     if (event.key === 'Escape') {
       event.preventDefault();
       state.shortcutCapture = null;
