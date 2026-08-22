@@ -52,6 +52,8 @@ export function createMultistream(host) {
     gmSet,
     MULTISTREAM_KEY,
     currentChannelSlug,
+    deepActiveElement,
+    restoreFocus,
     tr,
     trf,
     escapeHtml,
@@ -243,7 +245,7 @@ export function createMultistream(host) {
   function openMultistream() {
     const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
     if (!backdrop) return;
-    state.lastFocused = document.activeElement;
+    state.lastFocused = deepActiveElement();
     backdrop.hidden = false;
     // Re-read on open. A tab that was asleep, on the other origin, or simply
     // not listening when another one added a channel picks it up here — which
@@ -311,7 +313,7 @@ export function createMultistream(host) {
     state.observers.multistream?.disconnect?.();
     state.observers.multistream = null;
     state.multistreamSuspended.clear();
-    state.lastFocused?.focus?.();
+    restoreFocus(state.lastFocused);
   }
 
   /**

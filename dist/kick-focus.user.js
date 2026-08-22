@@ -5020,6 +5020,8 @@ function createMultistream(host) {
     gmSet,
     MULTISTREAM_KEY,
     currentChannelSlug,
+    deepActiveElement,
+    restoreFocus,
     tr,
     trf,
     escapeHtml,
@@ -5168,7 +5170,7 @@ function createMultistream(host) {
   function openMultistream() {
     const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
     if (!backdrop) return;
-    state.lastFocused = document.activeElement;
+    state.lastFocused = deepActiveElement();
     backdrop.hidden = false;
     commitMultistream();
     installMultistreamSuspension();
@@ -5214,7 +5216,7 @@ function createMultistream(host) {
     state.observers.multistream?.disconnect?.();
     state.observers.multistream = null;
     state.multistreamSuspended.clear();
-    state.lastFocused?.focus?.();
+    restoreFocus(state.lastFocused);
   }
 
   function installMultistreamSuspension() {
@@ -5807,7 +5809,7 @@ function createSettings(host) {
   function range(path, current, minimum, maximum, left, right, suffix = '') {
     const label = path.split('.').pop().replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
     const valueText = `${current}${suffix}`;
-    return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" aria-label="${escapeHtml(label)}" aria-valuetext="${escapeHtml(valueText)}"></div><span>${escapeHtml(right)}</span></div>`;
+    return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" data-kf-range-suffix="${escapeHtml(suffix)}" aria-label="${escapeHtml(label)}" aria-valuetext="${escapeHtml(valueText)}"></div><span>${escapeHtml(right)}</span></div>`;
   }
 
 
@@ -6605,6 +6607,7 @@ const state = {
   followingPreviewRow: null,
   chatResizeCleanup: null,
   lastFocused: null,
+  commandOpener: null,
   applyTimer: 0,
   applyPendingSince: 0,
   saveTimer: 0,
@@ -7311,7 +7314,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              840904') || 0;
+const BUNDLE_BYTES = Number('              842226') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -8873,6 +8876,8 @@ const multistreamSurface = createMultistream({
   gmSet,
   MULTISTREAM_KEY,
   currentChannelSlug,
+  deepActiveElement,
+  restoreFocus,
   tr,
   trf,
   escapeHtml,
@@ -9056,6 +9061,8 @@ function applyCardUptime(node, now = Date.now()) {
   if (!chip) {
     chip = document.createElement('span');
     chip.dataset.kfCardUptime = 'true';
+    chip.setAttribute('role', 'status');
+    chip.setAttribute('aria-live', 'off');
   }
   if (chip.previousElementSibling !== liveBadge) liveBadge.insertAdjacentElement('afterend', chip);
   node.dataset.kfCardUptimeOwner = 'true';
@@ -15451,6 +15458,15 @@ function clearSettingsSearch() {
 }
 
 function onInterfaceInput(event) {
+  const range = event.target.closest('input[type="range"][data-set]');
+  if (range) {
+    const suffix = range.dataset.kfRangeSuffix || '';
+    const shown = `${range.value}${suffix}`;
+    range.setAttribute('aria-valuetext', shown);
+    const output = state.shadow?.querySelector(`output[data-output-for="${CSS.escape(range.dataset.set)}"]`);
+    if (output && output.textContent !== shown) output.textContent = shown;
+  }
+
   const search = event.target.closest('input[data-kf-sticker-library-search]');
   if (search) applyStickerLibrarySearch(search.value);
 
@@ -15479,11 +15495,27 @@ function onInterfaceKeydown(event) {
   state.shadow?.querySelector('[data-action="import-channel-emotes"]')?.click();
 }
 
+function deepActiveElement() {
+  let node = document.activeElement;
+  while (node?.shadowRoot?.activeElement) node = node.shadowRoot.activeElement;
+  return node;
+}
+
+function restoreFocus(target) {
+  if (!target || typeof target.focus !== 'function' || target.isConnected === false) return false;
+  try {
+    target.focus();
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 function openSettings(page = state.currentPage) {
   if (!state.modal) return;
   closeCommandMenu();
   state.currentPage = page;
-  state.lastFocused = document.activeElement;
+  state.lastFocused = deepActiveElement();
   renderSettingsPage();
   state.modal.hidden = false;
   requestAnimationFrame(() => state.shadow.querySelector('[data-action="close-settings"]')?.focus());
@@ -15495,7 +15527,9 @@ function closeSettings() {
   closeResetConfirmation();
   state.shortcutCapture = null;
   state.shortcutError = '';
-  try { state.lastFocused?.focus?.(); } catch {   }
+  if (!restoreFocus(state.lastFocused)) {
+    restoreFocus(state.headerControlHost?.shadowRoot?.querySelector('[data-kf-header-focus]'));
+  }
 }
 
 function openResetConfirmation(scope) {
@@ -16447,14 +16481,16 @@ function renderCommands() {
   const count = state.shadow?.querySelector('[data-kf-command-count]');
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
   setMarkup(state.commandList, commands.length
-    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
+    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" aria-selected="${index === 0}" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
     : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>');
   localizeInterface();
 }
 
 function openCommandMenu() {
   if (!state.command) return;
+  const opener = deepActiveElement();
   closeSettings();
+  state.commandOpener = opener;
   state.command.hidden = false;
   state.commandInput.value = '';
   renderCommands();
@@ -16462,7 +16498,10 @@ function openCommandMenu() {
 }
 
 function closeCommandMenu() {
-  if (state.command) state.command.hidden = true;
+  if (!state.command || state.command.hidden) return;
+  state.command.hidden = true;
+  restoreFocus(state.commandOpener);
+  state.commandOpener = null;
 }
 
 function executeCommand(id) {

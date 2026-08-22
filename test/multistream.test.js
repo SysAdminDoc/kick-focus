@@ -130,7 +130,10 @@ function makeShadow() {
 
 function makeHost(overrides = {}) {
   const store = new Map();
-  const calls = { toasts: [], announced: [], headerSyncs: 0, fetched: [], drift: [] };
+  const calls = {
+    toasts: [], announced: [], headerSyncs: 0, fetched: [], drift: [],
+    focusOpener: null, focusRestored: [],
+  };
   const dom = makeShadow();
   const key = 'kick-focus:multistream';
   const state = {
@@ -155,6 +158,10 @@ function makeHost(overrides = {}) {
     gmSet: (name, value) => store.set(name, value),
     MULTISTREAM_KEY: key,
     currentChannelSlug: () => host.__slug,
+    // Focus bookkeeping the grid shares with the settings surface. The real
+    // pair walks shadow roots; the grid only needs the opener to round-trip.
+    deepActiveElement: () => calls.focusOpener,
+    restoreFocus: (target) => { calls.focusRestored.push(target); return Boolean(target); },
     tr: (value) => value,
     trf: (template, values) => template.replace(/\{(\w+)\}/g, (_m, key) => String(values[key])),
     escapeHtml: (value) => String(value).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`),
@@ -484,6 +491,24 @@ test('a re-read on open picks up what a tab never heard broadcast', { tag: 'unit
   assert.deepEqual([...state.multistream.streams].sort(), ['alpha', 'gamma']);
   assert.deepEqual(sync.posted, [], 'a re-read is not an op and tells nobody');
   assert.equal(dom.backdrop.hidden, false);
+});
+
+test('closing the grid hands focus back to whatever opened it', { tag: 'unit' }, () => {
+  // The opener used to be read with document.activeElement, which retargets to
+  // the shadow host whenever focus is inside a shadow root. Every control this
+  // build injects is in one, and the two hosts are a plain span and a plain
+  // div, so the recorded opener could not take focus and the restore was a
+  // silent no-op. The grid asks its host for the real element now.
+  const { host, calls, state } = makeHost({ multistream: { streams: ['alpha'] } });
+  const surface = createMultistream(host);
+  const opener = { id: 'header-multi-button', focus() {}, isConnected: true };
+  calls.focusOpener = opener;
+
+  surface.openMultistream();
+  assert.equal(state.lastFocused, opener, 'the real opener is what gets recorded');
+
+  surface.closeMultistream();
+  assert.deepEqual(calls.focusRestored, [opener], 'closing returns focus to it');
 });
 
 test('the card chip toggles one channel and refuses a full grid', { tag: 'unit' }, () => {

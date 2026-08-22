@@ -129,6 +129,7 @@ const state = {
   followingPreviewRow: null,
   chatResizeCleanup: null,
   lastFocused: null,
+  commandOpener: null,
   applyTimer: 0,
   applyPendingSince: 0,
   saveTimer: 0,
@@ -2696,6 +2697,8 @@ const multistreamSurface = createMultistream({
   gmSet,
   MULTISTREAM_KEY,
   currentChannelSlug,
+  deepActiveElement,
+  restoreFocus,
   tr,
   trf,
   escapeHtml,
@@ -2903,6 +2906,14 @@ function applyCardUptime(node, now = Date.now()) {
   if (!chip) {
     chip = document.createElement('span');
     chip.dataset.kfCardUptime = 'true';
+    // A bare span maps to the generic role, and a generic element gets no
+    // accessible name from aria-label or title. Without this the chip read as
+    // its own text, so a reader heard "2h 14m" beside Kick's LIVE badge with
+    // nothing saying what the number was. The player and VOD chips already do
+    // this; the card chip was the one that missed it. Polite, never assertive:
+    // a grid of cards updating every minute must not interrupt.
+    chip.setAttribute('role', 'status');
+    chip.setAttribute('aria-live', 'off');
   }
   if (chip.previousElementSibling !== liveBadge) liveBadge.insertAdjacentElement('afterend', chip);
   node.dataset.kfCardUptimeOwner = 'true';
@@ -10107,6 +10118,20 @@ function clearSettingsSearch() {
 }
 
 function onInterfaceInput(event) {
+  // A range only committed on `change`, which is pointer release, so the number
+  // beside the slider and its aria-valuetext both reported the pre-drag value
+  // for the whole drag. aria-valuetext replaces the value a reader hears, so a
+  // stale one is not merely late, it is wrong. Persisting still waits for
+  // `change`; this only keeps what is displayed in step with the thumb.
+  const range = event.target.closest('input[type="range"][data-set]');
+  if (range) {
+    const suffix = range.dataset.kfRangeSuffix || '';
+    const shown = `${range.value}${suffix}`;
+    range.setAttribute('aria-valuetext', shown);
+    const output = state.shadow?.querySelector(`output[data-output-for="${CSS.escape(range.dataset.set)}"]`);
+    if (output && output.textContent !== shown) output.textContent = shown;
+  }
+
   const search = event.target.closest('input[data-kf-sticker-library-search]');
   if (search) applyStickerLibrarySearch(search.value);
 
@@ -10139,11 +10164,39 @@ function onInterfaceKeydown(event) {
   state.shadow?.querySelector('[data-action="import-channel-emotes"]')?.click();
 }
 
+/**
+ * The element that really has focus, not the host that stands in front of it.
+ *
+ * `document.activeElement` retargets to the shadow host whenever focus is
+ * inside a shadow root, and every control this build injects lives in one. The
+ * header control's host is a span and the interface root is a div, so what got
+ * recorded as "where focus came from" was an element that cannot take focus at
+ * all. Restoring it was a silent no-op, and because the surface being closed
+ * was hidden in the same breath, focus fell to the body and a keyboard reader
+ * lost their place on the page. Walking the roots gives back the real button.
+ */
+function deepActiveElement() {
+  let node = document.activeElement;
+  while (node?.shadowRoot?.activeElement) node = node.shadowRoot.activeElement;
+  return node;
+}
+
+/** Return focus to the recorded opener, if it is still somewhere focusable. */
+function restoreFocus(target) {
+  if (!target || typeof target.focus !== 'function' || target.isConnected === false) return false;
+  try {
+    target.focus();
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 function openSettings(page = state.currentPage) {
   if (!state.modal) return;
   closeCommandMenu();
   state.currentPage = page;
-  state.lastFocused = document.activeElement;
+  state.lastFocused = deepActiveElement();
   renderSettingsPage();
   state.modal.hidden = false;
   requestAnimationFrame(() => state.shadow.querySelector('[data-action="close-settings"]')?.focus());
@@ -10155,7 +10208,11 @@ function closeSettings() {
   closeResetConfirmation();
   state.shortcutCapture = null;
   state.shortcutError = '';
-  try { state.lastFocused?.focus?.(); } catch { /* noop */ }
+  // Fall back to the header button rather than the body: it is the control that
+  // opens this surface, so it is where a reader expects to land on the way out.
+  if (!restoreFocus(state.lastFocused)) {
+    restoreFocus(state.headerControlHost?.shadowRoot?.querySelector('[data-kf-header-focus]'));
+  }
 }
 
 function openResetConfirmation(scope) {
@@ -11268,14 +11325,18 @@ function renderCommands() {
   // back from that recorded source.
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
   setMarkup(state.commandList, commands.length
-    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
+    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" aria-selected="${index === 0}" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
     : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>');
   localizeInterface();
 }
 
 function openCommandMenu() {
   if (!state.command) return;
+  // Recorded before closeSettings runs, so the opener is the control the reader
+  // actually pressed rather than whatever that close leaves focused.
+  const opener = deepActiveElement();
   closeSettings();
+  state.commandOpener = opener;
   state.command.hidden = false;
   state.commandInput.value = '';
   renderCommands();
@@ -11283,7 +11344,12 @@ function openCommandMenu() {
 }
 
 function closeCommandMenu() {
-  if (state.command) state.command.hidden = true;
+  if (!state.command || state.command.hidden) return;
+  state.command.hidden = true;
+  // Every dismissal routes here (Escape, the backdrop, running a command), and
+  // none of them used to put focus anywhere, so it fell to the body each time.
+  restoreFocus(state.commandOpener);
+  state.commandOpener = null;
 }
 
 function executeCommand(id) {
