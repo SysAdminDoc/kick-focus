@@ -1104,12 +1104,13 @@ test('custom accents stay visible across every dark theme surface', { tag: 'unit
   assert.equal(normalizeCustomAccent('not-a-color'), '#FF5CA8');
   const tokens = customAccentTokens('#38d7d0');
   assert.deepEqual(tokens, { hex: '#38D7D0', rgb: '56, 215, 208', onAccent: '#000000' });
-  // All three, not one: an accent is a focus ring and a control boundary on
-  // whichever dark theme the reader chose, and the darkest surface differs per
-  // theme — pure black on OLED, #080B09 on Studio, #141817 on Slate. Checking
-  // the lightest of the three would let an accent through that disappears on
-  // the other two.
-  for (const surface of ['#000000', '#080B09', '#141817']) {
+  // This list used to be three near-black values, and the reasoning written
+  // beside it was backwards: it called them "the darkest surface per theme" and
+  // treated that as the hard case. A bright accent has its easiest contrast
+  // against black. The hard cases are the raised panels and hover states the
+  // accent is also drawn on, so those are what the gate has to sample. Values
+  // are the --kf-panel-high and --kf-surface-hover tokens from SITE_CSS.
+  for (const surface of ['#000000', '#18201b', '#171f1a', '#0e1110', '#111613', '#1c2934', '#263544']) {
     assert.ok(colorContrastRatio(tokens.hex, surface) >= 3,
       `an accepted accent must clear 3:1 against ${surface}, got ${colorContrastRatio(tokens.hex, surface).toFixed(2)}`);
     assert.ok(colorContrastRatio(normalizeCustomAccent('#2a0030'), surface) >= 3,
@@ -1125,6 +1126,12 @@ test('custom accents stay visible across every dark theme surface', { tag: 'unit
   const normalized = normalizeSettings({ appearance: { accent: 'custom', customAccent: '#2a0030' } });
   assert.equal(normalized.appearance.accent, 'custom');
   assert.equal(normalized.appearance.customAccent, '#FF5CA8');
+
+  // A worked example of what the old near-black-only list let through: this
+  // violet clears 3:1 on all three of those surfaces and lands at 2.22:1 on
+  // Slate's hover surface, where the focus ring is drawn.
+  assert.equal(normalizeCustomAccent('#6a4fd8'), '#FF5CA8',
+    'an accent that disappears on a raised surface must not be accepted');
 });
 
 test('viewing presets change layout and style without touching content choices', { tag: 'unit' }, () => {

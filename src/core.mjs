@@ -486,7 +486,25 @@ export function clamp(value, minimum, maximum, fallback) {
 }
 
 const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
-const CUSTOM_ACCENT_SURFACES = Object.freeze(['#000000', '#080B09', '#141817']);
+/**
+ * Every surface an accent is actually drawn on, across all three themes.
+ *
+ * This list used to hold three near-black values, chosen as "the darkest
+ * surface per theme". That samples the wrong end of the range: a bright accent
+ * has its *easiest* contrast against black, and its hardest against the raised
+ * panels and hover states it also has to survive on. So the gate was checking
+ * the cases that could not fail and skipping the ones that could, and let
+ * accents through that fell to 2.22:1 on Slate's hover surface and 2.95:1 on
+ * Studio's raised panel, which is exactly the disappearing focus ring the gate
+ * exists to prevent. Values are the --kf-panel, --kf-panel-high and
+ * --kf-surface-hover tokens from SITE_CSS, plus black for the true backdrop.
+ */
+const CUSTOM_ACCENT_SURFACES = Object.freeze([
+  '#000000',
+  '#18201b', '#171f1a', // studio raised, studio hover
+  '#0e1110', '#111613', // oled raised, oled hover
+  '#1c2934', '#263544', // slate raised, slate hover
+]);
 
 function rgbFromHex(value) {
   const match = /^#([0-9a-f]{6})$/i.exec(String(value || '').trim());
