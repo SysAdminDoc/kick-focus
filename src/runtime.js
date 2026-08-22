@@ -172,6 +172,8 @@ const state = {
     stickerGridAnchor: 0,
     stickerLibraryQuery: '',
     stickerLibraryFilter: 'all',
+    stickerLibrarySelection: new Set(),
+    stickerLibraryBulkGroup: '',
     emoteCatalogSlug: '',
     emoteCatalogStatus: '',
     emoteCatalogError: false,
@@ -1918,8 +1920,8 @@ const SITE_CSS = `
 
     [data-kf-sticker-topline] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 10px !important; margin-bottom: 8px !important; }
     [data-kf-sticker-topline] > div { display: flex !important; align-items: baseline !important; flex-wrap: wrap !important; gap: 6px !important; }
-    [data-kf-sticker-topline] strong { color: var(--kf-text) !important; font-size: 13px !important; }
-    [data-kf-sticker-topline] button { min-height: 30px !important; padding: 0 4px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: var(--kf-accent) !important; cursor: pointer !important; font-size: 12px !important; font-weight: 720 !important; }
+    [data-kf-sticker-topline] strong { color: var(--kf-text) !important; font-size: 15px !important; }
+    [data-kf-sticker-topline] button { min-height: 32px !important; padding: 0 4px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: var(--kf-accent) !important; cursor: pointer !important; font-size: 13px !important; font-weight: 720 !important; }
 
     [data-kf-sticker-toolbar] {
       display: flex !important;
@@ -1946,7 +1948,7 @@ const SITE_CSS = `
     [data-kf-sticker-toolbar] button[data-active="true"] { background: rgba(var(--kf-accent-rgb), .09) !important; color: var(--kf-accent) !important; }
     [data-kf-sticker-groups] { display: flex !important; align-items: center !important; flex-wrap: wrap !important; gap: 5px !important; padding-top: 8px !important; }
     [data-kf-sticker-groups] > span { margin-right: 2px !important; color: var(--kf-text-muted) !important; font-size: 12px !important; font-weight: 720 !important; text-transform: uppercase !important; }
-    [data-kf-sticker-groups] button { min-height: 28px !important; padding: 0 8px !important; border: 0 !important; border-radius: 4px !important; background: transparent !important; color: #d8dfda !important; cursor: pointer !important; font-size: 12px !important; }
+    [data-kf-sticker-groups] button { min-height: 32px !important; padding: 0 8px !important; border: 0 !important; border-radius: 4px !important; background: transparent !important; color: #d8dfda !important; cursor: pointer !important; font-size: 12px !important; }
     [data-kf-sticker-groups] button[data-active="true"] { background: rgba(var(--kf-accent-rgb), .09) !important; color: var(--kf-accent) !important; }
     [data-kf-sticker-note] { margin: 6px 0 8px !important; font-size: 12px !important; }
     [data-kf-sticker-quick-shelf] {
@@ -2003,7 +2005,8 @@ const SITE_CSS = `
     [data-kf-sticker-quick-item]:hover [data-kf-sticker-quick-tools], [data-kf-sticker-quick-item]:focus-within [data-kf-sticker-quick-tools] { opacity: 1 !important; }
     [data-kf-sticker-quick-tools] button { display: grid !important; width: 20px !important; height: 20px !important; min-height: 20px !important; padding: 0 !important; place-items: center !important; border: 1px solid rgba(255,255,255,.24) !important; border-radius: 5px !important; background: #080c09 !important; color: #f7f9fa !important; cursor: pointer !important; font-size: 12px !important; }
     [data-kf-sticker-quick-tools] button:hover { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
-    [data-kf-sticker-quick-empty] { color: rgba(247,249,250,.6) !important; font-size: 12px !important; line-height: 1.4 !important; }
+    [data-kf-sticker-quick-empty] { display: flex !important; align-items: baseline !important; gap: 6px !important; margin-bottom: 6px !important; padding: 7px 2px !important; border-bottom: 1px solid var(--kf-border) !important; color: rgba(247,249,250,.62) !important; font-size: 12px !important; }
+    [data-kf-sticker-quick-empty] strong { color: #f7f9fa !important; }
     [data-kf-sticker-grid] {
       display: grid !important;
       grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)) !important;
@@ -2067,9 +2070,9 @@ const SITE_CSS = `
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-list] { display: none !important; }
-    html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-shell],
-    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-shell],
-    html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-shell] { display: none !important; }
+    html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
+    html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
+    html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ * { display: none !important; }
     #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; }
 
@@ -4894,7 +4897,8 @@ function renderStickerOrganizer() {
     organizer.append(chrome, gridHost);
     bindStickerGridScroll(gridHost);
   }
-  if (organizer.parentElement !== scroll) scroll.prepend(organizer);
+  if (search && organizer.previousElementSibling !== search) search.after(organizer);
+  else if (!search && organizer.parentElement !== scroll) scroll.prepend(organizer);
   const previousGridScrollTop = state.runtime.stickerGridScrollTop;
   state.runtime.stickerGridScrollTop = null;
 
@@ -4973,8 +4977,8 @@ function renderStickerOrganizer() {
     ? `<span data-kf-sticker-locked>${unavailableCount} locked by Kick</span>`
     : '';
   const quickShelf = quickFavorites.length
-    ? `<div data-kf-sticker-quick-grid role="group" aria-label="Three-row one-click favorite emotes">${quickFavorites.map(stickerQuickProxyMarkup).join('')}</div>`
-    : '<div data-kf-sticker-quick-empty>Favorite emotes with ☆ to fill up to three rows of one-click shortcuts.</div>';
+    ? `<section data-kf-sticker-quick-shelf><div data-kf-sticker-quick-header><strong>Quick favorites</strong><span data-kf-sticker-quick-count>${quickFavorites.length} available</span><button type="button" data-kf-sticker-view="pinned" aria-pressed="${view === 'pinned'}">Edit</button></div><div data-kf-sticker-quick-grid role="group" aria-label="One-click favorite emotes">${quickFavorites.map(stickerQuickProxyMarkup).join('')}</div></section>`
+    : '<div data-kf-sticker-quick-empty><strong>Quick shelf is empty.</strong><span>Select ☆ on an emote to add it.</span></div>';
   const usageShelf = (entries, label, hint) => (entries.length
     ? `<section data-kf-sticker-usage-shelf="${label.toLowerCase().replace(/\s+/g, '-')}">
       <div data-kf-sticker-quick-header><strong>${escapeHtml(label)}</strong><span>${escapeHtml(hint)}</span></div>
@@ -4989,11 +4993,11 @@ function renderStickerOrganizer() {
   const firstGroup = state.stickerPreferences.groups[0];
   const groupsTab = firstGroup
     ? `<button type="button" data-kf-sticker-view="group" data-kf-sticker-group="${escapeHtml(state.stickerPreferences.activeGroup || firstGroup.id)}" data-active="${view === 'group'}" aria-pressed="${view === 'group'}">Groups</button>`
-    : '<button type="button" data-kf-sticker-manage="true">Groups</button>';
+    : '<button type="button" data-kf-sticker-manage="true">Create group</button>';
   setMarkup(chrome, `
     <div data-kf-sticker-topline>
       <div><strong>Emote shelf</strong><span data-kf-sticker-count>${escapeHtml(countLabel)}</span>${unavailableLabel}</div>
-      <button type="button" data-kf-sticker-manage="true">Manage</button>
+      <button type="button" data-kf-sticker-manage="true">Open library</button>
     </div>
     <div data-kf-sticker-toolbar role="group" aria-label="Emote views and filters">
       <button type="button" data-kf-sticker-view="pinned" data-active="${view === 'pinned'}" aria-pressed="${view === 'pinned'}">Quick (${favoriteCount()})</button>
@@ -5003,13 +5007,9 @@ function renderStickerOrganizer() {
       <button type="button" data-kf-sticker-show-hidden="true" aria-pressed="${showHidden}">${showHidden ? 'Hide removed' : 'Removed'}</button>
     </div>
     ${customGroups ? `<div data-kf-sticker-groups><span>Groups</span>${customGroups}<button type="button" data-kf-sticker-manage="true">Edit groups</button></div>` : ''}
-    <div data-kf-sticker-note>New Kick emotes save automatically. Pin with ☆, remove with ×, and organize groups from Manage.</div>
-    <section data-kf-sticker-quick-shelf="true">
-      <div data-kf-sticker-quick-header><strong>Quick favorites</strong><span data-kf-sticker-quick-count>${quickFavorites.length} available · 3 rows</span><button type="button" data-kf-sticker-view="pinned" aria-pressed="${view === 'pinned'}">Edit shelf</button></div>
-      ${quickShelf}
-    </section>
-    ${usageShelf(mostUsed, 'Most used', `top ${mostUsed.length} you send`)}
-    ${usageShelf(recent, 'Recent', 'newest first')}
+    <div data-kf-sticker-note>New Kick emotes save automatically. ☆ adds a favorite and × removes it.</div>
+    ${quickShelf}
+    ${view === 'pinned' ? `${usageShelf(mostUsed, 'Most used', `top ${mostUsed.length} you send`)}${usageShelf(recent, 'Recent', 'newest first')}` : ''}
     <div data-kf-sticker-secondary-actions><button type="button" data-kf-sticker-reset="true">Reset changes</button></div>`);
   renderStickerGrid(gridHost, visible, view);
   restoreStickerGridScroll(organizer, previousGridScrollTop);
@@ -5157,6 +5157,8 @@ function resetStickerPreferences(options = {}) {
   const library = keepLibrary ? state.stickerPreferences.library : new Map();
   state.runtime.stickerLibraryFilter = 'all';
   state.runtime.stickerLibraryQuery = '';
+  state.runtime.stickerLibrarySelection.clear();
+  state.runtime.stickerLibraryBulkGroup = '';
   state.stickerPreferences = {
     favorites: [],
     hidden: new Set(),
@@ -5192,8 +5194,7 @@ function handleStickerAction(event) {
   const key = target.dataset.kfStickerKey;
   const action = target.dataset.kfStickerAction;
   if (target.dataset.kfStickerManage) {
-    state.currentPage = 'content';
-    openSettings();
+    openSettings('emotes');
     return;
   }
   if (action === 'send') {
@@ -6972,15 +6973,26 @@ const UI_CSS = `
   .kf-channel-list { display: grid; gap: 6px; margin-top: 10px; max-height: 280px; overflow: auto; scrollbar-gutter: stable; }
   .kf-channel-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); font-size: 13px; }
   .kf-channel-entry span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .kf-sticker-library-shell { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
+  .kf-emote-manager { margin-top: 18px; }
+  .kf-sticker-library-workspace { min-width: 0; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 12px; }
+  .kf-sticker-group-panel { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
+  .kf-sticker-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .kf-sticker-group-heading h4 { margin: 0; font-size: 13px; }
+  .kf-sticker-group-heading span { color: var(--muted); font-size: 11px; }
+  .kf-sticker-group-panel > p { margin: 4px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+  .kf-sticker-library-main { min-width: 0; }
   .kf-sticker-library-controls { display: grid; grid-template-columns: minmax(220px, 1fr) 180px; gap: 9px; }
   .kf-sticker-library-controls .kf-select { width: 100%; height: 40px; }
-  .kf-sticker-group-builder { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 9px; margin-top: 9px; }
+  .kf-sticker-group-builder { display: grid; gap: 7px; }
   .kf-sticker-group-list { display: grid; gap: 7px; margin-top: 10px; }
-  .kf-sticker-group-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: 7px; align-items: center; }
+  .kf-sticker-group-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px; align-items: center; }
   .kf-sticker-group-row .kf-text { min-height: 34px; padding-block: 6px; }
+  .kf-sticker-group-row > span, .kf-sticker-group-empty { color: var(--muted); font-size: 10px; }
+  .kf-sticker-library-bulk { display: grid; grid-template-columns: auto auto auto minmax(120px, 1fr) auto auto; gap: 6px; align-items: center; margin-top: 9px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+  .kf-sticker-library-bulk > strong { color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+  .kf-sticker-library-bulk .kf-select { min-width: 0; width: 100%; }
   .kf-sticker-library-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 13px 0 8px; color: var(--muted); font-size: 10px; }
-  .kf-sticker-library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 470px; overflow: auto; padding-right: 4px; scrollbar-gutter: stable; }
+  .kf-sticker-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px; max-height: 520px; overflow: auto; padding-right: 4px; scrollbar-gutter: stable; }
   .kf-my-emote-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
   .kf-my-emote-group:first-of-type { margin-top: 8px; }
   .kf-my-emote-group > header { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
@@ -6995,21 +7007,23 @@ const UI_CSS = `
      are rendered. Unsupported engines ignore both and render as before. */
   .kf-sticker-library-item { min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); content-visibility: auto; contain-intrinsic-size: auto 86px; }
   .kf-sticker-library-item[data-removed="true"] { opacity: .58; }
+  .kf-sticker-library-item[data-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.18); }
   .kf-sticker-library-image { width: 52px; height: 52px; display: grid; place-items: center; padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
   .kf-sticker-library-image img { width: 100%; height: 100%; object-fit: contain; }
   .kf-sticker-library-copy { min-width: 0; }
-  .kf-sticker-library-copy strong { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-  .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-  .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .kf-sticker-library-copy strong { display: block; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   /* Fixed, not the accent. A status that follows the branding colour collided
      with its neighbours on gold and on cyan; these three hues stay 58deg and
      77deg apart whatever the accent is. */
   .kf-sticker-access[data-access="available"] { border-color: rgba(139,232,92,.55); color: #8be85c; }
   .kf-sticker-access[data-access="channel"] { border-color: rgba(255,190,46,.58); color: #ffcf61; }
   .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
-  .kf-emote-catalog-browser { display: grid; gap: 8px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
-  .kf-emote-catalog-browser h4 { margin: 0; color: var(--text); font-size: 12px; }
-  .kf-emote-catalog-browser p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+  .kf-emote-catalog-browser { display: grid; grid-template-columns: minmax(170px,.7fr) minmax(260px,1.3fr); gap: 12px; align-items: center; margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+  .kf-emote-catalog-browser h4 { margin: 0; color: var(--text); font-size: 13px; }
+  .kf-emote-catalog-browser p { margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+  .kf-emote-catalog-status { grid-column: 1 / -1; }
   .kf-emote-catalog-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
   .kf-emote-catalog-status[data-error="true"] { color: var(--danger-text); }
   /* Kick edits emotes users already pulled; the local record is the only copy
@@ -7021,8 +7035,8 @@ const UI_CSS = `
      is the clearest possible signal that entitlements are respected. */
   .kf-sticker-lock { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.5; white-space: normal; }
   .kf-sticker-lock a { color: var(--accent); }
-  .kf-sticker-library-actions { grid-column: 1 / -1; display: grid; grid-template-columns: auto auto minmax(105px, 1fr); gap: 6px; }
-  .kf-sticker-library-actions .kf-select { min-width: 0; width: 100%; }
+  .kf-sticker-library-actions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .kf-sticker-library-actions .kf-select { grid-column: 1 / -1; min-width: 0; width: 100%; }
 
   .kf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .kf-table th, .kf-table td { padding: 11px 9px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; }
@@ -7553,7 +7567,10 @@ const UI_CSS = `
     .kf-defense-overview { grid-template-columns: 1fr; }
     .kf-defense-overview .kf-stats { border-left: 0; border-top: 1px solid var(--border-subtle); }
     .kf-tool-grid { grid-template-columns: 1fr; }
-    .kf-sticker-library-controls, .kf-sticker-group-builder, .kf-sticker-group-row, .kf-sticker-library-grid { grid-template-columns: 1fr; }
+    .kf-sticker-library-workspace, .kf-sticker-library-controls, .kf-sticker-library-grid { grid-template-columns: 1fr; }
+    .kf-sticker-group-builder { grid-template-columns: minmax(180px, 1fr) auto; }
+    .kf-sticker-library-bulk { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .kf-sticker-library-bulk > strong, .kf-sticker-library-bulk .kf-select { grid-column: span 2; }
     .kf-sticker-library-actions { grid-template-columns: repeat(2, auto); }
     .kf-sticker-library-actions .kf-select { grid-column: 1 / -1; }
   }
@@ -7565,7 +7582,9 @@ const UI_CSS = `
     .kf-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
     .kf-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; overscroll-behavior-inline: contain; }
     .kf-nav::-webkit-scrollbar { display: none; }
-    .kf-nav button { width: auto; min-width: max-content; min-height: 54px; padding-inline: 16px; }
+    .kf-nav-search { display: none; }
+    .kf-nav button { flex: 0 0 auto; width: auto; min-width: 0; min-height: 54px; padding-inline: 16px; }
+    .kf-nav-copy, .kf-nav-copy > strong { white-space: nowrap; }
     .kf-nav button::before { inset: auto 14px 0; width: auto; height: 3px; }
     .kf-page { padding: 18px 18px 32px; }
     .kf-page-header { min-height: 72px; }
@@ -7575,7 +7594,9 @@ const UI_CSS = `
     .kf-segmented { width: 100%; }
     .kf-segmented button { min-width: 0; flex: 1 1 0; padding-inline: 7px; }
     .kf-range { grid-template-columns: 42px minmax(120px, 1fr) 42px; }
-    .kf-channel-input-row, .kf-emote-catalog-form { grid-template-columns: 1fr; }
+    .kf-channel-input-row, .kf-emote-catalog-browser, .kf-emote-catalog-form { grid-template-columns: 1fr; }
+    .kf-sticker-library-bulk { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kf-sticker-library-bulk > strong, .kf-sticker-library-bulk .kf-select { grid-column: 1 / -1; }
     .kf-theme-grid, .kf-swatch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .kf-preset-grid { grid-template-columns: 1fr; }
     .kf-appearance-layout { grid-template-columns: 1fr; }
@@ -7811,7 +7832,7 @@ const TRANSLATIONS = {
     'On': 'Activado',
     'Off': 'Desactivado',
     'Core protection always stays on': 'La protección principal permanece siempre activada',
-    'About has no page settings to reset': 'Acerca de no tiene ajustes de página para restablecer',
+    'This page has its own reset control': 'Esta página tiene su propio control de restablecimiento',
     'Restore page defaults': 'Restaurar los valores predeterminados de la página',
     'Find a command': 'Buscar un comando',
     'Type an action or setting…': 'Escribe una acción o ajuste…',
@@ -7827,6 +7848,8 @@ const TRANSLATIONS = {
     'Layout': 'Diseño',
     'Appearance': 'Apariencia',
     'Content & Ads': 'Contenido y anuncios',
+    'Emotes': 'Emotes',
+    'Find, favorite, remove, and group every emote you have recorded.': 'Busca, marca como favorito, elimina y agrupa todos los emotes registrados.',
     'Accessibility & Shortcuts': 'Accesibilidad y atajos',
     'About': 'Acerca de',
     'Shell, player, and chat': 'Estructura, reproductor y chat',
@@ -8063,7 +8086,6 @@ const TRANSLATIONS = {
     'Kick reports no emotes this account can send anywhere.': 'Kick no indica ningún emote que esta cuenta pueda enviar en cualquier chat.',
     'My emotes': 'Mis emotes',
     'My emotes ({count})': 'Mis emotes ({count})',
-    'All recorded': 'Todos los registrados',
     'Subscribed channel': 'Canal suscrito',
     'Global collection': 'Colección global',
     'Kick reports no emotes this account can use in every chat.': 'Kick no indica ningún emote que esta cuenta pueda usar en todos los chats.',
@@ -8075,12 +8097,9 @@ const TRANSLATIONS = {
     'Enable Poor mode': 'Activar modo sin gastos',
     'Disable Poor mode': 'Desactivar modo sin gastos',
     'Remove spending prompts without changing your Kick account': 'Oculta las invitaciones de gasto sin cambiar tu cuenta de Kick',
-    'Browse any channel’s emotes': 'Explorar los emotes de cualquier canal',
-    'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Pega un nombre de canal o una URL de Kick. Las imágenes son públicas, pero importarlas nunca evita el acceso del chat: los emotes gratuitos siguen siendo solo del canal y los de suscriptor permanecen bloqueados hasta que Kick confirme que tu cuenta puede usarlos.',
     'Channel emote catalog': 'Catálogo de emotes del canal',
     'Loading…': 'Cargando…',
     'Load emotes': 'Cargar emotes',
-    'Open artwork': 'Abrir imagen',
     'Channel-only': 'Solo en el canal',
     'Subscriber-only': 'Solo para suscriptores',
     'Reduce tracking telemetry': 'Reducir la telemetría de seguimiento',
@@ -8129,6 +8148,7 @@ const TRANSLATIONS = {
     'Local channel tools saved.': 'Herramientas locales del canal guardadas.',
     'Local channel tools cleared.': 'Herramientas locales del canal borradas.',
     'Enter a custom emote group name.': 'Escribe un nombre para el grupo personalizado de emotes.',
+    'The emote group limit is 40.': 'El límite de grupos de emotes es 40.',
     'That emote group already exists.': 'Ese grupo de emotes ya existe.',
     'Enter a valid emote group name.': 'Escribe un nombre de grupo de emotes válido.',
     'Board saved.': 'Tablero guardado.',
@@ -8206,7 +8226,7 @@ const TRANSLATIONS = {
     'Move earlier': 'Mover antes',
     'Move later': 'Mover después',
     'Remove from quick favorites': 'Quitar de los favoritos rápidos',
-    'Three-row one-click favorite emotes': 'Emotes favoritos de un clic en tres filas',
+    'One-click favorite emotes': 'Emotes favoritos de un clic',
     'Emote views and filters': 'Vistas y filtros de emotes',
     'Kick Focus command menu': 'Menú de comandos de Kick Focus',
     'Kick Focus multi-stream': 'Multitransmisión de Kick Focus',
@@ -8217,10 +8237,15 @@ const TRANSLATIONS = {
     'Why I follow this channel…': 'Por qué sigo este canal…',
     'Private channel note': 'Nota privada del canal',
     'Optional blocklist URL': 'URL de lista de bloqueo opcional',
-    'Search recorded emotes or Kick groups': 'Buscar emotes registrados o grupos de Kick',
+    'Search emotes or Kick groups': 'Buscar emotes o grupos de Kick',
     'Search recorded emotes': 'Buscar emotes registrados',
     'Filter recorded emotes': 'Filtrar emotes registrados',
-    'New custom group name': 'Nombre del nuevo grupo personalizado',
+    'Group name': 'Nombre del grupo',
+    'Custom emote groups': 'Grupos personalizados de emotes',
+    'Group for selected emotes': 'Grupo para los emotes seleccionados',
+    'Select {name}': 'Seleccionar {name}',
+    'Deselect {name}': 'Deseleccionar {name}',
+    'Delete group {name}': 'Eliminar grupo {name}',
     'New emote group name': 'Nombre del nuevo grupo de emotes',
     'Channel name or kick.com URL': 'Nombre del canal o URL de kick.com',
     'Channel to hide': 'Canal que ocultar',
@@ -8247,8 +8272,6 @@ const TRANSLATIONS = {
     'results loaded': 'resultados cargados',
     'emote': 'emote',
     'emotes': 'emotes',
-    'emote is kept out of the library.': 'emote se mantiene fuera de la biblioteca.',
-    'emotes are kept out of the library.': 'emotes se mantienen fuera de la biblioteca.',
     'collectible': 'coleccionable',
     'collectibles': 'coleccionables',
     'item': 'artículo',
@@ -8493,7 +8516,7 @@ const TRANSLATIONS = {
     'On': 'Ativado',
     'Off': 'Desativado',
     'Core protection always stays on': 'A proteção principal permanece sempre ativada',
-    'About has no page settings to reset': 'Sobre não tem configurações de página para redefinir',
+    'This page has its own reset control': 'Esta página tem seu próprio controle de redefinição',
     'Restore page defaults': 'Restaurar os padrões da página',
     'Find a command': 'Buscar um comando',
     'Type an action or setting…': 'Digite uma ação ou configuração…',
@@ -8509,6 +8532,8 @@ const TRANSLATIONS = {
     'Layout': 'Layout',
     'Appearance': 'Aparência',
     'Content & Ads': 'Conteúdo e anúncios',
+    'Emotes': 'Emotes',
+    'Find, favorite, remove, and group every emote you have recorded.': 'Encontre, favorite, remova e agrupe todos os emotes registrados.',
     'Accessibility & Shortcuts': 'Acessibilidade e atalhos',
     'About': 'Sobre',
     'Shell, player, and chat': 'Estrutura, player e chat',
@@ -8745,7 +8770,6 @@ const TRANSLATIONS = {
     'Kick reports no emotes this account can send anywhere.': 'O Kick não indica nenhum emote que esta conta possa enviar em qualquer chat.',
     'My emotes': 'Meus emotes',
     'My emotes ({count})': 'Meus emotes ({count})',
-    'All recorded': 'Todos os registrados',
     'Subscribed channel': 'Canal assinado',
     'Global collection': 'Coleção global',
     'Kick reports no emotes this account can use in every chat.': 'O Kick não indica nenhum emote que esta conta possa usar em todos os chats.',
@@ -8757,12 +8781,9 @@ const TRANSLATIONS = {
     'Enable Poor mode': 'Ativar modo sem gastos',
     'Disable Poor mode': 'Desativar modo sem gastos',
     'Remove spending prompts without changing your Kick account': 'Oculta os convites de gasto sem alterar sua conta do Kick',
-    'Browse any channel’s emotes': 'Explorar os emotes de qualquer canal',
-    'Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.': 'Cole um nome de canal ou uma URL do Kick. As imagens são públicas, mas importá-las nunca contorna o acesso do chat: os emotes gratuitos continuam restritos ao canal e os de assinante permanecem bloqueados até o Kick confirmar que sua conta pode usá-los.',
     'Channel emote catalog': 'Catálogo de emotes do canal',
     'Loading…': 'Carregando…',
     'Load emotes': 'Carregar emotes',
-    'Open artwork': 'Abrir imagem',
     'Channel-only': 'Somente no canal',
     'Subscriber-only': 'Somente para assinantes',
     'Reduce tracking telemetry': 'Reduzir a telemetria de rastreamento',
@@ -8810,6 +8831,7 @@ const TRANSLATIONS = {
     'Local channel tools saved.': 'Ferramentas locais do canal salvas.',
     'Local channel tools cleared.': 'Ferramentas locais do canal limpas.',
     'Enter a custom emote group name.': 'Digite um nome para o grupo personalizado de emotes.',
+    'The emote group limit is 40.': 'O limite de grupos de emotes é 40.',
     'That emote group already exists.': 'Esse grupo de emotes já existe.',
     'Enter a valid emote group name.': 'Digite um nome de grupo de emotes válido.',
     'Board saved.': 'Painel salvo.',
@@ -8887,7 +8909,7 @@ const TRANSLATIONS = {
     'Move earlier': 'Mover para antes',
     'Move later': 'Mover para depois',
     'Remove from quick favorites': 'Remover dos favoritos rápidos',
-    'Three-row one-click favorite emotes': 'Emotes favoritos de um clique em três linhas',
+    'One-click favorite emotes': 'Emotes favoritos de um clique',
     'Emote views and filters': 'Visualizações e filtros de emotes',
     'Kick Focus command menu': 'Menu de comandos do Kick Focus',
     'Kick Focus multi-stream': 'Multitransmissão do Kick Focus',
@@ -8898,10 +8920,15 @@ const TRANSLATIONS = {
     'Why I follow this channel…': 'Por que eu sigo este canal…',
     'Private channel note': 'Nota privada do canal',
     'Optional blocklist URL': 'URL de lista de bloqueio opcional',
-    'Search recorded emotes or Kick groups': 'Buscar emotes registrados ou grupos do Kick',
+    'Search emotes or Kick groups': 'Buscar emotes ou grupos do Kick',
     'Search recorded emotes': 'Buscar emotes registrados',
     'Filter recorded emotes': 'Filtrar emotes registrados',
-    'New custom group name': 'Nome do novo grupo personalizado',
+    'Group name': 'Nome do grupo',
+    'Custom emote groups': 'Grupos personalizados de emotes',
+    'Group for selected emotes': 'Grupo para os emotes selecionados',
+    'Select {name}': 'Selecionar {name}',
+    'Deselect {name}': 'Desmarcar {name}',
+    'Delete group {name}': 'Excluir grupo {name}',
     'New emote group name': 'Nome do novo grupo de emotes',
     'Channel name or kick.com URL': 'Nome do canal ou URL do kick.com',
     'Channel to hide': 'Canal a ocultar',
@@ -8928,8 +8955,6 @@ const TRANSLATIONS = {
     'results loaded': 'resultados carregados',
     'emote': 'emote',
     'emotes': 'emotes',
-    'emote is kept out of the library.': 'emote é mantido fora da biblioteca.',
-    'emotes are kept out of the library.': 'emotes são mantidos fora da biblioteca.',
     'collectible': 'colecionável',
     'collectibles': 'colecionáveis',
     'item': 'item',
@@ -9896,6 +9921,10 @@ function createStickerGroup() {
     input?.focus?.();
     return;
   }
+  if (state.stickerPreferences.groups.length >= 40) {
+    showToast('The emote group limit is 40.', true);
+    return;
+  }
   if (state.stickerPreferences.groups.some((group) => group.name.toLowerCase() === name.toLowerCase())) {
     showToast('That emote group already exists.', true);
     return;
@@ -9903,11 +9932,12 @@ function createStickerGroup() {
   const id = `group_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   state.stickerPreferences.groups.push({ id, name });
   state.runtime.stickerLibraryFilter = 'all';
+  state.runtime.stickerLibraryBulkGroup = id;
   saveStickerOrganization(`Created emote group “${name}”.`);
 }
 
 function renameStickerGroup(target) {
-  const id = target.dataset.kfStickerGroupId;
+  const id = target.dataset.kfStickerGroupId || target.dataset.kfStickerGroupName;
   const group = state.stickerPreferences.groups.find((entry) => entry.id === id);
   const input = state.shadow?.querySelector(`[data-kf-sticker-group-name="${CSS.escape(id || '')}"]`);
   const name = cleanCustomStickerGroupName(input?.value);
@@ -9934,6 +9964,7 @@ function deleteStickerGroup(target) {
     state.stickerPreferences.view = 'all';
   }
   if (state.runtime.stickerLibraryFilter === `group:${id}`) state.runtime.stickerLibraryFilter = 'all';
+  if (state.runtime.stickerLibraryBulkGroup === id) state.runtime.stickerLibraryBulkGroup = '';
   saveStickerOrganization(`Deleted emote group “${group.name}”.`);
 }
 
@@ -9973,6 +10004,46 @@ function assignLibrarySticker(selectElement) {
     state.stickerPreferences.assignments.delete(key);
   }
   saveStickerOrganization(groupId ? 'Emote assigned to custom group.' : 'Emote moved to Ungrouped.');
+}
+
+function editLibrarySelection(action, target) {
+  const selected = state.runtime.stickerLibrarySelection;
+  if (action === 'toggle') {
+    const key = target.dataset.kfStickerKey;
+    if (!state.stickerPreferences.library.has(key)) return;
+    if (selected.has(key)) selected.delete(key); else selected.add(key);
+    renderSettingsPage();
+    return;
+  }
+  if (action === 'shown') {
+    const keys = [...state.shadow.querySelectorAll('[data-kf-sticker-library-item]:not([hidden])')]
+      .map((item) => item.dataset.kfStickerKey);
+    const remove = keys.length && keys.every((key) => selected.has(key));
+    for (const key of keys) if (remove) selected.delete(key); else selected.add(key);
+    renderSettingsPage();
+    return;
+  }
+  if (action === 'clear') {
+    selected.clear();
+    renderSettingsPage();
+    return;
+  }
+  const keys = [...selected].filter((key) => state.stickerPreferences.library.has(key));
+  if (!keys.length) return;
+  if (action === 'move') {
+    const group = state.runtime.stickerLibraryBulkGroup;
+    if (group && !state.stickerPreferences.groups.some((entry) => entry.id === group)) return;
+    for (const key of keys) if (group) state.stickerPreferences.assignments.set(key, group); else state.stickerPreferences.assignments.delete(key);
+  } else {
+    for (const key of keys) {
+      state.stickerPreferences.hidden.add(key);
+      state.stickerPreferences.library.delete(key);
+      state.stickerPreferences.assignments.delete(key);
+    }
+    state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => !selected.has(entry.key));
+  }
+  selected.clear();
+  saveStickerOrganization(`${keys.length} ${plural(keys.length, action === 'move' ? 'emote moved.' : 'emote removed.', action === 'move' ? 'emotes moved.' : 'emotes removed.')}`);
 }
 
 function selectViewingPreset(presetId) {
@@ -10039,6 +10110,7 @@ function onInterfaceClick(event) {
   if (!actionTarget) return;
   const action = actionTarget.dataset.action;
   if (action === 'open-settings') openSettings();
+  else if (action === 'open-emotes') openSettings('emotes');
   else if (action === 'open-command') openCommandMenu();
   else if (action === 'toggle-panic') togglePanicSwitch();
   else if (action === 'close-settings') closeSettings();
@@ -10249,6 +10321,11 @@ function onInterfaceClick(event) {
   else if (action === 'create-sticker-group') createStickerGroup();
   else if (action === 'rename-sticker-group') renameStickerGroup(actionTarget);
   else if (action === 'delete-sticker-group') deleteStickerGroup(actionTarget);
+  else if (action === 'select-library-sticker') editLibrarySelection('toggle', actionTarget);
+  else if (action === 'select-visible-stickers') editLibrarySelection('shown');
+  else if (action === 'clear-library-selection') editLibrarySelection('clear');
+  else if (action === 'move-selected-stickers') editLibrarySelection('move');
+  else if (action === 'remove-selected-stickers') editLibrarySelection('remove');
   else if (action === 'favorite-library-sticker') toggleLibrarySticker(actionTarget, 'favorite');
   else if (action === 'remove-library-sticker') toggleLibrarySticker(actionTarget, 'remove');
   else if (action === 'restore-removed-stickers') restoreRemovedStickers();
@@ -10262,6 +10339,16 @@ function onInterfaceClick(event) {
 }
 
 function onInterfaceChange(event) {
+  const groupName = event.target.closest('input[data-kf-sticker-group-name]');
+  if (groupName) {
+    renameStickerGroup(groupName);
+    return;
+  }
+  const bulkGroup = event.target.closest('select[data-kf-sticker-bulk-group]');
+  if (bulkGroup) {
+    state.runtime.stickerLibraryBulkGroup = bulkGroup.value;
+    return;
+  }
   const assignment = event.target.closest('select[data-kf-sticker-assignment]');
   if (assignment) {
     assignLibrarySticker(assignment);
@@ -10328,9 +10415,17 @@ function onInterfaceInput(event) {
 }
 
 function onInterfaceKeydown(event) {
-  if (event.key !== 'Enter' || !event.target.closest('input[data-kf-emote-catalog-input]')) return;
-  event.preventDefault();
-  state.shadow?.querySelector('[data-action="import-channel-emotes"]')?.click();
+  if (event.key !== 'Enter') return;
+  if (event.target.closest('input[data-kf-emote-catalog-input]')) {
+    event.preventDefault();
+    state.shadow?.querySelector('[data-action="import-channel-emotes"]')?.click();
+  } else if (event.target.closest('input[data-kf-new-sticker-group]')) {
+    event.preventDefault();
+    state.shadow?.querySelector('[data-action="create-sticker-group"]')?.click();
+  } else if (event.target.closest('input[data-kf-sticker-group-name]')) {
+    event.preventDefault();
+    renameStickerGroup(event.target);
+  }
 }
 
 /**
@@ -10558,6 +10653,8 @@ function applyImportedStores(result) {
     state.runtime.stickerCatalogDirty = true;
     state.runtime.stickerLibraryFilter = 'all';
     state.runtime.stickerLibraryQuery = '';
+    state.runtime.stickerLibrarySelection.clear();
+    state.runtime.stickerLibraryBulkGroup = '';
   }
   if (result.usage) state.emoteUsage = result.usage;
   if (result.multistream) {

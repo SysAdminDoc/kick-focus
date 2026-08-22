@@ -81,7 +81,7 @@
         for (let index = 1; index <= 24; index += 1) {
           for (let attempt = 0; attempt < 20; attempt += 1) {
             const candidate = [...document.querySelectorAll('[data-kf-sticker-action="pin"]')]
-              .find((button) => button.getAttribute('aria-label') === `Favorite Emote ${index}`);
+              .find((button) => button.getAttribute('aria-label') === `Favorite Sticker ${index}`);
             if (candidate) {
               candidate.click();
               break;
@@ -92,6 +92,6 @@
         }
       });
     </script>
-    <script src="/dist/kick-focus.user.js"></script>
+    <script src="/dist/kick-focus.user.js?fixture=emote-redesign"></script>
   </body>
 </html>

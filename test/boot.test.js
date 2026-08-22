@@ -501,6 +501,29 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tag:
     'nothing styles that class; the attribute is what SITE_CSS keys on');
 });
 
+test('emote organization has a direct route, visible search, and batch controls', { tag: 'artifact' }, async () => {
+  const runtime = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const settings = await readFile(resolve(root, 'src/settings.mjs'), 'utf8');
+
+  assert.match(settings, /\['emotes', 'Emotes', 'Library, favorites, and groups'/,
+    'the library needs a first-class settings destination');
+  assert.match(runtime, /openSettings\('emotes'\)/,
+    'the picker Manage action must land on the library itself');
+  assert.match(runtime, /search\.after\(organizer\)/,
+    'the custom shelf must keep Kick own search visible above it');
+  for (const action of ['select-library-sticker', 'select-visible-stickers', 'move-selected-stickers', 'remove-selected-stickers']) {
+    assert.ok(settings.includes(`data-action="${action}"`), `${action} is missing from the library`);
+  }
+  assert.match(settings, /aria-live="polite"/,
+    'batch selection status must be announced');
+  assert.match(runtime, /input\[data-kf-sticker-group-name\]/,
+    'group renames must save when the field changes');
+  assert.match(runtime, /groups\.length >= 40/,
+    'the UI must stop cleanly at the stored group limit');
+  assert.match(runtime, /renameStickerGroup\(event\.target\)/,
+    'Enter must commit a group rename directly');
+});
+
 test('the emote hover card is described to a screen reader, not hidden from one', { tag: 'artifact' }, async () => {
   // The host carried aria-hidden="true" and nothing referenced it, so the
   // access, reach, ownership and shadowing lines were sighted-only. It opens on

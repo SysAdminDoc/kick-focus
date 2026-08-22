@@ -59,9 +59,10 @@ test('the extracted surface still composes navigation, icons, summaries, and vie
   const { host } = makeHost();
   const surface = createSettings(host);
   assert.deepEqual(surface.NAV_ITEMS.map(([id]) => id), [
-    'layout', 'appearance', 'content', 'accessibility', 'viewer', 'about',
+    'layout', 'appearance', 'content', 'emotes', 'accessibility', 'viewer', 'about',
   ]);
   assert.match(surface.uiIcon('shield'), /<svg[^>]+><path/);
+  assert.match(surface.uiIcon('smile'), /<svg[^>]+><circle/);
   assert.equal(surface.stickerLibrarySummary(), '0 recorded · 0 favorites · 0 removed · 0 custom groups');
   assert.match(surface.renderViewerHubCards(), /data-kf-hub-card="points"/);
   assert.match(surface.renderViewerHubCards(), /Sign in to read this\./);
