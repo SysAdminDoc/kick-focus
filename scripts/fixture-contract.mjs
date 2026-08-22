@@ -197,17 +197,18 @@ export const FIXTURE_CONTRACT = Object.freeze({
     retired: Object.freeze({}),
   }),
 
-  // The emote picker has to be open, which needs a session. No shell either:
-  // it is the panel on its own, not a page.
+  // The emote picker has to be open, which needs a session. The reduced fixture
+  // keeps the surrounding channel composer so placement and the full click
+  // journey can be checked without carrying another signed-in page capture.
   'sticker-scroll': Object.freeze({
     url: '',
     keep: Object.freeze([]),
-    expectedChat: false,
+    expectedChat: true,
     shell: null,
     derived: null,
     markers: Object.freeze([
       'chat-emotes-picker-panel', 'data-testid="sticker-scroll"', 'data-testid="native-sticker-shell"',
-      'data-testid="native-sticker-list"', 'dataset.emoteId', 'overflow-y-auto',
+      'data-testid="native-sticker-list"', 'data-testid="chat-input"', 'data-testid="chat-send"', 'dataset.emoteId', 'overflow-y-auto',
     ]),
     synthetic: Object.freeze({
       'dataset.emoteId': 'the panel is driven by a script in the fixture, which reads the id off the button',

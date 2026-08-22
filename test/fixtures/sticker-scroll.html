@@ -3,50 +3,136 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Kick Focus sticker scroll fixture</title>
+    <title>Kick Focus channel composer emote fixture</title>
     <style>
       :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
       * { box-sizing: border-box; }
-      body { min-height: 100vh; margin: 0; display: grid; place-items: center; color: #f4f7f5; background: #080a09; }
-      #chat-emotes-picker-panel { width: 430px; padding: 12px; border: 1px solid #343a36; background: #101311; }
-      #search-emotes-input { width: 100%; margin-bottom: 10px; padding: 9px 11px; color: inherit; border: 1px solid #3b423e; background: #171b19; }
-      .picker-scroll { max-height: 720px; overflow-y: auto; overscroll-behavior: contain; }
-      .native-tabs { height: 44px; margin-bottom: 4px; border-block: 1px solid #303632; }
-      .native-sticker-list { height: 240px; overflow-y: auto; overscroll-behavior: contain; }
-      .native-group { margin-top: 16px; }
+      body { min-height: 100vh; margin: 0; color: #f4f7f5; background: #080a09; }
+      button, input { font: inherit; }
+      .channel-page { display: grid; width: 100%; min-height: 100vh; grid-template-columns: minmax(0, 1fr) 430px; }
+      .channel-profile { min-width: 0; padding: 22px 28px 28px; border-right: 1px solid #262c28; background: #090d0b; }
+      .channel-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; color: #aeb7b1; font-size: 13px; }
+      .channel-topbar img { width: 26px; height: 26px; }
+      .channel-stage { position: relative; overflow: hidden; min-height: 500px; border: 1px solid #28302b; border-radius: 12px; background: #050706; }
+      .channel-stage > img { width: 100%; height: 500px; object-fit: cover; opacity: .72; }
+      .channel-stage-copy { position: absolute; right: 22px; bottom: 20px; left: 22px; padding: 16px 18px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; background: rgba(5,8,6,.82); backdrop-filter: blur(14px); }
+      .channel-stage-copy strong { display: block; font-size: 18px; }
+      .channel-stage-copy span { display: block; margin-top: 4px; color: #aeb7b1; font-size: 13px; }
+      .channel-about { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 2px 0; }
+      .channel-about h1 { margin: 0; font-size: 22px; }
+      .channel-about p { margin: 5px 0 0; color: #aeb7b1; font-size: 13px; }
+      .channel-about button { min-height: 38px; padding: 0 16px; border: 0; border-radius: 7px; background: #53fc18; color: #071004; font-weight: 800; }
+      #channel-chatroom { position: relative; display: grid; min-width: 0; height: 100vh; grid-template-rows: 56px minmax(0, 1fr) 112px; background: #0d100e; }
+      .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #2a302c; }
+      .chat-header strong { font-size: 14px; }
+      .chat-header span { color: #9da6a0; font-size: 12px; }
+      #chatroom-messages { min-height: 0; padding: 14px 16px 24px; overflow: hidden; }
+      .chat-message { margin: 0 0 12px; color: #dce2de; font-size: 13px; line-height: 1.45; }
+      .chat-message strong { margin-right: 5px; color: #53fc18; }
+      .chat-message:nth-child(2n) strong { color: #a984ff; }
+      .chat-message:nth-child(3n) strong { color: #ffb951; }
+      .composer { display: grid; gap: 9px; align-content: center; padding: 11px 14px 13px; border-top: 1px solid #2a302c; background: #0d100e; }
+      #chat-input-wrapper { display: flex; min-height: 45px; align-items: center; gap: 8px; padding: 4px 5px 4px 12px; border: 1px solid #414a44; border-radius: 8px; background: #111613; }
+      [data-testid="chat-input"] { min-width: 0; flex: 1; color: #aeb7b1; font-size: 13px; outline: none; }
+      [data-fixture-emote-toggle] { min-height: 34px; padding: 0 10px; border: 0; border-radius: 6px; background: rgba(255,255,255,.06); color: #dce2de; font-size: 12px; font-weight: 700; }
+      .composer-actions { display: flex; align-items: center; justify-content: space-between; color: #89928c; font-size: 11px; }
+      .composer-actions button { min-height: 31px; padding: 0 15px; border: 0; border-radius: 6px; background: #53fc18; color: #071004; font-size: 12px; font-weight: 800; }
+      #chat-emotes-picker-panel { position: absolute; z-index: 10; right: 0; bottom: 110px; left: 0; width: 100%; }
+      #chat-emotes-picker-panel > div { border: 1px solid #343a36; border-bottom: 0; background: #101311; }
+      .picker-scroll { max-height: 640px; overflow-y: auto; overscroll-behavior: contain; }
+      .native-shell { display: grid; gap: 1px; }
+      .native-picker-header { display: grid; gap: 9px; padding: 10px 12px 0; }
+      .native-search-row { display: flex; align-items: center; gap: 7px; }
+      .native-search-wrap { min-width: 0; flex: 1; }
+      #search-emotes-input { width: 100%; min-height: 40px; padding: 9px 11px; color: inherit; border: 1px solid #3b423e; border-radius: 8px; background: #171b19; }
+      [data-fixture-picker-close] { min-height: 34px; padding: 0 8px; border: 0; background: transparent; color: #aeb7b1; font-size: 11px; }
+      .native-tabs { height: 40px; border-bottom: 1px solid #303632; }
+      .native-sticker-list { height: 240px; padding: 0 12px 12px; overflow-y: auto; overscroll-behavior: contain; }
+      .native-group { margin-top: 14px; }
       .native-group > span { display: block; margin-bottom: 8px; color: #9ca5a0; font-size: 12px; font-weight: 700; }
-      .native-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
-      .native-grid button { min-height: 46px; border: 1px solid #303632; background: #171b19; }
-      .native-grid img { width: 28px; height: 28px; object-fit: contain; }
+      .native-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+      .native-grid button { min-height: 42px; padding: 5px; border: 0; border-radius: 5px; background: #171b19; }
+      .native-grid img { width: 100%; height: 30px; object-fit: contain; }
+      .fixture-controls { position: fixed; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+      @media (max-width: 900px) {
+        .channel-page { grid-template-columns: minmax(0, 1fr) 390px; }
+        .channel-profile { padding-inline: 18px; }
+      }
+      @media (max-width: 680px) {
+        .channel-page { display: block; }
+        .channel-profile { display: none; }
+        #channel-chatroom { width: 100%; }
+      }
     </style>
   </head>
   <body>
-    <button id="add-late-sticker" type="button" style="position:fixed;top:16px;right:16px">Simulate new sticker</button>
-    <button id="fill-quick-favorites" type="button" style="position:fixed;top:48px;right:16px">Fill quick favorites</button>
-    <main id="main-container">
-      <section id="chat-emotes-picker-panel" aria-label="Sticker picker">
-        <div class="picker-scroll overflow-y-auto" data-testid="sticker-scroll">
-          <div class="native-shell grid h-full grid-rows-[auto_1fr] gap-1 lg:h-[unset] lg:grid-rows-[unset]" data-testid="native-sticker-shell">
-            <input id="search-emotes-input" type="search" placeholder="Search emotes" aria-label="Search emotes">
-            <div class="native-tabs" aria-hidden="true"></div>
-            <div class="native-sticker-list overflow-y-auto" data-testid="native-sticker-list">
-              <div data-testid="native-sticker-groups"></div>
+    <div class="fixture-controls" aria-hidden="true">
+      <button id="add-late-sticker" type="button">Simulate new sticker</button>
+      <button id="fill-quick-favorites" type="button">Fill quick favorites</button>
+    </div>
+    <main id="main-container" class="channel-page">
+      <section class="channel-profile" aria-label="Channel profile preview">
+        <div class="channel-topbar"><img src="/dist/extension/icons/icon-32.png" alt=""><strong>Kick Focus</strong><span>Channel profile</span></div>
+        <div class="channel-stage">
+          <img src="/src/assets/appearance-preview.jpg" alt="A dark streaming desk with green lighting">
+          <div class="channel-stage-copy"><strong>Late night community stream</strong><span>Just Chatting · English · 3.7K watching</span></div>
+        </div>
+        <div class="channel-about"><div><h1>NorthstarLive</h1><p>Chat-first streams, community nights, and weekly events.</p></div><button type="button">Follow</button></div>
+      </section>
+      <aside id="channel-chatroom" aria-label="Live chat">
+        <header class="chat-header"><strong>Live chat</strong><span>3.7K watching</span></header>
+        <div id="chatroom-messages" data-testid="chatroom-messages">
+          <p class="chat-message"><strong>moss:</strong>that final round was wild</p>
+          <p class="chat-message"><strong>pixelpilot:</strong>clip it before the next queue</p>
+          <p class="chat-message"><strong>nori:</strong>the timing was perfect</p>
+          <p class="chat-message"><strong>violet:</strong>one more run</p>
+          <p class="chat-message"><strong>rallypoint:</strong>that reaction emote says everything</p>
+          <p class="chat-message"><strong>mint:</strong>great stream tonight</p>
+          <p class="chat-message"><strong>orbit:</strong>the whole chat called it</p>
+          <p class="chat-message"><strong>ember:</strong>we are so back</p>
+        </div>
+        <section id="chat-emotes-picker-panel" aria-label="Sticker picker">
+          <div class="relative" style="max-height: 640px; transition: max-height 350ms ease-out;">
+            <div class="picker-scroll overflow-y-auto" data-testid="sticker-scroll">
+              <div class="native-shell grid h-full grid-rows-[auto_1fr] gap-1 lg:h-[unset] lg:grid-rows-[unset]" data-testid="native-sticker-shell">
+                <div class="native-picker-header grid gap-4">
+                  <div class="native-search-row flex items-center gap-2">
+                    <div class="native-search-wrap relative grow"><input id="search-emotes-input" type="search" placeholder="Search emotes" aria-label="Search emotes"></div>
+                    <button type="button" data-fixture-picker-close>Close</button>
+                  </div>
+                  <div class="native-tabs" aria-hidden="true"></div>
+                </div>
+                <div class="native-sticker-list overflow-y-auto" data-testid="native-sticker-list">
+                  <div data-testid="native-sticker-groups"></div>
+                </div>
+              </div>
             </div>
           </div>
+        </section>
+        <div class="composer">
+          <div id="chat-input-wrapper"><div contenteditable="true" data-testid="chat-input" role="textbox" spellcheck="true">Send a message</div><button type="button" data-fixture-emote-toggle aria-expanded="true" aria-controls="chat-emotes-picker-panel">Emotes</button></div>
+          <div class="composer-actions"><span>91 / 200</span><button type="button" data-testid="chat-send" data-send-count="0">Chat</button></div>
         </div>
-      </section>
+      </aside>
     </main>
     <script>
       localStorage.removeItem('kick-focus:settings');
       localStorage.removeItem('kick-focus:sticker-preferences');
-      const scroll = document.querySelector('[data-testid="sticker-scroll"]');
+      const picker = document.getElementById('chat-emotes-picker-panel');
+      const composer = document.querySelector('[data-testid="chat-input"]');
+      const sendButton = document.querySelector('[data-testid="chat-send"]');
       const nativeGroups = document.querySelector('[data-testid="native-sticker-groups"]');
+      sendButton.addEventListener('click', () => {
+        sendButton.dataset.sendCount = String(Number(sendButton.dataset.sendCount || 0) + 1);
+      });
+      const imageIds = [5748073, 5748094, 5748045, 2267440, 2950466, 5747940, 5747974, 5747985, 5748072, 2258072, 5748051, 5747986, 3753119, 5748004, 37226, 5747904, 37243, 5748041, 5747938, 4148144, 37230, 37225, 5747848, 5747858];
+      const names = ['BOOBA', 'pepoHmm', 'asmonSmash', 'GoldenNAHH', 'LULW', 'Concerned', 'HYPERS', 'Wave', 'Fire', 'WP', 'Stealth', 'ThumbsUp', 'Star', 'Crown', 'GG', 'Heart', 'Celebrate', 'Wow', 'Clap', 'Hype', 'GoodOne', 'Laugh', 'Chill', 'Nice'];
       for (let groupIndex = 0; groupIndex < 3; groupIndex += 1) {
         const section = document.createElement('section');
         section.className = 'native-group';
         const label = document.createElement('span');
         label.id = `emote-picker-section-name-Group-${groupIndex + 1}`;
-        label.textContent = `Group ${groupIndex + 1}`;
+        label.textContent = ['Frequently Used', 'Global', 'NorthstarLive'][groupIndex];
         const grid = document.createElement('div');
         grid.className = 'native-grid';
         for (let offset = 0; offset < 48; offset += 1) {
@@ -54,26 +140,40 @@
           const button = document.createElement('button');
           button.type = 'button';
           button.dataset.emoteId = String(9000 + index);
-          button.setAttribute('aria-label', `Sticker ${index}`);
+          const name = `${names[(index - 1) % names.length]}${index > names.length ? index : ''}`;
+          button.setAttribute('aria-label', name);
           if (index === 121) button.disabled = true;
           const image = document.createElement('img');
-          image.src = `/dist/extension/icons/icon-32.png?fixture=/emotes/${index}`;
-          image.alt = `Sticker ${index}`;
+          image.src = `https://files.kick.com/emotes/${imageIds[(index - 1) % imageIds.length]}/fullsize`;
+          image.alt = name;
+          image.addEventListener('error', () => { image.src = `/dist/extension/icons/icon-32.png?fixture=/emotes/${index}`; }, { once: true });
+          button.addEventListener('click', () => {
+            composer.textContent = name;
+            composer.dataset.lastEmote = name;
+          });
           button.append(image);
           grid.append(button);
         }
         section.append(label, grid);
         nativeGroups.append(section);
       }
+      document.querySelector('[data-fixture-emote-toggle]').addEventListener('click', (event) => {
+        picker.hidden = !picker.hidden;
+        event.currentTarget.setAttribute('aria-expanded', String(!picker.hidden));
+      });
+      document.querySelector('[data-fixture-picker-close]').addEventListener('click', () => {
+        picker.hidden = true;
+        document.querySelector('[data-fixture-emote-toggle]').setAttribute('aria-expanded', 'false');
+      });
       document.getElementById('add-late-sticker').addEventListener('click', () => {
         if (document.querySelector('[data-emote-id="99999"]')) return;
         const button = document.createElement('button');
         button.type = 'button';
         button.dataset.emoteId = '99999';
-        button.setAttribute('aria-label', 'Sticker 145');
+        button.setAttribute('aria-label', 'NewArrival');
         const image = document.createElement('img');
-        image.src = '/dist/extension/icons/icon-32.png?fixture=/emotes/145';
-        image.alt = 'Sticker 145';
+        image.src = 'https://files.kick.com/emotes/5756680/fullsize';
+        image.alt = 'NewArrival';
         button.append(image);
         nativeGroups.querySelector('.native-grid:last-of-type')?.append(button);
       });
@@ -81,7 +181,7 @@
         for (let index = 1; index <= 24; index += 1) {
           for (let attempt = 0; attempt < 20; attempt += 1) {
             const candidate = [...document.querySelectorAll('[data-kf-sticker-action="pin"]')]
-              .find((button) => button.getAttribute('aria-label') === `Favorite Sticker ${index}`);
+              .find((button) => button.getAttribute('aria-label')?.startsWith('Favorite '));
             if (candidate) {
               candidate.click();
               break;
@@ -92,6 +192,6 @@
         }
       });
     </script>
-    <script src="/dist/kick-focus.user.js?fixture=emote-redesign"></script>
+    <script src="/dist/kick-focus.user.js?fixture=channel-composer-emotes"></script>
   </body>
 </html>

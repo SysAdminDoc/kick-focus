@@ -494,6 +494,18 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tag:
   assert.doesNotMatch(ui, /data-kf-sticker-scoped/,
     'a shadow-root sheet cannot style a tile in Kick own panel');
 
+  const organizerStart = site.indexOf('[data-kf-sticker-organizer]');
+  const beforeOrganizer = site.slice(0, organizerStart);
+  const cssDepth = (beforeOrganizer.match(/\{/g) || []).length - (beforeOrganizer.match(/\}/g) || []).length;
+  assert.equal(cssDepth, 0,
+    'composer emote styles must not be trapped inside the desktop-only media query');
+  assert.match(site, /@media \(max-width: 1023px\)[\s\S]*\[data-kf-sticker-batch\] \{ grid-template-columns: 1fr/,
+    'the composer batch actions must stack when the chat rail is narrow');
+  assert.match(site, /\[data-kf-sticker-grid\][\s\S]*overflow-x: hidden !important/,
+    'the compact emote grid must never expose a horizontal scrollbar');
+  assert.match(site, /\[data-kf-sticker-scroll\][^}]*overflow-x: hidden !important/,
+    'Kick own scroll shell must not expose a horizontal scrollbar around the organizer');
+
   // The tile markup and the rule that styles it must agree on the selector.
   assert.match(source, /<button type="button" data-kf-sticker-action="send"[^>]*data-kf-sticker-proxy/,
     'the shelf send button must carry the attribute SITE_CSS styles');
@@ -509,8 +521,20 @@ test('emote organization has a direct route, visible search, and batch controls'
     'the library needs a first-class settings destination');
   assert.match(runtime, /openSettings\('emotes'\)/,
     'the picker Manage action must land on the library itself');
-  assert.match(runtime, /search\.after\(organizer\)/,
+  assert.match(runtime, /function stickerOrganizerAnchor/,
+    'the custom shelf must mount after Kick full search row, not inside its input wrapper');
+  assert.match(runtime, /organizerAnchor\.after\(organizer\)/,
     'the custom shelf must keep Kick own search visible above it');
+  for (const control of ['data-kf-sticker-organize', 'data-kf-sticker-group-create', 'data-kf-sticker-batch-move', 'data-kf-sticker-batch-remove']) {
+    assert.ok(runtime.includes(control), `${control} is missing from the composer picker`);
+  }
+  for (const flow of ['savePickerStickerGroup', 'deletePickerStickerGroup', 'editPickerStickerSelection']) {
+    assert.ok(runtime.includes(`function ${flow}`), `${flow} is missing from the composer picker`);
+  }
+  assert.match(runtime, /Try a different search or clear the search field\./,
+    'searching an empty group must explain how to recover');
+  assert.match(runtime, /const signature = \[\s*activeLocale\(\),\s*view,/,
+    'changing the interface language must invalidate the composer chrome');
   for (const action of ['select-library-sticker', 'select-visible-stickers', 'move-selected-stickers', 'remove-selected-stickers']) {
     assert.ok(settings.includes(`data-action="${action}"`), `${action} is missing from the library`);
   }
