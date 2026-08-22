@@ -4,6 +4,27 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.38.0, 2026-08-22
+
+### Added
+
+- The profile comment-box picker can create and rename custom emote groups without opening settings. Group deletion, batch removal, favorite changes, and assignment changes offer Undo.
+- Organize mode can select one emote or every visible result, move the selection into a group, remove it, or reorder one favorite. The group created most recently becomes the batch target automatically.
+- Favorites and Recent are direct picker views. Recent uses the send history already recorded for the current channel.
+
+### Changed
+
+- The picker is attached directly above the comment box and uses a compact header, one scrollable tab strip, a virtualized image grid, and icon controls that appear when they are useful.
+- Kick's own search remains visible in every view. Search counts distinguish what matched from the full available set and report emotes Kick has locked.
+- Normal emote clicks insert the plain name into the comment box and stop. The picker stays open and never sends the comment.
+- Composer controls and empty-state guidance are translated in Spanish and Portuguese as soon as the interface language changes.
+
+### Fixed
+
+- The custom organizer mounts after Kick's full search row instead of inside the input wrapper, where real profile markup squeezed it to the input width.
+- Picker styling now works below the desktop breakpoint. Narrow chat rails stack batch actions, keep the grid inside its panel, and no longer show a horizontal scrollbar.
+- A search with no matches gives search recovery guidance even inside a populated group instead of claiming that the group itself is empty.
+
 ## 1.37.0, 2026-08-22
 
 ### Added
