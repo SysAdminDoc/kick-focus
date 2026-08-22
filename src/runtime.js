@@ -5313,7 +5313,7 @@ function handleChatStickerSave(event) {
   event.stopPropagation();
   saveChatSticker(image).catch((error) => {
     logAppError('save chat emote', error);
-    showToast('The emote could not be saved.', true);
+    showToast('The emote could not be saved. The error log on the Content & Ads page says why.', true);
   });
 }
 
@@ -8047,7 +8047,7 @@ const TRANSLATIONS = {
     'Freeze animated emotes': 'Congelar los emotes animados',
     'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Solo lectura aquí. Kick impide enviar desde un chat incrustado; abre el canal para hablar.',
     'Emote favorites, removals, and custom groups reset.': 'Se restablecieron los favoritos, las eliminaciones y los grupos personalizados de emotes.',
-    'The emote could not be saved.': 'No se pudo guardar el emote.',
+    'The emote could not be saved. The error log on the Content & Ads page says why.': 'No se pudo guardar el emote. El registro de errores de la página Contenido y anuncios dice por qué.',
     'Open a channel page first.': 'Abre primero la página de un canal.',
     'Local channel tools saved.': 'Herramientas locales del canal guardadas.',
     'Local channel tools cleared.': 'Herramientas locales del canal borradas.',
@@ -8704,7 +8704,7 @@ const TRANSLATIONS = {
     'Watch several Kick channels in one grid': 'Assista a vários canais do Kick em uma única grade',
     'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': 'Somente leitura aqui. O Kick impede o envio a partir de um chat incorporado; abra o canal para falar.',
     'Emote favorites, removals, and custom groups reset.': 'Favoritos, remoções e grupos personalizados de emotes redefinidos.',
-    'The emote could not be saved.': 'Não foi possível salvar o emote.',
+    'The emote could not be saved. The error log on the Content & Ads page says why.': 'Não foi possível salvar o emote. O registro de erros da página Conteúdo e anúncios diz por quê.',
     'Open a channel page first.': 'Abra primeiro a página de um canal.',
     'Local channel tools saved.': 'Ferramentas locais do canal salvas.',
     'Local channel tools cleared.': 'Ferramentas locais do canal limpas.',

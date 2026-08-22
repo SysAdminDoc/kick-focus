@@ -9,10 +9,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 Added 2026-08-21 by an engineering and product-quality audit pass. Everything
 above P3 here was measured, not guessed; each item names where it was traced to.
 
-- [ ] P2 — "The emote could not be saved." still has no next step
-  Why: the other five dead-end error toasts were given one in this pass. This one was deliberately left, because it is a catch-all around any thrown error and any cause written into it would be a guess. It needs either a narrower catch that can name the real failure (storage full, network, Kick markup drift) or a pointer to the About error log.
-  Where: src/runtime.js (`handleChatStickerSave`)
-
 - [ ] P3 — Five different focus-ring treatments across one product
   Why: the shadow UI uses 3px accent, the nav search 2px accent, the toast action 2px `--text`, and the injected page 2px `--kf-accent`. Separately `.kf-text:focus`, `.kf-textarea:focus` and `.kf-select:focus` set `outline: 0` and substitute a 15%-alpha box-shadow, and their specificity beats the global `:focus-visible` rule, so no text input in the settings panel ever gets the 3px ring. The border-colour change still satisfies 2.4.7, so this is consistency rather than a hard failure. One `--focus-ring` token referenced everywhere would settle it.
   Where: src/runtime.js (`UI_CSS`, `HEADER_CONTROL_CSS`, `SITE_CSS`)
