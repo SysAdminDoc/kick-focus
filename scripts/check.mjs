@@ -1310,6 +1310,15 @@ const checks = [
     && !firefoxBackground.includes('__TELEMETRY_HOSTS__')],
   ['Firefox requests no broad host access', !firefoxManifest.permissions.includes('<all_urls>')],
   ['Firefox does not request the tabs permission', !firefoxManifest.permissions.includes('tabs')],
+  // The install prompt should name what the extension does, not a superset of
+  // it. Kick is reached over https everywhere else in this package — the
+  // content-script matches and the background's own origin set are both
+  // https-only — so a `*://` here asked for an http half that never runs. The
+  // ad and telemetry hosts keep their `*://` on purpose: a blocker has to
+  // refuse those over either scheme.
+  ['Firefox asks for Kick over https only', firefoxManifest.permissions
+    .filter((perm) => perm.includes('kick.com'))
+    .every((perm) => perm.startsWith('https://'))],
   ['Firefox enumerates every ad and cancellable telemetry host', [...AD_HOSTS, ...cancellableTelemetryHosts()]
     .every((host) => firefoxManifest.permissions.some((perm) => perm.includes(host)))],
   ['Firefox does not request host access for the never-cancel telemetry host', TELEMETRY_NO_CANCEL_HOSTS

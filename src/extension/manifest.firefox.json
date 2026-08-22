@@ -23,8 +23,8 @@
     "storage",
     "webRequest",
     "webRequestBlocking",
-    "*://kick.com/*",
-    "*://www.kick.com/*",
+    "https://kick.com/*",
+    "https://www.kick.com/*",
     "__GENERATED_HOST_PERMISSIONS__"
   ],
   "background": {

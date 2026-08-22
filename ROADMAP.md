@@ -21,10 +21,6 @@ above P3 here was measured, not guessed; each item names where it was traced to.
   Why: the other five dead-end error toasts were given one in this pass. This one was deliberately left, because it is a catch-all around any thrown error and any cause written into it would be a guess. It needs either a narrower catch that can name the real failure (storage full, network, Kick markup drift) or a pointer to the About error log.
   Where: src/runtime.js (`handleChatStickerSave`)
 
-- [ ] P2 — The Firefox manifest grants http as well as https
-  Why: `*://kick.com/*` and `*://www.kick.com/*` include `http:`, while the MV3 manifest and the Firefox content-script matches are both https-only, so the http half is never exercised. Tightening it to `https://*` would make the install prompt match what the extension actually does. No attack traced; this is permission minimality.
-  Where: src/extension/manifest.firefox.json
-
 - [ ] P3 — Five different focus-ring treatments across one product
   Why: the shadow UI uses 3px accent, the nav search 2px accent, the toast action 2px `--text`, and the injected page 2px `--kf-accent`. Separately `.kf-text:focus`, `.kf-textarea:focus` and `.kf-select:focus` set `outline: 0` and substitute a 15%-alpha box-shadow, and their specificity beats the global `:focus-visible` rule, so no text input in the settings panel ever gets the 3px ring. The border-colour change still satisfies 2.4.7, so this is consistency rather than a hard failure. One `--focus-ring` token referenced everywhere would settle it.
   Where: src/runtime.js (`UI_CSS`, `HEADER_CONTROL_CSS`, `SITE_CSS`)
