@@ -12,7 +12,7 @@ const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.22.0': Object.freeze({
-    summary: 'Markup reaches the page through one checked path, and this notice exists — an update no longer changes how Kick Focus behaves without saying so.',
+    summary: 'Markup reaches the page through one checked path, and this notice exists, so an update no longer changes how Kick Focus behaves without saying so.',
     defaults: Object.freeze([]),
   }),
   '1.23.0': Object.freeze({
@@ -20,7 +20,7 @@ const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze(['Show how long Kick keeps this recording']),
   }),
   '1.24.0': Object.freeze({
-    summary: 'Drift detection now checks what a hook is for, not only that it matched — a stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
+    summary: 'Drift detection now checks what a hook is for, not only that it matched. A stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
     defaults: Object.freeze([]),
   }),
   '1.25.0': Object.freeze({
@@ -561,9 +561,9 @@ function emoteTooltipText(entry, collisions = [], saved = false) {
     .find((item) => isRecord(item) && item.name === entry.name);
   if (collision) {
     const winner = isRecord(collision.winner) ? collision.winner.setName : '';
-    lines.push(winner ? `Name shadowed — typing it sends ${winner}` : 'Name shadowed by another set');
+    lines.push(winner ? `Name shadowed. Typing it sends ${winner}` : 'Name shadowed by another set');
   }
-  lines.push(saved ? 'Saved — click to open in the library' : 'Click to save');
+  lines.push(saved ? 'Saved. Click to open in the library' : 'Click to save');
   return lines;
 }
 
@@ -584,7 +584,7 @@ function insertionPlanFor(descriptor, collisions = [], access = '') {
     ? `${name} is subscriber-only, so typing it will not send the emote.`
     : collision
       ? (winner
-        ? `Another set shadows ${name} — typing it sends ${winner}'s emote.`
+        ? `Another set shadows ${name}. Typing it sends ${winner}'s emote.`
         : `Another set shadows ${name}, so typing it may send a different emote.`)
       : '';
   return { ok: true, text: name, warning, sendable, reason: '' };
@@ -992,7 +992,7 @@ function floatingPreviewPosition(anchor = {}, preview = {}, viewport = {}, gap =
 
 function buildChatHistoryExport(rows = [], channel = '') {
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
-  const header = `Kick Focus chat log — ${channel || 'this session'} — ${list.length} messages`;
+  const header = `Kick Focus chat log for ${channel || 'this session'}, ${list.length} messages`;
   const lines = list.map((row) => `[${formatChatTime(row.at)}] ${row.author || 'unknown'}: ${row.text}`);
   return [header, ...lines].join('\n');
 }
@@ -1611,7 +1611,7 @@ function assessApiDrift(events = []) {
   }
   const entries = [...unique.values()];
   const summary = entries.map((e) =>
-    `${e.endpoint} — ${e.reason}${e.detail ? ` (${e.detail})` : ''}`
+    `${e.endpoint}: ${e.reason}${e.detail ? ` (${e.detail})` : ''}`
   ).join('; ');
   return {
     drifted: true,
@@ -3054,10 +3054,10 @@ const REALTIME_UNPARSABLE_LIMIT = 20;
 function realtimeHealth({ lastFrameAt = 0, unparsable = 0, now = 0, connected = false }) {
   if (!connected) return { state: 'offline', healthy: false };
   if (unparsable >= REALTIME_UNPARSABLE_LIMIT) {
-    return { state: 'unparsable', healthy: false, detail: `${unparsable} consecutive frames could not be read — Kick's payload shape has probably changed.` };
+    return { state: 'unparsable', healthy: false, detail: `${unparsable} consecutive frames could not be read. Kick's payload shape has probably changed.` };
   }
   if (lastFrameAt && now - lastFrameAt > REALTIME_SILENCE_MS) {
-    return { state: 'stale', healthy: false, detail: `No events for ${Math.round((now - lastFrameAt) / 1000)}s — the socket reports open but is not delivering.` };
+    return { state: 'stale', healthy: false, detail: `No events for ${Math.round((now - lastFrameAt) / 1000)}s. The socket reports open but is not delivering.` };
   }
   return { state: 'live', healthy: true };
 }
@@ -3642,7 +3642,7 @@ function summarizeCollectibleInventory(cards) {
 const COLLECTIBLE_FACTS = Object.freeze([
   Object.freeze({
     claim: 'The daily streak does not improve what you get.',
-    detail: 'Kick support has stated the streak confers no bonus to drop quality or odds — it only tracks consecutive claims. Nothing in the collectibles response carries a streak multiplier either.',
+    detail: 'Kick support has stated the streak confers no bonus to drop quality or odds. It only tracks consecutive claims. Nothing in the collectibles response carries a streak multiplier either.',
   }),
   Object.freeze({
     claim: 'Kick does not publish drop odds.',
@@ -4949,7 +4949,7 @@ function createLive(host) {
     const via = state.live.provider
       ? ` via ${realtimeTransport(state.live.provider)?.label || state.live.provider}${state.live.providerVerified ? '' : ' (unverified transport)'}`
       : '';
-    parts.push(`Chat events: ${health.state}${via}${health.detail ? ` — ${health.detail}` : ''}`);
+    parts.push(`Chat events: ${health.state}${via}${health.detail ? `: ${health.detail}` : ''}`);
     if (state.live.rarity) parts.push(`Rarity resolved for ${state.live.rarity.matched.length} of ${state.live.rarity.total} collectibles.`);
     if (state.live.collisions.length) parts.push(`${state.live.collisions.length} ${plural(state.live.collisions.length, 'emote name shadowed.', 'emote names shadowed.')}`);
     if (state.live.catalogError) parts.push(state.live.catalogError);
@@ -5129,7 +5129,7 @@ function createMultistream(host) {
     const result = commitMultistream(offer, []);
     renderMultistream();
     renderPresenceOffer();
-    showToast(trf('Added {count} from your other tabs — {total} of {max}', {
+    showToast(trf('Added {count} from your other tabs ({total} of {max})', {
       count: offer.length, total: result.streams.length, max: MULTISTREAM_MAX,
     }));
     announce(trf('Added {count} channels from your other tabs.', { count: offer.length }));
@@ -5603,7 +5603,7 @@ function createMultistream(host) {
       const result = commitMultistream([], [slug]);
       syncHeaderMultiState();
       renderMultistream();
-      showToast(`Removed ${slug} from Multi — ${result.streams.length} of ${MULTISTREAM_MAX}`, false, [
+      showToast(`Removed ${slug} from Multi (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
         { label: 'Undo', onClick: () => { commitMultistream([slug]); syncHeaderMultiState(); renderMultistream(); } },
       ]);
       announce(`Removed ${slug} from multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
@@ -5617,7 +5617,7 @@ function createMultistream(host) {
     const result = commitMultistream([slug]);
     syncHeaderMultiState();
     renderMultistream();
-    showToast(`Added ${slug} — ${result.streams.length} of ${MULTISTREAM_MAX}`, false, [
+    showToast(`Added ${slug} (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
       { label: 'View', onClick: () => openMultistream() },
       { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(`Removed ${slug} from multi-stream.`); } },
     ]);
@@ -5849,7 +5849,7 @@ function createSettings(host) {
         ${row('Widen browse grids', 'Use reclaimed sidebar space for larger, calmer stream cards.', toggle('layout.wideGrid', value.wideGrid, { label: 'Widen browse grids' }))}
         ${row('Show Following rail', 'Keep the Following discovery rail visible when Kick provides it.', toggle('layout.showFollowingRail', value.showFollowingRail, { label: 'Show Following rail' }))}
         ${row('Show Recommended rail', 'Keep recommended stream rows visible in the main content.', toggle('layout.showRecommendedRail', value.showRecommendedRail, { label: 'Show Recommended rail' }))}
-        ${row('Hide Kick’s own controls', 'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only — nothing is clicked or removed, and turning it back on restores it immediately.', hideElementGrid(value.hidden), { wide: true })}
+        ${row('Hide Kick’s own controls', 'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only. Nothing is clicked or removed, and turning it back on restores it immediately.', hideElementGrid(value.hidden), { wide: true })}
         ${row('Sticky compact top bar', 'Keep search and account controls available while browsing.', toggle('layout.stickyTopbar', value.stickyTopbar, { label: 'Sticky compact top bar' }))}
         ${row('Show quick command button', 'Keep the Focus control beside Get KICKs in Kick’s top header.', toggle('layout.quickButton', value.quickButton, { label: 'Show quick command button' }))}
         ${row('Move mini-player clear of controls', 'Raise Kick’s embedded mini-player only when the Focus control has to use its floating fallback.', toggle('layout.miniPlayerCollision', value.miniPlayerCollision, { label: 'Move mini-player clear of controls' }))}
@@ -6093,7 +6093,7 @@ function createSettings(host) {
     const changed = countChangedStickers(state.stickerPreferences.library);
     const observed = inventory
       ? (inventory.quantityKnown
-        ? trf('Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord} — {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.', {
+        ? trf('Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord}. That is {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.', {
           copies: inventory.copies,
           copiesWord: plural(inventory.copies, 'collectible', 'collectibles'),
           distinct: inventory.distinct,
@@ -6102,14 +6102,14 @@ function createSettings(host) {
           duplicatesWord: plural(inventory.duplicates, 'duplicate', 'duplicates'),
           rate: Math.round(inventory.duplicateRate * 100),
         })
-        : trf('Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.', {
+        : trf('Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it. That number is unavailable rather than zero.', {
           distinct: inventory.distinct,
           distinctWord: plural(inventory.distinct, 'collectible', 'collectibles'),
         }))
       : 'Open a channel with collectibles while signed in to read your own inventory. Nothing is fetched otherwise.';
     return `
       <div class="kf-panel">
-        <div class="kf-action-row"><div><h3>What Kick does not explain</h3><p>${escapeHtml(observed)}${changed ? ` ${changed} ${plural(changed, 'recorded emote has been changed by Kick since first capture — see the Changed by Kick filter in the library below.', 'recorded emotes have been changed by Kick since first capture — see the Changed by Kick filter in the library below.')}` : ''}</p></div></div>
+        <div class="kf-action-row"><div><h3>What Kick does not explain</h3><p>${escapeHtml(observed)}${changed ? ` ${changed} ${plural(changed, 'recorded emote has been changed by Kick since first capture. See the Changed by Kick filter in the library below.', 'recorded emotes have been changed by Kick since first capture. See the Changed by Kick filter in the library below.')}` : ''}</p></div></div>
         <dl class="kf-fact-list">${COLLECTIBLE_FACTS.map((fact) => `<div class="kf-fact"><dt>${escapeHtml(fact.claim)}</dt><dd>${escapeHtml(fact.detail)}</dd></div>`).join('')}</dl>
       </div>`;
   }
@@ -6133,8 +6133,8 @@ function createSettings(host) {
           ${row('Freeze animated emotes', 'Render animated emotes and collectibles as a single static frame, in chat and in the picker. Applied automatically when your system asks for reduced motion.', toggle('content.staticEmotes', value.staticEmotes, { label: 'Freeze animated emotes' }))}
         </div>
         ${renderCollectiblePanel()}
-        ${rarity ? `<div class="kf-panel"><div class="kf-action-row"><div><h3>Collectible rarity</h3><p>Resolved ${rarity.matched.length} of ${rarity.total} collectible emotes. ${rarity.unmatched.length ? `${rarity.unmatched.length} could not be matched confidently and are shown without a rarity — a wrong label is worse than none.` : 'Every collectible in this channel was matched.'}</p></div></div></div>` : ''}
-        ${collisions.length ? `<div class="kf-panel"><div class="kf-action-row"><div class="kf-shadow-warning"><h3>Shadowed emote names</h3><p>These names exist in more than one of your sets. Kick sends the last one loaded, so typing the name may not send what you expect.</p>${collisions.slice(0, 12).map((collision) => `<p><code>${escapeHtml(collision.name)}</code> — sends <strong>${escapeHtml(collision.winner.setName)}</strong>, shadowing ${escapeHtml(collision.shadowed.map((entry) => entry.setName).join(', '))}</p>`).join('')}${collisions.length > 12 ? `<p>…and ${collisions.length - 12} more.</p>` : ''}</div></div></div>` : ''}
+        ${rarity ? `<div class="kf-panel"><div class="kf-action-row"><div><h3>Collectible rarity</h3><p>Resolved ${rarity.matched.length} of ${rarity.total} collectible emotes. ${rarity.unmatched.length ? `${rarity.unmatched.length} could not be matched confidently and are shown without a rarity. A wrong label is worse than none.` : 'Every collectible in this channel was matched.'}</p></div></div></div>` : ''}
+        ${collisions.length ? `<div class="kf-panel"><div class="kf-action-row"><div class="kf-shadow-warning"><h3>Shadowed emote names</h3><p>These names exist in more than one of your sets. Kick sends the last one loaded, so typing the name may not send what you expect.</p>${collisions.slice(0, 12).map((collision) => `<p><code>${escapeHtml(collision.name)}</code> sends <strong>${escapeHtml(collision.winner.setName)}</strong>, shadowing ${escapeHtml(collision.shadowed.map((entry) => entry.setName).join(', '))}</p>`).join('')}${collisions.length > 12 ? `<p>…and ${collisions.length - 12} more.</p>` : ''}</div></div></div>` : ''}
       </section>`;
   }
 
@@ -6180,10 +6180,10 @@ function createSettings(host) {
       <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Playback & chat</h3><p>Local playback memory, chat control, emotes, and diagnostics.</p></div></div><div class="kf-panel">
           ${row('Remember volume locally', 'Restore each channel’s volume and mute state from local storage.', toggle('content.rememberVolume', value.rememberVolume, { label: 'Remember volume locally' }))}
           ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
-          ${row('Always start at the highest quality', 'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.', toggle('content.preferBestQuality', value.preferBestQuality, { label: 'Always start at the highest quality' }))}
+          ${row('Always start at the highest quality', 'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once. It will not open it for you.', toggle('content.preferBestQuality', value.preferBestQuality, { label: 'Always start at the highest quality' }))}
           ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
-          ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.', toggle('content.showUptime', value.showUptime, { label: 'Show stream uptime' }))}
-          ${row('Show how long Kick keeps this recording', 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.', toggle('content.showVodExpiry', value.showVodExpiry, { label: 'Show VOD expiry' }))}
+          ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner, with no extra request and no polling.', toggle('content.showUptime', value.showUptime, { label: 'Show stream uptime' }))}
+          ${row('Show how long Kick keeps this recording', 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established. A guess between 7 and 30 days would be a confident wrong date.', toggle('content.showVodExpiry', value.showVodExpiry, { label: 'Show VOD expiry' }))}
           ${row('Pause chat updates', 'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
           ${row('Show message times', 'Reveals the timestamp Kick already renders on every message and keeps hidden. It is Kick’s own value, so scrolling back shows when a message was sent rather than when this build first saw it.', toggle('content.chatTimestamps', value.chatTimestamps, { label: 'Show message times' }))}
           ${row('People worth noticing', 'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.', `<input class="kf-text" type="text" data-set="content.chatPriorityPeople" value="${escapeHtml((value.chatPriorityPeople || []).join(', '))}" placeholder="name, name" aria-label="People worth noticing">`)}
@@ -6201,14 +6201,14 @@ function createSettings(host) {
           </div>` : ''}
           ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
           ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
-          ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
-          ${row('Suggest emotes as you type', 'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured — and it never sends the message.', toggle('content.emoteAutocomplete', value.emoteAutocomplete, { label: 'Suggest emotes as you type' }))}
-          ${row('Claim the daily reward automatically', 'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only — the reward button does not exist otherwise.', toggle('content.autoClaimRewards', value.autoClaimRewards, { label: 'Claim the daily reward automatically' }))}
+          ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops. Never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
+          ${row('Suggest emotes as you type', 'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured, and it never sends the message.', toggle('content.emoteAutocomplete', value.emoteAutocomplete, { label: 'Suggest emotes as you type' }))}
+          ${row('Claim the daily reward automatically', 'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only, because the reward button does not exist otherwise.', toggle('content.autoClaimRewards', value.autoClaimRewards, { label: 'Claim the daily reward automatically' }))}
           <p class="kf-hint" data-kf-reward-status>${escapeHtml(rewardStatusSummary())}</p>
           ${row('New favorites apply to', 'Global favorites follow you everywhere. Per-channel favorites appear only on the channel you saved them from, above your global ones. Existing favorites are global and are not moved.', segmented('content.favoriteScope', value.favoriteScope, [['global', 'Everywhere'], ['channel', 'This channel']]))}
           ${row('Highlight chat keywords', 'Use the per-channel keyword list below without sending it anywhere.', toggle('content.chatHighlights', value.chatHighlights, { label: 'Highlight chat keywords' }))}
           ${row('Show playback diagnostics', 'Show ready state, buffered seconds, and dropped-frame counts on a channel.', toggle('content.playbackDiagnostics', value.playbackDiagnostics, { label: 'Show playback diagnostics' }))}
-          ${row('Start playback without waiting for blocked ad scripts', 'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them — which this build does — leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.', toggle('content.fixPlayerLoading', value.fixPlayerLoading, { label: 'Start playback without waiting for blocked ad scripts' }))}
+          ${row('Start playback without waiting for blocked ad scripts', 'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them, which this build does, leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.', toggle('content.fixPlayerLoading', value.fixPlayerLoading, { label: 'Start playback without waiting for blocked ad scripts' }))}
         </div>
       </section>
       ${renderLiveDataSection(value)}
@@ -7281,7 +7281,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              840332') || 0;
+const BUNDLE_BYTES = Number('              840338') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -9128,7 +9128,7 @@ function handleCardAction(event) {
       return;
     }
     const total = result.streams.length;
-    showToast(`${result.added ? 'Added' : 'Removed'} ${result.slug} — ${total} of ${MULTISTREAM_MAX}`, false, [
+    showToast(`${result.added ? 'Added' : 'Removed'} ${result.slug} (${total} of ${MULTISTREAM_MAX})`, false, [
       { label: 'View', onClick: () => openMultistream() },
       { label: 'Undo', onClick: () => { toggleMultistreamSlug(result.slug); } },
     ]);
@@ -12773,7 +12773,7 @@ const UI_CSS = `
   /* A paused grid still shows which channels it holds, so the layout reads as
      intact rather than empty. */
   .kf-ms-backdrop[data-kf-multistream-paused="true"] .kf-ms-tile::after {
-    content: attr(data-kf-multistream-tile) " — paused";
+    content: attr(data-kf-multistream-tile) " (paused)";
     position: absolute;
     inset: 0;
     display: grid;
@@ -13151,7 +13151,7 @@ const TRANSLATIONS = {
     'Show Following rail': 'Mostrar barra de seguidos',
     'Show Recommended rail': 'Mostrar barra recomendada',
     'Hide Kick’s own controls': 'Ocultar los controles propios de Kick',
-    'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only — nothing is clicked or removed, and turning it back on restores it immediately.': 'Desactiva los botones del reproductor y las entradas de la barra lateral que nunca usas. Cada uno se oculta solo con estilos: no se pulsa ni se elimina nada, y al reactivarlo vuelve de inmediato.',
+    'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only. Nothing is clicked or removed, and turning it back on restores it immediately.': 'Desactiva los botones del reproductor y las entradas de la barra lateral que nunca usas. Cada uno se oculta solo con estilos: no se pulsa ni se elimina nada, y al reactivarlo vuelve de inmediato.',
     'Player controls': 'Controles del reproductor',
     'Sidebar': 'Barra lateral',
     'Miniplayer': 'Minirreproductor',
@@ -13344,7 +13344,7 @@ const TRANSLATIONS = {
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta los módulos claramente marcados como promociones de Drops y apuestas.',
     'Poor mode': 'Modo sin gastos',
     'Show how long the stream has been live': 'Mostrar cuánto tiempo lleva en directo',
-    'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
+    'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner, with no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
     'Show stream uptime': 'Mostrar tiempo en directo',
     'Pop out chat': 'Chat en ventana flotante',
     'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Puntos del canal: Kick indica que la imagen en imagen y la visualización reflejada no acumulan puntos. Mantén abierto un reproductor normal de Kick cuando el progreso importe.',
@@ -13359,7 +13359,7 @@ const TRANSLATIONS = {
     'Chat for {channel} opened in a floating window': 'El chat de {channel} se ha abierto en una ventana flotante',
     'Show VOD expiry': 'Mostrar caducidad del vídeo',
     'Show how long Kick keeps this recording': 'Mostrar cuánto tiempo conserva Kick esta grabación',
-    'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'Kick borra las grabaciones a los 7 días, o a los 30 si el canal está verificado, y no muestra ese plazo en ninguna parte. En la página de un vídeo, esto lee la fecha de grabación de la propia lista de vídeos de Kick y cuenta atrás hasta ella. No dice nada cuando la grabación es más antigua que la lista que devuelve Kick, o cuando no se puede establecer el nivel: adivinar entre 7 y 30 días sería dar una fecha equivocada con total seguridad.',
+    'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established. A guess between 7 and 30 days would be a confident wrong date.': 'Kick borra las grabaciones a los 7 días, o a los 30 si el canal está verificado, y no muestra ese plazo en ninguna parte. En la página de un vídeo, esto lee la fecha de grabación de la propia lista de vídeos de Kick y cuenta atrás hasta ella. No dice nada cuando la grabación es más antigua que la lista que devuelve Kick, o cuando no se puede establecer el nivel: adivinar entre 7 y 30 días sería dar una fecha equivocada con total seguridad.',
     '{time} before Kick deletes this recording': '{time} antes de que Kick borre esta grabación',
     'Live for {duration}': 'En directo desde hace {duration}',
     '{count} emotes usable in any chat': '{count} emotes utilizables en cualquier chat',
@@ -13397,7 +13397,7 @@ const TRANSLATIONS = {
     'Remember quality locally': 'Recordar la calidad localmente',
     'Restore a matching quality control when Kick exposes one.': 'Restaura el control de calidad correspondiente cuando Kick lo ofrece.',
     'Always start at the highest quality': 'Empezar siempre en la calidad más alta',
-    'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.': 'Abre cada directo en la mejor opción que ofrezca Kick, con prioridad sobre la calidad recordada. Las opciones se aprenden del propio menú de calidad de Kick, así que no hace nada hasta que ese menú se haya abierto una vez: no lo abrirá por ti.',
+    'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once. It will not open it for you.': 'Abre cada directo en la mejor opción que ofrezca Kick, con prioridad sobre la calidad recordada. Las opciones se aprenden del propio menú de calidad de Kick, así que no hace nada hasta que ese menú se haya abierto una vez: no lo abrirá por ti.',
     'Remember VOD position locally': 'Recordar la posición del VOD localmente',
     'Resume finite VODs from the last local playback position.': 'Reanuda los VOD finitos desde la última posición de reproducción local.',
     'Pause chat updates': 'Pausar las actualizaciones del chat',
@@ -13417,7 +13417,7 @@ const TRANSLATIONS = {
     'Show playback diagnostics': 'Mostrar diagnósticos de reproducción',
     'Show ready state, buffered seconds, and dropped-frame counts on a channel.': 'Muestra el estado de preparación, los segundos en búfer y los fotogramas perdidos en un canal.',
     'Start playback without waiting for blocked ad scripts': 'Iniciar la reproducción sin esperar a los scripts de anuncios bloqueados',
-    'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them — which this build does — leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.': 'Kick espera a Google PAL, Datazoom y OM antes de pedir la reproducción. Bloquearlos —lo que hace esta versión— deja el script muerto en la página y el reproductor agota todo el tiempo de espera. Quitarlo permite que la reproducción empiece de inmediato.',
+    'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them, which this build does, leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.': 'Kick espera a Google PAL, Datazoom y OM antes de pedir la reproducción. Bloquearlos, lo que hace esta versión, deja el script muerto en la página y el reproductor agota todo el tiempo de espera. Quitarlo permite que la reproducción empiece de inmediato.',
     'Minimize non-essential animations and transitions.': 'Minimiza las animaciones y transiciones no esenciales.',
     'Increase separation for controls, borders, and surfaces.': 'Aumenta la separación de controles, bordes y superficies.',
     'Keep a strong outline for keyboard navigation.': 'Mantiene un contorno marcado para la navegación con teclado.',
@@ -13487,7 +13487,7 @@ const TRANSLATIONS = {
     'Poor mode saved': 'Modo Pobre guardado',
     'No import to undo.': 'No hay ninguna importación que deshacer.',
     'The backup could not be restored.': 'No se pudo restaurar la copia de seguridad.',
-    'Import undone — your previous settings are back.': 'Importación deshecha: tu configuración anterior está de vuelta.',
+    'Import undone. Your previous settings are back.': 'Importación deshecha: tu configuración anterior está de vuelta.',
     'Kick Focus restored.': 'Kick Focus restaurado.',
     'Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.': 'Kick Focus en pausa. Usa el botón Reanudar o Ctrl+Mayús+F para restaurarlo.',
     'Emote changes reset': 'Cambios de emotes restablecidos',
@@ -13552,8 +13552,8 @@ const TRANSLATIONS = {
     'Core ad protection is on': 'La protección principal contra anuncios está activada',
     'Suppress promoted cards': 'Ocultar las tarjetas promocionadas',
     'Hide Slots and Casino content': 'Ocultar el contenido de Slots y Casino',
-    'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord} — {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Tu inventario tiene {copies} {copiesWord} repartidos en {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, es decir, el {rate}% de lo que has conseguido.',
-    'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.': 'Tu inventario tiene {distinct} {distinctWord} distintos. La respuesta de Kick no incluye la cantidad por artículo, así que no se puede medir una tasa de duplicados a partir de ella: ese número no está disponible, no es cero.',
+    'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord}. That is {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Tu inventario tiene {copies} {copiesWord} repartidos en {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, es decir, el {rate}% de lo que has conseguido.',
+    'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it. That number is unavailable rather than zero.': 'Tu inventario tiene {distinct} {distinctWord} distintos. La respuesta de Kick no incluye la cantidad por artículo, así que no se puede medir una tasa de duplicados a partir de ella: ese número no está disponible, no es cero.',
     'emote name shadowed.': 'nombre de emote duplicado.',
     'emote names shadowed.': 'nombres de emote duplicados.',
     'result loaded': 'resultado cargado',
@@ -13568,8 +13568,8 @@ const TRANSLATIONS = {
     'items': 'artículos',
     'duplicate': 'duplicado',
     'duplicates': 'duplicados',
-    'recorded emote has been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emote registrado ha sido modificado por Kick desde su primera captura: consulta el filtro Modificados por Kick en la biblioteca de abajo.',
-    'recorded emotes have been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emotes registrados han sido modificados por Kick desde su primera captura: consulta el filtro Modificados por Kick en la biblioteca de abajo.',
+    'recorded emote has been changed by Kick since first capture. See the Changed by Kick filter in the library below.': 'emote registrado ha sido modificado por Kick desde su primera captura: consulta el filtro Modificados por Kick en la biblioteca de abajo.',
+    'recorded emotes have been changed by Kick since first capture. See the Changed by Kick filter in the library below.': 'emotes registrados han sido modificados por Kick desde su primera captura: consulta el filtro Modificados por Kick en la biblioteca de abajo.',
     'channel hidden. These count toward the fail-open ceiling.': 'canal oculto. Cuenta para el límite de seguridad.',
     'channels hidden. These count toward the fail-open ceiling.': 'canales ocultos. Cuentan para el límite de seguridad.',
     'channel': 'canal',
@@ -13579,18 +13579,18 @@ const TRANSLATIONS = {
     'time': 'vez',
     'times': 'veces',
     'Claim the daily reward automatically': 'Reclamar la recompensa diaria automáticamente',
-    'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only — the reward button does not exist otherwise.': 'Abre el propio diálogo de recompensa de Kick cuando hay una esperando y pulsa su botón de reclamar por ti. No pulsa nada más: una recompensa que Kick aún no ha desbloqueado muestra un botón desactivado, y esto lo deja en paz en lugar de intentarlo. Espera a que no estés escribiendo, comprueba como mucho cada diez minutos y se detiene por hoy en cuanto reclama. Solo con sesión iniciada: el botón de recompensa no existe de otro modo.',
+    'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only, because the reward button does not exist otherwise.': 'Abre el propio diálogo de recompensa de Kick cuando hay una esperando y pulsa su botón de reclamar por ti. No pulsa nada más: una recompensa que Kick aún no ha desbloqueado muestra un botón desactivado, y esto lo deja en paz en lugar de intentarlo. Espera a que no estés escribiendo, comprueba como mucho cada diez minutos y se detiene por hoy en cuanto reclama. Solo con sesión iniciada: el botón de recompensa no existe de otro modo.',
     'Daily reward claimed. It is in your collectibles.': 'Recompensa diaria reclamada. Está en tus coleccionables.',
     'Daily reward claimed.': 'Recompensa diaria reclamada.',
     'Add open tabs ({count})': 'Añadir pestañas abiertas ({count})',
-    'Added {count} from your other tabs — {total} of {max}': 'Se añadieron {count} de tus otras pestañas: {total} de {max}',
+    'Added {count} from your other tabs ({total} of {max})': 'Se añadieron {count} de tus otras pestañas: {total} de {max}',
     'Added {count} channels from your other tabs.': 'Se añadieron {count} canales de tus otras pestañas.',
     'Apply cycle cost': 'Coste del ciclo de aplicación',
     'No apply cycle has run yet.': 'Aún no se ha ejecutado ningún ciclo de aplicación.',
     'Type an emote name into chat': 'Escribir el nombre de un emote en el chat',
     'Suggest emotes as you type': 'Sugerir emotes mientras escribes',
-    'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured — and it never sends the message.': 'Al escribir dos puntos y dos o más letras en el chat se ofrecen emotes de tu biblioteca, ordenados según lo que realmente envías aquí. Haz clic en uno para poner su nombre simple en el cursor. Las sugerencias se eligen con el ratón, nunca con una tecla, así que nada de lo que escribes queda capturado, y nunca envía el mensaje.',
-    'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Añade una acción Escribir en el chat junto a Copiar nombre en la biblioteca de emotes. Escribe solo el nombre en la posición del cursor y se detiene ahí: nunca el código interno, nunca un id, y nunca envía el mensaje.',
+    'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured, and it never sends the message.': 'Al escribir dos puntos y dos o más letras en el chat se ofrecen emotes de tu biblioteca, ordenados según lo que realmente envías aquí. Haz clic en uno para poner su nombre simple en el cursor. Las sugerencias se eligen con el ratón, nunca con una tecla, así que nada de lo que escribes queda capturado, y nunca envía el mensaje.',
+    'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops. Never the wire token, never an id, and it never sends the message.': 'Añade una acción Escribir en el chat junto a Copiar nombre en la biblioteca de emotes. Escribe solo el nombre en la posición del cursor y se detiene ahí: nunca el código interno, nunca un id, y nunca envía el mensaje.',
     'That emote has no plain name to copy.': 'Ese emote no tiene un nombre simple que copiar.',
     'That emote has no plain name to type.': 'Ese emote no tiene un nombre simple que escribir.',
     'Open a channel chat first.': 'Abre primero el chat de un canal.',
@@ -13598,9 +13598,9 @@ const TRANSLATIONS = {
     'Seen available': 'Visto como disponible',
     'Seen in chat': 'Visto en el chat',
     'Click to save': 'Haz clic para guardar',
-    'Saved — click to open in the library': 'Guardado: haz clic para abrirlo en la biblioteca',
+    'Saved. Click to open in the library': 'Guardado: haz clic para abrirlo en la biblioteca',
     'Name shadowed by another set': 'Nombre eclipsado por otro conjunto',
-    'No streams yet — add a channel to start.': 'Aún no hay transmisiones: añade un canal para empezar.',
+    'No streams yet. Add a channel to start.': 'Aún no hay transmisiones: añade un canal para empezar.',
     '{count} of {max} streams': '{count} de {max} transmisiones',
   },
   pt: {
@@ -13799,7 +13799,7 @@ const TRANSLATIONS = {
     'Show Following rail': 'Mostrar barra de Seguindo',
     'Show Recommended rail': 'Mostrar barra de Recomendados',
     'Hide Kick’s own controls': 'Ocultar os controles do próprio Kick',
-    'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only — nothing is clicked or removed, and turning it back on restores it immediately.': 'Desative os botões do player e os itens da barra lateral que você nunca usa. Cada um é ocultado apenas por estilo: nada é clicado ou removido, e ao reativar ele volta imediatamente.',
+    'Switch off the player buttons and sidebar entries you never use. Each one is hidden with styling only. Nothing is clicked or removed, and turning it back on restores it immediately.': 'Desative os botões do player e os itens da barra lateral que você nunca usa. Cada um é ocultado apenas por estilo: nada é clicado ou removido, e ao reativar ele volta imediatamente.',
     'Player controls': 'Controles do player',
     'Sidebar': 'Barra lateral',
     'Miniplayer': 'Minirreprodutor',
@@ -13993,7 +13993,7 @@ const TRANSLATIONS = {
     'Hide clearly labeled Drops and gambling promotion modules.': 'Oculta os módulos claramente marcados como promoções de Drops e apostas.',
     'Poor mode': 'Modo sem gastos',
     'Show how long the stream has been live': 'Mostrar há quanto tempo a transmissão está ao vivo',
-    'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner — no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player — sem requisições extras e sem sondagem.',
+    'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner, with no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player, sem requisições extras e sem sondagem.',
     'Show stream uptime': 'Mostrar tempo ao vivo',
     'Pop out chat': 'Chat em janela flutuante',
     'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Pontos do canal: o Kick informa que Picture-in-Picture e visualização espelhada não acumulam pontos. Mantenha um player normal do Kick aberto quando o progresso for importante.',
@@ -14008,7 +14008,7 @@ const TRANSLATIONS = {
     'Chat for {channel} opened in a floating window': 'O chat de {channel} abriu numa janela flutuante',
     'Show VOD expiry': 'Mostrar validade do vídeo',
     'Show how long Kick keeps this recording': 'Mostrar por quanto tempo a Kick guarda esta gravação',
-    'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established — a guess between 7 and 30 days would be a confident wrong date.': 'A Kick apaga as gravações ao fim de 7 dias, ou 30 num canal verificado, e não mostra esse prazo em lado nenhum. Na página de um vídeo, isto lê a data da gravação da própria lista de vídeos da Kick e faz a contagem decrescente até lá. Não diz nada quando a gravação é mais antiga do que a lista que a Kick devolve, ou quando o nível não pode ser estabelecido — adivinhar entre 7 e 30 dias seria dar uma data errada com toda a confiança.',
+    'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established. A guess between 7 and 30 days would be a confident wrong date.': 'A Kick apaga as gravações ao fim de 7 dias, ou 30 num canal verificado, e não mostra esse prazo em lado nenhum. Na página de um vídeo, isto lê a data da gravação da própria lista de vídeos da Kick e faz a contagem decrescente até lá. Não diz nada quando a gravação é mais antiga do que a lista que a Kick devolve, ou quando o nível não pode ser estabelecido. Adivinhar entre 7 e 30 dias seria dar uma data errada com toda a confiança.',
     '{time} before Kick deletes this recording': '{time} antes de a Kick apagar esta gravação',
     'Live for {duration}': 'Ao vivo há {duration}',
     '{count} emotes usable in any chat': '{count} emotes utilizáveis em qualquer chat',
@@ -14046,7 +14046,7 @@ const TRANSLATIONS = {
     'Remember quality locally': 'Lembrar a qualidade localmente',
     'Restore a matching quality control when Kick exposes one.': 'Restaura o controle de qualidade correspondente quando o Kick o oferece.',
     'Always start at the highest quality': 'Sempre começar na qualidade mais alta',
-    'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once — it will not open it for you.': 'Abre cada transmissão na melhor opção que o Kick oferecer, com prioridade sobre a qualidade lembrada. As opções são aprendidas do próprio menu de qualidade do Kick, então isso não faz nada até que esse menu seja aberto uma vez: ele não será aberto para você.',
+    'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once. It will not open it for you.': 'Abre cada transmissão na melhor opção que o Kick oferecer, com prioridade sobre a qualidade lembrada. As opções são aprendidas do próprio menu de qualidade do Kick, então isso não faz nada até que esse menu seja aberto uma vez: ele não será aberto para você.',
     'Remember VOD position locally': 'Lembrar a posição do VOD localmente',
     'Resume finite VODs from the last local playback position.': 'Retoma os VODs finitos a partir da última posição de reprodução local.',
     'Pause chat updates': 'Pausar as atualizações do chat',
@@ -14066,7 +14066,7 @@ const TRANSLATIONS = {
     'Show playback diagnostics': 'Mostrar diagnósticos de reprodução',
     'Show ready state, buffered seconds, and dropped-frame counts on a channel.': 'Mostra o estado de prontidão, os segundos em buffer e os quadros perdidos em um canal.',
     'Start playback without waiting for blocked ad scripts': 'Iniciar a reprodução sem esperar pelos scripts de anúncios bloqueados',
-    'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them — which this build does — leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.': 'O Kick espera por Google PAL, Datazoom e OM antes de solicitar a reprodução. Bloqueá-los — o que esta versão faz — deixa o script morto na página e o player aguarda todo o tempo limite. Removê-lo faz a reprodução começar imediatamente.',
+    'Kick waits on Google PAL, Datazoom, and OM before requesting playback. Blocking them, which this build does, leaves the dead script in the page and the player waits out the full timeout. Removing it lets playback start immediately.': 'O Kick espera por Google PAL, Datazoom e OM antes de solicitar a reprodução. Bloqueá-los, o que esta versão faz, deixa o script morto na página e o player aguarda todo o tempo limite. Removê-lo faz a reprodução começar imediatamente.',
     'Minimize non-essential animations and transitions.': 'Minimiza as animações e transições não essenciais.',
     'Increase separation for controls, borders, and surfaces.': 'Aumenta a separação de controles, bordas e superfícies.',
     'Keep a strong outline for keyboard navigation.': 'Mantém um contorno forte para a navegação por teclado.',
@@ -14135,7 +14135,7 @@ const TRANSLATIONS = {
     'Poor mode saved': 'Modo Pobre salvo',
     'No import to undo.': 'Não há importação para desfazer.',
     'The backup could not be restored.': 'Não foi possível restaurar o backup.',
-    'Import undone — your previous settings are back.': 'Importação desfeita: suas configurações anteriores voltaram.',
+    'Import undone. Your previous settings are back.': 'Importação desfeita: suas configurações anteriores voltaram.',
     'Kick Focus restored.': 'Kick Focus restaurado.',
     'Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.': 'Kick Focus pausado. Use o botão Retomar ou Ctrl+Shift+F para restaurar.',
     'Emote changes reset': 'Alterações de emotes redefinidas',
@@ -14200,8 +14200,8 @@ const TRANSLATIONS = {
     'Core ad protection is on': 'A proteção principal contra anúncios está ativada',
     'Suppress promoted cards': 'Ocultar os cards promovidos',
     'Hide Slots and Casino content': 'Ocultar o conteúdo de Slots e Cassino',
-    'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord} — {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Seu inventário tem {copies} {copiesWord} distribuídos em {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, ou seja, {rate}% do que você já obteve.',
-    'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it — that number is unavailable rather than zero.': 'Seu inventário tem {distinct} {distinctWord} distintos. A resposta do Kick não traz a quantidade por item, então não é possível medir uma taxa de duplicatas a partir dela: esse número está indisponível, não é zero.',
+    'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord}. That is {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Seu inventário tem {copies} {copiesWord} distribuídos em {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, ou seja, {rate}% do que você já obteve.',
+    'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it. That number is unavailable rather than zero.': 'Seu inventário tem {distinct} {distinctWord} distintos. A resposta do Kick não traz a quantidade por item, então não é possível medir uma taxa de duplicatas a partir dela: esse número está indisponível, não é zero.',
     'emote name shadowed.': 'nome de emote duplicado.',
     'emote names shadowed.': 'nomes de emote duplicados.',
     'result loaded': 'resultado carregado',
@@ -14216,8 +14216,8 @@ const TRANSLATIONS = {
     'items': 'itens',
     'duplicate': 'duplicata',
     'duplicates': 'duplicatas',
-    'recorded emote has been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emote registrado foi alterado pelo Kick desde a primeira captura: veja o filtro Alterados pelo Kick na biblioteca abaixo.',
-    'recorded emotes have been changed by Kick since first capture — see the Changed by Kick filter in the library below.': 'emotes registrados foram alterados pelo Kick desde a primeira captura: veja o filtro Alterados pelo Kick na biblioteca abaixo.',
+    'recorded emote has been changed by Kick since first capture. See the Changed by Kick filter in the library below.': 'emote registrado foi alterado pelo Kick desde a primeira captura: veja o filtro Alterados pelo Kick na biblioteca abaixo.',
+    'recorded emotes have been changed by Kick since first capture. See the Changed by Kick filter in the library below.': 'emotes registrados foram alterados pelo Kick desde a primeira captura: veja o filtro Alterados pelo Kick na biblioteca abaixo.',
     'channel hidden. These count toward the fail-open ceiling.': 'canal oculto. Ele conta para o limite de segurança.',
     'channels hidden. These count toward the fail-open ceiling.': 'canais ocultos. Eles contam para o limite de segurança.',
     'channel': 'canal',
@@ -14227,18 +14227,18 @@ const TRANSLATIONS = {
     'time': 'vez',
     'times': 'vezes',
     'Claim the daily reward automatically': 'Reivindicar a recompensa diária automaticamente',
-    'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only — the reward button does not exist otherwise.': 'Abre o próprio diálogo de recompensa da Kick quando há uma à espera e clica no botão de reivindicar por você. Não clica em mais nada: uma recompensa que a Kick ainda não liberou mostra um botão desativado, e isto deixa-o em paz em vez de tentar. Espera até você não estar digitando, verifica no máximo a cada dez minutos e para por hoje assim que reivindica. Apenas com sessão iniciada — o botão de recompensa não existe de outra forma.',
+    'Opens Kick’s own reward dialog when one is waiting and clicks its claim button for you. It clicks nothing else: a reward Kick has not unlocked yet shows a disabled button, and this leaves it alone rather than trying. It waits until you are not typing, checks at most every ten minutes, and stops for the day once it claims. Signed-in only, because the reward button does not exist otherwise.': 'Abre o próprio diálogo de recompensa da Kick quando há uma à espera e clica no botão de reivindicar por você. Não clica em mais nada: uma recompensa que a Kick ainda não liberou mostra um botão desativado, e isto deixa-o em paz em vez de tentar. Espera até você não estar digitando, verifica no máximo a cada dez minutos e para por hoje assim que reivindica. Apenas com sessão iniciada, porque o botão de recompensa não existe de outra forma.',
     'Daily reward claimed. It is in your collectibles.': 'Recompensa diária reivindicada. Está nos seus colecionáveis.',
     'Daily reward claimed.': 'Recompensa diária reivindicada.',
     'Add open tabs ({count})': 'Adicionar abas abertas ({count})',
-    'Added {count} from your other tabs — {total} of {max}': 'Foram adicionados {count} das suas outras abas: {total} de {max}',
+    'Added {count} from your other tabs ({total} of {max})': 'Foram adicionados {count} das suas outras abas: {total} de {max}',
     'Added {count} channels from your other tabs.': 'Foram adicionados {count} canais das suas outras abas.',
     'Apply cycle cost': 'Custo do ciclo de aplicação',
     'No apply cycle has run yet.': 'Nenhum ciclo de aplicação foi executado ainda.',
     'Type an emote name into chat': 'Digitar o nome de um emote no chat',
     'Suggest emotes as you type': 'Sugerir emotes enquanto você digita',
-    'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured — and it never sends the message.': 'Digitar dois-pontos e duas ou mais letras no chat oferece emotes da sua biblioteca, ordenados pelo que você realmente envia aqui. Clique em um para colocar o nome simples no seu cursor. As sugestões são escolhidas com o mouse, nunca aceitas com uma tecla, então nada do que você digita é capturado — e nunca envia a mensagem.',
-    'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops — never the wire token, never an id, and it never sends the message.': 'Adiciona uma ação Digitar no chat ao lado de Copiar nome na biblioteca de emotes. Digita apenas o nome na posição do cursor e para por aí: nunca o código interno, nunca um id, e nunca envia a mensagem.',
+    'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured, and it never sends the message.': 'Digitar dois-pontos e duas ou mais letras no chat oferece emotes da sua biblioteca, ordenados pelo que você realmente envia aqui. Clique em um para colocar o nome simples no seu cursor. As sugestões são escolhidas com o mouse, nunca aceitas com uma tecla, então nada do que você digita é capturado, e nunca envia a mensagem.',
+    'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops. Never the wire token, never an id, and it never sends the message.': 'Adiciona uma ação Digitar no chat ao lado de Copiar nome na biblioteca de emotes. Digita apenas o nome na posição do cursor e para por aí: nunca o código interno, nunca um id, e nunca envia a mensagem.',
     'That emote has no plain name to copy.': 'Esse emote não tem um nome simples para copiar.',
     'That emote has no plain name to type.': 'Esse emote não tem um nome simples para digitar.',
     'Open a channel chat first.': 'Abra primeiro o chat de um canal.',
@@ -14246,9 +14246,9 @@ const TRANSLATIONS = {
     'Seen available': 'Visto como disponível',
     'Seen in chat': 'Visto no chat',
     'Click to save': 'Clique para salvar',
-    'Saved — click to open in the library': 'Salvo: clique para abrir na biblioteca',
+    'Saved. Click to open in the library': 'Salvo: clique para abrir na biblioteca',
     'Name shadowed by another set': 'Nome ofuscado por outro conjunto',
-    'No streams yet — add a channel to start.': 'Ainda não há transmissões: adicione um canal para começar.',
+    'No streams yet. Add a channel to start.': 'Ainda não há transmissões: adicione um canal para começar.',
     '{count} of {max} streams': '{count} de {max} transmissões',
   },
 };
@@ -14684,7 +14684,7 @@ function lastCrashSummary() {
   const crash = state.diagnostics.lastCrash;
   if (!crash) return 'No crash recorded.';
   const when = crash.at ? new Date(crash.at).toISOString().slice(0, 19).replace('T', ' ') : 'unknown time';
-  return `Last: ${crash.context} — ${crash.message} (${when})`;
+  return `Last: ${crash.context}: ${crash.message} (${when})`;
 }
 
 function errorLogRows() {
@@ -15677,7 +15677,7 @@ function undoImport() {
   gmDelete(PRE_IMPORT_BACKUP_KEY);
   renderSettingsPage();
   scheduleApply(0);
-  showToast('Import undone — your previous settings are back.');
+  showToast('Import undone. Your previous settings are back.');
 }
 
 function libraryStickerFor(target) {
@@ -16033,7 +16033,7 @@ function rewardStatusSummary() {
   if (record.nextCheckAt > Date.now()) {
     parts.push(`Next check ${new Date(record.nextCheckAt).toLocaleString()}.`);
   } else if (!record.nextCheckAt) {
-    parts.push('No reward button has appeared yet — it only exists while you are signed in.');
+    parts.push('No reward button has appeared yet. It only exists while you are signed in.');
   }
   return parts.join(' ');
 }
@@ -16909,7 +16909,7 @@ function syncEarnedState(accessibleLabel) {
     if (button.dataset.kfEarned === kind) continue;
     if (kind) button.dataset.kfEarned = kind;
     else delete button.dataset.kfEarned;
-    button.setAttribute('aria-label', earned ? `${accessibleLabel} — ${tr(earned.label)}` : accessibleLabel);
+    button.setAttribute('aria-label', earned ? `${accessibleLabel}, ${tr(earned.label)}` : accessibleLabel);
   }
   const nav = state.shadow?.querySelector('[data-page="viewer"] [data-kf-nav-earned]');
   if (nav) nav.textContent = earned ? tr(earned.label) : '';

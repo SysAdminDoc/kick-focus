@@ -285,10 +285,10 @@ export const REALTIME_UNPARSABLE_LIMIT = 20;
 export function realtimeHealth({ lastFrameAt = 0, unparsable = 0, now = 0, connected = false }) {
   if (!connected) return { state: 'offline', healthy: false };
   if (unparsable >= REALTIME_UNPARSABLE_LIMIT) {
-    return { state: 'unparsable', healthy: false, detail: `${unparsable} consecutive frames could not be read — Kick's payload shape has probably changed.` };
+    return { state: 'unparsable', healthy: false, detail: `${unparsable} consecutive frames could not be read. Kick's payload shape has probably changed.` };
   }
   if (lastFrameAt && now - lastFrameAt > REALTIME_SILENCE_MS) {
-    return { state: 'stale', healthy: false, detail: `No events for ${Math.round((now - lastFrameAt) / 1000)}s — the socket reports open but is not delivering.` };
+    return { state: 'stale', healthy: false, detail: `No events for ${Math.round((now - lastFrameAt) / 1000)}s. The socket reports open but is not delivering.` };
   }
   return { state: 'live', healthy: true };
 }
@@ -1145,7 +1145,7 @@ export function summarizeCollectibleInventory(cards) {
 export const COLLECTIBLE_FACTS = Object.freeze([
   Object.freeze({
     claim: 'The daily streak does not improve what you get.',
-    detail: 'Kick support has stated the streak confers no bonus to drop quality or odds — it only tracks consecutive claims. Nothing in the collectibles response carries a streak multiplier either.',
+    detail: 'Kick support has stated the streak confers no bonus to drop quality or odds. It only tracks consecutive claims. Nothing in the collectibles response carries a streak multiplier either.',
   }),
   Object.freeze({
     claim: 'Kick does not publish drop odds.',

@@ -695,7 +695,7 @@ test('an emote insertion plan carries the plain name and never the wire token', 
   // Shadowed: name which emote a typed name actually sends.
   const shadowed = insertionPlanFor({ name: 'PogChamp' }, collisions, 'channel');
   assert.equal(shadowed.text, 'PogChamp');
-  assert.match(shadowed.warning, /shadows PogChamp — typing it sends bigchannel/);
+  assert.match(shadowed.warning, /shadows PogChamp\. Typing it sends bigchannel/);
   // A collision with no recorded winner still warns without inventing one.
   assert.match(insertionPlanFor({ name: 'PogChamp' }, [{ name: 'PogChamp' }], 'channel').warning, /may send a different emote/);
   // Locked outranks shadowed: "you cannot send this" is the more useful fact.
@@ -790,13 +790,13 @@ test('the chat emote hover card names the set, access, capture and shadowing win
     'First seen 2026-01-15',
     // Naming the winner is the point: "shadowed" alone does not say which
     // emote a typed name actually sends.
-    'Name shadowed — typing it sends bigchannel',
+    'Name shadowed. Typing it sends bigchannel',
     'Click to save',
   ]);
 
   // Already saved: the last line changes, so the card reports state rather than
   // offering an action that has already happened.
-  assert.equal(emoteTooltipText(entry, collisions, true).at(-1), 'Saved — click to open in the library');
+  assert.equal(emoteTooltipText(entry, collisions, true).at(-1), 'Saved. Click to open in the library');
 
   // A real Kick set name is kept alongside the access level.
   assert.equal(
@@ -3097,7 +3097,7 @@ test('the export is readable, names the channel, and carries only what was store
   assert.match(text, /1 messages/);
   assert.match(text, /ana: hello/);
   assert.equal(text.split('\n').length, 2);
-  assert.match(buildChatHistoryExport([], ''), /this session — 0 messages/);
+  assert.match(buildChatHistoryExport([], ''), /this session, 0 messages/);
 });
 
 test('a chat time is a local clock, and nothing at all for a time that is not one', { tag: 'unit' }, () => {

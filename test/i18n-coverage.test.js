@@ -116,7 +116,7 @@ async function collect(override = null) {
     // Route names on a saved view, reached through a lookup keyed by route.
     ...Object.values(DISCOVERY_ROUTE_LABELS),
     'Click to save',
-    'Saved — click to open in the library',
+    'Saved. Click to open in the library',
     'Name shadowed by another set',
     'No apply cycle has run yet.',
   ]);

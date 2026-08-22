@@ -965,7 +965,7 @@ export function createLive(host) {
     const via = state.live.provider
       ? ` via ${realtimeTransport(state.live.provider)?.label || state.live.provider}${state.live.providerVerified ? '' : ' (unverified transport)'}`
       : '';
-    parts.push(`Chat events: ${health.state}${via}${health.detail ? ` — ${health.detail}` : ''}`);
+    parts.push(`Chat events: ${health.state}${via}${health.detail ? `: ${health.detail}` : ''}`);
     if (state.live.rarity) parts.push(`Rarity resolved for ${state.live.rarity.matched.length} of ${state.live.rarity.total} collectibles.`);
     if (state.live.collisions.length) parts.push(`${state.live.collisions.length} ${plural(state.live.collisions.length, 'emote name shadowed.', 'emote names shadowed.')}`);
     if (state.live.catalogError) parts.push(state.live.catalogError);

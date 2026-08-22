@@ -370,7 +370,7 @@ test('the header toggle adds, removes, and offers an undo for each', { tag: 'uni
   surface.toggleCurrentChannelInMulti();
   assert.deepEqual(state.multistream.streams, ['alpha']);
   assert.equal(calls.headerSyncs, 1);
-  assert.match(calls.toasts.at(-1).message, /Added alpha — 1 of 9/);
+  assert.match(calls.toasts.at(-1).message, /Added alpha \(1 of 9\)/);
 
   // Undo removes it again, through the same merge-write path.
   calls.toasts.at(-1).actions.find((action) => action.label === 'Undo').onClick();

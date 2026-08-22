@@ -234,7 +234,7 @@ export function createMultistream(host) {
     const result = commitMultistream(offer, []);
     renderMultistream();
     renderPresenceOffer();
-    showToast(trf('Added {count} from your other tabs — {total} of {max}', {
+    showToast(trf('Added {count} from your other tabs ({total} of {max})', {
       count: offer.length, total: result.streams.length, max: MULTISTREAM_MAX,
     }));
     announce(trf('Added {count} channels from your other tabs.', { count: offer.length }));
@@ -862,7 +862,7 @@ export function createMultistream(host) {
       const result = commitMultistream([], [slug]);
       syncHeaderMultiState();
       renderMultistream();
-      showToast(`Removed ${slug} from Multi — ${result.streams.length} of ${MULTISTREAM_MAX}`, false, [
+      showToast(`Removed ${slug} from Multi (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
         { label: 'Undo', onClick: () => { commitMultistream([slug]); syncHeaderMultiState(); renderMultistream(); } },
       ]);
       announce(`Removed ${slug} from multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
@@ -876,7 +876,7 @@ export function createMultistream(host) {
     const result = commitMultistream([slug]);
     syncHeaderMultiState();
     renderMultistream();
-    showToast(`Added ${slug} — ${result.streams.length} of ${MULTISTREAM_MAX}`, false, [
+    showToast(`Added ${slug} (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
       { label: 'View', onClick: () => openMultistream() },
       { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(`Removed ${slug} from multi-stream.`); } },
     ]);

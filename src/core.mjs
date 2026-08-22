@@ -16,7 +16,7 @@ export const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze([]),
   }),
   '1.22.0': Object.freeze({
-    summary: 'Markup reaches the page through one checked path, and this notice exists — an update no longer changes how Kick Focus behaves without saying so.',
+    summary: 'Markup reaches the page through one checked path, and this notice exists, so an update no longer changes how Kick Focus behaves without saying so.',
     defaults: Object.freeze([]),
   }),
   '1.23.0': Object.freeze({
@@ -24,7 +24,7 @@ export const VERSION_NOTES = Object.freeze({
     defaults: Object.freeze(['Show how long Kick keeps this recording']),
   }),
   '1.24.0': Object.freeze({
-    summary: 'Drift detection now checks what a hook is for, not only that it matched — a stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
+    summary: 'Drift detection now checks what a hook is for, not only that it matched. A stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
     defaults: Object.freeze([]),
   }),
   '1.25.0': Object.freeze({
@@ -794,9 +794,9 @@ export function emoteTooltipText(entry, collisions = [], saved = false) {
     .find((item) => isRecord(item) && item.name === entry.name);
   if (collision) {
     const winner = isRecord(collision.winner) ? collision.winner.setName : '';
-    lines.push(winner ? `Name shadowed — typing it sends ${winner}` : 'Name shadowed by another set');
+    lines.push(winner ? `Name shadowed. Typing it sends ${winner}` : 'Name shadowed by another set');
   }
-  lines.push(saved ? 'Saved — click to open in the library' : 'Click to save');
+  lines.push(saved ? 'Saved. Click to open in the library' : 'Click to save');
   return lines;
 }
 
@@ -843,7 +843,7 @@ export function insertionPlanFor(descriptor, collisions = [], access = '') {
     ? `${name} is subscriber-only, so typing it will not send the emote.`
     : collision
       ? (winner
-        ? `Another set shadows ${name} — typing it sends ${winner}'s emote.`
+        ? `Another set shadows ${name}. Typing it sends ${winner}'s emote.`
         : `Another set shadows ${name}, so typing it may send a different emote.`)
       : '';
   return { ok: true, text: name, warning, sendable, reason: '' };
@@ -1516,7 +1516,7 @@ export function floatingPreviewPosition(anchor = {}, preview = {}, viewport = {}
  */
 export function buildChatHistoryExport(rows = [], channel = '') {
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
-  const header = `Kick Focus chat log — ${channel || 'this session'} — ${list.length} messages`;
+  const header = `Kick Focus chat log for ${channel || 'this session'}, ${list.length} messages`;
   const lines = list.map((row) => `[${formatChatTime(row.at)}] ${row.author || 'unknown'}: ${row.text}`);
   return [header, ...lines].join('\n');
 }
@@ -2401,7 +2401,7 @@ export function assessApiDrift(events = []) {
   }
   const entries = [...unique.values()];
   const summary = entries.map((e) =>
-    `${e.endpoint} — ${e.reason}${e.detail ? ` (${e.detail})` : ''}`
+    `${e.endpoint}: ${e.reason}${e.detail ? ` (${e.detail})` : ''}`
   ).join('; ');
   return {
     drifted: true,
