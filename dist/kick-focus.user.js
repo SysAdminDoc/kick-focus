@@ -1786,19 +1786,24 @@ function cleanStickerText(value, maximum = 80) {
   return value.replace(/\s+/g, ' ').trim().slice(0, maximum);
 }
 
+const KICK_ASSET_BASE = 'https://kick.com/';
+
 function cleanStickerAssetUrl(value) {
   const raw = cleanStickerText(value, 500);
   if (!raw || !/\/emotes\//i.test(raw)) return '';
-  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  let url;
   try {
-    const url = new URL(raw);
-    const host = url.hostname.toLowerCase();
-    if (url.protocol !== 'https:' || (host !== 'kick.com' && !host.endsWith('.kick.com'))) return '';
-    url.hash = '';
-    return url.href.slice(0, 500);
+    url = new URL(raw, KICK_ASSET_BASE);
   } catch {
     return '';
   }
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== 'https:' || (host !== 'kick.com' && !host.endsWith('.kick.com'))) return '';
+  if (!/\/emotes\//i.test(url.pathname)) return '';
+  url.hash = '';
+  return raw.startsWith('/') && !raw.startsWith('//')
+    ? `${url.pathname}${url.search}`.slice(0, 500)
+    : url.href.slice(0, 500);
 }
 
 function cleanStickerGroups(input) {
@@ -7301,7 +7306,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              840338') || 0;
+const BUNDLE_BYTES = Number('              840488') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
