@@ -461,3 +461,29 @@ test('one focus treatment, defined once and used everywhere', { tag: 'artifact' 
   assert.deepEqual(suppressed, [],
     `a focus rule still removes its outline: ${suppressed.map((l) => l.trim()).join(' | ')}`);
 });
+
+test('the emote shelf is styled by the sheet that can actually reach it', { tag: 'artifact' }, async () => {
+  // The shelf is built into Kick's own emote picker, in the light DOM, so
+  // SITE_CSS is the only stylesheet that reaches it: UI_CSS is adopted into a
+  // shadow root. Two rules had drifted onto the wrong side of that line. The
+  // channel-scoped favorite marker sat in UI_CSS and could never match, and
+  // the tile itself was emitted with a class while SITE_CSS keys it on an
+  // attribute, so the send button had no styling at all.
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const siteStart = source.indexOf('const SITE_CSS = `');
+  const uiStart = source.indexOf('const UI_CSS = `');
+  assert.ok(siteStart > 0 && uiStart > siteStart, 'stylesheet boundaries not found');
+  const site = source.slice(siteStart, source.indexOf('\n`;', siteStart));
+  const ui = source.slice(uiStart, source.indexOf('\n`;', uiStart));
+
+  assert.match(site, /\[data-kf-sticker-scoped="true"\]/,
+    'the scoped-favorite marker must live in the sheet injected into the page');
+  assert.doesNotMatch(ui, /data-kf-sticker-scoped/,
+    'a shadow-root sheet cannot style a tile in Kick own panel');
+
+  // The tile markup and the rule that styles it must agree on the selector.
+  assert.match(source, /<button type="button" data-kf-sticker-action="send"[^>]*data-kf-sticker-proxy/,
+    'the shelf send button must carry the attribute SITE_CSS styles');
+  assert.doesNotMatch(source, /class="kf-sticker-proxy"/,
+    'nothing styles that class; the attribute is what SITE_CSS keys on');
+});

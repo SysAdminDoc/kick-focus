@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              849328') || 0;
+const BUNDLE_BYTES = Number('              849714') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -8310,6 +8310,8 @@ const SITE_CSS = `
       cursor: pointer !important;
     }
     [data-kf-sticker-proxy]:hover, [data-kf-sticker-proxy]:focus-visible { background: rgba(var(--kf-accent-rgb), .12) !important; }
+    [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy] { position: relative !important; box-shadow: inset 0 0 0 1px rgba(var(--kf-accent-rgb), .5) !important; }
+    [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy]::after { content: "" !important; position: absolute !important; right: 0 !important; bottom: 0 !important; border-left: 7px solid transparent !important; border-bottom: 7px solid var(--kf-accent) !important; }
     [data-kf-sticker-proxy] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
     [data-kf-sticker-tools] { display: flex !important; justify-content: center !important; gap: 2px !important; margin-top: 2px !important; }
     [data-kf-sticker-tools] button {
@@ -10530,11 +10532,11 @@ function stickerProxyMarkup(descriptor) {
   const ordering = pinned && state.stickerPreferences.view === 'pinned';
   const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
   return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-state="${pinned}:${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" class="kf-sticker-proxy" aria-label="${escapeHtml(trf('Use emote {name}', { name: descriptor.name }))}" title="${escapeHtml(trf('Use {name}', { name: descriptor.name }))}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" data-kf-sticker-proxy aria-label="${escapeHtml(trf('Use emote {name}', { name: descriptor.name }))}" title="${escapeHtml(trf('Use {name}', { name: descriptor.name }))}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <div data-kf-sticker-tools>
       ${ordering ? `<button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="up" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Move {name} earlier', { name: descriptor.name }))}" title="${escapeHtml(tr('Move earlier'))}">‹</button>
       <button type="button" data-kf-sticker-action="move-favorite" data-kf-sticker-move="down" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Move {name} later', { name: descriptor.name }))}" title="${escapeHtml(tr('Move later'))}">›</button>` : ''}
-      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? 'Remove favorite {name}' : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${pinned ? '★' : '☆'}</button>
+      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${pinned ? '★' : '☆'}</button>
       <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf(hidden ? 'Restore {name}' : 'Remove {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}">${hidden ? '↶' : '×'}</button>
     </div>
   </div>`;
@@ -12455,11 +12457,6 @@ const UI_CSS = `
      overwritten. */
   .kf-sticker-changed { display: inline-flex; margin: 5px 0 0 5px; padding: 2px 5px; border: 1px solid rgba(217,139,58,.62); border-radius: 3px; color: #e0a367; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-library-item[data-changed="true"] { border-color: rgba(217,139,58,.42); }
-  /* A favorite saved for this channel only, so it is obvious why it is not
-     on the shelf elsewhere. */
-  #chat-emotes-picker-panel [data-kf-sticker-item][data-kf-sticker-scoped="true"] .kf-sticker-proxy {
-    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .5);
-  }
   /* A dead greyed tile teaches nothing; a reason plus Kick's own unlock path
      is the clearest possible signal that entitlements are respected. */
   .kf-sticker-lock { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.5; white-space: normal; }
@@ -13139,6 +13136,7 @@ const TRANSLATIONS = {
     'Page reset': 'Se restableció la página',
     'Shortcuts restored': 'Se restauraron los atajos',
     'Shortcut saved': 'Atajo guardado',
+    'Remove this-channel favorite {name}': 'Quitar {name} de los favoritos de este canal',
     'Emote suggestions': 'Sugerencias de emotes',
     'Removed {name} from the grid ({count} of {max})': 'Se quitó {name} de la cuadrícula ({count} de {max})',
     'Added {name} to the grid ({count} of {max})': 'Se añadió {name} a la cuadrícula ({count} de {max})',
@@ -13795,6 +13793,7 @@ const TRANSLATIONS = {
     'Page reset': 'A página foi redefinida',
     'Shortcuts restored': 'Atalhos restaurados',
     'Shortcut saved': 'Atalho salvo',
+    'Remove this-channel favorite {name}': 'Remover {name} dos favoritos deste canal',
     'Emote suggestions': 'Sugestões de emotes',
     'Removed {name} from the grid ({count} of {max})': '{name} foi removido da grade ({count} de {max})',
     'Added {name} to the grid ({count} of {max})': '{name} foi adicionado à grade ({count} de {max})',

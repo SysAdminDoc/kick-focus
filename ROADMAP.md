@@ -13,10 +13,6 @@ above P3 here was measured, not guessed; each item names where it was traced to.
   Why: the tooltip host carries `aria-hidden="true"` and nothing references it from the emote, so the access, reach and ownership lines never reach a screen reader. It fires on `focusin` as well as hover, so keyboard users do see it. The followed-channel preview beside it already does this correctly with a two-way `aria-describedby`, which is the pattern to copy. Lower priority because the most important line it carries, the shadowed-name warning, is also surfaced as prose on the Content page.
   Where: src/runtime.js (`chatEmoteTooltipHost`, `showChatEmoteTooltip`, `hideChatEmoteTooltip`)
 
-- [ ] P3 — A channel-scoped favourite is signalled by an accent ring alone
-  Why: scoped tiles get a 50%-alpha 1px inset shadow and nothing else; the pin button gives the scoped and unscoped cases the same `aria-label`, and the `title` that distinguishes them is demoted to a description once `aria-label` is present. So the distinction the code comment says must be obvious is colour-only. Folding the scope into the label and adding a non-colour marker would fix both halves.
-  Where: src/runtime.js (the sticker shelf tile and its pin button)
-
 - [ ] P3 — Two emote access badges collide with two accents
   Why: available uses `var(--accent)` while channel is a fixed `#ffcf61` and observed a fixed `#70e9e3`. On the gold accent, available against channel is 1.13:1; on cyan, available against observed is 1.22:1. Meaning is not carried by colour alone (each badge renders a text label), so this degrades the glance rather than the information, which is why it sits at P3.
   Where: src/runtime.js (`[data-access]` rules in `UI_CSS`)
