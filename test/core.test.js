@@ -2461,7 +2461,7 @@ test('export carries usage counts and layouts, and import validates them', { tag
 
   // Wrong types are rejected with a message rather than crashing the import.
   assert.match(validateImportedSettings('{"usage":[]}').error, /usage counts must be a JSON object/);
-  assert.match(validateImportedSettings('{"multistream":5}').error, /layouts must be a JSON object/);
+  assert.match(validateImportedSettings('{"multistream":5}').error, /boards must be a JSON object/);
 
   // Hostile counts are rebuilt, not merged: bad ids, negative and absurd
   // counts, and prototype keys are all dropped.

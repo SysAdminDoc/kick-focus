@@ -2207,7 +2207,7 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   settingsSchema: 'Settings schema {schema} is newer than this build supports.',
   stickerObject: 'The emote library must be a JSON object.',
   usageObject: 'The emote usage counts must be a JSON object.',
-  multistreamObject: 'The multi-stream layouts must be a JSON object.',
+  multistreamObject: 'The multi-stream boards must be a JSON object.',
   stickerSchema: 'Emote schema {schema} is newer than this build supports.',
   empty: 'That file does not contain Kick Focus settings.',
 });
@@ -2224,7 +2224,7 @@ const IMPORT_NOTE_MESSAGES = Object.freeze({
   upgradedEmotes: 'Upgraded emotes to schema {schema}.',
   adjustedUsage: 'Adjusted emote usage counts to {count} supported entries.',
   adjustedGrid: 'Adjusted the multi-stream grid to {count} supported channels.',
-  adjustedLayouts: 'Adjusted saved layouts to {count} supported entries.',
+  adjustedLayouts: 'Adjusted saved boards to {count} supported entries.',
 });
 
 function numericSchema(value) {
@@ -2382,7 +2382,7 @@ function validateImportedSettings(jsonText) {
     const offeredLayouts = Array.isArray(parsed.multistream.layouts) ? parsed.multistream.layouts.length : 0;
     if (offeredLayouts !== multistream.layouts.length) {
       addNote(
-        `Adjusted saved layouts to ${multistream.layouts.length} supported entries.`,
+        `Adjusted saved boards to ${multistream.layouts.length} supported entries.`,
         IMPORT_NOTE_MESSAGES.adjustedLayouts,
         { count: multistream.layouts.length },
       );
@@ -2801,7 +2801,7 @@ const STORAGE_STORES = Object.freeze([
   { key: 'kick-focus:settings', label: 'settings', backup: true, field: 'settings', reset: true },
   { key: 'kick-focus:sticker-preferences', label: 'emote library', backup: true, field: 'stickers', reset: false },
   { key: 'kick-focus:emote-usage', label: 'emote usage counts', backup: true, field: 'usage', reset: true },
-  { key: 'kick-focus:multistream', label: 'multi-stream layouts', backup: true, field: 'multistream', reset: true },
+  { key: 'kick-focus:multistream', label: 'multi-stream boards', backup: true, field: 'multistream', reset: true },
   { key: 'kick-focus:channel-layouts', label: 'per-channel layout', backup: true, field: 'channelLayouts', reset: true },
   { key: 'kick-focus:favorite-channels', label: 'favorite channels', backup: true, field: 'favoriteChannels', reset: true },
   { key: 'kick-focus:not-interested-channels', label: 'not-interested channels', backup: true, field: 'dismissedChannels', reset: true },
@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              849338') || 0;
+const BUNDLE_BYTES = Number('              849328') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -13182,13 +13182,13 @@ const TRANSLATIONS = {
     'Settings schema {schema} is newer than this build supports.': 'El esquema de ajustes {schema} es más reciente que el compatible con esta versión.',
     'The emote library must be a JSON object.': 'La biblioteca de emotes debe ser un objeto JSON.',
     'The emote usage counts must be a JSON object.': 'Los recuentos de uso de emotes deben ser un objeto JSON.',
-    'The multi-stream layouts must be a JSON object.': 'Los diseños de multitransmisión deben ser un objeto JSON.',
+    'The multi-stream boards must be a JSON object.': 'Los diseños de multitransmisión deben ser un objeto JSON.',
     'Emote schema {schema} is newer than this build supports.': 'El esquema de emotes {schema} es más reciente que el compatible con esta versión.',
     'That file does not contain Kick Focus settings.': 'Ese archivo no contiene ajustes de Kick Focus.',
     'settings': 'ajustes',
     'emote library': 'biblioteca de emotes',
     'emote usage counts': 'recuentos de uso de emotes',
-    'multi-stream layouts': 'diseños de multitransmisión',
+    'multi-stream boards': 'diseños de multitransmisión',
     'per-channel layout': 'diseño por canal',
     'favorite channels': 'canales favoritos',
     'not-interested channels': 'canales marcados como no interesantes',
@@ -13588,7 +13588,7 @@ const TRANSLATIONS = {
     'Upgraded emotes to schema {schema}.': 'Se actualizaron los emotes al esquema {schema}.',
     'Adjusted emote usage counts to {count} supported entries.': 'Se ajustaron los recuentos de uso de emotes a {count} entradas compatibles.',
     'Adjusted the multi-stream grid to {count} supported channels.': 'Se ajustó la cuadrícula multitransmisión a {count} canales compatibles.',
-    'Adjusted saved layouts to {count} supported entries.': 'Se ajustaron los diseños guardados a {count} entradas compatibles.',
+    'Adjusted saved boards to {count} supported entries.': 'Se ajustaron los diseños guardados a {count} entradas compatibles.',
     'Density saved': 'Densidad guardada',
     'Content filter saved': 'Filtro de contenido guardado',
     'Poor mode saved': 'Modo sin gastos guardado',
@@ -13838,13 +13838,13 @@ const TRANSLATIONS = {
     'Settings schema {schema} is newer than this build supports.': 'O esquema de configurações {schema} é mais recente do que esta versão aceita.',
     'The emote library must be a JSON object.': 'A biblioteca de emotes deve ser um objeto JSON.',
     'The emote usage counts must be a JSON object.': 'As contagens de uso de emotes devem ser um objeto JSON.',
-    'The multi-stream layouts must be a JSON object.': 'Os layouts de multistream devem ser um objeto JSON.',
+    'The multi-stream boards must be a JSON object.': 'Os layouts de multistream devem ser um objeto JSON.',
     'Emote schema {schema} is newer than this build supports.': 'O esquema de emotes {schema} é mais recente do que esta versão aceita.',
     'That file does not contain Kick Focus settings.': 'Esse arquivo não contém configurações do Kick Focus.',
     'settings': 'configurações',
     'emote library': 'biblioteca de emotes',
     'emote usage counts': 'contagens de uso de emotes',
-    'multi-stream layouts': 'layouts de multistream',
+    'multi-stream boards': 'layouts de multistream',
     'per-channel layout': 'layout por canal',
     'favorite channels': 'canais favoritos',
     'not-interested channels': 'canais sem interesse',
@@ -14244,7 +14244,7 @@ const TRANSLATIONS = {
     'Upgraded emotes to schema {schema}.': 'Os emotes foram atualizados para o esquema {schema}.',
     'Adjusted emote usage counts to {count} supported entries.': 'As contagens de uso de emotes foram ajustadas para {count} entradas compatíveis.',
     'Adjusted the multi-stream grid to {count} supported channels.': 'A grade multistream foi ajustada para {count} canais compatíveis.',
-    'Adjusted saved layouts to {count} supported entries.': 'Os layouts salvos foram ajustados para {count} entradas compatíveis.',
+    'Adjusted saved boards to {count} supported entries.': 'Os layouts salvos foram ajustados para {count} entradas compatíveis.',
     'Density saved': 'Densidade salva',
     'Content filter saved': 'Filtro de conteúdo salvo',
     'Poor mode saved': 'Modo sem gastos salvo',

@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- A saved multi-stream arrangement is called a board everywhere. The live UI already said board while the storage label and two import messages still said layouts, left over from an unfinished rename. The live grid keeps being called a grid, because that is a different thing.
 - Keyboard focus looks the same everywhere. There were five treatments across the product, and on every text input, textarea and select in the settings panel there was no ring at all: those rules removed the outline and substituted a glow, and their specificity beat the global rule. One token on the page root now feeds the panel, the header control, the emote popover, the stats button and the injected page alike.
 - Failing to save a chat emote now points at the error log that already recorded the failure. It was the last of the dead-end error toasts, left alone in the previous pass because it catches any thrown error and no single cause could be named honestly. Storage-quota failures have their own alert path, so a throw here is genuinely unexpected, which is what makes the log the right answer rather than a guess.
 - The emote suggestion list, and the two multi-stream toasts that report a channel being added or removed, are translated. All three reached the DOM in a form no coverage scanner matched. The suggestion list is its own shadow root, which the page-wide localizer never walks, so a bare string there could not have been translated after the fact either.

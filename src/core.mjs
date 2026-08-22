@@ -3188,7 +3188,7 @@ export const IMPORT_ERROR_MESSAGES = Object.freeze({
   settingsSchema: 'Settings schema {schema} is newer than this build supports.',
   stickerObject: 'The emote library must be a JSON object.',
   usageObject: 'The emote usage counts must be a JSON object.',
-  multistreamObject: 'The multi-stream layouts must be a JSON object.',
+  multistreamObject: 'The multi-stream boards must be a JSON object.',
   stickerSchema: 'Emote schema {schema} is newer than this build supports.',
   empty: 'That file does not contain Kick Focus settings.',
 });
@@ -3205,7 +3205,7 @@ export const IMPORT_NOTE_MESSAGES = Object.freeze({
   upgradedEmotes: 'Upgraded emotes to schema {schema}.',
   adjustedUsage: 'Adjusted emote usage counts to {count} supported entries.',
   adjustedGrid: 'Adjusted the multi-stream grid to {count} supported channels.',
-  adjustedLayouts: 'Adjusted saved layouts to {count} supported entries.',
+  adjustedLayouts: 'Adjusted saved boards to {count} supported entries.',
 });
 
 /**
@@ -3395,7 +3395,7 @@ export function validateImportedSettings(jsonText) {
     const offeredLayouts = Array.isArray(parsed.multistream.layouts) ? parsed.multistream.layouts.length : 0;
     if (offeredLayouts !== multistream.layouts.length) {
       addNote(
-        `Adjusted saved layouts to ${multistream.layouts.length} supported entries.`,
+        `Adjusted saved boards to ${multistream.layouts.length} supported entries.`,
         IMPORT_NOTE_MESSAGES.adjustedLayouts,
         { count: multistream.layouts.length },
       );
@@ -4027,7 +4027,7 @@ export const STORAGE_STORES = Object.freeze([
   { key: 'kick-focus:settings', label: 'settings', backup: true, field: 'settings', reset: true },
   { key: 'kick-focus:sticker-preferences', label: 'emote library', backup: true, field: 'stickers', reset: false },
   { key: 'kick-focus:emote-usage', label: 'emote usage counts', backup: true, field: 'usage', reset: true },
-  { key: 'kick-focus:multistream', label: 'multi-stream layouts', backup: true, field: 'multistream', reset: true },
+  { key: 'kick-focus:multistream', label: 'multi-stream boards', backup: true, field: 'multistream', reset: true },
   { key: 'kick-focus:channel-layouts', label: 'per-channel layout', backup: true, field: 'channelLayouts', reset: true },
   { key: 'kick-focus:favorite-channels', label: 'favorite channels', backup: true, field: 'favoriteChannels', reset: true },
   { key: 'kick-focus:not-interested-channels', label: 'not-interested channels', backup: true, field: 'dismissedChannels', reset: true },
