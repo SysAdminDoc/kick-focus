@@ -9,10 +9,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 Added 2026-08-21 by an engineering and product-quality audit pass. Everything
 above P3 here was measured, not guessed; each item names where it was traced to.
 
-- [ ] P3 — Five different focus-ring treatments across one product
-  Why: the shadow UI uses 3px accent, the nav search 2px accent, the toast action 2px `--text`, and the injected page 2px `--kf-accent`. Separately `.kf-text:focus`, `.kf-textarea:focus` and `.kf-select:focus` set `outline: 0` and substitute a 15%-alpha box-shadow, and their specificity beats the global `:focus-visible` rule, so no text input in the settings panel ever gets the 3px ring. The border-colour change still satisfies 2.4.7, so this is consistency rather than a hard failure. One `--focus-ring` token referenced everywhere would settle it.
-  Where: src/runtime.js (`UI_CSS`, `HEADER_CONTROL_CSS`, `SITE_CSS`)
-
 - [ ] P3 — The emote hover card is aria-hidden, so its content is sighted-only
   Why: the tooltip host carries `aria-hidden="true"` and nothing references it from the emote, so the access, reach and ownership lines never reach a screen reader. It fires on `focusin` as well as hover, so keyboard users do see it. The followed-channel preview beside it already does this correctly with a two-way `aria-describedby`, which is the pattern to copy. Lower priority because the most important line it carries, the shadowed-name warning, is also surfaced as prose on the Content page.
   Where: src/runtime.js (`chatEmoteTooltipHost`, `showChatEmoteTooltip`, `hideChatEmoteTooltip`)

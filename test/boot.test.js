@@ -425,3 +425,39 @@ test('interface scale reaches the whole settings surface, not just its font size
   // The scale still has to be written somewhere for any of this to run.
   assert.match(source, /setProperty\('--kf-interface-scale', String\(appearance\.interfaceScale \/ 100\)\)/);
 });
+
+test('one focus treatment, defined once and used everywhere', { tag: 'artifact' }, async () => {
+  // There were five: 3px accent in the settings panel, 2px accent on the nav
+  // search and the injected page, 2px plain text on a toast action, and on
+  // every text input an outline of 0 with a box-shadow instead. That last one
+  // out-specified the global rule, so no text input in the panel ever showed a
+  // ring at all.
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+
+  assert.match(source, /--kf-focus-ring:\s*3px solid var\(--kf-accent\);/,
+    'the focus ring must be defined once on the page root');
+
+  // Windows High Contrast is the one place that must not use the token: it
+  // suppresses box-shadow and needs the system Highlight colour instead.
+  const literalRings = source.split('\n')
+    .map((line, index) => [index + 1, line])
+    .filter(([, line]) => /outline:\s*\d+px\s+solid/.test(line))
+    // Two exceptions, both deliberate: Windows High Contrast needs the system
+    // Highlight colour because it suppresses box-shadow, and the chat emote
+    // save affordance holds a transparent outline so its colour can transition
+    // in rather than the ring popping into existence.
+    .filter(([, line]) => !line.includes('Highlight') && !line.includes('transparent'));
+  assert.deepEqual(literalRings.map(([n]) => n), [],
+    `focus rings still written as a literal at line(s) ${literalRings.map(([n, l]) => `${n}: ${l.trim()}`).join(' | ')}`);
+
+  // And no rule may take the outline away on focus and leave only a shadow.
+  // `.kf-page` is the one exception: it is tabindex="-1" and is focused only
+  // by script, to move a screen reader onto the page a reader just navigated
+  // to, so it is never tabbed to and a ring around the whole scroll region
+  // would be noise rather than feedback.
+  const suppressed = source.split('\n')
+    .filter((line) => /:focus[^{]*\{[^}]*outline:\s*0/.test(line))
+    .filter((line) => !line.includes('.kf-page:focus'));
+  assert.deepEqual(suppressed, [],
+    `a focus rule still removes its outline: ${suppressed.map((l) => l.trim()).join(' | ')}`);
+});

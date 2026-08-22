@@ -7313,11 +7313,19 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              848692') || 0;
+const BUNDLE_BYTES = Number('              849417') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
   :root {
+    /* One focus treatment for the whole product. It used to be five: 3px accent
+       in the settings panel, 2px accent on the nav search and the injected
+       page, 2px plain text on a toast action, and a box-shadow with no outline
+       at all on every text input. Declared on the page root because custom
+       properties inherit across a shadow boundary, so the panel, the header
+       control, the emote popover and Kick's own page all read the same value. */
+    --kf-focus-ring: 3px solid var(--kf-accent);
+    --kf-focus-offset: 2px;
     --kf-accent: #7cff2b;
     --kf-accent-rgb: 124, 255, 43;
     --kf-canvas: #070a08;
@@ -7555,7 +7563,7 @@ const SITE_CSS = `
 
     #sidebar-wrapper :is(button, a):focus-visible,
     main :is(button, a, input, select, textarea):focus-visible {
-      outline: 2px solid var(--kf-accent) !important;
+      outline: var(--kf-focus-ring) !important;
       outline-offset: 2px !important;
     }
 
@@ -7715,7 +7723,7 @@ const SITE_CSS = `
     html[data-kf-route="collectibles"] main :is(select, [role="combobox"]):focus-visible,
     html[data-kf-route="subscriptions"] main :is(input, select, [role="combobox"]):focus-visible {
       border-color: var(--kf-accent) !important;
-      outline: 2px solid var(--kf-accent) !important;
+      outline: var(--kf-focus-ring) !important;
       outline-offset: 2px !important;
       box-shadow: 0 0 0 4px rgba(var(--kf-accent-rgb), .12) !important;
     }
@@ -8353,7 +8361,7 @@ const SITE_CSS = `
     html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
 
     html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible {
-      outline: 3px solid var(--kf-accent) !important;
+      outline: var(--kf-focus-ring) !important;
       outline-offset: 3px !important;
     }
 
@@ -8524,7 +8532,7 @@ const SITE_CSS = `
     transform: none !important;
   }
   :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):focus-visible {
-    outline: 3px solid var(--kf-accent) !important;
+    outline: var(--kf-focus-ring) !important;
     outline-offset: 2px !important;
   }
   [data-kf-chat-emote-save] {
@@ -11982,6 +11990,8 @@ const UI_CSS = `
     --radius-md: calc(var(--kf-radius, 7px) - 1px);
     --radius-lg: calc(var(--kf-radius, 7px) + 3px);
     --radius: var(--kf-radius, 7px);
+    --focus-ring: var(--kf-focus-ring, 3px solid var(--accent));
+    --focus-offset: var(--kf-focus-offset, 2px);
     --shadow-dialog: 0 38px 110px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.015);
     --shadow-control: 0 10px 28px rgba(0,0,0,.24);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -12135,7 +12145,7 @@ const UI_CSS = `
     font: inherit;
     font-size: 12px;
   }
-  .kf-nav-search input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .kf-nav-search input:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
   .kf-search-results { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
   .kf-search-result {
     display: flex;
@@ -12272,10 +12282,10 @@ const UI_CSS = `
     color: var(--text);
   }
   .kf-textarea { min-height: 86px; resize: vertical; }
-  .kf-text:focus, .kf-textarea:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-text:focus, .kf-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
   .kf-select { min-width: 118px; height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text); font-size: 12px; }
   .kf-select:hover { border-color: var(--border-strong); }
-  .kf-select:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
 
   .kf-theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .kf-swatch-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
@@ -12618,7 +12628,7 @@ const UI_CSS = `
     cursor: pointer;
   }
   .kf-toast-action:hover { background: var(--accent); color: var(--on-accent); }
-  .kf-toast-action:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .kf-toast-action:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
   /* Data loss is not a toast. This stays until the user acknowledges it. */
   .kf-storage-alert {
@@ -12810,7 +12820,7 @@ const UI_CSS = `
     color: var(--text);
     font-size: 12px;
   }
-  .kf-ms-head input:focus, .kf-ms-foot input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-ms-head input:focus, .kf-ms-foot input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
   .kf-ms-select { min-height: 32px; font-size: 12px; }
   .kf-ms-error { padding: 9px 14px; border-bottom: 1px solid var(--danger); background: var(--surface-danger); color: var(--danger-text); font-size: 12px; }
   .kf-ms-error[hidden] { display: none; }
@@ -12968,7 +12978,7 @@ const UI_CSS = `
 
   .kf-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 
-  :is(button, input, select, textarea):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  :is(button, input, select, textarea):focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
   @media (max-width: 920px) {
     .kf-settings { width: calc(100vw - 28px); height: calc(100vh - 28px); min-width: 0; min-height: 620px; }
@@ -15886,7 +15896,7 @@ const EMOTE_COMPLETION_CSS = `
     cursor: pointer;
   }
   button:hover, button:focus-visible { background: rgba(var(--kf-accent-rgb, 124,255,43), .12); }
-  button:focus-visible { outline: 2px solid var(--kf-accent, #7cff2b); outline-offset: -2px; }
+  button:focus-visible { outline: var(--kf-focus-ring, 3px solid var(--kf-accent, #7cff2b)); outline-offset: -2px; }
   img { width: 24px; height: 24px; object-fit: contain; }
   span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
@@ -16782,7 +16792,7 @@ const HEADER_CONTROL_CSS = `
   }
   button:hover { border-color: var(--kf-accent, #7cff2b); background: rgba(var(--kf-accent-rgb, 124,255,43), .15); color: var(--kf-accent, #7cff2b); }
   button:active { transform: scale(.97); }
-  button:focus-visible { outline: 2px solid var(--kf-accent, #7cff2b); outline-offset: 2px; }
+  button:focus-visible { outline: var(--kf-focus-ring, 3px solid var(--kf-accent, #7cff2b)); outline-offset: var(--kf-focus-offset, 2px); }
   img { display: block; width: 18px; height: 18px; object-fit: contain; }
   .kf-header-multi svg { width: 15px; height: 15px; fill: currentColor; opacity: .9; }
   .kf-header-add [data-kf-header-add-icon] { font-weight: 800; font-size: 14px; }
@@ -16822,7 +16832,7 @@ const PROFILE_STATS_CSS = `
   button:active { transform: translateY(0) scale(.98); }
   button:focus-visible {
     border-color: var(--kf-accent, #53fc18);
-    outline: 2px solid var(--kf-accent, #53fc18);
+    outline: var(--kf-focus-ring, 3px solid var(--kf-accent, #7cff2b));
     outline-offset: 2px;
   }
   svg {
