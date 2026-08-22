@@ -102,6 +102,23 @@ export function stripComments(source) {
 
     if (frame.mode === 'template') {
       if (character === '\\') { emit(source.slice(index, index + 2)); index += 2; continue; }
+      // A CSS template is the one kind of template literal whose block comments
+      // are safe to drop: they are inert to the parser and nobody reads a
+      // stylesheet out of a generated artifact. They are not cheap either —
+      // about 12 KB across the bundle, against an injection ceiling this build
+      // sits a few hundred bytes under. Only `NAME_CSS = ` templates qualify,
+      // so markup and page-world probe strings, where `/*` can be content, are
+      // untouched. Assets are substituted after this pass, so a base64 payload
+      // holding `/*` is never in scope here.
+      if (frame.css && character === '/' && source[index + 1] === '*') {
+        const end = source.indexOf('*/', index + 2);
+        const stop = end === -1 ? source.length : end + 2;
+        const spanned = source.slice(index, stop).includes('\n');
+        index = stop;
+        hadComment = true;
+        if (spanned) { line = line.replace(/[ \t]+$/, ''); emit('\n'); }
+        continue;
+      }
       if (character === '`') { frames.pop(); emit(character); index += 1; lastChar = '`'; lastWord = ''; continue; }
       if (character === '$' && source[index + 1] === '{') {
         frames.push({ mode: 'code', braces: 0 });
@@ -148,7 +165,10 @@ export function stripComments(source) {
     }
 
     if (character === '`') {
-      frames.push({ mode: 'template' });
+      // Read the declaration name straight out of the source rather than from
+      // `lastWord`, which the `=` between them has already cleared.
+      const declaration = /([A-Za-z_$][\w$]*)\s*=\s*$/.exec(source.slice(Math.max(0, index - 64), index));
+      frames.push({ mode: 'template', css: Boolean(declaration && declaration[1].endsWith('_CSS')) });
       emit(character);
       index += 1;
       continue;

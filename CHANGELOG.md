@@ -6,6 +6,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- The injection-ceiling check measures bytes. It counted UTF-16 code units and printed the answer with a B after it, and the bundle carries about 1,450 non-ASCII characters, so the two had drifted 1.7 KB apart and the artifact had crossed 1 MB while the check still reported room to spare. A userscript manager injects bytes.
+- The build no longer ships 12 KB of stylesheet comments. A comment inside a template literal is string content rather than a comment, so the comment stripper left them in every release. CSS comments are inert, so the stripper now drops them from stylesheet templates only, leaving markup and page-world probe strings alone.
 - The three emote access badges stay distinct whatever accent is chosen. Available followed the accent while the other two are fixed, so on gold it and the channel badge were both amber, and on cyan it and the observed badge were both cyan. Available is a status rather than branding, so it now has its own colour and the three hues sit 58 and 77 degrees apart.
 - A favorite saved for one channel now says so, and shows it. Its accessible name spells out the scope instead of matching an ordinary favorite, and the tile carries a corner wedge, a shape that is there or is not rather than a tint. The rule that was supposed to mark it lived in the settings stylesheet, which is adopted into a shadow root and so could never match a tile in Kick own emote picker, so the state had no marker at all.
 - Emote shelf tiles are styled again. The send button was emitted with a class while the stylesheet that reaches Kick page keys it on an attribute, so it had no size, background or hover.

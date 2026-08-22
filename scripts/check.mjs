@@ -604,10 +604,24 @@ for (const [name, text, budget] of SIZE_BUDGETS) {
  * big a library gets.
  */
 const INJECTION_CEILING = 1_000_000;
-const injectionFootprint = (userscript, seedBudget) => userscript.length + seedBudget;
+/**
+ * Bytes, not characters.
+ *
+ * This used to measure `String.prototype.length`, which counts UTF-16 code
+ * units, and then print the answer with a B after it. The bundle carries about
+ * 1,450 non-ASCII characters — the accented halves of the Spanish and
+ * Portuguese dictionaries, curly quotes, and the star and arrow glyphs on the
+ * shelf — and every one of them is two or three bytes on the wire. The gap had
+ * reached 1.7 KB, which is the difference between reporting room to spare and
+ * being over the line. A userscript manager injects bytes.
+ */
+const byteLength = (value) => (typeof value === 'string'
+  ? Buffer.byteLength(value, 'utf8')
+  : value.length);
+const injectionFootprint = (userscript, seedBudget) => byteLength(userscript) + seedBudget;
 const overInjectionCeiling = (userscript, seedBudget) => injectionFootprint(userscript, seedBudget) > INJECTION_CEILING;
 const footprint = injectionFootprint(source, LIBRARY_SEED_BYTES);
-console.log(`INFO userscript ${source.length.toLocaleString('en-US')} B + library seed budget ${LIBRARY_SEED_BYTES.toLocaleString('en-US')} B = ${footprint.toLocaleString('en-US')} B of the ${INJECTION_CEILING.toLocaleString('en-US')} B injection ceiling`);
+console.log(`INFO userscript ${byteLength(source).toLocaleString('en-US')} B + library seed budget ${LIBRARY_SEED_BYTES.toLocaleString('en-US')} B = ${footprint.toLocaleString('en-US')} B of the ${INJECTION_CEILING.toLocaleString('en-US')} B injection ceiling`);
 
 const sourceFiles = await Promise.all(
   [...moduleFiles, 'src/runtime.js', 'scripts/check.mjs', 'scripts/build.mjs', 'scripts/verify-extension.mjs', 'scripts/verify-firefox.mjs']
@@ -1343,6 +1357,11 @@ const redProbes = [
     overInjectionCeiling({ length: 900_000 }, 150_000)],
   ['injection ceiling would catch an oversized seed beside a tiny userscript',
     overInjectionCeiling({ length: 2_000 }, 1_200_000)],
+  // A multi-byte string is the case the old measurement got wrong: 400,000
+  // three-byte characters are 1.2 MB on the wire and 400,000 code units in
+  // memory, so counting characters called this comfortably inside the ceiling.
+  ['injection ceiling would catch a bundle that only fits when counted as characters',
+    overInjectionCeiling('あ'.repeat(400_000), 0)],
   ['injection ceiling accepts a userscript and seed that fit together',
     !overInjectionCeiling({ length: 800_000 }, 150_000)],
   ['injection ceiling accepts the userscript plus its library seed budget',

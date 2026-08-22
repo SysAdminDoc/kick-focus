@@ -92,3 +92,42 @@ test('the strip removes a fifth of the shipped sources and no more than a third'
   // the scanner losing its place, not a docs cleanup.
   assert.ok(removed > 0.15 && removed < 0.33, `strip removed ${Math.round(removed * 100)}% of the sources`);
 });
+
+test('a CSS template loses its comments and a markup template keeps its content', { tag: 'unit' }, () => {
+  // Comments inside a template literal are string content, not comments, so
+  // the scanner leaves them alone by default. For a stylesheet that is 12 KB
+  // of developer prose shipped to every reader, against an injection ceiling
+  // this build sits under by a few thousand bytes. CSS comments are inert, so
+  // a NAME_CSS template is the one place it is safe to drop them.
+  const source = [
+    'const SITE_CSS = `',
+    '  /* a note nobody reads in a generated file */',
+    '  .a { color: red; }',
+    '  .b { /* inline */ color: blue; }',
+    '`;',
+    'const SHELL_MARKUP = `',
+    '  <p>/* this is content, not a comment */</p>',
+    '`;',
+    'const PROBE_REPORT = `',
+    '  /* a page-world probe string keeps everything */',
+    '`;',
+  ].join('\n');
+  const out = stripComments(source);
+
+  assert.equal(out.includes('a note nobody reads'), false, 'a CSS comment must be dropped');
+  assert.equal(out.includes('inline'), false, 'an inline CSS comment must be dropped too');
+  assert.ok(out.includes('.a { color: red; }'), 'the rules themselves survive');
+  assert.ok(out.includes('.b {  color: blue; }') || out.includes('.b { color: blue; }'),
+    'a rule that had an inline comment still parses');
+
+  assert.ok(out.includes('/* this is content, not a comment */'),
+    'markup is not a stylesheet; its content is untouched');
+  assert.ok(out.includes('a page-world probe string keeps everything'),
+    'only NAME_CSS templates qualify');
+
+  // Interpolation inside a CSS template returns to code, and a real comment
+  // there is stripped by the ordinary rule rather than this one.
+  const interpolated = stripComments('const UI_CSS = `a { b: ${/* gone */ value}; }`;');
+  assert.equal(interpolated.includes('gone'), false);
+  assert.match(interpolated, /\$\{\s*value\}/, 'the interpolated expression survives the strip');
+});

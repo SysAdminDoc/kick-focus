@@ -7313,17 +7313,12 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              849901') || 0;
+const BUNDLE_BYTES = Number('              837289') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
   :root {
-    /* One focus treatment for the whole product. It used to be five: 3px accent
-       in the settings panel, 2px accent on the nav search and the injected
-       page, 2px plain text on a toast action, and a box-shadow with no outline
-       at all on every text input. Declared on the page root because custom
-       properties inherit across a shadow boundary, so the panel, the header
-       control, the emote popover and Kick's own page all read the same value. */
+
     --kf-focus-ring: 3px solid var(--kf-accent);
     --kf-focus-offset: 2px;
     --kf-accent: #7cff2b;
@@ -7353,31 +7348,10 @@ const SITE_CSS = `
   html[data-kf-accent="cyan"] { --kf-accent: #38d7d0; --kf-accent-rgb: 56, 215, 208; }
   html[data-kf-accent="violet"] { --kf-accent: #9667ff; --kf-accent-rgb: 150, 103, 255; }
   html[data-kf-accent="gold"] { --kf-accent: #ffbe2e; --kf-accent-rgb: 255, 190, 46; }
-  /* Slate's raised surfaces are the lightest in the build, and violet is the
-     only accent that does not clear 4.5:1 as text on them: 4.01:1 on both the
-     toast action and the merged-chat channel label, which are 14px and 11px.
-     The shipped "chat" viewing preset is slate plus violet, so that pairing is
-     one somebody lands on deliberately. Lifted 22% toward white for this theme
-     only, which reaches 4.62:1 at worst and leaves the accent untouched on
-     Studio and OLED, where it already passes. */
+
   html[data-kf-theme="slate"][data-kf-accent="violet"] { --kf-accent: #ad88ff; --kf-accent-rgb: 173, 136, 255; }
 
-  /*
-   * The ink on top of an accent, picked by the engine where it can be.
-   *
-   * Every preset above changes the accent and none of them changes the ink, so
-   * one hardcoded near-black carries all four. Measured, that is the right
-   * choice for all four today — violet is the closest at 5.24:1 against the
-   * dark ink and 3.70:1 against white — but it is right by coincidence, and the
-   * next accent added to that list inherits the coincidence rather than a
-   * decision.
-   *
-   * This does not replace the JS gate and cannot: a custom accent's ink is set
-   * as an inline style on the root, which outranks this rule, and
-   * normalizeCustomAccent still rejects a picker value that would not clear
-   * 3:1 against the darkest Studio, OLED, and Slate surfaces. CSS decides the
-   * foreground; the 3:1 reject decides whether the accent is allowed at all.
-   */
+
   @supports (color: contrast-color(#000)) {
     :root { --kf-on-accent: contrast-color(var(--kf-accent)); }
   }
@@ -7422,9 +7396,7 @@ const SITE_CSS = `
   }
 
   @media (min-width: 1024px) {
-    /* Premium Kick shell shared by Home, Browse, Following, Drops, Search,
-       category pages, and channels. Stable ids/test ids are preferred over
-       utility-class names so a Tailwind rebuild does not erase the design. */
+
     body > [class~="group/main"],
     body > [data-sidebar][data-chat] { background: var(--kf-canvas) !important; }
 
@@ -7986,9 +7958,7 @@ const SITE_CSS = `
 
     html[data-kf-poor-mode="true"] [data-kf-monetization] { display: none !important; }
 
-    /* Chat comfort, on Kick's own rows. A priority message gets a rule down its
-       left edge rather than a background wash: the row still reads as chat, and
-       the marker survives every theme Kick ships. */
+
     [data-kf-chat-priority="true"] { border-left: 2px solid var(--kf-accent); padding-left: 6px; }
     [data-kf-chat-hidden="true"] > * { display: none !important; }
     [data-kf-chat-hidden="true"]::after {
@@ -8056,8 +8026,7 @@ const SITE_CSS = `
     }
 
     [data-kf-highlighted="true"] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .07) !important; }
-    /* The matched words, painted from the Custom Highlight registry — no node
-       is written into chat for this. Only colour properties apply here. */
+
     ::highlight(kick-focus-keyword) { background-color: rgba(var(--kf-accent-rgb, 124, 255, 43), .32); color: inherit; }
 
     html[data-kf-mini-player-collision="true"] #injected-embedded-channel-player { bottom: 82px !important; }
@@ -8093,8 +8062,7 @@ const SITE_CSS = `
 
     [data-kf-chat-status] { top: 44px !important; right: 8px !important; padding: 5px 8px !important; }
     [data-kf-playback-diagnostics] { right: 12px !important; bottom: 12px !important; padding: 6px 8px !important; pointer-events: none !important; }
-    /* Top-left, where a broadcast clock is conventionally read, and clear of
-       the player's own bottom control bar and of the diagnostics panel. */
+
     [data-kf-uptime] {
       top: 10px !important; left: 10px !important; padding: 4px 7px !important;
       background: rgba(13,16,14,.82) !important; pointer-events: none !important;
@@ -8102,9 +8070,7 @@ const SITE_CSS = `
       opacity: .92 !important;
     }
 
-    /* Directly under the uptime chip, in the same top-left column: the two are
-       mutually exclusive in practice (one dates a live stream, the other a
-       recording), so the offset only matters if Kick ever serves both. */
+
     [data-kf-vod-expiry] {
       top: 10px !important; left: 10px !important; padding: 4px 7px !important;
       background: rgba(13,16,14,.82) !important; pointer-events: none !important;
@@ -8280,8 +8246,7 @@ const SITE_CSS = `
     [data-kf-sticker-grid] {
       display: grid !important;
       grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)) !important;
-      /* Fixed rows are what let one spacer stand in for a known number of them.
-         The values here are mirrored by STICKER_TILE_HEIGHT/STICKER_GRID_GAP. */
+
       grid-auto-rows: 62px !important;
       gap: 7px !important;
       max-height: min(360px, 42vh) !important;
@@ -8289,12 +8254,9 @@ const SITE_CSS = `
       scrollbar-gutter: stable !important;
       padding: 3px 2px 6px !important;
     }
-    /* The picker grid scrolls inside a capped height and can hold hundreds of
-       tiles. Skipping layout and paint for the off-screen ones is what keeps
-       opening it cheap; the intrinsic size holds the scroll height steady. */
+
     [data-kf-sticker-item] { min-width: 0 !important; text-align: center !important; content-visibility: auto !important; contain-intrinsic-size: auto 62px !important; }
-    /* Stands in for the rows outside the rendered window, so the scrollbar
-       still describes the whole library. Spans every column, draws nothing. */
+
     [data-kf-sticker-spacer] { grid-column: 1 / -1 !important; pointer-events: none !important; }
     [data-kf-sticker-usage-shelf] { margin-top: 8px !important; }
     [data-kf-sticker-proxy] {
@@ -8350,14 +8312,7 @@ const SITE_CSS = `
 
     html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
 
-    /* "High-contrast controls" promises separation for controls, borders and
-       surfaces, and for a long time shared one attribute with the text setting
-       above and styled nothing but that text-shadow. Raising the two border
-       tokens is what the promise actually needs: every control edge in this
-       build resolves through them, in Kick's page and in the mod's own chrome,
-       so one declaration per theme reaches all of it. Measured edges sat at
-       1.15 to 2.78 against their surfaces, under the 3:1 that WCAG 1.4.11 asks
-       of a control boundary. */
+
     html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; }
     html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
     html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
@@ -8405,16 +8360,7 @@ const SITE_CSS = `
 
   video::cue { background: rgba(0, 0, 0, var(--kf-caption-opacity)); }
 
-  /* Sidebar "dropdown" mode: the discovery rail collapses to a labelled tab and
-     expands over the page on hover or keyboard focus, so the grid keeps the
-     full width without losing one-move access to channels.
 
-     Concept from the MIT-licensed "KICK Dropdown" userstyle by IamKoeda
-     (userstyles.world/style/29036), rebuilt here on this project's own tokens
-     and wired to the existing sidebar setting.
-
-     Desktop-only by design: below 1280px the expanded panel would cover the
-     content it is meant to navigate. */
   @media (min-width: 1280px) {
     html[data-kf-sidebar="dropdown"] #sidebar-wrapper {
       position: absolute;
@@ -8446,12 +8392,11 @@ const SITE_CSS = `
     }
     html[data-kf-sidebar="dropdown"] #sidebar-wrapper:hover::after,
     html[data-kf-sidebar="dropdown"] #sidebar-wrapper:focus-within::after { opacity: 0; }
-    /* Kick's own collapse control would fight this mode. */
+    
     html[data-kf-sidebar="dropdown"] [aria-controls="sidebar-wrapper"] { display: none !important; }
-    /* Reclaim the space the rail no longer occupies. */
+    
     html[data-kf-sidebar="dropdown"] :is(main, #main-container) { margin-left: var(--kf-sidebar-dropdown-tab, 34px); }
-    /* A panel that slides out under the pointer is exactly what reduced-motion
-       is asking us not to animate. It still expands — it just does it at once. */
+
     html[data-kf-sidebar="dropdown"][data-kf-reduce-motion="true"] #sidebar-wrapper { transition: none; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -8459,9 +8404,7 @@ const SITE_CSS = `
     #kick-focus-following-preview { transition: none !important; transform: none !important; }
   }
 
-  /* Badges Kick's own markup omits. badges_v2 carries collectible and global
-     badges the legacy array does not, so these fill a gap rather than restyle
-     what Kick already drew. Sized to sit on the identity line. */
+
   .kf-chat-badges {
     display: inline-flex;
     align-items: center;
@@ -8487,8 +8430,7 @@ const SITE_CSS = `
     white-space: nowrap;
   }
 
-  /* Why a message disappeared. The DOM only removes the node; the realtime
-     event carries the reason, and no DOM-scraping tool can see it. */
+
   .kf-deletion-note {
     margin-top: 4px;
     padding: 4px 8px;
@@ -8504,12 +8446,10 @@ const SITE_CSS = `
     color: #e7b478;
   }
 
-  /* Collectible emotes can be 2:1. The rule lives only in Kick's own client,
-     so every third-party renderer squashes them square. */
+
   img[data-kf-emote-aspect="wide"] { width: auto !important; aspect-ratio: 2 / 1; object-fit: contain; }
 
-  /* An explicit accessibility request framed as seizure risk: animated emotes
-     rendered as a single static frame, everywhere they appear. */
+
   html[data-kf-static-emotes="true"] img[src*="/emotes/" i],
   html[data-kf-static-emotes="true"] img[data-src*="/emotes/" i] {
     animation-play-state: paused !important;
@@ -8518,7 +8458,7 @@ const SITE_CSS = `
     html[data-kf-reduce-motion="true"] img[src*="/emotes/" i] { animation-play-state: paused !important; }
   }
 
-  /* Shared interaction states for controls the extension adds to Kick. */
+  
   :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]) {
     transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease !important;
   }
@@ -10291,17 +10231,13 @@ const TOOLTIP_CSS = `
   :host {
     position: fixed;
     z-index: 2147483000;
-    /* Never a pointer target: the card follows the cursor, and a hover
-       surface under it would fight the emote for the same hover. */
+
     pointer-events: none;
     display: none;
     max-width: 280px;
   }
   :host([data-kf-open="true"]) { display: block; }
-  /* The top-layer path. Everything before position-area undoes the UA's own
-     popover styling — border, padding, background, and the inset/margin pair
-     that would otherwise centre it — while position-area and its flips replace
-     the measure-then-clamp pass below. */
+
   :host([data-kf-anchored="true"]) {
     inset: auto;
     margin: 0;
@@ -11983,12 +11919,7 @@ const UI_CSS = `
     --danger-text: #ffaaa4;
     --warning: var(--kf-warning, #f6b943);
     --success: var(--accent);
-    /* Derived from the Corner radius setting rather than fixed, because these
-       three carry every rounded edge in this build's own chrome and only the
-       bare --radius below was wired to the setting, on a single element. The
-       offsets are chosen so the 7px default reproduces the previous 4/6/10
-       exactly: this changes nothing until somebody moves the setting, and then
-       it moves the whole panel instead of one corner. */
+
     --radius-sm: calc(var(--kf-radius, 7px) - 3px);
     --radius-md: calc(var(--kf-radius, 7px) - 1px);
     --radius-lg: calc(var(--kf-radius, 7px) + 3px);
@@ -12041,20 +11972,7 @@ const UI_CSS = `
     background: radial-gradient(circle at 50% 14%, rgba(var(--accent-rgb), .055), transparent 38%), rgba(2, 3, 3, .9);
   }
 
-  /* Interface scale is applied here with zoom rather than by multiplying each
-     length, because this surface carries about 120 font sizes and a ladder of
-     absolute control heights, and scaling only the root font size moved none of
-     them. zoom is the primitive browsers already use for exactly this, so it
-     takes the fonts, the control heights, the padding and the dialog chrome
-     together instead of leaving them out of step with each other. Every element
-     that is position: fixed in this stylesheet is a sibling of this one rather
-     than a descendant, so none of them are dragged along.
 
-     The two viewport-relative dimensions are divided by the scale on the way
-     in: zoom multiplies the used value afterwards, so a plain 100vw would
-     render 110vw at 110% and push the dialog off screen. An engine without zoom
-     drops the declaration and lands on today's behaviour rather than a broken
-     layout. */
   .kf-settings {
     position: relative;
     zoom: var(--kf-interface-scale, 1);
@@ -12156,8 +12074,7 @@ const UI_CSS = `
     justify-content: space-between;
     gap: 16px;
     width: 100%;
-    /* The 24px target floor the rest of this panel holds; density and the
-       interface scale must not shrink a result below it. */
+
     min-height: 44px;
     padding: 8px 10px;
     border: 1px solid transparent;
@@ -12234,8 +12151,7 @@ const UI_CSS = `
   }
   .kf-hide-chip:hover { background: var(--surface-hover); color: var(--text); }
   .kf-hide-chip:active { background: var(--surface-selected); }
-  /* Pressed means hidden, so it reads as struck out rather than as selected —
-     the accent alone would say "on" for a control that is now off. */
+
   .kf-hide-chip[aria-pressed="true"] {
     background: rgba(var(--accent-rgb), .1);
     color: var(--text);
@@ -12261,9 +12177,7 @@ const UI_CSS = `
   .kf-switch:hover { border-color: var(--border-strong); background: var(--surface-hover); }
   .kf-switch[aria-checked="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .12); }
   .kf-switch:disabled { opacity: .72; cursor: not-allowed; }
-  /* Pinned rather than left to the engine: color-scheme picks the UA
-     placeholder, and that is one engine change away from being unreadable
-     on an inset that is near-black in all three themes. */
+
   .kf-text::placeholder, .kf-textarea::placeholder { color: var(--muted); opacity: 1; }
 
   .kf-lock { display: inline-block; margin-left: 7px; padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .5); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 850; text-transform: uppercase; }
@@ -12431,11 +12345,7 @@ const UI_CSS = `
   .kf-my-emote-group > header h4 { margin: 3px 0 0; color: var(--text); font-size: 13px; }
   .kf-my-emote-group > header > strong { color: var(--muted); font-size: 10px; }
   .kf-my-emote-group .kf-sticker-library-grid { max-height: none; overflow: visible; padding-right: 0; }
-  /* The library scrolls inside a fixed height, so most of its cards are off
-     screen at any moment. content-visibility lets the browser skip layout and
-     paint for those entirely; contain-intrinsic-size supplies the height it
-     would have had, so the scrollbar stays honest and does not jump as cards
-     are rendered. Unsupported engines ignore both and render as before. */
+
   .kf-sticker-library-item { min-width: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); content-visibility: auto; contain-intrinsic-size: auto 86px; }
   .kf-sticker-library-item[data-removed="true"] { opacity: .58; }
   .kf-sticker-library-image { width: 52px; height: 52px; display: grid; place-items: center; padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
@@ -12444,9 +12354,7 @@ const UI_CSS = `
   .kf-sticker-library-copy strong { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
   .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
   .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-  /* Fixed, not the accent. A status that follows the branding colour collided
-     with its neighbours on gold and on cyan; these three hues stay 58deg and
-     77deg apart whatever the accent is. */
+
   .kf-sticker-access[data-access="available"] { border-color: rgba(139,232,92,.55); color: #8be85c; }
   .kf-sticker-access[data-access="channel"] { border-color: rgba(255,190,46,.58); color: #ffcf61; }
   .kf-sticker-access[data-access="observed"] { border-color: rgba(56,215,208,.58); color: #70e9e3; }
@@ -12455,13 +12363,10 @@ const UI_CSS = `
   .kf-emote-catalog-browser p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
   .kf-emote-catalog-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
   .kf-emote-catalog-status[data-error="true"] { color: var(--danger-text); }
-  /* Kick edits emotes users already pulled; the local record is the only copy
-     that can prove it, so a changed entry is called out rather than quietly
-     overwritten. */
+
   .kf-sticker-changed { display: inline-flex; margin: 5px 0 0 5px; padding: 2px 5px; border: 1px solid rgba(217,139,58,.62); border-radius: 3px; color: #e0a367; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-library-item[data-changed="true"] { border-color: rgba(217,139,58,.42); }
-  /* A dead greyed tile teaches nothing; a reason plus Kick's own unlock path
-     is the clearest possible signal that entitlements are respected. */
+
   .kf-sticker-lock { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.5; white-space: normal; }
   .kf-sticker-lock a { color: var(--accent); }
   .kf-sticker-library-actions { grid-column: 1 / -1; display: grid; grid-template-columns: auto auto minmax(105px, 1fr); gap: 6px; }
@@ -12489,9 +12394,7 @@ const UI_CSS = `
   .kf-mini-card { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
   .kf-mini-card span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
   .kf-mini-card strong { display: block; margin-top: 4px; color: var(--accent); }
-  /* The earned marker. The word is the status; the dot repeats it for a glance
-     and the pulse is decoration on top of both, which is why either can be
-     removed without the meaning going with it. */
+
   .kf-nav-earned:empty { display: none; }
   .kf-nav-earned { display: block; margin-top: 3px; color: var(--accent); font-size: 11px; }
   .kf-nav-earned::before { content: '● '; }
@@ -12502,8 +12405,7 @@ const UI_CSS = `
     animation: kf-earned-pulse 2.4s ease-in-out infinite;
   }
   @keyframes kf-earned-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
-  /* Stated here as well as in the blanket rule below, because this is the one
-     animation in the build that exists purely to draw the eye. */
+
   @media (prefers-reduced-motion: reduce) {
     [data-kf-earned="reward-ready"]::after { animation: none; }
   }
@@ -12512,9 +12414,7 @@ const UI_CSS = `
   .kf-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .kf-chip { padding: 5px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; background: transparent; font-size: 11px; cursor: pointer; }
   .kf-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
-  /* The pressed chip is named as well as coloured, so the state does not depend
-     on seeing the colour: the button carries aria-pressed and the entry below
-     spells out which pages a view claims. */
+
   .kf-layout-list { display: grid; gap: 6px; padding: 10px 0 2px; }
   .kf-layout-entry { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
   .kf-layout-entry[data-active="true"] { border-color: var(--accent); }
@@ -12532,8 +12432,7 @@ const UI_CSS = `
   .kf-hub-card > span { display: block; color: var(--subtle); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
   .kf-hub-card > strong { display: block; margin-top: 7px; color: var(--accent); font-size: 19px; }
   .kf-hub-card em { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; font-style: normal; line-height: 1.45; }
-  /* A card with no reading is quieter than one with a number, and says so in
-     words as well: state is never carried by colour alone. */
+
   .kf-hub-card[data-state="unavailable"] strong, .kf-hub-card[data-state="loading"] strong { color: var(--muted); }
   .kf-hub-card[data-state="error"] strong { color: var(--danger-text); }
   .kf-action-row { min-height: 78px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
@@ -12631,7 +12530,7 @@ const UI_CSS = `
   .kf-toast-action:hover { background: var(--accent); color: var(--on-accent); }
   .kf-toast-action:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
-  /* Data loss is not a toast. This stays until the user acknowledges it. */
+  
   .kf-storage-alert {
     position: fixed;
     z-index: 2147483001;
@@ -12681,10 +12580,7 @@ const UI_CSS = `
   }
   .kf-command-head input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
 
-  /* Windows High Contrast suppresses box-shadow outright, so every control
-     whose focus ring is a shadow had no visible focus at all — a WCAG 2.4.7
-     failure on a build that ships an accessibility page. Buttons were already
-     safe because they use a real outline. */
+
   @media (forced-colors: active) {
     .kf-text:focus,
     .kf-textarea:focus,
@@ -12700,8 +12596,7 @@ const UI_CSS = `
     }
     .kf-panel, .kf-settings, .kf-command-shell { border: 1px solid CanvasText; }
     .kf-storage-alert { border: 2px solid CanvasText; }
-    /* Forced colors erase custom backgrounds, so every selected/checked/current
-       state needs a system-color marker or "on" looks identical to "off". */
+
     .kf-switch { border: 1px solid CanvasText; }
     .kf-switch[aria-checked="true"] { background: Highlight; }
     [aria-checked="true"], [aria-selected="true"], [aria-pressed="true"], [aria-current="page"] {
@@ -12710,37 +12605,25 @@ const UI_CSS = `
     }
   }
 
-  /* WCAG 2.2 2.5.8 Target Size (Minimum): 24x24 CSS px, and it is measured for
-     pointers generally, not just touch. Density and the 90% interface scale
-     both shrink controls, so this is a floor under every one of them rather
-     than a size for any particular control — the comfortable sizes above still
-     win wherever they are larger. */
+
   :host :is(button, a[href], input, select, textarea, [role="button"], [role="switch"], [role="option"]) {
     min-width: 24px;
     min-height: 24px;
   }
-  /* Inline links inside prose are exempt in 2.5.8 and a 24px floor on them
-     would space paragraphs out oddly. */
+
   :host p a[href], :host small a[href], :host li a[href] { min-width: 0; min-height: 0; }
 
-  /* WCAG 2.2 2.4.11 Focus Not Obscured. The settings modal has a sticky header
-     and footer, and scrolling a control into view puts it flush against the
-     edge — which is exactly where those sit, so the thing that just received
-     focus ends up underneath them. */
+
   :host [data-kf-page] :is(button, a[href], input, select, textarea, [role="switch"]) {
     scroll-margin-block: 72px;
   }
 
-  /* The accessibility settings apply to this mod's own controls too. The site
-     rules cannot reach in here, so these mirror them off the host attributes
-     written by applySettingsAttributes. WCAG 2.5.8 wants 24px minimum; the
-     comfortable size is 40px, matching what the site rules give Kick. */
+
   :host([data-kf-large-targets="true"]) :is(button, a[href], input, select, textarea) { min-height: 40px; }
   :host([data-kf-large-targets="true"]) .kf-switch { min-width: 74px; }
   :host([data-kf-large-targets="true"]) .kf-icon-button { min-width: 40px; }
   :host([data-kf-large-targets="true"]) .kf-ms-bar :is(button, .kf-ms-link) { min-height: 32px; padding: 6px 10px; }
-  /* The tile bar reveals on hover, which a pointer-limited user may never
-     trigger; larger targets implies it stays put. */
+
   :host([data-kf-large-targets="true"]) .kf-ms-bar { opacity: 1; }
 
   :host([data-kf-reduce-motion="true"]) *,
@@ -12752,14 +12635,13 @@ const UI_CSS = `
     scroll-behavior: auto !important;
   }
 
-  /* Kick publishes no drop odds and documents no duplicate protection, so this
-     states what is known and attributes it, rather than filling the gap. */
+
   .kf-fact-list { margin: 0; padding: 0; display: grid; gap: 10px; }
   .kf-fact { margin: 0; padding: 10px 12px; border-left: 3px solid var(--border-subtle); background: rgba(255,255,255,.02); border-radius: 0 4px 4px 0; }
   .kf-fact dt { margin: 0 0 3px; font-size: 12px; font-weight: 700; }
   .kf-fact dd { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 
-  /* Rarity is shown only when the join is confident; see joinCollectibleRarity. */
+  
   .kf-rarity {
     display: inline-flex;
     align-items: center;
@@ -12778,7 +12660,7 @@ const UI_CSS = `
   .kf-rarity[data-rarity="legendary"] { color: #ffb648; }
   .kf-rarity[data-rarity="mythic"] { color: #ff6b8b; }
 
-  /* Multi-stream: a grid of Kick's own embedded players. */
+  
   .kf-ms-backdrop { padding: 0; }
   .kf-ms-shell {
     display: grid;
@@ -12863,10 +12745,9 @@ const UI_CSS = `
     overflow: hidden;
     background: #000;
   }
-  /* The focused tile owns the audio, so it has to be obvious which one that is. */
+  
   .kf-ms-tile[data-kf-multistream-focused="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-  /* A paused grid still shows which channels it holds, so the layout reads as
-     intact rather than empty. */
+
   .kf-ms-backdrop[data-kf-multistream-paused="true"] .kf-ms-tile::after {
     content: attr(data-kf-multistream-tile) " (paused)";
     position: absolute;
@@ -12911,19 +12792,15 @@ const UI_CSS = `
   .kf-ms-merged { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
   .kf-ms-merged-list { margin: 0; padding: 6px 8px; overflow-y: auto; list-style: none; font-size: 12px; line-height: 1.45; }
   .kf-ms-merged-row { padding: 2px 0; overflow-wrap: anywhere; }
-  /* The source channel first and always visible: an interleaved feed is only
-     readable if every line says where it came from without hovering. */
+
   .kf-ms-merged-source { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px;
     background: var(--kf-panel-high, #202626); color: var(--kf-accent, #53fc18); font-size: 11px; font-weight: 700; }
   .kf-ms-merged-who { margin-right: 4px; font-weight: 700; }
   .kf-ms-merged-who::after { content: ':'; }
-  /* One chat at a time: the merged pane replaces the per-tile one rather than
-     competing with it for the same column. */
+
   .kf-ms-backdrop[data-kf-multistream-merged-on="true"] .kf-ms-chat { display: none; }
   .kf-ms-chat { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
-  /* The pop-out has it: hide the pane, do not empty it. The iframe stays
-     mounted and connected, so closing the window shows the chat that was
-     already there rather than loading a fresh one. */
+
   .kf-ms-backdrop[data-kf-multistream-chat-popped-out="true"] .kf-ms-chat { display: none; }
   .kf-ms-chat iframe { width: 100%; height: 100%; border: 0; display: block; }
   .kf-ms-chat-notice {
@@ -12948,8 +12825,7 @@ const UI_CSS = `
   .kf-ms-layout button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
   .kf-ms-layout button:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-layout small { opacity: .6; }
-  /* One bulk request answers for every saved layout, so live status is cheap
-     enough to show on all of them at once. */
+
   .kf-ms-layout small.kf-ms-live { opacity: 1; color: var(--muted); }
   .kf-ms-layout small.kf-ms-live[data-live="true"] { color: var(--accent); font-weight: 700; }
   .kf-ms-empty { color: var(--muted); font-size: 11px; }
@@ -15854,8 +15730,7 @@ const EMOTE_COMPLETION_CSS = `
     width: 240px;
   }
   :host([data-kf-open="true"]) { display: block; }
-  /* See TOOLTIP_CSS: undo the UA popover styling, then let the top layer and
-     the flip fallbacks do the placing. */
+
   :host([data-kf-anchored="true"]) {
     inset: auto;
     margin: 0;
@@ -15886,8 +15761,7 @@ const EMOTE_COMPLETION_CSS = `
     grid-template-columns: 28px 1fr;
     align-items: center;
     gap: 8px;
-    /* 24px is the WCAG 2.2 target-size floor the rest of the interface holds;
-       these rows are pointer targets and the only way to accept. */
+
     min-height: 28px;
     padding: 3px 6px;
     border: 0;
@@ -16763,8 +16637,7 @@ function onGlobalKeydown(event) {
 const HEADER_CONTROL_CSS = `
   :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
   * { box-sizing: border-box; }
-  /* Repeats the settings panel's earned marker inside Kick's own header. The
-     status itself is in the button's accessible name; this is the glance. */
+
   [data-kf-earned="reward-ready"] { position: relative; }
   [data-kf-earned="reward-ready"]::after {
     content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px;
