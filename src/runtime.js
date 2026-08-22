@@ -2992,7 +2992,7 @@ function applyCardActions(node) {
   const label = escapeHtml(name);
   const inMulti = Boolean(slug) && multistreamHasSlug(slug);
   const multiChip = slug
-    ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${escapeHtml(trf(inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid', { name }))}" title="${escapeHtml(tr(inMulti ? 'In Multi' : 'Add to Multi'))}">${inMulti ? '⊟' : '⊞'}</button>`
+    ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-kf-card-name="${label}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${escapeHtml(trf(inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid', { name }))}" title="${escapeHtml(tr(inMulti ? 'In Multi' : 'Add to Multi'))}">${inMulti ? '⊟' : '⊞'}</button>`
     : '';
   // Rebuilt only when what it renders changed. The apply cycle runs these over
   // every card on a discovery page, and replacing the buttons each time both
@@ -3026,7 +3026,7 @@ function syncCardMultiState() {
     button.dataset.active = String(inMulti);
     button.setAttribute('aria-pressed', String(inMulti));
     button.textContent = inMulti ? '⊟' : '⊞';
-    button.title = inMulti ? 'In Multi' : 'Add to Multi';
+    button.title = tr(inMulti ? 'In Multi' : 'Add to Multi');
     // The container's signature has to move with it, or the next apply cycle
     // would see a stale stamp and rebuild the buttons this just patched.
     const actions = button.parentElement;
@@ -3035,10 +3035,17 @@ function syncCardMultiState() {
         /:(true|false):([^:]*)$/, `:${inMulti}:$2`,
       );
     }
-    const label = button.getAttribute('aria-label') || '';
-    button.setAttribute('aria-label', inMulti
-      ? label.replace(/^Add /, 'Remove ').replace(/ to the multi-stream grid$/, ' from the multi-stream grid')
-      : label.replace(/^Remove /, 'Add ').replace(/ from the multi-stream grid$/, ' to the multi-stream grid'));
+    // Rebuilt from the template, not edited in place. This used to swap the
+    // words in the rendered string, which only worked while that string was
+    // English; once the label came from the dictionary the patterns stopped
+    // matching and the label stayed stale in every other language. The card's
+    // own name rides along on the button so it can be rebuilt without going
+    // back to Kick's markup for it.
+    const name = button.dataset.kfCardName || '';
+    button.setAttribute('aria-label', trf(
+      inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid',
+      { name },
+    ));
   }
 }
 

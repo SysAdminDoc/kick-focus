@@ -7333,7 +7333,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              849417') || 0;
+const BUNDLE_BYTES = Number('              849338') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -9152,7 +9152,7 @@ function applyCardActions(node) {
   const label = escapeHtml(name);
   const inMulti = Boolean(slug) && multistreamHasSlug(slug);
   const multiChip = slug
-    ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${escapeHtml(trf(inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid', { name }))}" title="${escapeHtml(tr(inMulti ? 'In Multi' : 'Add to Multi'))}">${inMulti ? '⊟' : '⊞'}</button>`
+    ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-kf-card-name="${label}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${escapeHtml(trf(inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid', { name }))}" title="${escapeHtml(tr(inMulti ? 'In Multi' : 'Add to Multi'))}">${inMulti ? '⊟' : '⊞'}</button>`
     : '';
   const signature = `${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
   if (actions.dataset.kfCardSignature === signature) return;
@@ -9177,17 +9177,18 @@ function syncCardMultiState() {
     button.dataset.active = String(inMulti);
     button.setAttribute('aria-pressed', String(inMulti));
     button.textContent = inMulti ? '⊟' : '⊞';
-    button.title = inMulti ? 'In Multi' : 'Add to Multi';
+    button.title = tr(inMulti ? 'In Multi' : 'Add to Multi');
     const actions = button.parentElement;
     if (actions?.dataset.kfCardSignature) {
       actions.dataset.kfCardSignature = actions.dataset.kfCardSignature.replace(
         /:(true|false):([^:]*)$/, `:${inMulti}:$2`,
       );
     }
-    const label = button.getAttribute('aria-label') || '';
-    button.setAttribute('aria-label', inMulti
-      ? label.replace(/^Add /, 'Remove ').replace(/ to the multi-stream grid$/, ' from the multi-stream grid')
-      : label.replace(/^Remove /, 'Add ').replace(/ from the multi-stream grid$/, ' to the multi-stream grid'));
+    const name = button.dataset.kfCardName || '';
+    button.setAttribute('aria-label', trf(
+      inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid',
+      { name },
+    ));
   }
 }
 
