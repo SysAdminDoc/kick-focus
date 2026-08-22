@@ -9,10 +9,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 Added 2026-08-21 by an engineering and product-quality audit pass. Everything
 above P3 here was measured, not guessed; each item names where it was traced to.
 
-- [ ] P2 — Two accessible names reach the DOM outside every scanner
-  Why: `list.setAttribute('aria-label', 'Emote suggestions')` is a `setAttribute` call rather than markup, so no scanner matches it and the string has no entry in either locale. The multi-stream add and remove toasts are template literals for the same reason. Neither is caught by the gate, so both will drift again.
-  Where: src/runtime.js (the emote completion list), src/multistream.mjs (the two grid toasts)
-
 - [ ] P2 — "The emote could not be saved." still has no next step
   Why: the other five dead-end error toasts were given one in this pass. This one was deliberately left, because it is a catch-all around any thrown error and any cause written into it would be a guess. It needs either a narrower catch that can name the real failure (storage full, network, Kick markup drift) or a pointer to the About error log.
   Where: src/runtime.js (`handleChatStickerSave`)
@@ -36,6 +32,10 @@ above P3 here was measured, not guessed; each item names where it was traced to.
 - [ ] P3 — The saved multi-stream arrangement is called four things
   Why: the live UI says "board", `STORAGE_STORES` says "multi-stream layouts", two import messages say "layouts", and the grid toasts said "Multi". An incomplete rename. The user-facing half should settle on "board".
   Where: src/core.mjs (`STORAGE_STORES`, `IMPORT_ERROR_MESSAGES`, `IMPORT_NOTE_MESSAGES`), src/multistream.mjs
+
+- [ ] P2 — Around twenty toasts and announcements are still English in es and pt
+  Why: they are built as template literals, so no coverage scanner matches them, the same root cause as the two grid toasts fixed in this pass. The three the roadmap named are done; the rest are in the emote save/follow path, the export summary, the shared-layout handler and the filter-suspension announcement. Not done together with them because the userscript sits against a 1 MB injection ceiling with about 1.6 KB of margin, and roughly twenty new sentences in two locales needs about 4 KB. It needs a size cut first, or shorter wording. A gate that refuses a toast template containing prose outside its placeholders would close the class for good, but cannot be added until they are all converted.
+  Where: src/runtime.js (showToast and announce template literals), src/multistream.mjs (the announce pairs)
 
 ## Explicitly deferred
 

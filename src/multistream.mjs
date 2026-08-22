@@ -891,7 +891,7 @@ export function createMultistream(host) {
       const result = commitMultistream([], [slug]);
       syncHeaderMultiState();
       renderMultistream();
-      showToast(`Removed ${slug} from Multi (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
+      showToast(trf('Removed {name} from the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
         { label: 'Undo', onClick: () => { commitMultistream([slug]); syncHeaderMultiState(); renderMultistream(); } },
       ]);
       announce(`Removed ${slug} from multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
@@ -905,7 +905,7 @@ export function createMultistream(host) {
     const result = commitMultistream([slug]);
     syncHeaderMultiState();
     renderMultistream();
-    showToast(`Added ${slug} (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
+    showToast(trf('Added {name} to the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
       { label: 'View', onClick: () => openMultistream() },
       { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(`Removed ${slug} from multi-stream.`); } },
     ]);

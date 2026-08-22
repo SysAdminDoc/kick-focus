@@ -212,3 +212,17 @@ expectFailure('an indirect save status with no translation fails the coverage ga
   const missing = untranslated(await collect(await sabotaged("  updateSetting('layout.density', nextDensity, 'An untranslated save status');")));
   assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });
+
+test('an accessible name written by script goes through the translator', { tag: 'unit' }, async () => {
+  // The attribute scanner reads markup, so a name set with setAttribute was
+  // invisible to it. That is not only a coverage hole: the emote completion
+  // list lives in its own shadow root, which localizeInterface never walks, so
+  // a bare literal there could not be translated by the DOM pass either. The
+  // rule is therefore stronger than "have an entry" — the call itself has to
+  // go through tr() or trf().
+  const src = await interfaceSource();
+  const bare = [...src.matchAll(new RegExp(String.raw`\bsetAttribute\(\s*'(?:aria-label|title|placeholder)'\s*,\s*(` + STR_NC + ')', 'g'))]
+    .map((match) => match[1]);
+  assert.deepEqual(bare, [],
+    `${bare.length} accessible name(s) are set from a bare literal: ${bare.join(' | ')}`);
+});

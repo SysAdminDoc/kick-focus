@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- The emote suggestion list, and the two multi-stream toasts that report a channel being added or removed, are translated. All three reached the DOM in a form no coverage scanner matched. The suggestion list is its own shadow root, which the page-wide localizer never walks, so a bare string there could not have been translated after the fact either.
 - Every accessible name this build renders is translated. Twenty-six of them were assembled by interpolation, which the coverage gate skips because a template is not a fixed string, so a screen reader on Español or Português was read English throughout the emote library, the discovery cards and the multi-stream grid. They go through the same template lookup the toasts already use, and the gate now sees them.
 - Twenty-five dictionary entries with no call site left are gone from both locales. Two of them turned out to be the correct wording that the visible UI had drifted away from, and a gate now refuses a key nothing renders.
 - The Firefox package asks for Kick over https only. It requested `*://kick.com/*`, which includes an http half that never runs: the content-script matches and the background’s own origin set are both https-only. The ad and telemetry hosts keep both schemes on purpose, because a blocker has to refuse those either way.

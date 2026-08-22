@@ -5633,7 +5633,7 @@ function createMultistream(host) {
       const result = commitMultistream([], [slug]);
       syncHeaderMultiState();
       renderMultistream();
-      showToast(`Removed ${slug} from Multi (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
+      showToast(trf('Removed {name} from the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
         { label: 'Undo', onClick: () => { commitMultistream([slug]); syncHeaderMultiState(); renderMultistream(); } },
       ]);
       announce(`Removed ${slug} from multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
@@ -5647,7 +5647,7 @@ function createMultistream(host) {
     const result = commitMultistream([slug]);
     syncHeaderMultiState();
     renderMultistream();
-    showToast(`Added ${slug} (${result.streams.length} of ${MULTISTREAM_MAX})`, false, [
+    showToast(trf('Added {name} to the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
       { label: 'View', onClick: () => openMultistream() },
       { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(`Removed ${slug} from multi-stream.`); } },
     ]);
@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              847782') || 0;
+const BUNDLE_BYTES = Number('              848408') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -13128,6 +13128,9 @@ const TRANSLATIONS = {
     'Page reset': 'Se restableció la página',
     'Shortcuts restored': 'Se restauraron los atajos',
     'Shortcut saved': 'Atajo guardado',
+    'Emote suggestions': 'Sugerencias de emotes',
+    'Removed {name} from the grid ({count} of {max})': 'Se quitó {name} de la cuadrícula ({count} de {max})',
+    'Added {name} to the grid ({count} of {max})': 'Se añadió {name} a la cuadrícula ({count} de {max})',
     'Add to Multi': 'Añadir a Multi',
     'In Multi': 'En Multi',
     'Add {name} to the multi-stream grid': 'Añadir {name} a la cuadrícula multi-stream',
@@ -13781,6 +13784,9 @@ const TRANSLATIONS = {
     'Page reset': 'A página foi redefinida',
     'Shortcuts restored': 'Atalhos restaurados',
     'Shortcut saved': 'Atalho salvo',
+    'Emote suggestions': 'Sugestões de emotes',
+    'Removed {name} from the grid ({count} of {max})': '{name} foi removido da grade ({count} de {max})',
+    'Added {name} to the grid ({count} of {max})': '{name} foi adicionado à grade ({count} de {max})',
     'Add to Multi': 'Adicionar ao Multi',
     'In Multi': 'No Multi',
     'Add {name} to the multi-stream grid': 'Adicionar {name} à grade multi-stream',
@@ -15897,7 +15903,7 @@ function emoteCompletionHost() {
   const list = document.createElement('div');
   list.dataset.kfCompleteList = 'true';
   list.setAttribute('role', 'listbox');
-  list.setAttribute('aria-label', 'Emote suggestions');
+  list.setAttribute('aria-label', tr('Emote suggestions'));
   list.addEventListener('click', (event) => {
     const button = event.target?.closest?.('[data-kf-complete-key]');
     if (!button) return;

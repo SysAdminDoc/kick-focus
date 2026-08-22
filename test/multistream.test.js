@@ -377,7 +377,7 @@ test('the header toggle adds, removes, and offers an undo for each', { tag: 'uni
   surface.toggleCurrentChannelInMulti();
   assert.deepEqual(state.multistream.streams, ['alpha']);
   assert.equal(calls.headerSyncs, 1);
-  assert.match(calls.toasts.at(-1).message, /Added alpha \(1 of 9\)/);
+  assert.match(calls.toasts.at(-1).message, /Added alpha to the grid \(1 of 9\)/);
 
   // Undo removes it again, through the same merge-write path.
   calls.toasts.at(-1).actions.find((action) => action.label === 'Undo').onClick();
@@ -386,7 +386,7 @@ test('the header toggle adds, removes, and offers an undo for each', { tag: 'uni
   surface.toggleCurrentChannelInMulti();
   surface.toggleCurrentChannelInMulti();
   assert.deepEqual(state.multistream.streams, [], 'the second press removes what the first added');
-  assert.match(calls.toasts.at(-1).message, /Removed alpha from Multi/);
+  assert.match(calls.toasts.at(-1).message, /Removed alpha from the grid \(0 of 9\)/);
 
   // A full grid refuses rather than silently dropping a channel.
   state.multistream = normalizeMultistream({
