@@ -873,7 +873,7 @@ export function createMultistream(host) {
       // Merge-write so a second tab adding a different channel is not clobbered.
       commitMultistream([slug]);
       syncHeaderMultiState();
-      announce(`${slug} added to the multi-stream grid`);
+      announce(trf('{name} added to the multi-stream grid', { name: slug }));
     }
     renderMultistream();
   }
@@ -894,12 +894,12 @@ export function createMultistream(host) {
       showToast(trf('Removed {name} from the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
         { label: 'Undo', onClick: () => { commitMultistream([slug]); syncHeaderMultiState(); renderMultistream(); } },
       ]);
-      announce(`Removed ${slug} from multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
+      announce(trf('Removed {name}. Now {count} of {max}.', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }));
       return;
     }
     if (state.multistream.streams.length >= MULTISTREAM_MAX) {
-      showToast(`Multi-stream is full at ${MULTISTREAM_MAX} of ${MULTISTREAM_MAX}.`, true);
-      announce(`Multi-stream is full at ${MULTISTREAM_MAX} channels.`);
+      showToast(trf('The grid is full at {max} of {max}.', { max: MULTISTREAM_MAX }), true);
+      announce(trf('The grid is full at {max} channels.', { max: MULTISTREAM_MAX }));
       return;
     }
     const result = commitMultistream([slug]);
@@ -907,9 +907,9 @@ export function createMultistream(host) {
     renderMultistream();
     showToast(trf('Added {name} to the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
       { label: 'View', onClick: () => openMultistream() },
-      { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(`Removed ${slug} from multi-stream.`); } },
+      { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(trf('Removed {name} from the grid.', { name: slug })); } },
     ]);
-    announce(`Added ${slug} to multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
+    announce(trf('Added {name}. Now {count} of {max}.', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }));
   }
 
   return {

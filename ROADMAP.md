@@ -13,10 +13,6 @@ above P3 here was measured, not guessed; each item names where it was traced to.
   Why: the tooltip host carries `aria-hidden="true"` and nothing references it from the emote, so the access, reach and ownership lines never reach a screen reader. It fires on `focusin` as well as hover, so keyboard users do see it. The followed-channel preview beside it already does this correctly with a two-way `aria-describedby`, which is the pattern to copy. Lower priority because the most important line it carries, the shadowed-name warning, is also surfaced as prose on the Content page.
   Where: src/runtime.js (`chatEmoteTooltipHost`, `showChatEmoteTooltip`, `hideChatEmoteTooltip`)
 
-- [ ] P2 — Around twenty toasts and announcements are still English in es and pt
-  Why: they are built as template literals, so no coverage scanner matches them, the same root cause as the two grid toasts fixed in this pass. The three the roadmap named are done; the rest are in the emote save/follow path, the export summary, the shared-layout handler and the filter-suspension announcement. Not done together with them because the userscript sits against a 1 MB injection ceiling with about 1.6 KB of margin, and roughly twenty new sentences in two locales needs about 4 KB. It needs a size cut first, or shorter wording. A gate that refuses a toast template containing prose outside its placeholders would close the class for good, but cannot be added until they are all converted.
-  Where: src/runtime.js (showToast and announce template literals), src/multistream.mjs (the announce pairs)
-
 ## Explicitly deferred
 
 - Full mobile-site support; the settings surface still reflows at narrow window sizes

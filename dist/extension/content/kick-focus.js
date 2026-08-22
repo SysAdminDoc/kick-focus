@@ -5620,7 +5620,7 @@ function createMultistream(host) {
       state.multistream = result.value;
       commitMultistream([slug]);
       syncHeaderMultiState();
-      announce(`${slug} added to the multi-stream grid`);
+      announce(trf('{name} added to the multi-stream grid', { name: slug }));
     }
     renderMultistream();
   }
@@ -5636,12 +5636,12 @@ function createMultistream(host) {
       showToast(trf('Removed {name} from the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
         { label: 'Undo', onClick: () => { commitMultistream([slug]); syncHeaderMultiState(); renderMultistream(); } },
       ]);
-      announce(`Removed ${slug} from multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
+      announce(trf('Removed {name}. Now {count} of {max}.', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }));
       return;
     }
     if (state.multistream.streams.length >= MULTISTREAM_MAX) {
-      showToast(`Multi-stream is full at ${MULTISTREAM_MAX} of ${MULTISTREAM_MAX}.`, true);
-      announce(`Multi-stream is full at ${MULTISTREAM_MAX} channels.`);
+      showToast(trf('The grid is full at {max} of {max}.', { max: MULTISTREAM_MAX }), true);
+      announce(trf('The grid is full at {max} channels.', { max: MULTISTREAM_MAX }));
       return;
     }
     const result = commitMultistream([slug]);
@@ -5649,9 +5649,9 @@ function createMultistream(host) {
     renderMultistream();
     showToast(trf('Added {name} to the grid ({count} of {max})', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }), false, [
       { label: 'View', onClick: () => openMultistream() },
-      { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(`Removed ${slug} from multi-stream.`); } },
+      { label: 'Undo', onClick: () => { commitMultistream([], [slug]); syncHeaderMultiState(); renderMultistream(); announce(trf('Removed {name} from the grid.', { name: slug })); } },
     ]);
-    announce(`Added ${slug} to multi-stream. Now ${result.streams.length} of ${MULTISTREAM_MAX}.`);
+    announce(trf('Added {name}. Now {count} of {max}.', { name: slug, count: result.streams.length, max: MULTISTREAM_MAX }));
   }
 
   return {
@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              838263') || 0;
+const BUNDLE_BYTES = Number('              843219') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -9141,7 +9141,7 @@ function handleCardAction(event) {
       { label: 'View', onClick: () => openMultistream() },
       { label: 'Undo', onClick: () => { toggleMultistreamSlug(result.slug); } },
     ]);
-    announce(`${result.added ? 'Added' : 'Removed'} ${result.slug}. Now ${total} of ${MULTISTREAM_MAX}.`);
+    announce(trf(result.added ? 'Added {name}. Now {count} of {max}.' : 'Removed {name}. Now {count} of {max}.', { name: result.slug, count: total, max: MULTISTREAM_MAX }));
     return;
   }
   if (button.dataset.kfCardAction === 'favorite') {
@@ -10920,7 +10920,7 @@ async function undoChatStickerSave({ key, scope, removeFavorite, unfollowSlug })
     const result = await mutateKickChannelFollow(unfollowSlug, 'DELETE');
     if (result.ok) updateFollowedEmoteState(unfollowSlug, false);
     else {
-      showToast(`The emote was removed, but Kick could not unfollow ${unfollowSlug}.`, true);
+      showToast(trf('The emote was removed, but Kick could not unfollow {channel}.', { channel: unfollowSlug }), true);
       return;
     }
   }
@@ -10952,13 +10952,13 @@ async function saveChatSticker(image) {
     let followedNow = false;
     if (follow.required && !follow.followed) {
       if (!follow.slug) {
-        showToast(`Saved ${sticker.name}, but Kick did not identify the follow-gated source channel.`, true);
+        showToast(trf('Saved {name}, but Kick did not identify the follow-gated source channel.', { name: sticker.name }), true);
         return;
       }
-      showToast(`Saved ${sticker.name}. Following ${follow.slug}…`);
+      showToast(trf('Saved {name}. Following {channel}…', { name: sticker.name, channel: follow.slug }));
       const result = await mutateKickChannelFollow(follow.slug, 'POST');
       if (!result.ok) {
-        showToast(`Saved ${sticker.name} locally, but Kick could not follow ${follow.slug} (${result.status}). Sign in or reload the channel and try again.`, true);
+        showToast(trf('Saved {name} locally, but Kick could not follow {channel} ({status}). Sign in or reload the channel and try again.', { name: sticker.name, channel: follow.slug, status: result.status }), true);
         return;
       }
       followedNow = true;
@@ -11582,7 +11582,7 @@ function recordFilterDecision(decision) {
   document.documentElement.dataset.kfFilterSuspended = String(!decision.apply);
   if (!decision.apply && !previous) {
     const percent = Math.round(decision.ratio * 100);
-    announce(`Content filtering suspended: it would have hidden ${percent}% of this page.`);
+    announce(trf('Content filtering suspended: it would have hidden {percent}% of this page.', { percent }));
     recordProtection('Filter', {
       category: 'filter',
       label: `suspended (${decision.hidden}/${decision.total} cards)`,
@@ -11663,7 +11663,7 @@ async function runApplyCycle() {
         state.observers.chat = null;
       }
       state.runtime.matureVisible = false;
-      announce(`Kick Focus applied to ${state.route}`);
+      announce(trf('Kick Focus applied to {route}', { route: state.route }));
     }
     ensureSiteStyle();
     applySettingsAttributes();
@@ -13021,6 +13021,25 @@ const TRANSLATIONS = {
     'Page reset': 'Se restableció la página',
     'Shortcuts restored': 'Se restauraron los atajos',
     'Shortcut saved': 'Atajo guardado',
+    'Added {name}. Now {count} of {max}.': 'Se añadió {name}. Ahora {count} de {max}.',
+    'Removed {name}. Now {count} of {max}.': 'Se quitó {name}. Ahora {count} de {max}.',
+    'Removed {name} from the grid.': 'Se quitó {name} de la cuadrícula.',
+    '{name} added to the multi-stream grid': '{name} se añadió a la cuadrícula multi-stream',
+    'The grid is full at {max} of {max}.': 'La cuadrícula está llena con {max} de {max}.',
+    'The grid is full at {max} channels.': 'La cuadrícula está llena con {max} canales.',
+    '{name} now has the audio': '{name} tiene ahora el audio',
+    'Loaded board {name}': 'Se cargó el tablero {name}',
+    'Copied a link to {name}.': 'Se copió un enlace a {name}.',
+    'Opened a shared board with {count} {word}.': 'Se abrió un tablero compartido con {count} {word}.',
+    'The shared board replaced {count} {word} you had collected.': 'El tablero compartido reemplazó {count} {word} que habías reunido.',
+    'Loaded {count} emotes from {channel}.': 'Se cargaron {count} emotes de {channel}.',
+    'Kick Focus applied to {route}': 'Kick Focus aplicado a {route}',
+    'Content filtering suspended: it would have hidden {percent}% of this page.': 'Filtrado de contenido suspendido: habría ocultado el {percent}% de esta página.',
+    'Exported settings, {emotes} emotes, {counts} usage counts, {boards} boards, and your channels, notes, and filters.': 'Se exportó la configuración, {emotes} emotes, {counts} recuentos de uso, {boards} tableros y tus canales, notas y filtros.',
+    'The emote was removed, but Kick could not unfollow {channel}.': 'Se eliminó el emote, pero Kick no pudo dejar de seguir a {channel}.',
+    'Saved {name}, but Kick did not identify the follow-gated source channel.': 'Se guardó {name}, pero Kick no identificó el canal de origen que exige seguirlo.',
+    'Saved {name}. Following {channel}…': 'Se guardó {name}. Siguiendo a {channel}…',
+    'Saved {name} locally, but Kick could not follow {channel} ({status}). Sign in or reload the channel and try again.': 'Se guardó {name} en este dispositivo, pero Kick no pudo seguir a {channel} ({status}). Inicia sesión o recarga el canal e inténtalo de nuevo.',
     'Open multi-stream': 'Abrir multi-stream',
     'Close multi-stream': 'Cerrar multi-stream',
     'emote id in card URL': 'el id del emote en la URL de la carta',
@@ -13682,6 +13701,25 @@ const TRANSLATIONS = {
     'Page reset': 'A página foi redefinida',
     'Shortcuts restored': 'Atalhos restaurados',
     'Shortcut saved': 'Atalho salvo',
+    'Added {name}. Now {count} of {max}.': '{name} foi adicionado. Agora {count} de {max}.',
+    'Removed {name}. Now {count} of {max}.': '{name} foi removido. Agora {count} de {max}.',
+    'Removed {name} from the grid.': '{name} foi removido da grade.',
+    '{name} added to the multi-stream grid': '{name} foi adicionado à grade multi-stream',
+    'The grid is full at {max} of {max}.': 'A grade está cheia com {max} de {max}.',
+    'The grid is full at {max} channels.': 'A grade está cheia com {max} canais.',
+    '{name} now has the audio': '{name} tem agora o áudio',
+    'Loaded board {name}': 'Painel {name} carregado',
+    'Copied a link to {name}.': 'Link para {name} copiado.',
+    'Opened a shared board with {count} {word}.': 'Foi aberto um painel compartilhado com {count} {word}.',
+    'The shared board replaced {count} {word} you had collected.': 'O painel compartilhado substituiu {count} {word} que você tinha reunido.',
+    'Loaded {count} emotes from {channel}.': 'Foram carregados {count} emotes de {channel}.',
+    'Kick Focus applied to {route}': 'Kick Focus aplicado a {route}',
+    'Content filtering suspended: it would have hidden {percent}% of this page.': 'Filtragem de conteúdo suspensa: teria ocultado {percent}% desta página.',
+    'Exported settings, {emotes} emotes, {counts} usage counts, {boards} boards, and your channels, notes, and filters.': 'Foram exportadas as configurações, {emotes} emotes, {counts} contagens de uso, {boards} painéis e seus canais, notas e filtros.',
+    'The emote was removed, but Kick could not unfollow {channel}.': 'O emote foi removido, mas a Kick não conseguiu deixar de seguir {channel}.',
+    'Saved {name}, but Kick did not identify the follow-gated source channel.': '{name} foi salvo, mas a Kick não identificou o canal de origem que exige seguir.',
+    'Saved {name}. Following {channel}…': '{name} foi salvo. Seguindo {channel}…',
+    'Saved {name} locally, but Kick could not follow {channel} ({status}). Sign in or reload the channel and try again.': '{name} foi salvo neste dispositivo, mas a Kick não conseguiu seguir {channel} ({status}). Entre na sua conta ou recarregue o canal e tente de novo.',
     'Open multi-stream': 'Abrir multi-stream',
     'Close multi-stream': 'Fechar multi-stream',
     'emote id in card URL': 'o id do emote na URL da carta',
@@ -14789,7 +14827,7 @@ async function importChannelEmotes() {
   state.runtime.emoteCatalogError = false;
   state.runtime.emoteCatalogStatus = `${slug}: ${parts.join(' · ')}. Artwork is saved locally; chat access is unchanged.`;
   renderSettingsPage();
-  showToast(`Loaded ${emotes.length} emotes from ${slug}.`);
+  showToast(trf('Loaded {count} emotes from {channel}.', { count: emotes.length, channel: slug }));
 }
 
 function updateEmoteCatalogProgressInPlace() {
@@ -15241,7 +15279,7 @@ function onInterfaceClick(event) {
     });
     persistMultistream();
     renderMultistream();
-    announce(`${slug} now has the audio`);
+    announce(trf('{name} now has the audio', { name: slug }));
   }
   else if (action === 'multistream-toggle-pause') {
     const paused = !state.multistream.paused;
@@ -15290,7 +15328,7 @@ function onInterfaceClick(event) {
       state.multistreamError = '';
       persistMultistream();
       renderMultistream();
-      announce(`Loaded board ${layout.name}`);
+      announce(trf('Loaded board {name}', { name: layout.name }));
     }
   }
   else if (action === 'multistream-copy-layout') {
@@ -15299,7 +15337,7 @@ function onInterfaceClick(event) {
     const link = multistreamLayoutLink(layout.streams);
     if (!link) { showToast('That board has no usable channels.', true); return; }
     navigator.clipboard?.writeText(link)
-      .then(() => showToast(`Copied a link to ${layout.name}.`))
+      .then(() => showToast(trf('Copied a link to {name}.', { name: layout.name })))
       .catch(() => showToast('Could not reach the clipboard. Check the clipboard permission for kick.com.', true));
   }
   else if (action === 'multistream-delete-layout') {
@@ -15597,7 +15635,7 @@ function exportSettings() {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     const counted = Object.keys(state.emoteUsage.global || {}).length;
-    showToast(`Exported settings, ${state.stickerPreferences.library.size} emotes, ${counted} usage counts, ${state.multistream.layouts.length} layouts, and your channels, notes, and filters.`);
+    showToast(trf('Exported settings, {emotes} emotes, {counts} usage counts, {boards} boards, and your channels, notes, and filters.', { emotes: state.stickerPreferences.library.size, counts: counted, boards: state.multistream.layouts.length }));
   } catch {
     showToast('Could not export settings. Check that your browser allows downloads from kick.com.', true);
   }
@@ -16993,9 +17031,9 @@ function openSharedLayoutFromUrl() {
   } catch {
   }
   openMultistream();
-  announce(`Opened a shared layout with ${shared.length} ${plural(shared.length, 'channel', 'channels')}.`);
+  announce(trf('Opened a shared board with {count} {word}.', { count: shared.length, word: plural(shared.length, 'channel', 'channels') }));
   if (!overwritten.length) return;
-  showToast(`Shared layout replaced ${overwritten.length} ${plural(overwritten.length, 'channel', 'channels')} you had collected.`, false, [
+  showToast(trf('The shared board replaced {count} {word} you had collected.', { count: overwritten.length, word: plural(overwritten.length, 'channel', 'channels') }), false, [
     {
       label: 'Undo',
       onClick: () => {
@@ -17008,7 +17046,7 @@ function openSharedLayoutFromUrl() {
       },
     },
   ]);
-  announce(`The shared layout replaced ${overwritten.length} ${plural(overwritten.length, 'channel', 'channels')} you had collected.`);
+  announce(trf('The shared board replaced {count} {word} you had collected.', { count: overwritten.length, word: plural(overwritten.length, 'channel', 'channels') }));
 }
 
 function startWhenBodyExists() {

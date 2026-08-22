@@ -233,3 +233,30 @@ test('an accessible name written by script goes through the translator', { tag: 
   assert.deepEqual(bare, [],
     `${bare.length} accessible name(s) are set from a bare literal: ${bare.join(' | ')}`);
 });
+
+test('no toast or announcement carries prose a dictionary never sees', { tag: 'unit' }, async () => {
+  // A template literal is not a fixed string, so no scanner can look it up and
+  // every one of these stayed English in es and pt. Composing from already
+  // translated pieces is fine and common, so the rule is about prose: letters
+  // outside the placeholders are words somebody wrote, and words have to come
+  // from trf() with the template as the key.
+  const [runtime, multistream] = await Promise.all([
+    readFile(resolve(root, 'src/runtime.js'), 'utf8'),
+    readFile(resolve(root, 'src/multistream.mjs'), 'utf8'),
+  ]);
+  const offenders = [];
+  for (const [name, src] of [['runtime.js', runtime], ['multistream.mjs', multistream]]) {
+    src.split('\n').forEach((line, index) => {
+      const match = /\b(?:showToast|announce)\(`([^`]*)`/.exec(line);
+      if (!match) return;
+      // Drop the placeholders, including the nested braces of an object literal.
+      let bare = match[1];
+      let previous;
+      do { previous = bare; bare = bare.replace(/\$\{[^{}]*\}/g, ''); } while (bare !== previous);
+      bare = bare.replace(/\$\{[\s\S]*\}/g, '');
+      if (/[A-Za-z]{3,}/.test(bare)) offenders.push(`${name}:${index + 1} ${match[1].slice(0, 60)}`);
+    });
+  }
+  assert.deepEqual(offenders, [],
+    `${offenders.length} toast template(s) hold untranslatable prose: ${offenders.join(' | ')}`);
+});

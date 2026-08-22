@@ -1079,7 +1079,12 @@ const checks = [
   ['cross-tab convergence re-reads the store rather than trusting the wire', convergenceRereads(source)],
   ['a tab applying another tab’s change never writes back or re-broadcasts', remoteApplyNeverWrites(source)],
   ['a shared link says what it replaced and offers it back',
-    /Shared layout replaced/.test(source) && /Your own multi-stream grid is back\./.test(source)],
+    // The sentence moved from "Shared layout replaced" to "The shared board
+    // replaced" when the user-facing name settled on board, and again when it
+    // became a translation template. What the gate is for is unchanged: the
+    // toast has to name what it took away and the undo has to be offered.
+    /The shared board replaced \{count\} \{word\} you had collected\./.test(source)
+      && /Your own multi-stream grid is back\./.test(source)],
   ['the organizer grid renders a bounded window with spacers, not the whole library', organizerWindows(source)],
   ['spacer arithmetic agrees with the grid CSS it stands in for', spacerMathMatchesCss(source)],
   ['organizer search is debounced rather than firing on every keystroke', organizerDebouncesSearch(source)],
