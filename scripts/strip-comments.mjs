@@ -22,6 +22,8 @@
  *   statements;
  * - a line whose only content was a comment is dropped rather than left blank,
  *   which is another ~5 KB across the bundle.
+ * - indentation and blank lines in code are dropped too. Template content keeps
+ *   its whitespace, while generated JavaScript gets the space back for features.
  */
 
 const IDENTIFIER_START = /[A-Za-z_$]/;
@@ -43,6 +45,7 @@ export function stripComments(source) {
   const lines = [];
   const frames = [{ mode: 'code', braces: 0 }];
   let line = '';
+  let literalLine = false;
   let hadComment = false;
   let lastChar = '';
   let lastWord = '';
@@ -53,12 +56,15 @@ export function stripComments(source) {
   const emit = (text) => {
     for (const character of text) {
       if (character === '\n') {
-        if (inCode()) line = line.replace(/[ \t]+$/, '');
-        if (!(hadComment && line === '')) lines.push(line);
+        if (!inCode()) literalLine = true;
+        if (inCode()) line = literalLine ? line.replace(/[ \t]+$/, '') : line.trim();
+        if (line || literalLine) lines.push(line);
         line = '';
+        literalLine = false;
         hadComment = false;
         continue;
       }
+      if (!inCode()) literalLine = true;
       line += character;
     }
   };
@@ -212,6 +218,7 @@ export function stripComments(source) {
     if (!/\s/.test(character)) { lastChar = character; lastWord = ''; }
   }
 
+  if (inCode() && !literalLine) line = line.trim();
   lines.push(line);
   return lines.join('\n');
 }

@@ -19,8 +19,13 @@ test('a comment is removed and the code around it is not', { tag: 'unit' }, () =
 test('a block comment that spanned lines leaves a line terminator behind', { tag: 'unit' }, () => {
   // Without a break, ASI would join the two statements into `const a = 1 b()`.
   assert.equal(stripComments('const a = 1\n/* note\nnote */\nb()\n'), 'const a = 1\nb()\n');
-  assert.equal(stripComments('const a = 1 /* note\nnote */ b()\n'), 'const a = 1\n b()\n');
+  assert.equal(stripComments('const a = 1 /* note\nnote */ b()\n'), 'const a = 1\nb()\n');
   assert.equal(stripComments('f(a /* first */, b)\n'), 'f(a  , b)\n');
+});
+
+test('generated code loses indentation while template content keeps it', { tag: 'unit' }, () => {
+  assert.equal(stripComments('  const a = 1;\n\n    run(a);\n'), 'const a = 1;\nrun(a);\n');
+  assert.equal(stripComments('  const view = `\n    <p>kept</p>\n  `;\n'), '  const view = `\n    <p>kept</p>\n  `;\n');
 });
 
 test('slashes inside strings and templates are content, not comments', { tag: 'unit' }, () => {

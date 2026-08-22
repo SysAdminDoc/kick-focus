@@ -222,7 +222,8 @@ const convergenceRereads = (bundle) =>
 const remoteApplyNeverWrites = (bundle) => {
   const start = bundle.indexOf('function applyRemoteMultistream');
   if (start === -1) return false;
-  const body = bundle.slice(start, bundle.indexOf('\n  }', start));
+  const nextFunction = bundle.indexOf('\nfunction ', start + 9);
+  const body = bundle.slice(start, nextFunction === -1 ? bundle.length : nextFunction);
   return !/gmSet\(|broadcastMultistream\(/.test(body);
 };
 
@@ -865,7 +866,8 @@ const checks = [
   ['ships the read-only cross-channel emote browser', source.includes('data-kf-emote-catalog-input')
     && source.includes('import-channel-emotes')
     && source.includes('channelCatalogEmotes')
-    && source.includes('Open artwork')],
+    && source.includes('Open {name} artwork')
+    && source.includes('rel="noopener"')],
   // Hiding is styling only. A `.remove()`, a `.click()`, or a `hidden = true`
   // reached from this feature would take a Kick control out of service instead
   // of out of sight, which is a different promise from the one the panel makes.
