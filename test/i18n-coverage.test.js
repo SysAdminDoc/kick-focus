@@ -38,6 +38,13 @@ const SCANNERS = [
   ['pageHeader', new RegExp(`\\bpageHeader\\(${STR},\\s*${STR}`, 'g')],
   ['tr', new RegExp(`\\btr\\(${STR}`, 'g')],
   ['trf', new RegExp(`\\btrf\\(${STR}`, 'g')],
+  // `tr(cond ? 'A' : 'B')` and `trf(cond ? 'A {n}' : 'B {n}', …)`. The two
+  // scanners above need a quote straight after the paren, so the whole ternary
+  // shape was invisible to them — and that shape is most of the accessible
+  // names, where the label depends on the state of the control it sits on.
+  ['tr ternary', new RegExp(`\\btrf?\\([^;'"\`]{0,200}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
+  // The nested form, for a control with three states rather than two.
+  ['tr nested ternary', new RegExp(`\\btrf?\\([^;'"\`]{0,120}\\?\\s*\\([^;'"\`]{0,120}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['showToast', new RegExp(`\\bshowToast\\(${STR}`, 'g')],
   ['showToast ternary', new RegExp(`\\bshowToast\\([^;?]{0,300}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['save status', new RegExp(`\\b(?:saveSettings|setSaveStatus)\\(${STR}`, 'g')],

@@ -6,6 +6,11 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Interface scale no longer pushes the settings dialog off screen at 110%. The two responsive overrides restate width and height in viewport units, and a media query evaluates against the real viewport while zoom multiplies whatever it resolves to, so at 110% the panel hung 68px past the right edge on a narrow window. The size floors had the same problem.
+- Toggling a favorite or a hide on an emote tile keeps its translated label. The in-place patch wrote raw English over the name the tile had just rendered from the dictionary, and it dropped the channel scope while doing it.
+- Changing the interface language now updates discovery card labels. Their rebuild is skipped when a signature is unchanged, and the signature had no locale in it, so cards kept the previous language until something else about them changed.
+- Two emote labels no longer come out half translated: the shelf group name and the rarity basis were English values dropped into a translated sentence.
+- The density command is translated again. It was the one place a label was assembled by concatenation, which the dead-key sweep could not see, so its two strings were removed as unused.
 - The injection-ceiling check measures bytes. It counted UTF-16 code units and printed the answer with a B after it, and the bundle carries about 1,450 non-ASCII characters, so the two had drifted 1.7 KB apart and the artifact had crossed 1 MB while the check still reported room to spare. A userscript manager injects bytes.
 - The build no longer ships 12 KB of stylesheet comments. A comment inside a template literal is string content rather than a comment, so the comment stripper left them in every release. CSS comments are inert, so the stripper now drops them from stylesheet templates only, leaving markup and page-world probe strings alone.
 - The three emote access badges stay distinct whatever accent is chosen. Available followed the accent while the other two are fixed, so on gold it and the channel badge were both amber, and on cyan it and the observed badge were both cyan. Available is a status rather than branding, so it now has its own colour and the three hues sit 58 and 77 degrees apart.

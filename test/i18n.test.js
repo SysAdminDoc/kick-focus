@@ -128,7 +128,24 @@ test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
     .map((match) => match[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\'));
   assert.ok(keys.length > 100, `parsed only ${keys.length} keys — suspect the parser, not the dictionary`);
 
-  const dead = keys.filter((key) => !usage.includes(key));
+  // A whole string, never a substring. Plain `includes` kept short keys alive
+  // on any longer string that happened to contain them: 'Delete' was certified
+  // by `Delete (${count})`, which never matches the key and renders in English,
+  // and one key was kept alive by being the prefix of a longer sentence that
+  // had replaced it on screen. A key is live when it appears as a complete
+  // quoted literal, or as the complete text of a markup node.
+  const live = (key) => {
+    const quoted = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return usage.includes(`'${quoted}'`)
+      || usage.includes(`\`${key}\``)
+      || usage.includes(`>${key}<`)
+      // A label that follows an inline icon: `${uiIcon('reset')}Reset page<`.
+      // The text node is still the whole key; what precedes it is the close of
+      // an interpolation rather than a tag.
+      || usage.includes(`}${key}<`)
+      || usage.includes(`"${key}"`);
+  };
+  const dead = keys.filter((key) => !live(key));
   assert.deepEqual(dead, [],
     `${dead.length} dictionary key(s) have no call site, starting with: ${dead.slice(0, 5).map((k) => JSON.stringify(k)).join(' | ')}`);
 });

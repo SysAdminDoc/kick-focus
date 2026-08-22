@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              837289') || 0;
+const BUNDLE_BYTES = Number('              838263') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -9076,7 +9076,7 @@ function applyCardActions(node) {
   const multiChip = slug
     ? `<button type="button" data-kf-card-action="multi" data-kf-card-slug="${escapeHtml(slug)}" data-kf-card-name="${label}" data-active="${inMulti}" aria-pressed="${inMulti}" aria-label="${escapeHtml(trf(inMulti ? 'Remove {name} from the multi-stream grid' : 'Add {name} to the multi-stream grid', { name }))}" title="${escapeHtml(tr(inMulti ? 'In Multi' : 'Add to Multi'))}">${inMulti ? '⊟' : '⊞'}</button>`
     : '';
-  const signature = `${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
+  const signature = `${activeLocale()}:${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
   if (actions.dataset.kfCardSignature === signature) return;
   actions.dataset.kfCardSignature = signature;
   setMarkup(actions, `
@@ -10439,7 +10439,7 @@ function rarityBadge(descriptor) {
   if (!state.settings.content.showEmoteRarity || !state.live.rarity) return '';
   const match = state.live.rarity.matched.find((entry) => entry.emote.id === descriptor.id);
   if (!match) return '';
-  return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="${escapeHtml(trf('Kick rarity, matched by {basis}', { basis: match.basis }))}">${escapeHtml(match.rarity)}</span>`;
+  return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="${escapeHtml(trf('Kick rarity, matched by {basis}', { basis: tr(match.basis) }))}">${escapeHtml(match.rarity)}</span>`;
 }
 
 function emoteImageAttrs(descriptor) {
@@ -10654,7 +10654,7 @@ function renderStickerOrganizer() {
   const usageShelf = (entries, label, hint) => (entries.length
     ? `<section data-kf-sticker-usage-shelf="${label.toLowerCase().replace(/\s+/g, '-')}">
       <div data-kf-sticker-quick-header><strong>${escapeHtml(label)}</strong><span>${escapeHtml(hint)}</span></div>
-      <div data-kf-sticker-quick-grid role="group" aria-label="${escapeHtml(trf('{name} emotes', { name: label }))}">${entries.map(stickerQuickProxyMarkup).join('')}</div>
+      <div data-kf-sticker-quick-grid role="group" aria-label="${escapeHtml(trf('{name} emotes', { name: tr(label) }))}">${entries.map(stickerQuickProxyMarkup).join('')}</div>
     </section>`
     : '');
   const customGroups = state.stickerPreferences.groups.map((group) => {
@@ -10760,14 +10760,20 @@ function patchStickerTileStates(gridHost) {
     if (pin) {
       pin.setAttribute('aria-pressed', String(pinned));
       pin.textContent = pinned ? '★' : '☆';
-      pin.setAttribute('aria-label', `${pinned ? 'Remove favorite' : 'Favorite'} ${name}`);
-      pin.title = pinned ? 'Remove favorite' : 'Favorite';
+      const scope = pinned ? favoriteScopeOf(key) : '';
+      pin.setAttribute('aria-label', trf(
+        pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}',
+        { name },
+      ));
+      pin.title = tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite');
+      tile.dataset.kfStickerScoped = scope ? 'true' : '';
+      if (!scope) delete tile.dataset.kfStickerScoped;
     }
     const hide = tile.querySelector('[data-kf-sticker-action="hide"]');
     if (hide) {
       hide.textContent = hidden ? '↶' : '×';
-      hide.setAttribute('aria-label', `${hidden ? 'Restore' : 'Remove'} ${name}`);
-      hide.title = hidden ? 'Restore' : 'Remove';
+      hide.setAttribute('aria-label', trf(hidden ? 'Restore {name}' : 'Remove {name}', { name }));
+      hide.title = tr(hidden ? 'Restore' : 'Remove');
     }
   }
 }
@@ -11978,8 +11984,8 @@ const UI_CSS = `
     zoom: var(--kf-interface-scale, 1);
     width: min(1140px, calc((100vw - 44px) / var(--kf-interface-scale, 1)));
     height: min(940px, calc((100vh - 44px) / var(--kf-interface-scale, 1)));
-    min-width: 860px;
-    min-height: 640px;
+    min-width: calc(860px / var(--kf-interface-scale, 1));
+    min-height: calc(640px / var(--kf-interface-scale, 1));
     display: grid;
     grid-template-rows: 76px minmax(0, 1fr) 68px;
     overflow: hidden;
@@ -12858,7 +12864,7 @@ const UI_CSS = `
   :is(button, input, select, textarea):focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
   @media (max-width: 920px) {
-    .kf-settings { width: calc(100vw - 28px); height: calc(100vh - 28px); min-width: 0; min-height: 620px; }
+    .kf-settings { width: calc((100vw - 28px) / var(--kf-interface-scale, 1)); height: calc((100vh - 28px) / var(--kf-interface-scale, 1)); min-width: 0; min-height: calc(620px / var(--kf-interface-scale, 1)); }
     .kf-header { grid-template-columns: 1fr auto auto; gap: 14px; padding-inline: 18px; }
     .kf-body { grid-template-columns: 204px minmax(0, 1fr); }
     .kf-nav button { grid-template-columns: 21px minmax(0, 1fr); gap: 10px; padding-inline: 18px; }
@@ -12879,7 +12885,7 @@ const UI_CSS = `
 
   @media (max-width: 700px) {
     .kf-backdrop { padding: 0; }
-    .kf-settings { width: 100vw; height: 100vh; min-height: 0; grid-template-rows: 66px minmax(0, 1fr) 68px; border: 0; border-radius: 0; }
+    .kf-settings { width: calc(100vw / var(--kf-interface-scale, 1)); height: calc(100vh / var(--kf-interface-scale, 1)); min-height: 0; grid-template-rows: 66px minmax(0, 1fr) 68px; border: 0; border-radius: 0; }
     .kf-header { grid-template-columns: 1fr auto auto; padding-inline: 14px; }
     .kf-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
     .kf-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; overscroll-behavior-inline: contain; }
@@ -13015,6 +13021,14 @@ const TRANSLATIONS = {
     'Page reset': 'Se restableció la página',
     'Shortcuts restored': 'Se restauraron los atajos',
     'Shortcut saved': 'Atajo guardado',
+    'Open multi-stream': 'Abrir multi-stream',
+    'Close multi-stream': 'Cerrar multi-stream',
+    'emote id in card URL': 'el id del emote en la URL de la carta',
+    'emote name in card URL': 'el nombre del emote en la URL de la carta',
+    'Use comfortable density': 'Usar densidad cómoda',
+    'Use compact density': 'Usar densidad compacta',
+    'Most used': 'Más usados',
+    'Recent': 'Recientes',
     'Remove this-channel favorite {name}': 'Quitar {name} de los favoritos de este canal',
     'Emote suggestions': 'Sugerencias de emotes',
     'Removed {name} from the grid ({count} of {max})': 'Se quitó {name} de la cuadrícula ({count} de {max})',
@@ -13128,7 +13142,6 @@ const TRANSLATIONS = {
     'Read-only account signals': 'Datos de cuenta de solo lectura',
     'Status, privacy, and diagnostics': 'Estado, privacidad y diagnósticos',
     'Control how Kick is arranged across your desktop.': 'Controla cómo se organiza Kick en tu escritorio.',
-    'Choose how the left discovery rail behaves.': 'Elige cómo funciona la barra de descubrimiento izquierda.',
     'Keep the page calm, private, and focused on streams.': 'Mantén la página tranquila, privada y centrada en los streams.',
     'Improve comfort and keep core actions within reach.': 'Mejora la comodidad y mantén las acciones principales al alcance.',
     'A desktop-first layout and control layer for Kick.': 'Una capa de diseño y control para Kick pensada para escritorio.',
@@ -13185,8 +13198,6 @@ const TRANSLATIONS = {
     'Low-contrast choices fall back to a safe rose.': 'Las opciones de bajo contraste vuelven a un rosa seguro.',
     'Your current theme, accent, scale, and card treatment.': 'Tu tema, acento, escala y tratamiento de tarjetas actuales.',
     'Accent color': 'Color de acento',
-    'Viewing presets': 'Preajustes de visualización',
-    'Preset': 'Preajuste',
     'Calm': 'Calma',
     'Cinema': 'Cine',
     'Chat First': 'Chat primero',
@@ -13479,7 +13490,6 @@ const TRANSLATIONS = {
     'Kick Focus restored': 'Kick Focus restaurado',
     'Give this stream the audio and chat': 'Dar a esta transmisión el audio y el chat',
     'Remove': 'Quitar',
-    'Delete': 'Eliminar',
     'Clear search': 'Borrar la búsqueda',
     'Campaign status': 'Estado de la campaña',
     'No open campaigns': 'No hay campañas abiertas',
@@ -13672,6 +13682,14 @@ const TRANSLATIONS = {
     'Page reset': 'A página foi redefinida',
     'Shortcuts restored': 'Atalhos restaurados',
     'Shortcut saved': 'Atalho salvo',
+    'Open multi-stream': 'Abrir multi-stream',
+    'Close multi-stream': 'Fechar multi-stream',
+    'emote id in card URL': 'o id do emote na URL da carta',
+    'emote name in card URL': 'o nome do emote na URL da carta',
+    'Use comfortable density': 'Usar densidade confortável',
+    'Use compact density': 'Usar densidade compacta',
+    'Most used': 'Mais usados',
+    'Recent': 'Recentes',
     'Remove this-channel favorite {name}': 'Remover {name} dos favoritos deste canal',
     'Emote suggestions': 'Sugestões de emotes',
     'Removed {name} from the grid ({count} of {max})': '{name} foi removido da grade ({count} de {max})',
@@ -13786,7 +13804,6 @@ const TRANSLATIONS = {
     'Status, privacy, and diagnostics': 'Status, privacidade e diagnósticos',
     'Control how Kick is arranged across your desktop.': 'Controle como o Kick é organizado na sua área de trabalho.',
     'Keep the page calm, private, and focused on streams.': 'Mantenha a página calma, privada e focada nas transmissões.',
-    'Choose how the left discovery rail behaves.': 'Escolha como a barra lateral de descoberta se comporta.',
     'Improve comfort and keep core actions within reach.': 'Melhore o conforto e mantenha as ações principais ao alcance.',
     'A desktop-first layout and control layer for Kick.': 'Uma camada de layout e controle para Kick pensada para desktop.',
     'Language': 'Idioma',
@@ -13842,8 +13859,6 @@ const TRANSLATIONS = {
     'Low-contrast choices fall back to a safe rose.': 'Opções de baixo contraste voltam para um rosa seguro.',
     'Your current theme, accent, scale, and card treatment.': 'Seu tema, destaque, escala e tratamento de cartões atuais.',
     'Accent color': 'Cor de destaque',
-    'Viewing presets': 'Predefinições de visualização',
-    'Preset': 'Predefinição',
     'Calm': 'Calmo',
     'Cinema': 'Cinema',
     'Chat First': 'Chat primeiro',
@@ -14136,7 +14151,6 @@ const TRANSLATIONS = {
     'Kick Focus restored': 'Kick Focus restaurado',
     'Give this stream the audio and chat': 'Dar a esta transmissão o áudio e o chat',
     'Remove': 'Remover',
-    'Delete': 'Excluir',
     'Clear search': 'Limpar a busca',
     'Campaign status': 'Status da campanha',
     'No open campaigns': 'Nenhuma campanha aberta',
@@ -16416,7 +16430,7 @@ function commandDefinitions() {
     { id: 'chat', label: tr(state.runtime.chatHidden ? 'Show chat' : 'Hide chat'), description: tr('Toggle the chat panel for this session'), key: state.settings.shortcuts.chat },
     { id: 'sidebar', label: tr(state.runtime.sidebarHidden ? 'Show sidebar' : 'Hide sidebar'), description: tr('Toggle the discovery rail for this session'), key: state.settings.shortcuts.sidebar },
     { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
-    { id: 'density', label: tr(`Use ${state.settings.layout.density === 'compact' ? 'comfortable' : 'compact'} density`), description: tr('Change discovery spacing and save it'), key: 'D' },
+    { id: 'density', label: tr(state.settings.layout.density === 'compact' ? 'Use comfortable density' : 'Use compact density'), description: tr('Change discovery spacing and save it'), key: 'D' },
     { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
     { id: 'poor', label: tr(state.settings.content.hideMonetization ? 'Disable Poor mode' : 'Enable Poor mode'), description: tr('Remove spending prompts without changing your Kick account'), key: '' },
     { id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid'), key: '' },

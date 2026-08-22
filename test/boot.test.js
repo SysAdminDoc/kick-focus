@@ -406,20 +406,33 @@ test('interface scale reaches the whole settings surface, not just its font size
   // absolute font sizes and a ladder of fixed control heights, so no control
   // ever changed size. zoom scales the used value of everything inside.
   const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
-  const rule = source.slice(source.indexOf('.kf-settings {'));
-  const block = rule.slice(0, rule.indexOf('}'));
 
-  assert.match(block, /zoom:\s*var\(--kf-interface-scale, 1\);/,
+  // EVERY .kf-settings block, not only the first. The responsive overrides are
+  // where this went wrong: they restate width and height in viewport units, a
+  // media query still evaluates against the real viewport, and zoom multiplies
+  // whatever they resolve to. An earlier version of this gate read one block
+  // and stayed green while the 110% dialog hung 68px off the right edge.
+  const blocks = [...source.matchAll(/\.kf-settings\s*\{([^}]*)\}/g)].map((match) => match[1]);
+  assert.ok(blocks.length >= 3, `expected the base rule and its overrides, found ${blocks.length}`);
+
+  assert.match(blocks[0], /zoom:\s*var\(--kf-interface-scale, 1\);/,
     'the settings surface must scale with zoom');
-  assert.doesNotMatch(block, /font-size:\s*calc\([^)]*--kf-interface-scale/,
+  assert.doesNotMatch(blocks[0], /font-size:\s*calc\([^)]*--kf-interface-scale/,
     'scaling the root font size as well as zooming would apply the scale twice');
 
-  // zoom multiplies the used value, so a viewport-relative dimension has to be
-  // divided by the scale first or the dialog renders wider than the window.
-  for (const property of ['width', 'height']) {
-    const line = new RegExp(String.raw`\n\s*${property}: min\([^;]*\);`).exec(block)?.[0] ?? '';
-    assert.match(line, /\/ var\(--kf-interface-scale, 1\)/,
-      `${property} must divide its viewport-relative half by the scale`);
+  // Any length that decides how much room the dialog takes has to be divided
+  // by the scale, in every block that sets one.
+  const SCALED = ['width', 'height', 'min-width', 'min-height'];
+  for (const [index, block] of blocks.entries()) {
+    for (const property of SCALED) {
+      const declaration = new RegExp(String.raw`(?:^|[;{\s])${property}:\s*([^;]+)`).exec(block);
+      if (!declaration) continue;
+      const value = declaration[1];
+      // A floor of zero, or a value in no unit that grows, needs no division.
+      if (/^\s*(0|auto|none)\s*$/.test(value)) continue;
+      assert.match(value, /\/ var\(--kf-interface-scale, 1\)/,
+        `block ${index}: ${property} is "${value.trim()}", which zoom will multiply without dividing it first`);
+    }
   }
 
   // The scale still has to be written somewhere for any of this to run.

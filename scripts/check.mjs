@@ -1330,9 +1330,17 @@ const checks = [
   // https-only — so a `*://` here asked for an http half that never runs. The
   // ad and telemetry hosts keep their `*://` on purpose: a blocker has to
   // refuse those over either scheme.
-  ['Firefox asks for Kick over https only', firefoxManifest.permissions
-    .filter((perm) => perm.includes('kick.com'))
-    .every((perm) => perm.startsWith('https://'))],
+  // Both halves, and neither may be empty. In MV2 a content-script match
+  // grants host access as surely as a permission does, and [].every() is true,
+  // so a version of this that only filtered permissions passed just as well
+  // when both Kick entries were deleted outright.
+  ['Firefox asks for Kick over https only', (() => {
+    const kickPermissions = firefoxManifest.permissions
+      .filter((perm) => perm.endsWith('://kick.com/*') || perm.endsWith('://www.kick.com/*'));
+    const matches = firefoxManifest.content_scripts.flatMap((entry) => entry.matches);
+    return kickPermissions.length === 2 && matches.length >= 2
+      && [...kickPermissions, ...matches].every((pattern) => pattern.startsWith('https://'));
+  })()],
   ['Firefox enumerates every ad and cancellable telemetry host', [...AD_HOSTS, ...cancellableTelemetryHosts()]
     .every((host) => firefoxManifest.permissions.some((perm) => perm.includes(host)))],
   ['Firefox does not request host access for the never-cancel telemetry host', TELEMETRY_NO_CANCEL_HOSTS
