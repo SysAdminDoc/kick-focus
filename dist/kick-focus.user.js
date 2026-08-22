@@ -2233,8 +2233,8 @@ const IMPORT_NOTE_MESSAGES = Object.freeze({
   adjustedSetting: 'Adjusted "{path}" to a supported value.',
   upgradedUnversioned: 'Upgraded from an unversioned file to schema {schema}.',
   upgradedSchema: 'Upgraded from schema {from} to schema {to}.',
-  droppedSticker: '{count} sticker could not be kept: {sample}{more}.',
-  droppedStickers: '{count} stickers could not be kept: {sample}{more}.',
+  droppedSticker: '{count} emote could not be kept: {sample}{more}.',
+  droppedStickers: '{count} emotes could not be kept: {sample}{more}.',
   adjustedEmoteField: 'Adjusted emote {field} to supported entries.',
   upgradedEmotes: 'Upgraded emotes to schema {schema}.',
   adjustedUsage: 'Adjusted emote usage counts to {count} supported entries.',
@@ -2348,7 +2348,7 @@ function validateImportedSettings(jsonText) {
         const suffix = dropped.length > 5 ? ` and ${dropped.length - 5} more` : '';
         const key = dropped.length === 1 ? IMPORT_NOTE_MESSAGES.droppedSticker : IMPORT_NOTE_MESSAGES.droppedStickers;
         addNote(
-          `${dropped.length} sticker${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`,
+          `${dropped.length} emote${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`,
           key,
           { count: dropped.length, sample, moreCount: Math.max(0, dropped.length - 5) },
         );
@@ -6096,13 +6096,13 @@ function createSettings(host) {
       : 'Sign in to Kick and open any channel once to load your owned emotes. Nothing is sent or changed.';
     return `
       <section class="kf-subsection" data-kf-sticker-library>
-        <div class="kf-subsection-header"><div><h3>${filter === 'mine' ? 'My emotes' : 'Recorded emote library'}</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p>${inventory ? `<p class="kf-meta" data-kf-emote-inventory data-kf-no-translate>${escapeHtml(inventory)}</p>` : ''}</div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small${filter === 'mine' ? ' kf-button-primary' : ''}" data-action="show-my-emotes" aria-pressed="${filter === 'mine'}">${escapeHtml(myEmotesLabel)}</button>${filter === 'mine' ? '<button type="button" class="kf-button kf-button-small" data-action="show-recorded-emotes">All recorded</button>' : ''}<button type="button" class="kf-button kf-button-small" data-action="export">Export all settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
+        <div class="kf-subsection-header"><div><h3>${filter === 'mine' ? 'My emotes' : 'Recorded emote library'}</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p>${inventory ? `<p class="kf-meta" data-kf-emote-inventory data-kf-no-translate>${escapeHtml(inventory)}</p>` : ''}</div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small${filter === 'mine' ? ' kf-button-primary' : ''}" data-action="show-my-emotes" aria-pressed="${filter === 'mine'}">${escapeHtml(myEmotesLabel)}</button>${filter === 'mine' ? '<button type="button" class="kf-button kf-button-small" data-action="show-recorded-emotes">All recorded</button>' : ''}<button type="button" class="kf-button kf-button-small" data-action="export">Export settings</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset organization</button></div></div>
         <div class="kf-sticker-library-shell">
           <div class="kf-emote-catalog-browser">
             <h4>Browse any channel’s emotes</h4>
             <p>Paste a channel name or Kick URL. Artwork is public, but importing it never bypasses chat access: free emotes stay channel-only and subscriber emotes stay locked until Kick confirms your account can use them.</p>
             <div class="kf-emote-catalog-form">
-              <input class="kf-text" value="${escapeHtml(state.runtime.emoteCatalogSlug)}" data-kf-emote-catalog-input placeholder="channel or kick.com URL" aria-label="Channel emote catalog">
+              <input class="kf-text" value="${escapeHtml(state.runtime.emoteCatalogSlug)}" data-kf-emote-catalog-input placeholder="Channel name or kick.com URL" aria-label="Channel emote catalog">
               <button type="button" class="kf-button kf-button-primary" data-action="import-channel-emotes"${state.runtime.emoteCatalogLoading ? ' disabled' : ''}>${state.runtime.emoteCatalogLoading ? 'Loading…' : 'Load emotes'}</button>
             </div>
             <p class="kf-emote-catalog-status" data-kf-emote-catalog-status data-error="${state.runtime.emoteCatalogError}"${state.runtime.emoteCatalogStatus ? '' : ' hidden'}>${escapeHtml(state.runtime.emoteCatalogStatus)}</p>
@@ -6245,8 +6245,8 @@ function createSettings(host) {
       </section>
       ${renderLiveDataSection(value)}
       <div class="kf-tool-grid">
-        <section class="kf-tool-card"><div><h3>Emote library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><button type="button" class="kf-button kf-button-small" data-action="export">Export library</button></section>
-        <section class="kf-tool-card"><div><h3>Local discovery choices</h3><p>Favorites and not-interested choices stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear hidden</button></div></section>
+        <section class="kf-tool-card"><div><h3>Emote library</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p></div><button type="button" class="kf-button kf-button-small" data-action="export">Export settings</button></section>
+        <section class="kf-tool-card"><div><h3>Local discovery choices</h3><p>Favorites and not-interested choices stay on this device.</p></div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small" data-action="clear-favorites">Clear favorites</button><button type="button" class="kf-button kf-button-small" data-action="clear-dismissed">Clear not-interested</button></div></section>
       </div>
       ${renderStickerLibraryManager()}
       <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Local channel tools</h3><p>Channel keywords and private notes stay on this device.</p></div></div>${localChannelTools()}</section>
@@ -6380,7 +6380,7 @@ function createSettings(host) {
         ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
         <div class="kf-action-row"><div><h3>Multi-stream</h3><p>Watch up to ${MULTISTREAM_MAX} Kick channels in one grid, with audio and chat following whichever you focus. Uses Kick’s own embedded player, so subscriptions and entitlements are unchanged.${state.multistream.streams.length ? ` Currently holding ${state.multistream.streams.length}.` : ''}</p></div><button type="button" class="kf-button" data-action="open-multistream">Open multi-stream</button></div>
         <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
-        <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks ${AD_HOSTS.length + TELEMETRY_HOSTS.length} third-party ad and telemetry hosts and <strong>no kick.com host at all</strong>, so pausing Kick Focus will not change that behaviour. Check your ad blocker&rsquo;s filters for kick.com before blaming an extension.</p></div></div>
+        <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks ${AD_HOSTS.length + TELEMETRY_HOSTS.length} third-party ad and telemetry hosts and <strong>no kick.com host at all</strong>, so pausing Kick Focus will not change that behavior. Check your ad blocker&rsquo;s filters for kick.com before blaming an extension.</p></div></div>
         <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
         <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
         <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
@@ -7314,7 +7314,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              842226') || 0;
+const BUNDLE_BYTES = Number('              842236') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -8688,8 +8688,8 @@ function bindChatResizer(separator) {
       if (finishEvent?.pointerId != null && finishEvent.pointerId !== event.pointerId) return;
       cleanup();
       if (nextWidth !== initialWidth) {
-        updateSetting('layout.chatWidth', nextWidth, 'Chat width saved');
-        showToast('Chat width saved');
+        updateSetting('layout.chatWidth', nextWidth, 'Chat width saved.');
+        showToast('Chat width saved.');
       }
     };
     state.chatResizeCleanup = cleanup;
@@ -13180,7 +13180,7 @@ const TRANSLATIONS = {
     'Left': 'Izquierda',
     'Chat layout': 'Diseño del chat',
     'Chat width': 'Ancho del chat',
-    'Chat width saved': 'Ancho del chat guardado',
+    'Chat width saved.': 'Ancho del chat guardado.',
     'Content density': 'Densidad del contenido',
     'Stream start behavior': 'Comportamiento al abrir streams',
     'Remember per-channel layout': 'Recordar diseño por canal',
@@ -13512,8 +13512,8 @@ const TRANSLATIONS = {
     'Adjusted "{path}" to a supported value.': 'Se ajustó "{path}" a un valor compatible.',
     'Upgraded from an unversioned file to schema {schema}.': 'Se actualizó un archivo sin versión al esquema {schema}.',
     'Upgraded from schema {from} to schema {to}.': 'Se actualizó del esquema {from} al esquema {to}.',
-    '{count} sticker could not be kept: {sample}{more}.': 'No se pudo conservar {count} emote: {sample}{more}.',
-    '{count} stickers could not be kept: {sample}{more}.': 'No se pudieron conservar {count} emotes: {sample}{more}.',
+    '{count} emote could not be kept: {sample}{more}.': 'No se pudo conservar {count} emote: {sample}{more}.',
+    '{count} emotes could not be kept: {sample}{more}.': 'No se pudieron conservar {count} emotes: {sample}{more}.',
     'Adjusted emote {field} to supported entries.': 'Se ajustó emote {field} a entradas compatibles.',
     'Upgraded emotes to schema {schema}.': 'Se actualizaron los emotes al esquema {schema}.',
     'Adjusted emote usage counts to {count} supported entries.': 'Se ajustaron los recuentos de uso de emotes a {count} entradas compatibles.',
@@ -13521,7 +13521,7 @@ const TRANSLATIONS = {
     'Adjusted saved layouts to {count} supported entries.': 'Se ajustaron los diseños guardados a {count} entradas compatibles.',
     'Density saved': 'Densidad guardada',
     'Content filter saved': 'Filtro de contenido guardado',
-    'Poor mode saved': 'Modo Pobre guardado',
+    'Poor mode saved': 'Modo sin gastos guardado',
     'No import to undo.': 'No hay ninguna importación que deshacer.',
     'The backup could not be restored.': 'No se pudo restaurar la copia de seguridad.',
     'Import undone. Your previous settings are back.': 'Importación deshecha: tu configuración anterior está de vuelta.',
@@ -13828,7 +13828,7 @@ const TRANSLATIONS = {
     'Left': 'Esquerda',
     'Chat layout': 'Layout do chat',
     'Chat width': 'Largura do chat',
-    'Chat width saved': 'Largura do chat salva',
+    'Chat width saved.': 'Largura do chat salva.',
     'Content density': 'Densidade do conteúdo',
     'Stream start behavior': 'Comportamento ao abrir transmissões',
     'Remember per-channel layout': 'Lembrar layout por canal',
@@ -14160,8 +14160,8 @@ const TRANSLATIONS = {
     'Adjusted "{path}" to a supported value.': '"{path}" foi ajustada para um valor compatível.',
     'Upgraded from an unversioned file to schema {schema}.': 'Um arquivo sem versão foi atualizado para o esquema {schema}.',
     'Upgraded from schema {from} to schema {to}.': 'O esquema {from} foi atualizado para o esquema {to}.',
-    '{count} sticker could not be kept: {sample}{more}.': 'Não foi possível manter {count} emote: {sample}{more}.',
-    '{count} stickers could not be kept: {sample}{more}.': 'Não foi possível manter {count} emotes: {sample}{more}.',
+    '{count} emote could not be kept: {sample}{more}.': 'Não foi possível manter {count} emote: {sample}{more}.',
+    '{count} emotes could not be kept: {sample}{more}.': 'Não foi possível manter {count} emotes: {sample}{more}.',
     'Adjusted emote {field} to supported entries.': 'O campo de emotes {field} foi ajustado para entradas compatíveis.',
     'Upgraded emotes to schema {schema}.': 'Os emotes foram atualizados para o esquema {schema}.',
     'Adjusted emote usage counts to {count} supported entries.': 'As contagens de uso de emotes foram ajustadas para {count} entradas compatíveis.',
@@ -14169,7 +14169,7 @@ const TRANSLATIONS = {
     'Adjusted saved layouts to {count} supported entries.': 'Os layouts salvos foram ajustados para {count} entradas compatíveis.',
     'Density saved': 'Densidade salva',
     'Content filter saved': 'Filtro de conteúdo salvo',
-    'Poor mode saved': 'Modo Pobre salvo',
+    'Poor mode saved': 'Modo sem gastos salvo',
     'No import to undo.': 'Não há importação para desfazer.',
     'The backup could not be restored.': 'Não foi possível restaurar o backup.',
     'Import undone. Your previous settings are back.': 'Importação desfeita: suas configurações anteriores voltaram.',
@@ -16947,7 +16947,7 @@ function syncQuickButton() {
   const headerMounted = shouldShow ? ensureHeaderQuickControl() : false;
   if (!shouldShow) state.headerControlHost?.remove?.();
   const label = tr(state.runtime.suspended ? 'Resume' : 'Focus');
-  const accessibleLabel = tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Open Kick Focus settings');
+  const accessibleLabel = tr(state.runtime.suspended ? 'Resume Kick Focus' : 'Open Kick Focus settings');
   if (state.headerControlButton) {
     state.headerControlButton.querySelector('[data-kf-header-control-label]').textContent = label;
     state.headerControlButton.setAttribute('aria-label', accessibleLabel);

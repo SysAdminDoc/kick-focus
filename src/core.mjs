@@ -3187,8 +3187,8 @@ export const IMPORT_NOTE_MESSAGES = Object.freeze({
   adjustedSetting: 'Adjusted "{path}" to a supported value.',
   upgradedUnversioned: 'Upgraded from an unversioned file to schema {schema}.',
   upgradedSchema: 'Upgraded from schema {from} to schema {to}.',
-  droppedSticker: '{count} sticker could not be kept: {sample}{more}.',
-  droppedStickers: '{count} stickers could not be kept: {sample}{more}.',
+  droppedSticker: '{count} emote could not be kept: {sample}{more}.',
+  droppedStickers: '{count} emotes could not be kept: {sample}{more}.',
   adjustedEmoteField: 'Adjusted emote {field} to supported entries.',
   upgradedEmotes: 'Upgraded emotes to schema {schema}.',
   adjustedUsage: 'Adjusted emote usage counts to {count} supported entries.',
@@ -3327,7 +3327,7 @@ export function validateImportedSettings(jsonText) {
         const suffix = dropped.length > 5 ? ` and ${dropped.length - 5} more` : '';
         const key = dropped.length === 1 ? IMPORT_NOTE_MESSAGES.droppedSticker : IMPORT_NOTE_MESSAGES.droppedStickers;
         addNote(
-          `${dropped.length} sticker${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`,
+          `${dropped.length} emote${dropped.length === 1 ? '' : 's'} could not be kept: ${sample}${suffix}.`,
           key,
           { count: dropped.length, sample, moreCount: Math.max(0, dropped.length - 5) },
         );

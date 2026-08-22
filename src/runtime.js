@@ -2452,8 +2452,8 @@ function bindChatResizer(separator) {
       if (finishEvent?.pointerId != null && finishEvent.pointerId !== event.pointerId) return;
       cleanup();
       if (nextWidth !== initialWidth) {
-        updateSetting('layout.chatWidth', nextWidth, 'Chat width saved');
-        showToast('Chat width saved');
+        updateSetting('layout.chatWidth', nextWidth, 'Chat width saved.');
+        showToast('Chat width saved.');
       }
     };
     state.chatResizeCleanup = cleanup;
@@ -7692,7 +7692,7 @@ const TRANSLATIONS = {
     'Left': 'Izquierda',
     'Chat layout': 'Diseño del chat',
     'Chat width': 'Ancho del chat',
-    'Chat width saved': 'Ancho del chat guardado',
+    'Chat width saved.': 'Ancho del chat guardado.',
     'Content density': 'Densidad del contenido',
     'Stream start behavior': 'Comportamiento al abrir streams',
     'Remember per-channel layout': 'Recordar diseño por canal',
@@ -8024,8 +8024,8 @@ const TRANSLATIONS = {
     'Adjusted "{path}" to a supported value.': 'Se ajustó "{path}" a un valor compatible.',
     'Upgraded from an unversioned file to schema {schema}.': 'Se actualizó un archivo sin versión al esquema {schema}.',
     'Upgraded from schema {from} to schema {to}.': 'Se actualizó del esquema {from} al esquema {to}.',
-    '{count} sticker could not be kept: {sample}{more}.': 'No se pudo conservar {count} emote: {sample}{more}.',
-    '{count} stickers could not be kept: {sample}{more}.': 'No se pudieron conservar {count} emotes: {sample}{more}.',
+    '{count} emote could not be kept: {sample}{more}.': 'No se pudo conservar {count} emote: {sample}{more}.',
+    '{count} emotes could not be kept: {sample}{more}.': 'No se pudieron conservar {count} emotes: {sample}{more}.',
     'Adjusted emote {field} to supported entries.': 'Se ajustó emote {field} a entradas compatibles.',
     'Upgraded emotes to schema {schema}.': 'Se actualizaron los emotes al esquema {schema}.',
     'Adjusted emote usage counts to {count} supported entries.': 'Se ajustaron los recuentos de uso de emotes a {count} entradas compatibles.',
@@ -8033,7 +8033,7 @@ const TRANSLATIONS = {
     'Adjusted saved layouts to {count} supported entries.': 'Se ajustaron los diseños guardados a {count} entradas compatibles.',
     'Density saved': 'Densidad guardada',
     'Content filter saved': 'Filtro de contenido guardado',
-    'Poor mode saved': 'Modo Pobre guardado',
+    'Poor mode saved': 'Modo sin gastos guardado',
     'No import to undo.': 'No hay ninguna importación que deshacer.',
     'The backup could not be restored.': 'No se pudo restaurar la copia de seguridad.',
     'Import undone. Your previous settings are back.': 'Importación deshecha: tu configuración anterior está de vuelta.',
@@ -8341,7 +8341,7 @@ const TRANSLATIONS = {
     'Left': 'Esquerda',
     'Chat layout': 'Layout do chat',
     'Chat width': 'Largura do chat',
-    'Chat width saved': 'Largura do chat salva',
+    'Chat width saved.': 'Largura do chat salva.',
     'Content density': 'Densidade do conteúdo',
     'Stream start behavior': 'Comportamento ao abrir transmissões',
     'Remember per-channel layout': 'Lembrar layout por canal',
@@ -8673,8 +8673,8 @@ const TRANSLATIONS = {
     'Adjusted "{path}" to a supported value.': '"{path}" foi ajustada para um valor compatível.',
     'Upgraded from an unversioned file to schema {schema}.': 'Um arquivo sem versão foi atualizado para o esquema {schema}.',
     'Upgraded from schema {from} to schema {to}.': 'O esquema {from} foi atualizado para o esquema {to}.',
-    '{count} sticker could not be kept: {sample}{more}.': 'Não foi possível manter {count} emote: {sample}{more}.',
-    '{count} stickers could not be kept: {sample}{more}.': 'Não foi possível manter {count} emotes: {sample}{more}.',
+    '{count} emote could not be kept: {sample}{more}.': 'Não foi possível manter {count} emote: {sample}{more}.',
+    '{count} emotes could not be kept: {sample}{more}.': 'Não foi possível manter {count} emotes: {sample}{more}.',
     'Adjusted emote {field} to supported entries.': 'O campo de emotes {field} foi ajustado para entradas compatíveis.',
     'Upgraded emotes to schema {schema}.': 'Os emotes foram atualizados para o esquema {schema}.',
     'Adjusted emote usage counts to {count} supported entries.': 'As contagens de uso de emotes foram ajustadas para {count} entradas compatíveis.',
@@ -8682,7 +8682,7 @@ const TRANSLATIONS = {
     'Adjusted saved layouts to {count} supported entries.': 'Os layouts salvos foram ajustados para {count} entradas compatíveis.',
     'Density saved': 'Densidade salva',
     'Content filter saved': 'Filtro de conteúdo salvo',
-    'Poor mode saved': 'Modo Pobre salvo',
+    'Poor mode saved': 'Modo sem gastos salvo',
     'No import to undo.': 'Não há importação para desfazer.',
     'The backup could not be restored.': 'Não foi possível restaurar o backup.',
     'Import undone. Your previous settings are back.': 'Importação desfeita: suas configurações anteriores voltaram.',
@@ -11820,7 +11820,12 @@ function syncQuickButton() {
   const headerMounted = shouldShow ? ensureHeaderQuickControl() : false;
   if (!shouldShow) state.headerControlHost?.remove?.();
   const label = tr(state.runtime.suspended ? 'Resume' : 'Focus');
-  const accessibleLabel = tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Open Kick Focus settings');
+  // The accessible name has to contain the visible word, or voice control
+  // cannot act on what the user can read (WCAG 2.5.3). Paused, the button says
+  // Resume and used to be announced "Restore Kick Focus", which shares no word
+  // with it. Resume Kick Focus was already translated in both locales and
+  // unused, which is a fair sign of which half drifted.
+  const accessibleLabel = tr(state.runtime.suspended ? 'Resume Kick Focus' : 'Open Kick Focus settings');
   if (state.headerControlButton) {
     state.headerControlButton.querySelector('[data-kf-header-control-label]').textContent = label;
     state.headerControlButton.setAttribute('aria-label', accessibleLabel);

@@ -1715,7 +1715,7 @@ test('sticker import names dropped entries rather than reporting a bare count', 
   const note = result.notes.find((n) => /could not be kept/.test(n));
   assert.ok(note, 'expected a note naming the dropped sticker');
   assert.ok(note.includes('MissingSrc'), `expected "MissingSrc" in the note: ${note}`);
-  assert.ok(/^1 sticker/.test(note), 'expected singular phrasing for one dropped entry');
+  assert.ok(/^1 emote/.test(note), 'expected singular phrasing for one dropped entry');
 });
 
 test('hidden channels normalize and round-trip through settings', { tag: 'unit' }, () => {
