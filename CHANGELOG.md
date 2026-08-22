@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Fixed
+
+- Interface scale now resizes the whole settings surface instead of only its root font size. The panel carries about 120 absolute font sizes and a ladder of fixed control heights, so at 90% or 110% no control ever changed size. It scales with zoom now, which takes the fonts, control heights, padding and dialog chrome together.
+
 ## 1.35.0, 2026-08-21
 
 An audit pass. No new features, and every change here closes something that was

@@ -7313,7 +7313,7 @@ function hiddenElementCss() {
     .join('\n    ');
 }
 
-const BUNDLE_BYTES = Number('              847195') || 0;
+const BUNDLE_BYTES = Number('              848208') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 
 const SITE_CSS = `
@@ -12027,10 +12027,25 @@ const UI_CSS = `
     background: radial-gradient(circle at 50% 14%, rgba(var(--accent-rgb), .055), transparent 38%), rgba(2, 3, 3, .9);
   }
 
+  /* Interface scale is applied here with zoom rather than by multiplying each
+     length, because this surface carries about 120 font sizes and a ladder of
+     absolute control heights, and scaling only the root font size moved none of
+     them. zoom is the primitive browsers already use for exactly this, so it
+     takes the fonts, the control heights, the padding and the dialog chrome
+     together instead of leaving them out of step with each other. Every element
+     that is position: fixed in this stylesheet is a sibling of this one rather
+     than a descendant, so none of them are dragged along.
+
+     The two viewport-relative dimensions are divided by the scale on the way
+     in: zoom multiplies the used value afterwards, so a plain 100vw would
+     render 110vw at 110% and push the dialog off screen. An engine without zoom
+     drops the declaration and lands on today's behaviour rather than a broken
+     layout. */
   .kf-settings {
     position: relative;
-    width: min(1140px, calc(100vw - 44px));
-    height: min(940px, calc(100vh - 44px));
+    zoom: var(--kf-interface-scale, 1);
+    width: min(1140px, calc((100vw - 44px) / var(--kf-interface-scale, 1)));
+    height: min(940px, calc((100vh - 44px) / var(--kf-interface-scale, 1)));
     min-width: 860px;
     min-height: 640px;
     display: grid;
@@ -12041,7 +12056,7 @@ const UI_CSS = `
     background: var(--surface-1);
     box-shadow: var(--shadow-dialog);
     color: var(--text);
-    font-size: calc(14px * var(--kf-interface-scale, 1));
+    font-size: 14px;
   }
 
   .kf-header {

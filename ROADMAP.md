@@ -9,10 +9,6 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomple
 Added 2026-08-21 by an engineering and product-quality audit pass. Everything
 above P3 here was measured, not guessed; each item names where it was traced to.
 
-- [ ] P1 — Interface scale does not resize any control
-  Why: the setting says "Set the size of Kick Focus controls", but `--kf-interface-scale` is read in exactly one declaration, the `font-size` on `.kf-settings`. `UI_CSS` then carries about 120 explicit `font-size: Npx` rules and absolute control sizes (`.kf-button` min-height 40px, `.kf-switch` 58x32, `.kf-text` min-height 40px, `.kf-select` height 36px), so at 90% or 110% no control changes size. Same class of defect as the high-contrast setting fixed in this pass, but the fix is large: it means moving those declarations to `em` or wrapping them in `calc(... * var(--kf-interface-scale, 1))`, and it needs a browser to confirm nothing reflows badly.
-  Where: src/runtime.js (`--kf-interface-scale` at the settings-attribute pass and the `.kf-settings` rule in `UI_CSS`), src/settings.mjs (the Appearance row)
-
 - [ ] P2 — Interpolated aria-labels are English in every locale
   Why: the i18n coverage gate's attribute scanner deliberately skips any attribute containing `${`, because a template is not a fixed string. That is the right call for the scanner and the wrong outcome for the strings: roughly 28 accessible names built by interpolation never got a dictionary entry, so a screen reader on Español or Português is read English throughout the emote library, the discovery cards and the grid. Fix shape is `trf('Open {name} artwork', { name })` with the template as the dictionary key, which is the pattern the rest of the build already uses.
   Where: src/runtime.js (card and emote shelf labels), src/settings.mjs (library tile actions), src/multistream.mjs (tile and saved-board actions)
@@ -52,7 +48,6 @@ above P3 here was measured, not guessed; each item names where it was traced to.
 - [ ] P3 — The saved multi-stream arrangement is called four things
   Why: the live UI says "board", `STORAGE_STORES` says "multi-stream layouts", two import messages say "layouts", and the grid toasts said "Multi". An incomplete rename. The user-facing half should settle on "board".
   Where: src/core.mjs (`STORAGE_STORES`, `IMPORT_ERROR_MESSAGES`, `IMPORT_NOTE_MESSAGES`), src/multistream.mjs
-
 
 ## Explicitly deferred
 
