@@ -1,174 +1,239 @@
 # Research — Kick Focus
 
-Date: **2026-08-21** — replaces all prior research. Against **v1.31.0** (HEAD `db23871`, 2026-08-20). Differential pass: the 2026-08-20 inventory still holds; this file records what that pass left open, what was re-measured, and the three items that were not on the backlog.
+Date: **2026-08-23** — replaces all prior research. Reviewed v1.38.0 at [commit 0bad103](https://github.com/SysAdminDoc/kick-focus/commit/0bad103).
 
 ## Executive Summary
 
-Kick Focus remains a desktop-only, zero-dependency Kick.com client mod. v1.27.0–v1.31.0 already shipped Viewer Hub, My Emotes, chat comfort, saved views, presets/custom accent, StreamerStats popup, and the Studio visual system. The GitHub tracker is still empty (issues on, discussions off, zero issues or PRs ever). Product demand is still inferred from competitors and Kick help, not from filed reports.
+**Verified.** Kick Focus is a desktop-first, local-only Kick.com viewer layer shipped as a userscript plus Chromium and Firefox companions. Its strongest current shape is the premium Studio/OLED/Slate visual system, a broad settings surface, local emote and viewer tools, multistream, bounded Kick API reads, and zero package dependencies (README.md, package.json, design/screenshots/settings-appearance-themes.png). The offline suite passes 379 of 379 tests, but a fresh 2026-08-23 Chromium run passes only 90 of 96 asserted checks; the six failures cover followed-channel previews, Viewer Hub rendering, and a hidden preload video advancing the watch clock (scripts/verify-extension.mjs). The highest-value direction is to restore trust in the shipped release before adding novelty.
 
-The 24 hours after the 2026-08-20 pass were quiet: no competitor commits, no CWS version bumps after 2026-08-18, no Greasy Fork Kick scripts dated 2026-08-20 or 2026-08-21, no Node 24.20. The userscript is still **970,899 / 1,000,000 B**. R-72–R-89 stay the primary backlog; do not re-implement Viewer Hub or chat-left as new work.
+Top opportunities, in priority order:
 
-Highest-value direction is unchanged: **keep the userscript injectable, keep ads claims honest, then add the layout/chat comforts already queued.** New this pass: hide rules must fail closed when a probe is not the recorded winner, and the 1 MB Violentmonkey ceiling must count the synchronous library seed, not only `dist/kick-focus.user.js`.
+1. **Verified.** Move remote blocklist authorization out of Kick-controlled localStorage and grant only the exact user-approved feed origin; the current bridge accepts a page-selected HTTPS URL while the manifests cannot fetch arbitrary origins (src/extension/bridge.js, src/extension/bridge.firefox.js, src/extension/background.js, src/extension/background.firefox.js, src/extension/manifest.json, src/extension/manifest.firefox.json, [Chrome cross-origin guidance](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)).
+2. **Verified.** Reconnect merged-chat channels after close, silence, sleep, or network recovery; the current close path leaves the slug in connections while syncMergedChat opens only absent slugs (src/live.mjs, [StreamNook #170](https://github.com/winters27/StreamNook/issues/170), [Chatterino #7168](https://github.com/Chatterino/chatterino2/pull/7168)).
+3. **Verified.** Close the six current Chromium release-gate failures before another release (scripts/verify-extension.mjs, [v1.38.0 release](https://github.com/SysAdminDoc/kick-focus/releases/tag/v1.38.0)).
+4. **Verified.** Measure the userscript and synchronous seed as UTF-8 bytes and restore at least 75,000 bytes of injection reserve; the current total is 987,722 bytes, only 12,278 below Violentmonkey’s approximate 1 MB ceiling (scripts/build.mjs, scripts/check.mjs, src/storage.mjs, [Violentmonkey v2.46.0](https://github.com/violentmonkey/violentmonkey/releases/tag/v2.46.0)).
+5. **Likely.** Make one local release command refuse red live checks, stale proof, or mismatched artifacts; v1.38.0 is published while current-head Chromium proof is red and README.md still records an older count (scripts/release-checklist.mjs, README.md, [v1.38.0 release](https://github.com/SysAdminDoc/kick-focus/releases/tag/v1.38.0)).
+6. **Verified.** Add behavioral coverage for every settings page and deterministic visual diffs across all three themes; src/settings.mjs is 36.36% line-covered and recent visual work spans routes, themes, overlays, and responsive widths (src/settings.mjs, test/settings.test.js, design/screenshots, [Playwright visual comparisons](https://playwright.dev/docs/next/test-snapshots)).
+7. **Verified.** Remove custom app shortcuts and confirmation dialogs while preserving normal widget keyboard behavior and reversible reset; both patterns remain first-class product surfaces (src/core.mjs, src/settings.mjs, src/runtime.js).
+8. **Verified.** Complete modal inertness and chat-separator keyboard semantics to match the ARIA patterns the UI already claims (src/runtime.js, [APG modal dialog](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/), [APG window splitter](https://www.w3.org/WAI/ARIA/apg/patterns/windowsplitter/)).
+9. **Verified.** Replace Firefox inline page injection with Firefox 128 MAIN-world injection, then run browser-neutral journey contracts in both companions (src/extension/bridge.firefox.js, scripts/build.mjs, scripts/verify-firefox.mjs, [Firefox 128 extension update](https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/)).
+10. **Likely.** After the trust work, add bounded player recovery, native fullscreen chat, and a local notes index; all fit the calm-viewing goal without accounts, remote providers, or new permissions ([SevenTV #1250](https://github.com/SevenTV/Extension/issues/1250), [OverKick](https://greasyfork.org/en/scripts/587473-overkick-cinematic-chat-overlay), [Gumbo #205](https://github.com/Seldszar/Gumbo/issues/205)).
 
-Top opportunities, in order (existing IDs first, then this pass):
-
-1. Cut userscript size below 85% of 1 MB (R-72).
-2. Gate userscript + seed bytes against the same 1 MB ceiling (R-91).
-3. State Kick’s contradictory ads-vs-subscription claims; both articles still live 2026-08-21 (R-73).
-4. Keep the CSP live-gate (R-74). GET `/`, `/xqc`, `www.kick.com/`, and `player.kick.com/xqc` had **no** CSP header or meta on 2026-08-21 — discovery is done; the item is now a regression gate.
-5. Skip hideable tagging when the winning probe is not the recorded winner (R-90).
-6. Pause-on-scroll via `applyChatPause` (R-75); keep Request Unban visible (R-76).
-7. Recapture fixtures after Chrome 153 stable (2026-09-08). Chrome 152 is already on early-stable (`152.0.7977.54`, 2026-08-19); majority stable was still 151 on 2026-08-20 (R-77).
-8. Chat-left and the settings extract after the size cut (R-78, R-79).
-
-Confidence: **Verified** = measured in this tree or fetched primary source on 2026-08-21. **Likely** = multiple current signals. **Needs live validation** = cannot be closed from this checkout.
+Confidence labels used here: **Verified** means measured in this tree or stated by a primary source. **Likely** means several current signals support the conclusion. **Assumption** means a design choice still needs implementation evidence. **Needs live validation** means a real browser, stream, or account is required.
 
 ## Product Map
 
 ### Core workflows
 
-- Calm Kick on desktop: Studio/OLED/Slate, presets, filters, hideable chrome, panic restore.
-- Emote work: harvest, IndexedDB library, My Emotes, ranked picker, colon suggestions (click-only).
-- Watch several channels: on-origin grid, merged read-only chat, Document PiP chat, shareable `?kf-multi=`.
-- Account read-only: Viewer Hub cards that never invent a zero; opt-in daily-reward claim via Kick’s own button.
-- Ad defense: page-realm hooks + companion DNR/webRequest for separable hosts; `/playback` ad-flag rewrite; SSAI untouched.
+- **Verified.** View Kick with denser navigation, three dark themes, layout presets, filters, focus mode, reversible hiding, and per-channel layout memory (README.md, src/core.mjs, src/runtime.js).
+- **Verified.** Capture, search, group, favorite, restore, and insert emotes locally without treating public artwork as account entitlement (README.md, src/storage.mjs, src/runtime.js).
+- **Verified.** Watch up to nine channels in a local board with focused audio, shareable layouts, merged read-only chat, and Document Picture-in-Picture chat (README.md, src/multistream.mjs, src/live.mjs).
+- **Verified.** Read account and channel signals only when Kick’s page already exposes or requests them; missing readings remain unknown instead of becoming false zeroes (README.md, src/api.mjs, src/runtime.js).
+- **Verified.** Block separable ad hosts and client-side ad flags through page hooks plus companion network rules while leaving server-stitched media alone (README.md, src/runtime.js, src/extension/background.js, src/extension/background.firefox.js).
 
 ### User personas
 
-1. Calm viewer (noise, promotions, Poor mode).
-2. Power chatter (library, My Emotes, chat comfort).
-3. Multistream watcher (grid, popout chat).
-4. Accessibility-conscious viewer (contrast, targets, motion, scale).
+- **Likely.** The primary users are desktop viewers who want less visual noise, power chatters with large emote libraries, multistream viewers, and people who need stronger contrast or reduced motion; these needs map directly to the shipped settings and README workflows (README.md, src/settings.mjs).
 
 ### Platforms and distribution
 
-Userscript + Chromium MV3 unpacked + Firefox MV2 temporary/unsigned. MIT. Node ≥ 24.19. No store listing. No `@downloadURL` (operator-gated). Primary QA: 1440×900 and 1920×1080, live gate logged out.
+- **Verified.** Distribution is a self-contained userscript, an unpacked Chromium Manifest V3 companion with Chrome 120 as its floor, and a Firefox Manifest V2 companion with Firefox 120 as its floor (src/metadata.txt, src/extension/manifest.json, src/extension/manifest.firefox.json).
+- **Verified.** Consumer store publication and automatic update URLs remain operator-gated; full mobile support is explicitly deferred (ROADMAP.md, Roadmap_Blocked.md, [Chrome distribution guidance](https://developer.chrome.com/docs/extensions/how-to/distribute)).
 
 ### Key integrations and data flows
 
-Same-origin Kick reads (`src/api.mjs` `endpoints`). Bearer from the page’s `session_token` cookie on Kick origins only. Realtime via Kick’s broker (verified Pusher; Kick gateway registered `verified: false`). StreamerStats popup is click-only, public slug, `opener` cleared. Remote blocklist is opt-in HTTPS data, not code.
+- **Verified.** Settings use userscript-manager or extension storage, the emote library uses IndexedDB with a synchronous seed, and imports are schema-normalized with a rollback copy (src/storage.mjs, src/core.mjs, src/runtime.js).
+- **Verified.** The page layer reads selected same-origin Kick endpoints and Kick’s realtime broker, while the companion bridge crosses only narrow message types into privileged extension code (src/api.mjs, src/live.mjs, src/extension/bridge.js, src/extension/background.js).
+- **Verified.** No analytics, remote executable code, runtime dependency install, or all-site content-script match is present (package.json, src/metadata.txt, src/extension/manifest.json, scripts/check.mjs).
 
 ## Competitive Landscape
 
-Quiet 24h: SevenTV/Extension, NipahTV, kick-core, uKick, enhancer-app/enhancer, and KickDevDocs had **zero** commits after 2026-08-20. CWS listings for Mo'Kick 3.1.1, PureKick 10.5, Kick Augmenter 0.0.22, and uKick 2.7.0.7 did not bump after 2026-08-18.
+### StreamNook, Chatterino, and MultiStream
 
-### Mo'Kick
+**Verified.** These projects treat closed or silent chat sockets as recoverable state, using watchdogs, backoff, and explicit status rather than a one-shot connection ([StreamNook v8.4.2](https://github.com/winters27/StreamNook/releases/tag/v8.4.2), [Chatterino #7057](https://github.com/Chatterino/chatterino2/issues/7057), [MultiStream v0.18.15](https://github.com/ilanzgx/multistream/releases/tag/v0.18.15)). Kick Focus should copy the bounded recovery model inside its existing connection map. It should avoid one timer per channel and unbounded reconnect loops (src/live.mjs).
 
-**Verified.** CWS v3.1.1 updated 2026-08-18, ~40,000 users, IAP. Unban-request UX and VOD resume remain the transferable bits. Avoid mass-ban, IAP, recording.
+### KickLab
 
-### PureKick
+**Verified.** KickLab makes multiview and replay controls central instead of hiding them in settings ([KickLab](https://kicklab.app/), [Firefox versions](https://addons.mozilla.org/en-US/firefox/addon/kicklab/versions/)). Kick Focus should keep its board easy to reach and make recovery controls visible in context. It should avoid remote-account coupling and paid-service dependencies because its current value is local, inspectable behavior (README.md, package.json).
 
-**Verified.** Ad-blocker listing, v10.5 dated 2026-08-17/18. Avoid SSAI-removal claims.
+### ZenX, WesUtil, Kick Augmenter, and Mo’Kick
 
-### Kick Augmenter
+**Verified.** Current viewer extensions compete on playback controls, audio handling, live-edge actions, previews, and convenience around Kick’s player ([ZenX](https://chromewebstore.google.com/detail/zenx/dmineakemlfgkkaimlkbejgnmpdbobgh), [WesUtil](https://chromewebstore.google.com/detail/wesutil/igdnndpfofcemcoellnefdflnmcchmle), [Kick Augmenter](https://chromewebstore.google.com/detail/kick-augmenter/hdhpmccblalleagomabbfnpkbcpojfpd), [Mo’Kick](https://addons.mozilla.org/en-US/firefox/addon/mokick/)). Kick Focus should add only bounded recovery that preserves pause, volume, quality, and VOD state. It should avoid quality-entitlement bypasses, recording, and extreme gain.
 
-**Verified.** CWS v0.0.22 dated 2026-08-17. Pause-on-scroll (R-75) and watch-time (R-88) already queued. Audio is **boost**, not a DynamicsCompressor. Avoid “unlock max quality without login.”
+### 7TV, BetterTTV, and FrankerFaceZ
 
-### uKick
+**Verified.** The mature chat extensions provide strong emote ergonomics and quickly patch host-page drift; 7TV also added per-channel emote artwork suppression, while FrankerFaceZ traced an uptime mutation storm to repeated identical writes ([7TV #1247](https://github.com/SevenTV/Extension/pull/1247), [BetterTTV v7.7.25](https://github.com/night/betterttv/releases/tag/7.7.25), [FrankerFaceZ #1881](https://github.com/FrankerFaceZ/FrankerFaceZ/issues/1881)). Kick Focus should copy local suppression and equality guards. It should not federate third-party providers or send library data off-origin (src/storage.mjs, src/runtime.js).
 
-**Verified.** CWS v2.7.0.7 (2026-07-24). Chat-left still missing here (`layout.chat` is `right|docked|hidden` only). Avoid OpenLapis nativeMessaging.
+### KickEnhance and OverKick
 
-### 7TV Extension
+**Verified.** Both show demand for chat that remains usable in native fullscreen, with adjustable placement and opacity ([KickEnhance](https://chromewebstore.google.com/detail/kickenhance/eobmipgghmnbbipfhpemfacnljiflmnj), [OverKick](https://greasyfork.org/en/scripts/587473-overkick-cinematic-chat-overlay)). Kick Focus should restyle or rehost Kick’s native chat so moderation state and accessibility remain intact. It should not rebuild a second chat transcript from scraped messages.
 
-**Verified.** Last Kick-related commit 2026-07-30 (`fix(kick): emote menu anchor`). Chat-left (#914) still open. Do not federate third-party emotes.
+### KickAlert and KickKit
 
-### enhancer (Kick module)
+**Verified.** These projects package cross-browser live notifications, quick opening, and multistream entry as focused workflows ([KickAlert](https://github.com/segelferd/kick-alert), [KickKit](https://github.com/ensardev/KickKit)). Kick Focus should keep its local board fast to enter. It should avoid background notifications until there is direct user demand because they add permission, lifecycle, and distraction costs.
 
-**Verified.** Last Kick commit 2026-08-11 (localized chat latency). Ships stream-latency and local watch-time; no compressor. Playback diagnostics here already show readyState / buffer / dropped frames (`applyPlaybackDiagnostics`).
+### Enhancer
 
-### Kick public Ads API (missed 2026-08-20)
+**Verified.** Enhancer’s Kick module shows the value of narrow host matching and explicit platform adapters; its issue history also shows how broad route assumptions break unrelated sites ([Enhancer](https://github.com/enhancer-app/enhancer), [Enhancer #133](https://github.com/enhancer-app/enhancer/issues/133)). Kick Focus should continue route probes and browser capability gates. It should not turn its focused codebase into a general streaming plugin platform.
 
-**Verified.** KickDevDocs commit `61d7e83` 2026-08-19 added [docs.kick.com/apis/ads](https://docs.kick.com/apis/ads.md): creator OAuth `ads:read`/`ads:write` for ad-break create/status/enroll. `ads_blocked` is a **broadcaster** field, not a viewer skip-ads surface. Do not call `api.kick.com` from this build.
+### TwitchAdSolutions
 
-### Refined GitHub (adjacent, from 2026-08-20 Astra Deck research)
+**Verified.** TwitchAdSolutions demonstrates defensive, fail-open handling for a playback-critical and frequently changing host, including rapid rollback when a strategy fails ([v24](https://github.com/pixeltris/TwitchAdSolutions/releases/tag/v24), [issue #497](https://github.com/pixeltris/TwitchAdSolutions/issues/497)). Kick Focus should keep observable failure states and disable a broken intervention instead of retrying playback indefinitely. It should not claim removal of worker-owned or server-stitched media that it cannot inspect (README.md, Roadmap_Blocked.md).
 
-**Verified.** Remote `broken-features.csv` is a disable-only hotfix channel. For this repo that is the same class as an operator-gated update URL. The ethical local equivalent is: skip a hide/CSS rule when `findAllProbe`’s winner is not the recorded probe for this route (`scripts/fixture-contract.mjs`). A settings-bisect wizard is optional; richer `copyDiagnostics` is the smaller step.
+### Gumbo and KickClipsViewer
+
+**Verified.** Gumbo users ask for searchable notes, while KickClipsViewer shows demand for local clip filtering and history ([Gumbo #205](https://github.com/Seldszar/Gumbo/issues/205), [KickClipsViewer v1.3.1](https://github.com/Meiweif/KickClipsViewer/releases/tag/V1.3.1)). A local all-channel note index fits Kick Focus’s existing notes and storage. Clip downloading and remote history do not.
+
+### Previews for TTV and Alternate Player for Twitch
+
+**Verified.** These adjacent tools make preview state, latency, live-edge return, and player recovery visible instead of automatic and silent ([Previews for TTV](https://addons.mozilla.org/en-US/firefox/addon/previews-for-ttv/), [Alternate Player](https://chromewebstore.google.com/detail/alternate-player-for-twit/bhplkbgoehhhddaoolmakpocnenplmhf)). Kick Focus should expose a compact Recover or Return live action only after sustained evidence. It should never reload a page behind the viewer’s back.
 
 ## Reported Issues
 
-Tracker: `SysAdminDoc/kick-focus` — issues enabled, discussions disabled, **zero** open or closed issues, **zero** PRs, 0 stars. `updatedAt` 2026-08-20T05:48:45Z. Absence of reports at this scale is no data, not a clean bill of health.
+**Verified.** The public tracker is enabled but has zero open issues, zero closed issues, zero pull requests, and discussions are disabled as of 2026-08-23 ([repository](https://github.com/SysAdminDoc/kick-focus), [issues](https://github.com/SysAdminDoc/kick-focus/issues), [pull requests](https://github.com/SysAdminDoc/kick-focus/pulls)). There are no filed user reports to rank, dismiss, or mark stale.
 
-KickDevDocs #405 (`invalid_scope` / webhooks) closed 2026-08-20 by its author with no staff comment. Not actionable here.
+**Verified.** Local release evidence is not clean: a fresh Chromium run passes 90 of 96 asserted checks, with three preview failures, two Viewer Hub failures, and one watch-clock failure (scripts/verify-extension.mjs). The same run passes chat pause, theme readability, 200% zoom without horizontal overflow, 198 settings-control target checks, a 3.4 ms recent average apply cycle, and a 24 ms recent average 300-message burst, so those areas are not new roadmap work (scripts/verify-extension.mjs).
+
+**Verified.** The highest-severity code-traced defect is independent of the live gate: openMergedChannel keeps a closed slug in connections, and syncMergedChat therefore never opens that channel again (src/live.mjs).
 
 ## Security, Privacy, and Reliability
 
-- **CSP, Verified 2026-08-21.** GET `https://kick.com/` (200, 732,405 B) and `https://kick.com/xqc` (200, 751,841 B): no `Content-Security-Policy` header, no Report-Only, no `<meta http-equiv="Content-Security-Policy">`, no CSP substring in the HTML. Same for `https://www.kick.com/` (732,193 B). `https://player.kick.com/xqc` returned 200 with a **1,802 B** body and no CSP — treat that body size as **Needs live validation** (may be a bootstrap or challenge, not the full player document). Firefox companion inline injection is not CSP-blocked on home/channel **today**.
-- **Ads copy still one-sided.** `README.md` “What it cannot do” still says a subscription does not remove in-stream ads. Re-fetched 2026-08-21: ads-for-viewers still “No, you won't see ads on channels you're subscribed to”; subscriptions article dated 2026-07-16 still “Subscribing does not remove ads on KICK.” R-73 remains.
-- **Hide-rule fall-through.** `tagHideableElements` (`src/runtime.js`) tags whatever `findAllProbe` returns. `findAllProbe` (`src/compatibility.mjs`) takes the **first** probe that matches any node. If Kick drops the recorded test id, a looser fallback can tag the wrong control and `display:none` it. Fail closed: skip tagging unless the winner is the recorded probe for this route.
-- **Size budget is incomplete.** `scripts/check.mjs` `SIZE_BUDGETS` checks only the userscript file. Violentmonkey v2.46.0 notes (still current in v2.48.0, CWS 2026-08-18) describe Alternative page mode as ~1 MB of injected script **plus storage/resources**. `LIBRARY_SEED_LIMIT` is 400 (`src/storage.mjs`). A full seed JSON plus 970,899 B of script can already sit over that advisory. Open question #3 from 2026-08-20 is still unconfirmed in VM source; gate the worst case anyway.
-- **Diagnostics omit the only local evidence.** `copyDiagnostics` (`src/runtime.js`) writes version, route, viewport, ad-defense counts, apply-cycle cost. It does not include non-default settings or probe winners, so a pasted report cannot answer “which hide chip / filter is on.”
-- **No new extension/userscript CVE** dated 2026-08-20 or 2026-08-21 found (closest: CVE-2026-19165, Chrome < 151.0.7922.109, published 2026-08-06).
-- **Do not add DNR `modifyHeaders`.** CRXfiltrate (2026-08) still applies.
+- **Verified.** The companion remote-blocklist bridge reads the approved-looking URL from Kick-owned localStorage, a Kick page can change that storage and trigger the bridge, and both backgrounds accept any HTTPS URL supplied by the bridge (src/extension/bridge.js, src/extension/bridge.firefox.js, src/extension/background.js, src/extension/background.firefox.js). The manifests do not grant arbitrary feed origins, so arbitrary feeds normally fail; granting all HTTPS hosts would convert this into a page-controlled cross-origin body reader ([Chrome cross-origin guidance](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests), [Extending a Hand to Attackers](https://www.usenix.org/conference/usenixsecurity23/presentation/kim-young-min)).
+- **Verified.** The background fetches do not jointly enforce exact URL equality, redirect refusal, JSON MIME, an 8-second timeout, and a 512 KiB pre-return ceiling (src/extension/background.js, src/extension/background.firefox.js). Authorization belongs in extension-owned storage and exact optional host permission.
+- **Verified.** The build and storage guards use JavaScript string length rather than UTF-8 byte length; current userscript plus maximum seed is 987,722 UTF-8 bytes (scripts/build.mjs, scripts/check.mjs, src/storage.mjs). This leaves 12,278 bytes under Violentmonkey’s approximate 1 MB Alternative page mode guidance ([Violentmonkey v2.46.0](https://github.com/violentmonkey/violentmonkey/releases/tag/v2.46.0)).
+- **Verified.** Merged-chat recovery is absent after either a close event or a silent socket, and sleep, wake, online, and visibility transitions do not repair the dead map entry (src/live.mjs). Competing chat clients now treat this as table-stakes reliability ([StreamNook #170](https://github.com/winters27/StreamNook/issues/170), [Chatterino #7168](https://github.com/Chatterino/chatterino2/pull/7168)).
+- **Verified.** The current privacy baseline is strong: no dependencies, no remote code, Kick-only content matches, narrow extension permissions, local data, and Firefox’s required data-collection declaration set to none (package.json, src/metadata.txt, src/extension/manifest.json, src/extension/manifest.firefox.json, scripts/check.mjs).
+- **Verified.** IndexedDB and web storage belong to the kick.com origin and may disappear when site data is cleared; imports and local backups remain the correct recovery boundary ([WHATWG Storage](https://storage.spec.whatwg.org/), [MDN storage quotas](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria), src/storage.mjs, src/core.mjs). Requesting persistent storage would apply to all of kick.com, not just Kick Focus.
+- **Verified.** Node 24.19 satisfies the current security floor, but package.json accepts unsupported Node 25 because it has no upper bound ([Node 24.19.0](https://nodejs.org/en/blog/release/v24.19.0), [Node release table](https://nodejs.org/en/about/previous-releases), package.json).
 
 ## Architecture Assessment
 
-- `src/runtime.js` is still 11,566 lines / 625,776 B. Settings extract remains R-78; do not start it until R-72 lands.
-- `FIXTURE_CONTRACT.shell` today records only `main` / `sidebar` / `chatSeparator` / `chatPanel` / `card`. Hideable controls (`playerPip`, `sidebarDrops`, …) are not in that map, so a dropped test id can fall through inside `findAllProbe` without failing the live gate. Extend the existing contract; do not invent a second table.
-- `copyDiagnostics` / `runSelfCheck` are the report *generator* this empty tracker needs. Expand the JSON; do not add telemetry.
-- Test/docs: R-80 (`expectFailure`) and R-73 (ads copy) still open. Extra locales still deferred until the size cut.
+- **Verified.** src/runtime.js is 12,864 lines and 655,729 bytes. src/settings.mjs proved the host-factory extraction pattern works; the emote workspace is the next coherent boundary because it owns picker state, library views, group actions, and rendering (src/runtime.js, src/settings.mjs, scripts/build.mjs).
+- **Verified.** test/settings.test.js contains two direct settings tests. A 2026-08-23 coverage run reports src/settings.mjs at 36.36% lines, 37.50% branches, and 11.63% functions while the whole suite remains 88.87%, 85.75%, and 86.58% (test/settings.test.js, src/settings.mjs, package.json).
+- **Verified.** The visual system has current references for main shell, settings, emote picker, and multistream, but release QA is a manual comparison with no deterministic masked pixel or geometry diff (design/mockups, design/screenshots, design/qa, scripts/release-checklist.mjs). **Assumption.** Browser-canvas comparison can keep the new gate dependency-free ([Playwright visual comparisons](https://playwright.dev/docs/next/test-snapshots)).
+- **Verified.** Chromium exercises 96 assertions while Firefox runs eight narrower checks, so browser-neutral route, theme, modal, preview, and multistream contracts can drift (scripts/verify-extension.mjs, scripts/verify-firefox.mjs).
+- **Verified.** Firefox currently embeds the page bundle as inline source to avoid exposing a stable moz-extension URL, which leaves injection dependent on Kick’s CSP posture (src/extension/bridge.firefox.js, scripts/build.mjs, README.md). Firefox 128 supports manifest-declared MAIN-world scripts without that CSP dependency ([Firefox 128 extension update](https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/)).
+- **Verified.** Settings content already supports English, Spanish, and Portuguese, but popup and manifest strings remain English-only (src/runtime.js, src/extension/popup.html, src/extension/popup.js, src/extension/manifest.json, src/extension/manifest.firefox.json, [Chrome i18n](https://developer.chrome.com/docs/extensions/reference/api/i18n)).
+- **Verified.** Existing settings normalization, schema migration, transactional import, bounded stores, API fallbacks, compatibility probes, and equality guards are sound foundations; no replacement data layer or framework is justified (src/core.mjs, src/storage.mjs, src/api.mjs, src/compatibility.mjs).
 
 ## Rejected Ideas
 
-- **Active-chatters card in Viewer Hub (R-81), closed on measurement 2026-08-21.** The item's own gate was that a live channel document had to be observed requesting `web.kick.com/api/v1/channels/{id}/chat/active-chatters` before anything was built. It does not. A live `/xqc` was watched for roughly 40 seconds across a full load and settle: Kick's page issued `realtime/chat/{id}/client/{uuid}/connection`, `channels/{id}/chat/settings` and `chat/{id}/history`, and never the chatters URL. The endpoint does answer **200** anonymously when asked directly, which is exactly the trap — building on it would make this the only feature that originates a request Kick's own page does not, against the standing rule that data features read endpoints the page already calls. Revisit only if a future channel document is seen calling it, or if the mobile viewer app's chatters list arrives on web.
-
-- **Call Kick’s Ads Public API from the viewer layer.** Source: docs.kick.com/apis/ads, 2026-08-19. Creator OAuth; `ads_blocked` is not a viewer entitlement. Contradicts same-origin session-only reads.
-- **Remote broken-feature disable feed** (Refined GitHub `hotfix.tsx` / `broken-features.csv`). Source: Astra Deck research 2026-08-20. Same class as `@downloadURL` (Roadmap_Blocked). Local probe-gated skip is the substitute (R-90).
-- **Web Audio DynamicsCompressor on the Kick `<video>`.** Source: FFZ #738; Kick field uses gain (uKick, Augmenter), not compression. Enhancer Kick modules have no compressor. Unverifiable in this gate (R-70: automated Chromium never decodes a frame).
-- **Volume boost 1–10×.** Same R-70 verification hole; Kick already owns the volume control this build can hide (`player-volume`).
-- **7TV/BTTV federation, SSAI/HLS/IVS worker, screenshot/recording, 1080p-without-login, rate-limit bypass, mass-ban, deleted-message archive, plugins, `setHTML()`, companion `userScripts`, DNR `modifyHeaders`, light theme next, extra locales before R-72, official OAuth, danmaku, WCAG 3 retarget.** Unchanged from 2026-08-20; still misfit or blocked.
-- **Keyboard emote completion, `@downloadURL`, first-run tour, signed-in live gate, SSAI scrub.** Stay in `Roadmap_Blocked.md`.
+- **Verified.** Grant https://*/* to make arbitrary companion feeds work: rejected because the current page-controlled bridge would become a general cross-origin read oracle ([Chrome cross-origin guidance](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests), src/extension/bridge.js).
+- **Verified.** Self-signed CRX as the primary consumer package: rejected because normal Windows and macOS installs require Chrome Web Store signing or managed policy; keep the unpacked ZIP for local refresh ([Chrome distribution guidance](https://developer.chrome.com/docs/extensions/how-to/distribute)).
+- **Verified.** Firefox MV3 migration now: rejected because MAIN-world injection is available in Firefox MV2 and blocking webRequest remains useful; Mozilla still promises notice before MV2 removal ([Mozilla MV2/MV3 update](https://blog.mozilla.org/addons/2024/03/13/manifest-v3-manifest-v2-march-2024-update/)).
+- **Verified.** Third-party emote federation, a plugin marketplace, cloud sync, or multi-user state: rejected because each adds remote trust, maintenance, or account semantics to a local single-viewer tool ([7TV](https://github.com/SevenTV/Extension), [Enhancer](https://github.com/enhancer-app/enhancer), package.json, README.md).
+- **Verified.** Automatic storage persistence: rejected because persistence covers the whole kick.com origin, including Kick’s own data ([WHATWG Storage](https://storage.spec.whatwg.org/), [MDN storage quotas](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria)).
+- **Needs live validation.** Audio normalization or gain: deferred until the live harness decodes current Kick video and proves MediaElementAudioSource works without cross-origin failure; demand exists, but an unexercised playback path is not release-ready ([ZenX](https://chromewebstore.google.com/detail/zenx/dmineakemlfgkkaimlkbejgnmpdbobgh), [Kick Augmenter](https://chromewebstore.google.com/detail/kick-augmenter/hdhpmccblalleagomabbfnpkbcpojfpd), scripts/verify-extension.mjs).
+- **Verified.** VOD chat replay, clip downloads, notification services, moderation automation, mass-ban, deleted-message archives, and quality-entitlement bypasses: rejected because they require new data retention, permissions, creator powers, or policy risk that do not serve the calm local viewer ([Kick moderation guide](https://help.kick.com/en/articles/10162074-moderation-features-guide), [KickClipsViewer](https://github.com/Meiweif/KickClipsViewer/releases/tag/V1.3.1), README.md).
+- **Verified.** Worker interception or claims to remove server-stitched ads: rejected because the current page layer cannot observe the IVS worker’s media path and playback-critical intervention has no safe harness (Roadmap_Blocked.md, README.md, [TwitchAdSolutions #506](https://github.com/pixeltris/TwitchAdSolutions/issues/506)).
+- **Verified.** A remote disable feed or automatic update channel: rejected for this pass because publication trust remains an explicit operator decision (Roadmap_Blocked.md, [Refined GitHub hotfix design](https://github.com/refined-github/refined-github/blob/main/source/helpers/hotfix.tsx)).
+- **Verified.** Full mobile support remains deferred in ROADMAP.md. The current product and QA contract are desktop-first, so this pass does not duplicate that decision (ROADMAP.md, README.md).
 
 ## Sources
 
-### This tree
+### Project and Kick
 
-- `README.md`
-- `CHANGELOG.md`
-- `ROADMAP.md`
-- `Roadmap_Blocked.md`
-- `src/runtime.js` (`tagHideableElements`, `copyDiagnostics`, `applyPlaybackDiagnostics`)
-- `src/compatibility.mjs` (`findAllProbe`)
-- `src/storage.mjs` (`LIBRARY_SEED_LIMIT`)
-- `src/core.mjs` (`HIDEABLE_ELEMENTS`, `layout.chat`)
-- `scripts/check.mjs` (`SIZE_BUDGETS`)
-- `dist/kick-focus.user.js` (970,899 B, 2026-08-21)
+- https://github.com/SysAdminDoc/kick-focus
+- https://github.com/SysAdminDoc/kick-focus/issues
+- https://github.com/SysAdminDoc/kick-focus/pulls
+- https://github.com/SysAdminDoc/kick-focus/releases/tag/v1.38.0
+- https://github.com/KickEngineering/KickDevDocs
+- https://github.com/KickEngineering/KickDevDocs/issues
+- https://github.com/KickEngineering/KickDevDocs/discussions/312
+- https://github.com/KickEngineering/KickDevDocs/discussions/214
+- https://github.com/KickEngineering/KickDevDocs/blob/main/events/event-types.md
+- https://help.kick.com/en/articles/14994494-how-to-use-kick-chat-as-a-viewer
+- https://help.kick.com/en/articles/14994226-browser-compatibility-and-recommended-settings-for-kick
+- https://help.kick.com/en/articles/10162074-moderation-features-guide
+- https://help.kick.com/en/articles/14994597-the-kick-mobile-app-a-viewers-guide
 
-### Kick
+### Direct and commercial competitors
 
-- https://help.kick.com/en/articles/15300357-advertising-on-kick-for-viewers
-- https://help.kick.com/en/articles/15159735-how-kick-subscriptions-work-for-viewers
-- https://help.kick.com/en/articles/15300424-advertising-on-kick-for-streamers
-- https://docs.kick.com/apis/ads.md
-- https://github.com/KickEngineering/KickDevDocs/commit/61d7e8336fe2bc4bbb7479fa56bf77d5ae4a2fe1
-- https://github.com/KickEngineering/KickDevDocs/issues/405
-
-### Competitors and adjacent
-
-- https://chromewebstore.google.com/detail/mokick-better-kick-for-ev/lhjnnfenfahhjkmcngnocfclechcibkc
-- https://chromewebstore.google.com/detail/purekick-ad-blocker-for-k/mhicbhkhokaocipkioiibmficljoijnf
-- https://chromewebstore.google.com/detail/kick-augmenter/hdhpmccblalleagomabbfnpkbcpojfpd
-- https://github.com/berkaygediz/uKick
-- https://github.com/SevenTV/Extension/issues/914
+- https://kicklab.app/
+- https://addons.mozilla.org/en-US/firefox/addon/kicklab/versions/
+- https://github.com/winters27/StreamNook/issues/170
+- https://github.com/winters27/StreamNook/releases/tag/v8.4.2
+- https://github.com/Chatterino/chatterino2/issues/7057
+- https://github.com/Chatterino/chatterino2/pull/7168
+- https://github.com/ilanzgx/multistream
+- https://github.com/ilanzgx/multistream/releases/tag/v0.18.15
+- https://github.com/segelferd/kick-alert
+- https://github.com/segelferd/kick-alert/releases/tag/v2.4.0
+- https://github.com/ensardev/KickKit
+- https://github.com/SevenTV/Extension
+- https://github.com/SevenTV/Extension/pull/1247
+- https://github.com/night/betterttv/releases/tag/7.7.25
+- https://github.com/FrankerFaceZ/FrankerFaceZ/issues/1881
 - https://github.com/enhancer-app/enhancer
-- https://github.com/Pkkls/kick-core
-- https://github.com/FrankerFaceZ/FrankerFaceZ/issues/738
-- https://greasyfork.org/en/scripts/by-site/kick.com?sort=updated
-- https://github.com/refined-github/refined-github/blob/main/source/helpers/hotfix.tsx
+- https://github.com/enhancer-app/enhancer/issues/133
+- https://github.com/pixeltris/TwitchAdSolutions/releases/tag/v24
+- https://github.com/pixeltris/TwitchAdSolutions/issues/497
+- https://github.com/pixeltris/TwitchAdSolutions/issues/506
+- https://github.com/Seldszar/Gumbo/issues/205
+- https://github.com/Meiweif/KickClipsViewer/releases/tag/V1.3.1
+- https://chromewebstore.google.com/detail/zenx/dmineakemlfgkkaimlkbejgnmpdbobgh
+- https://chromewebstore.google.com/detail/wesutil/igdnndpfofcemcoellnefdflnmcchmle
+- https://chromewebstore.google.com/detail/kick-augmenter/hdhpmccblalleagomabbfnpkbcpojfpd
+- https://addons.mozilla.org/en-US/firefox/addon/mokick/
+- https://chromewebstore.google.com/detail/kickenhance/eobmipgghmnbbipfhpemfacnljiflmnj
+- https://greasyfork.org/en/scripts/587473-overkick-cinematic-chat-overlay
+- https://addons.mozilla.org/en-US/firefox/addon/previews-for-ttv/
+- https://chromewebstore.google.com/detail/alternate-player-for-twit/bhplkbgoehhhddaoolmakpocnenplmhf
 
-### Platform
+### Community and ecosystem
 
-- https://github.com/violentmonkey/violentmonkey/releases/tag/v2.48.0
+- https://greasyfork.org/en/scripts/by-site/kick.com
+- https://www.reddit.com/r/browserextensions/comments/1s4zs0h/i_built_kickalert_a_free_chromefirefox_extension/
+- https://www.reddit.com/r/KickStreaming/comments/1p0eauv/theres_so_many_websitefunctionalityuseability/
+- https://www.reddit.com/r/KickStreaming/comments/14ewoxq
+- https://www.reddit.com/r/KickStreaming/comments/14d13ne
+- https://www.reddit.com/r/KickStreaming/comments/14dumxy
+- https://www.reddit.com/r/KickStreaming/comments/1femv6m
+- https://www.reddit.com/r/7TV/comments/1fe02qt
+- https://www.reddit.com/r/KickStreaming/comments/1r0xmtb/what_frustrates_you_most_about_live_streaming/
+- https://news.ycombinator.com/item?id=36366459
+- https://github.com/jupjohn/awesome-twitch-stuff
+- https://github.com/juancarlospaco/awesome-streaming-tools
+- https://github.com/NextNextStep/awesome-live-streaming
+- https://github.com/tucktuckg00se/awesome-video-broadcasting
+
+### Browser, accessibility, and packaging
+
+- https://developer.chrome.com/docs/extensions/develop/concepts/network-requests
+- https://developer.chrome.com/docs/extensions/develop/concepts/storage-and-cookies
+- https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts
+- https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions
+- https://developer.chrome.com/docs/extensions/reference/api/storage
+- https://developer.chrome.com/docs/extensions/reference/api/i18n
+- https://developer.chrome.com/docs/extensions/how-to/distribute
+- https://developer.chrome.com/docs/extensions/how-to/test/end-to-end-testing
+- https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions
+- https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Chrome_incompatibilities
+- https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/
+- https://blog.mozilla.org/addons/2024/03/13/manifest-v3-manifest-v2-march-2024-update/
+- https://www.w3.org/TR/WCAG22/
+- https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
+- https://www.w3.org/WAI/ARIA/apg/patterns/windowsplitter/
+- https://html.spec.whatwg.org/multipage/interaction.html#the-inert-attribute
+- https://playwright.dev/docs/next/test-snapshots
 - https://github.com/violentmonkey/violentmonkey/releases/tag/v2.46.0
-- https://developer.chrome.com/blog/chrome-two-week-release
-- https://chromereleases.googleblog.com/2026/08/
+- https://github.com/violentmonkey/violentmonkey/releases/tag/v2.47.0
 - https://nodejs.org/en/blog/release/v24.19.0
-- https://github.com/advisories/GHSA-2865-9gvm-5wwx
-- https://blog.7ai.com/crxfiltrate
+- https://nodejs.org/en/about/previous-releases
+- https://nodejs.org/en/blog/vulnerability/july-2026-security-releases
+- https://www.mozilla.org/en-US/security/advisories/mfsa2026-68/
+
+### Storage and security research
+
+- https://storage.spec.whatwg.org/
+- https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria
+- https://www.usenix.org/conference/usenixsecurity23/presentation/kim-young-min
+- https://www.usenix.org/conference/usenixsecurity21/presentation/laperdrix
+- https://swag.cispa.saarland/papers/fass2021doublex.pdf
+- https://doi.org/10.1145/3460120.3484745
+- https://publications.cispa.saarland/3756/1/sp23_domclob.pdf
+- https://doi.org/10.1145/3719027.3765117
 
 ## Open Questions
 
-1. **Needs live validation.** On a subscribed non-Slots channel, do in-stream ads skip, matching the ads-for-viewers article rather than the 2026-07-16 subscriptions article? Blocks stronger README wording than “Kick’s own articles disagree.”
-2. **Needs live validation.** Does Violentmonkey Alternative page mode count GM/`localStorage` seed bytes toward its ~1 MB advisory, or only injected script text? R-91 gates the worst case either way; this question only changes how aggressive the seed cap must be.
-3. Which page-visible or already-called same-origin source exposes **level and streak** without opening the reward dialog? Do not add an undocumented endpoint. Still unanswered since 2026-08-19.
-4. Does Kick’s page still GET `web.kick.com/api/v1/channels/{id}/chat/active-chatters`? The 2026-08-15 capture said yes; R-81 must re-confirm before adding the URL to `endpoints`.
-5. **Needs live validation.** Is the 1,802-byte 2026-08-21 `player.kick.com/xqc` body the real player document or a challenge/bootstrap? Does not block R-74 (companion injects on `kick.com`, not the embed origin).
+**Verified.** None blocks this prioritization. Authenticated viewer validation, userscript-manager cold starts, stitched-ad instrumentation, update publication, prediction payloads, loyalty reads, emote-completion key capture, first-run guidance, and the date-gated Chrome 153 fixture recapture remain explicitly parked in Roadmap_Blocked.md and are not duplicated here.
