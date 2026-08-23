@@ -41,6 +41,17 @@ function readSettings() {
   }
 }
 
+function normalizeBlocklistUrl(raw) {
+  try {
+    const url = new URL(String(raw || ''));
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    url.hash = '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
 // Reduce whatever the page announced to the fields the popup reads, so a
 // forged settings-changed event cannot write arbitrary data into extension
 // storage or flip a ruleset through an unvalidated payload. The page-world
@@ -52,9 +63,13 @@ function sanitizeSettings(raw) {
   const theme = ['studio', 'oled', 'slate'].includes(appearance.theme) ? appearance.theme : 'studio';
   const accent = ['kick', 'cyan', 'violet', 'gold', 'custom'].includes(appearance.accent) ? appearance.accent : 'kick';
   const customAccent = /^#[\da-f]{6}$/i.test(appearance.customAccent || '') ? appearance.customAccent : '#FF5CA8';
+  const blocklistUrl = normalizeBlocklistUrl(content.blocklistUrl);
   return {
     appearance: { theme, accent, customAccent },
-    content: { reduceTelemetry: Boolean(content.reduceTelemetry) },
+    content: {
+      reduceTelemetry: Boolean(content.reduceTelemetry),
+      ...(blocklistUrl ? { blocklistUrl } : {}),
+    },
   };
 }
 
@@ -114,19 +129,18 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', requestSettings, { once: true });
 }
 
-// The page asks the companion to fetch the configured blocklist from the
-// background (CORS-free). The URL is read from settings here, never taken from
-// the event: a forged fetch-blocklist event cannot redirect this privileged,
-// cross-origin fetch to an arbitrary host.
+// The page can trigger a refresh, but it cannot choose the privileged request
+// target. The background reads an exact URL approved from the extension popup
+// and refuses the request if the mirrored page setting no longer matches it.
 document.addEventListener('kick-focus:fetch-blocklist', () => {
-  const url = readSettings()?.content?.blocklistUrl;
-  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+  const url = normalizeBlocklistUrl(readSettings()?.content?.blocklistUrl);
+  if (!url) {
     document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
       detail: JSON.stringify({ ok: false, error: 'no configured blocklist URL' }),
     }));
     return;
   }
-  chrome.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist', url }, (response) => {
+  chrome.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist' }, (response) => {
     void chrome.runtime.lastError;
     document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
       detail: JSON.stringify(response || { ok: false, error: 'no response' }),

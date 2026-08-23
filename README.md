@@ -83,6 +83,8 @@ The companion is unsigned and installs unpacked. It is not published to any stor
 2. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `dist/extension/`.
 3. Reload Kick. The Content & Ads settings page now reports **Network + page** instead of **Page only**.
 
+If you configure a remote blocklist feed, open the companion popup and choose **Approve this feed**. The browser asks for access to that feed's origin only. Approval is tied to the full HTTPS URL, so changing the path or host requires another click.
+
 `dist/kick-focus-extension-v<version>.zip` is the same package for sharing or for browsers that accept a zip.
 
 ### Firefox companion
@@ -105,7 +107,7 @@ The companion is self-contained: it carries the same page-world script as the us
 | Guaranteed `document-start` timing | Manager-dependent | Yes |
 | Install effort | Paste one file | Load unpacked, survives as a folder |
 
-Every network rule is scoped to `kick.com` initiators, so the companion never changes how any other site loads. The Chromium package requests no host permissions beyond Kick; the Firefox package needs its `webRequest` permission to provide the equivalent blocking layer and still filters by Kick initiator. Both packages contain no remote code.
+Every network rule is scoped to `kick.com` initiators, so the companion never changes how any other site loads. Required Chromium host access remains limited to Kick. Firefox needs `webRequest` access to the enumerated hosts it blocks and still filters by Kick initiator. Both packages declare optional HTTPS access so the popup can request one user-chosen feed origin, but that access is not granted at install time. Both packages contain no remote code.
 
 ## Default shortcuts
 
@@ -166,7 +168,7 @@ One caveat worth stating plainly, because it is widely reported the other way ro
 
 Nothing is listed anywhere today, and publishing to any catalogue or store needs explicit approval. This section is written down now rather than during a review, because every answer below is a property of the code as it already stands.
 
-**Single purpose.** Kick Focus has one: *make watching kick.com on a desktop browser better for the viewer*. Layout, accessibility, content filtering, the emote library, the multi-stream grid and the ad defense are all features of that one purpose applied to one site, they are not separable products bundled together, and none of them works anywhere but `kick.com`. Neither companion requests broad host access, there is no `<all_urls>`, no `tabs`, and no optional permission. The Chromium package's host permissions and both content scripts are `kick.com` and `www.kick.com` and nothing else; the Firefox package additionally names the eleven ad and telemetry hosts it blocks, because Manifest V2 blocking `webRequest` requires a host permission for each host it refuses. Those eleven are enumerated in the manifest rather than wildcarded, and no `kick.com` host is among them. This is the policy most likely to be questioned for a mod of this size, so it is stated first.
+**Single purpose.** Kick Focus has one: *make watching kick.com on a desktop browser better for the viewer*. Layout, accessibility, content filtering, the emote library, the multi-stream grid and the ad defense are all features of that one purpose applied to one site, they are not separable products bundled together, and none of them works anywhere but `kick.com`. Neither companion gets broad host access at install time, and neither requests `<all_urls>` or `tabs`. The Chromium package's required host permissions and both content scripts are `kick.com` and `www.kick.com` and nothing else. Firefox additionally names the eleven ad and telemetry hosts it blocks because Manifest V2 blocking `webRequest` requires a host permission for each host it refuses. Those eleven are enumerated rather than wildcarded. Both manifests declare HTTPS origins as optional so a deliberate popup click can authorize the one blocklist origin the user configured. The full approved URL is kept in extension storage, and the page cannot substitute another address.
 
 **What is collected and transmitted: nothing in the background.** There is no analytics, telemetry, error reporting, remote logging, or account anywhere but Kick's own. Settings, the emote library, usage counts and grid layouts are stored on the machine and leave it only through the export file you ask for. Runtime data reads go only to `kick.com` and `web.kick.com`, carrying the session the page already has, see [What this project reads from Kick](#what-this-project-reads-from-kick). The one explicit third-party handoff is the channel-profile **Stats** button: pressing it navigates a popup to `streamerstats.com/kick/channels/{public-channel-slug}`. No request happens before that click, and no account token, Kick session, settings, or library data is sent by Kick Focus. Once opened, StreamerStats is a separate site governed by its own privacy policy. The Firefox package declares `data_collection_permissions: { required: ["none"] }` in its manifest, which is Mozilla's machine-readable form of the extension's no-collection statement; Chrome has no manifest equivalent, so the same disclosure there is a listing-form answer rather than something the artifact can carry.
 

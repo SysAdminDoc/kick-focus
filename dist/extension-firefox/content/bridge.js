@@ -54,6 +54,17 @@ function readSettings() {
   }
 }
 
+function normalizeBlocklistUrl(raw) {
+  try {
+    const url = new URL(String(raw || ''));
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    url.hash = '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
 // Reduce whatever the page announced to the fields the popup reads, so a
 // forged settings-changed event cannot write arbitrary data into extension
 // storage or flip a ruleset through an unvalidated payload.
@@ -64,9 +75,13 @@ function sanitizeSettings(raw) {
   const theme = ['studio', 'oled', 'slate'].includes(appearance.theme) ? appearance.theme : 'studio';
   const accent = ['kick', 'cyan', 'violet', 'gold', 'custom'].includes(appearance.accent) ? appearance.accent : 'kick';
   const customAccent = /^#[\da-f]{6}$/i.test(appearance.customAccent || '') ? appearance.customAccent : '#FF5CA8';
+  const blocklistUrl = normalizeBlocklistUrl(content.blocklistUrl);
   return {
     appearance: { theme, accent, customAccent },
-    content: { reduceTelemetry: Boolean(content.reduceTelemetry) },
+    content: {
+      reduceTelemetry: Boolean(content.reduceTelemetry),
+      ...(blocklistUrl ? { blocklistUrl } : {}),
+    },
   };
 }
 
@@ -104,17 +119,17 @@ function requestSettings() {
 requestSettings();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', requestSettings, { once: true });
 
-// Pinned to the configured blocklist URL from settings, never taken from the
-// event, so a forged fetch-blocklist event cannot redirect this privileged fetch.
+// The page can trigger a refresh, but the exact request target is owned by an
+// approval created in the popup and enforced by the background.
 document.addEventListener('kick-focus:fetch-blocklist', () => {
-  const url = readSettings()?.content?.blocklistUrl;
-  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+  const url = normalizeBlocklistUrl(readSettings()?.content?.blocklistUrl);
+  if (!url) {
     document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
       detail: JSON.stringify({ ok: false, error: 'no configured blocklist URL' }),
     }));
     return;
   }
-  api.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist', url }, (response) => {
+  api.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist' }, (response) => {
     document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
       detail: JSON.stringify(response || { ok: false, error: 'no response' }),
     }));

@@ -3920,6 +3920,25 @@ try {
   })()`);
   await sleep(300);
   await evaluate(popupClient, 'render()');
+  if (process.env.KF_POPUP_SCREENSHOT_PATH) {
+    const popupHeight = await evaluate(popupClient, 'Math.ceil((document.getElementById("note")?.getBoundingClientRect().bottom || document.body.getBoundingClientRect().bottom) + 18)');
+    await popupClient.send('Emulation.setDeviceMetricsOverride', {
+      width: 360,
+      height: Math.max(1, Number(popupHeight.value) || 600),
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    const capture = await popupClient.send('Page.captureScreenshot', {
+      format: 'png',
+      captureBeyondViewport: true,
+    });
+    if (capture.result?.data) {
+      await writeFile(resolve(process.env.KF_POPUP_SCREENSHOT_PATH), Buffer.from(capture.result.data, 'base64'));
+      record('captured the companion popup screenshot', true, process.env.KF_POPUP_SCREENSHOT_PATH);
+    } else {
+      record('captured the companion popup screenshot', false, 'CDP returned no image data');
+    }
+  }
 
   const popupErrors = popupClient.events
     .filter((e) => e.method === 'Runtime.exceptionThrown')

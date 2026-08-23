@@ -7,6 +7,9 @@ const api = globalThis.browser || globalThis.chrome;
 const AD_HOSTS = __AD_HOSTS__;
 const TELEMETRY_HOSTS = __TELEMETRY_HOSTS__;
 const BADGE_COLOR = '#53fc18';
+const BLOCKLIST_APPROVAL_KEY = 'blocklistApproval';
+const BLOCKLIST_MAX_BYTES = 512 * 1024;
+const BLOCKLIST_TIMEOUT_MS = 8000;
 let telemetryEnabled = true;
 const blockedByTab = new Map();
 
@@ -91,6 +94,93 @@ const fromKickPage = (sender) => fromThisExtension(sender) && KICK_ORIGINS.has(s
 const fromOwnPage = (sender) => fromThisExtension(sender) && /^moz-extension:\/\//.test(String(sender?.url || ''));
 const fromKickPageOrOwnUi = (sender) => fromKickPage(sender) || fromOwnPage(sender);
 
+function normalizeBlocklistUrl(raw) {
+  try {
+    const url = new URL(String(raw || ''));
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    url.hash = '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+function permissionOrigin(url) {
+  try { return `${new URL(url).origin}/*`; } catch { return ''; }
+}
+
+async function readBlocklistState() {
+  const stored = await api.storage.local.get(['settings', BLOCKLIST_APPROVAL_KEY]);
+  const candidateUrl = normalizeBlocklistUrl(stored?.settings?.content?.blocklistUrl);
+  const approvedUrl = normalizeBlocklistUrl(stored?.[BLOCKLIST_APPROVAL_KEY]?.url);
+  const origin = permissionOrigin(approvedUrl);
+  const permissionGranted = Boolean(origin) && await api.permissions.contains({ origins: [origin] });
+  return {
+    candidateUrl,
+    approvedUrl,
+    origin,
+    approved: Boolean(candidateUrl && candidateUrl === approvedUrl && permissionGranted),
+  };
+}
+
+async function approveBlocklist(rawUrl) {
+  const url = normalizeBlocklistUrl(rawUrl);
+  const stored = await api.storage.local.get(['settings', BLOCKLIST_APPROVAL_KEY]);
+  const candidateUrl = normalizeBlocklistUrl(stored?.settings?.content?.blocklistUrl);
+  if (!url || url !== candidateUrl) throw new Error('The configured feed changed. Reopen the popup.');
+  const origin = permissionOrigin(url);
+  if (!await api.permissions.contains({ origins: [origin] })) throw new Error('Origin permission was not granted.');
+
+  const previousOrigin = permissionOrigin(stored?.[BLOCKLIST_APPROVAL_KEY]?.url);
+  await api.storage.local.set({
+    [BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() },
+  });
+  if (previousOrigin && previousOrigin !== origin) {
+    await api.permissions.remove({ origins: [previousOrigin] });
+  }
+  return { url };
+}
+
+async function revokeBlocklist() {
+  const stored = await api.storage.local.get(BLOCKLIST_APPROVAL_KEY);
+  const origin = permissionOrigin(stored?.[BLOCKLIST_APPROVAL_KEY]?.url);
+  await api.storage.local.remove(BLOCKLIST_APPROVAL_KEY);
+  if (origin) await api.permissions.remove({ origins: [origin] });
+}
+
+async function fetchApprovedBlocklist(requestedUrl) {
+  const state = await readBlocklistState();
+  const requestUrl = normalizeBlocklistUrl(requestedUrl);
+  if (!state.approved) throw new Error('Blocklist feed approval is required.');
+  if (requestedUrl && requestUrl !== state.approvedUrl) throw new Error('Blocklist URL mismatch.');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BLOCKLIST_TIMEOUT_MS);
+  try {
+    const response = await fetch(state.approvedUrl, {
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'error',
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (response.redirected || normalizeBlocklistUrl(response.url) !== state.approvedUrl) {
+      throw new Error('Redirected blocklist responses are refused.');
+    }
+    const mime = String(response.headers.get('content-type') || '').split(';', 1)[0].trim().toLowerCase();
+    if (mime !== 'application/json' && !mime.endsWith('+json')) throw new Error('A JSON response is required.');
+    const declaredLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declaredLength) && declaredLength > BLOCKLIST_MAX_BYTES) {
+      throw new Error('Blocklist exceeds 512 KiB.');
+    }
+    const body = await response.arrayBuffer();
+    if (body.byteLength > BLOCKLIST_MAX_BYTES) throw new Error('Blocklist exceeds 512 KiB.');
+    return new TextDecoder('utf-8', { fatal: true }).decode(body);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'kick-focus:telemetry-preference') {
     if (!fromKickPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
@@ -100,30 +190,39 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type === 'kick-focus:status') {
     if (!fromKickPageOrOwnUi(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
-    api.storage.local.get('settings').then((stored) => sendResponse({
-      version: api.runtime.getManifest().version,
-      rulesets: ['ads', ...(telemetryEnabled ? ['telemetry'] : [])],
-      blocked: blockedByTab.get(message.tabId) || 0,
-      countsAvailable: true,
-      settings: stored?.settings || null,
-    }));
+    (async () => {
+      const stored = await api.storage.local.get('settings');
+      const blocklist = await readBlocklistState();
+      sendResponse({
+        version: api.runtime.getManifest().version,
+        rulesets: ['ads', ...(telemetryEnabled ? ['telemetry'] : [])],
+        blocked: blockedByTab.get(message.tabId) || 0,
+        countsAvailable: true,
+        settings: stored?.settings || null,
+        blocklist,
+      });
+    })();
     return true;
   }
   if (message?.type === 'kick-focus:fetch-blocklist') {
     if (!fromKickPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
-    const url = String(message.url || '');
-    if (!url.startsWith('https://')) {
-      sendResponse({ ok: false, error: 'HTTPS required' });
-      return true;
-    }
-    fetch(url, { credentials: 'omit', cache: 'no-store' })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
-      })
+    fetchApprovedBlocklist(message.url)
       .then((text) => sendResponse({ ok: true, text }))
-      .catch((error) => sendResponse({ ok: false, error: String(error) }))
-      .finally(() => {});
+      .catch((error) => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
+  if (message?.type === 'kick-focus:approve-blocklist') {
+    if (!fromOwnPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
+    approveBlocklist(message.url)
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
+  if (message?.type === 'kick-focus:revoke-blocklist') {
+    if (!fromOwnPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
+    revokeBlocklist()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
 

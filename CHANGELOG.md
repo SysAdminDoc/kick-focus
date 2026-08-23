@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Security
+
+- Remote blocklist feeds in the companion require approval from its popup. The extension stores one exact HTTPS URL, asks for that origin only, and refuses redirects, non-JSON responses, bodies over 512 KiB, and requests that run longer than eight seconds.
+
 ## 1.38.0, 2026-08-22
 
 ### Added

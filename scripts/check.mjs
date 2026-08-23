@@ -961,10 +961,23 @@ const checks = [
     && source.includes('function clearPrivateData')
     && source.includes('gmDelete(CHANNEL_NOTES_KEY)')
     && source.includes('gmDelete(EMOTE_USAGE_KEY)')],
-  // R-05: privileged transport hardening.
-  ['blocklist fetch is pinned to the configured URL, not the event', bridge.includes('readSettings()?.content?.blocklistUrl')
-    && firefoxBridge.includes('readSettings()?.content?.blocklistUrl')
-    && !bridge.includes('const url = event.detail?.url')],
+  // R-97: privileged transport hardening. The page may trigger a refresh, but
+  // it never supplies the background request target.
+  ['blocklist fetch target is owned by extension approval, not the page event', bridge.includes("sendMessage({ type: 'kick-focus:fetch-blocklist' }")
+    && firefoxBridge.includes("sendMessage({ type: 'kick-focus:fetch-blocklist' }")
+    && !bridge.includes("type: 'kick-focus:fetch-blocklist', url")
+    && !firefoxBridge.includes("type: 'kick-focus:fetch-blocklist', url")
+    && background.includes('candidateUrl === approvedUrl')
+    && firefoxBackground.includes('candidateUrl === approvedUrl')],
+  ['blocklist transport rejects redirects, non-JSON, oversized bodies, and eight-second stalls', [background, firefoxBackground].every((file) => file.includes("redirect: 'error'")
+    && file.includes("mime !== 'application/json'")
+    && file.includes('BLOCKLIST_MAX_BYTES = 512 * 1024')
+    && file.includes('BLOCKLIST_TIMEOUT_MS = 8000')
+    && file.includes('response.arrayBuffer()'))],
+  ['popup gesture requests one feed origin and stores one exact URL', popup.includes('permissions.request({ origins: [origin] })')
+    && popup.includes("type: 'kick-focus:approve-blocklist'")
+    && background.includes('[BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() }')
+    && firefoxBackground.includes('[BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() }')],
   ['bridge sanitizes announced settings before storing them', bridge.includes('function sanitizeSettings')
     && firefoxBridge.includes('function sanitizeSettings')],
   ['companion presence is a live nonce round-trip, not a page-set attribute', source.includes('function handshakeCompanion')
@@ -1005,6 +1018,9 @@ const checks = [
   ['bridge advertises the companion', bridge.includes('kickFocusCompanion')],
   ['userscript reports the companion layer', source.includes("'kick-focus:companion-ping'")],
   ['extension requests no broad host access', manifest.host_permissions.every((entry) => entry.includes('kick.com'))],
+  ['extension declares broad HTTPS access as optional only', manifest.optional_host_permissions?.length === 1
+    && manifest.optional_host_permissions[0] === 'https://*/*'
+    && !manifest.host_permissions.includes('https://*/*')],
   ['extension loads only local scripts', manifest.content_scripts
     .flatMap((entry) => entry.js)
     .every((file) => !/^(https?:)?\/\//.test(file))],
@@ -1334,6 +1350,9 @@ const checks = [
   ['Firefox host lists are generated', !firefoxBackground.includes('__AD_HOSTS__')
     && !firefoxBackground.includes('__TELEMETRY_HOSTS__')],
   ['Firefox requests no broad host access', !firefoxManifest.permissions.includes('<all_urls>')],
+  ['Firefox declares broad HTTPS access as optional only', firefoxManifest.optional_permissions?.length === 1
+    && firefoxManifest.optional_permissions[0] === 'https://*/*'
+    && !firefoxManifest.permissions.includes('https://*/*')],
   ['Firefox does not request the tabs permission', !firefoxManifest.permissions.includes('tabs')],
   // The install prompt should name what the extension does, not a superset of
   // it. Kick is reached over https everywhere else in this package — the

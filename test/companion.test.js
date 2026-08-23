@@ -94,6 +94,7 @@ function makeEnvironment() {
     CustomEvent: CustomEventStub,
     MutationObserver: class {},
     console,
+    URL,
     setTimeout,
     clearTimeout,
   };
@@ -125,29 +126,114 @@ async function runBridge(file, pageFirst) {
  * the registered `onBeforeRequest` listener. Built, not source, because the host
  * arrays are injected at build time.
  */
-async function loadFirefoxBackground() {
-  const source = await readFile(resolve(root, 'dist/extension-firefox/background.js'), 'utf8');
+async function loadBackground(file, options = {}) {
+  const source = await readFile(resolve(root, file), 'utf8');
+  const isFirefox = file.includes('firefox');
   let listener = null;
   let messageListener = null;
   const badges = [];
+  const fetches = [];
+  const timeouts = [];
+  const stored = structuredClone(options.stored || {});
+  const granted = new Set(options.granted || []);
+  const storage = {
+    get: async (keys) => {
+      const wanted = Array.isArray(keys) ? keys : [keys];
+      return Object.fromEntries(wanted.filter((key) => key in stored).map((key) => [key, stored[key]]));
+    },
+    set: async (value) => { Object.assign(stored, value); },
+    remove: async (key) => { delete stored[key]; },
+  };
+  const permissions = {
+    contains: async ({ origins = [] }) => origins.every((origin) => granted.has(origin)),
+    remove: async ({ origins = [] }) => {
+      origins.forEach((origin) => granted.delete(origin));
+      return true;
+    },
+  };
+  const runtime = {
+    id: isFirefox ? 'kick-focus@sysadmindoc' : 'test-extension-id',
+    onMessage: { addListener: (fn) => { messageListener = fn; } },
+    getManifest: () => ({ version: 'test' }),
+  };
+  const tabs = { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } };
   const browser = {
     webRequest: { onBeforeRequest: { addListener: (fn) => { listener = fn; } } },
     browserAction: {
       setBadgeText: (value) => badges.push(value),
       setBadgeBackgroundColor: () => {},
     },
-    runtime: {
-      id: 'kick-focus@sysadmindoc',
-      onMessage: { addListener: (fn) => { messageListener = fn; } },
-      getManifest: () => ({ version: 'test' }),
-    },
-    storage: { local: { get: async () => ({}) } },
-    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+    runtime,
+    storage: { local: storage },
+    permissions,
+    tabs,
   };
-  const context = { browser, console, URL, Map, setTimeout, clearTimeout, fetch: async () => { throw new Error('no network in tests'); } };
+  const chrome = {
+    action: {
+      setBadgeText: async (value) => { badges.push(value); },
+      setBadgeBackgroundColor: async () => {},
+    },
+    declarativeNetRequest: {
+      getEnabledRulesets: async () => ['ads'],
+      updateEnabledRulesets: async () => {},
+      onRuleMatchedDebug: null,
+    },
+    runtime,
+    storage: { local: storage },
+    permissions,
+    tabs,
+  };
+  const fetchImpl = options.fetch || (async () => { throw new Error('no network in tests'); });
+  const context = {
+    console,
+    URL,
+    Map,
+    AbortController,
+    TextDecoder,
+    setTimeout: options.immediateTimeout
+      ? (callback, milliseconds) => { timeouts.push(milliseconds); callback(); return 1; }
+      : (callback, milliseconds) => { timeouts.push(milliseconds); return setTimeout(callback, milliseconds); },
+    clearTimeout: options.immediateTimeout ? () => {} : clearTimeout,
+    fetch: async (...args) => {
+      fetches.push(args);
+      return fetchImpl(...args);
+    },
+  };
+  if (isFirefox) context.browser = browser;
+  else context.chrome = chrome;
   context.globalThis = context;
   vm.runInNewContext(source, context);
-  return { listener, badges, messageListener };
+  return { listener, badges, messageListener, fetches, stored, granted, timeouts, runtime };
+}
+
+async function loadFirefoxBackground(options = {}) {
+  return loadBackground('dist/extension-firefox/background.js', options);
+}
+
+async function askBackground(background, message, sender) {
+  return new Promise((resolveAnswer) => {
+    const keepAlive = background.messageListener(message, sender, resolveAnswer);
+    if (keepAlive !== true) resolveAnswer(undefined);
+  });
+}
+
+function jsonResponse(url, text = '{"blocked":[]}', overrides = {}) {
+  const bytes = new TextEncoder().encode(text);
+  const { headers: headerOverrides = {}, ...responseOverrides } = overrides;
+  const headers = new Map(Object.entries({
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': String(bytes.byteLength),
+    ...headerOverrides,
+  }).map(([key, value]) => [key.toLowerCase(), String(value)]));
+  return {
+    ok: true,
+    status: 200,
+    url,
+    redirected: false,
+    headers: { get: (name) => headers.get(String(name).toLowerCase()) || null },
+    arrayBuffer: async () => bytes.buffer,
+    ...responseOverrides,
+  };
 }
 
 test('the Firefox background cancels ad requests from Firefox-shaped details', { tag: 'artifact' }, async () => {
@@ -209,7 +295,7 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     }
   });
 
-  test(`${file} pins the blocklist fetch to the configured URL, ignoring the event URL`, async () => {
+  test(`${file} lets the page trigger a blocklist refresh without choosing its URL`, async () => {
     const source = await readFile(resolve(root, file), 'utf8');
     const env = makeEnvironment();
     env.context.localStorage.value = JSON.stringify({ content: { reduceTelemetry: false, blocklistUrl: 'https://good.example/list.json' } });
@@ -217,7 +303,7 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', { detail: { url: 'https://evil.example/steal' } }));
     const fetchMessage = env.messages.find((message) => message?.type === 'kick-focus:fetch-blocklist');
     assert.ok(fetchMessage, 'a fetch-blocklist message should be sent');
-    assert.equal(fetchMessage.url, 'https://good.example/list.json');
+    assert.deepEqual(Object.keys(fetchMessage), ['type']);
   });
 
   test(`${file} refuses to fetch when no https blocklist URL is configured`, async () => {
@@ -236,7 +322,7 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     env.document.dispatchEvent(new CustomEventStub('kick-focus:settings-changed', {
       detail: { settings: JSON.stringify({
         appearance: { theme: 'slate', accent: 'violet', customAccent: '#ABCDEF', secret: 'x' },
-        content: { reduceTelemetry: true, secret: 'x' },
+        content: { reduceTelemetry: true, blocklistUrl: 'https://lists.example/blocked.json#fragment', secret: 'x' },
         evil: { drop: 1 },
       }) },
     }));
@@ -248,8 +334,9 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
       accent: 'violet',
       customAccent: '#ABCDEF',
     });
-    assert.deepEqual(Object.keys(stored.content), ['reduceTelemetry']);
+    assert.deepEqual(Object.keys(stored.content), ['reduceTelemetry', 'blocklistUrl']);
     assert.equal(stored.content.reduceTelemetry, true);
+    assert.equal(stored.content.blocklistUrl, 'https://lists.example/blocked.json');
   });
 
   test(`${file} answers a companion presence ping with the same nonce`, async () => {
@@ -265,6 +352,165 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     assert.equal(detail.version, 'test');
   });
 }
+
+for (const browserCase of [
+  {
+    name: 'Chromium',
+    file: 'dist/extension/background.js',
+    page: { id: 'test-extension-id', url: 'https://kick.com/xqc' },
+    popup: { id: 'test-extension-id', url: 'chrome-extension://abc/popup.html' },
+  },
+  {
+    name: 'Firefox',
+    file: 'dist/extension-firefox/background.js',
+    page: { id: 'kick-focus@sysadmindoc', url: 'https://kick.com/xqc' },
+    popup: { id: 'kick-focus@sysadmindoc', url: 'moz-extension://abc/popup.html' },
+  },
+]) {
+  const approvedUrl = 'https://lists.example/blocked.json';
+  const origin = 'https://lists.example/*';
+  const approvedStore = {
+    settings: { content: { blocklistUrl: approvedUrl } },
+    blocklistApproval: { url: approvedUrl, origin, approvedAt: 1 },
+  };
+
+  test(`${browserCase.name} fetches only the exact approved JSON feed`, { tag: 'artifact' }, async () => {
+    const background = await loadBackground(browserCase.file, {
+      stored: approvedStore,
+      granted: [origin],
+      fetch: async (url) => jsonResponse(url),
+    });
+    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    assert.equal(answer?.ok, true, answer?.error);
+    assert.equal(answer?.text, '{"blocked":[]}');
+    assert.equal(background.fetches.length, 1);
+    const [url, init] = background.fetches[0];
+    assert.equal(url, approvedUrl);
+    assert.equal(init.credentials, 'omit');
+    assert.equal(init.cache, 'no-store');
+    assert.equal(init.redirect, 'error');
+    assert.equal(background.timeouts[0], 8000);
+  });
+
+  test(`${browserCase.name} refuses page-selected and stale blocklist URLs`, { tag: 'artifact' }, async () => {
+    const selected = await loadBackground(browserCase.file, {
+      stored: approvedStore,
+      granted: [origin],
+      fetch: async (url) => jsonResponse(url),
+    });
+    const selectedAnswer = await askBackground(selected, {
+      type: 'kick-focus:fetch-blocklist',
+      url: 'https://evil.example/steal.json',
+    }, browserCase.page);
+    assert.equal(selectedAnswer?.ok, false);
+    assert.match(selectedAnswer?.error || '', /mismatch/i);
+    assert.equal(selected.fetches.length, 0);
+
+    const stale = await loadBackground(browserCase.file, {
+      stored: {
+        ...approvedStore,
+        settings: { content: { blocklistUrl: 'https://other.example/new.json' } },
+      },
+      granted: [origin],
+      fetch: async (url) => jsonResponse(url),
+    });
+    const staleAnswer = await askBackground(stale, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    assert.equal(staleAnswer?.ok, false);
+    assert.match(staleAnswer?.error || '', /approval/i);
+    assert.equal(stale.fetches.length, 0);
+  });
+
+  for (const invalid of [
+    {
+      label: 'redirects',
+      response: () => jsonResponse(approvedUrl, '{}', { redirected: true }),
+      error: /redirect/i,
+    },
+    {
+      label: 'non-JSON MIME types',
+      response: () => jsonResponse(approvedUrl, '{}', { headers: { 'content-type': 'text/plain' } }),
+      error: /JSON/i,
+    },
+    {
+      label: 'declared bodies over 512 KiB',
+      response: () => jsonResponse(approvedUrl, '{}', { headers: { 'content-length': String(512 * 1024 + 1) } }),
+      error: /512 KiB/i,
+    },
+    {
+      label: 'streamed bodies over 512 KiB',
+      response: () => jsonResponse(approvedUrl, 'x'.repeat(512 * 1024 + 1), { headers: { 'content-length': '0' } }),
+      error: /512 KiB/i,
+    },
+  ]) {
+    test(`${browserCase.name} rejects blocklist ${invalid.label}`, { tag: 'artifact' }, async () => {
+      const background = await loadBackground(browserCase.file, {
+        stored: approvedStore,
+        granted: [origin],
+        fetch: async () => invalid.response(),
+      });
+      const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+      assert.equal(answer?.ok, false);
+      assert.match(answer?.error || '', invalid.error);
+    });
+  }
+
+  test(`${browserCase.name} aborts blocklist fetches at eight seconds`, { tag: 'artifact' }, async () => {
+    const background = await loadBackground(browserCase.file, {
+      stored: approvedStore,
+      granted: [origin],
+      immediateTimeout: true,
+      fetch: async (_url, init) => {
+        if (init.signal.aborted) throw new Error('request aborted');
+        return jsonResponse(approvedUrl);
+      },
+    });
+    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    assert.equal(answer?.ok, false);
+    assert.match(answer?.error || '', /aborted/i);
+    assert.deepEqual(background.timeouts, [8000]);
+  });
+
+  test(`${browserCase.name} accepts exact feed approval only from its popup`, { tag: 'artifact' }, async () => {
+    const settings = { settings: { content: { blocklistUrl: approvedUrl } } };
+    const background = await loadBackground(browserCase.file, { stored: settings, granted: [origin] });
+    const pageAnswer = await askBackground(background, {
+      type: 'kick-focus:approve-blocklist',
+      url: approvedUrl,
+    }, browserCase.page);
+    assert.equal(pageAnswer?.error, 'refused');
+    assert.equal(background.stored.blocklistApproval, undefined);
+
+    const mismatch = await askBackground(background, {
+      type: 'kick-focus:approve-blocklist',
+      url: 'https://lists.example/other.json',
+    }, browserCase.popup);
+    assert.equal(mismatch?.ok, false);
+    assert.equal(background.stored.blocklistApproval, undefined);
+
+    const accepted = await askBackground(background, {
+      type: 'kick-focus:approve-blocklist',
+      url: approvedUrl,
+    }, browserCase.popup);
+    assert.equal(accepted?.ok, true, accepted?.error);
+    assert.equal(background.stored.blocklistApproval?.url, approvedUrl);
+  });
+}
+
+test('the popup requests only the configured feed origin from optional permissions', async () => {
+  const [popupSource, chromiumManifestSource, firefoxManifestSource] = await Promise.all([
+    readFile(resolve(root, 'src/extension/popup.js'), 'utf8'),
+    readFile(resolve(root, 'src/extension/manifest.json'), 'utf8'),
+    readFile(resolve(root, 'src/extension/manifest.firefox.json'), 'utf8'),
+  ]);
+  const chromiumManifest = JSON.parse(chromiumManifestSource);
+  const firefoxManifest = JSON.parse(firefoxManifestSource);
+  assert.match(popupSource, /permissions\.request\(\{ origins: \[origin\] \}\)/);
+  assert.ok(!popupSource.includes("permissions.request({ origins: ['https://*/*']"));
+  assert.deepEqual(chromiumManifest.optional_host_permissions, ['https://*/*']);
+  assert.deepEqual(firefoxManifest.optional_permissions, ['https://*/*']);
+  assert.ok(chromiumManifest.host_permissions.every((entry) => entry.includes('kick.com')));
+  assert.ok(!firefoxManifest.permissions.includes('https://*/*'));
+});
 
 /**
  * A privileged message handler that trusts its message's shape and not its

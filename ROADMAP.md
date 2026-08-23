@@ -90,13 +90,6 @@ Added from the exhaustive repository, live-browser, competitor, standards, and s
 
 ### P0
 
-- [ ] P0 — R-97: Authorize companion blocklist feeds outside Kick page state
-  Why: The current bridge trusts an HTTPS URL read from Kick-controlled localStorage, the manifests cannot fetch arbitrary feed origins, and broad host access would make the bridge a cross-origin read oracle.
-  Evidence: src/extension/bridge.js:121-129; src/extension/bridge.firefox.js:109-117; src/extension/background.js:91-105; src/extension/background.firefox.js:112-126; https://developer.chrome.com/docs/extensions/develop/concepts/network-requests
-  Touches: src/extension/manifest.json, src/extension/manifest.firefox.json, both bridges, both backgrounds, popup UI, test/companion.test.js, scripts/check.mjs
-  Acceptance: A popup gesture stores one exact approved HTTPS feed URL in extension-owned storage and requests only that origin; both backgrounds reject mismatches, redirects, non-JSON MIME, bodies over 512 KiB, and requests over 8 seconds; a Kick page cannot retrieve a different cross-origin body; Chromium and Firefox companion tests pass.
-  Complexity: L
-
 - [ ] P0 — R-98: Reconnect stalled merged-chat channels through one bounded queue
   Why: A closed socket leaves its slug in connections, so syncMergedChat never opens it again; silent sockets, sleep, and network recovery have the same permanent-loss outcome.
   Evidence: src/live.mjs:620-690; https://github.com/winters27/StreamNook/issues/170; https://github.com/Chatterino/chatterino2/pull/7168; https://github.com/ilanzgx/multistream/releases/tag/v0.18.15

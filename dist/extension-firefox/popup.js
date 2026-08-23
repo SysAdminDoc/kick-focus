@@ -15,6 +15,10 @@ const els = {
   blocked: document.getElementById('blocked'),
   rulesets: document.getElementById('rulesets'),
   telemetry: document.getElementById('telemetry'),
+  blocklistState: document.getElementById('blocklist-state'),
+  blocklistUrl: document.getElementById('blocklist-url'),
+  approveBlocklist: document.getElementById('approve-blocklist'),
+  revokeBlocklist: document.getElementById('revoke-blocklist'),
   openSettings: document.getElementById('open-settings'),
   note: document.getElementById('note'),
 };
@@ -75,8 +79,13 @@ function renderUnavailable() {
   els.title.textContent = 'Companion unavailable';
   els.detail.textContent = 'Reload the extension, then reopen this panel.';
   els.telemetry.disabled = true;
+  els.approveBlocklist.disabled = true;
+  els.revokeBlocklist.hidden = true;
+  els.blocklistState.textContent = 'Unavailable';
+  els.blocklistUrl.textContent = 'The companion service could not be reached.';
   els.openSettings.disabled = true;
   els.telemetry.title = 'Kick Focus could not reach the companion service';
+  els.approveBlocklist.title = 'Kick Focus could not reach the companion service';
   els.openSettings.title = 'Kick Focus could not reach the companion service';
   els.note.textContent = 'No settings were changed.';
   document.body.setAttribute('aria-busy', 'false');
@@ -131,6 +140,20 @@ async function render() {
   els.telemetry.title = onKick ? '' : 'Open a Kick tab to change this setting';
   els.openSettings.title = onKick ? '' : 'Open a Kick tab to open settings';
 
+  const candidateUrl = status?.blocklist?.candidateUrl || '';
+  const approvedUrl = status?.blocklist?.approvedUrl || '';
+  const approved = Boolean(status?.blocklist?.approved);
+  els.blocklistUrl.textContent = candidateUrl || 'Set an HTTPS feed in Kick Focus settings.';
+  els.blocklistUrl.title = candidateUrl;
+  els.blocklistState.textContent = approved ? 'Approved' : candidateUrl ? 'Approval needed' : 'Not configured';
+  els.approveBlocklist.dataset.url = candidateUrl;
+  els.approveBlocklist.disabled = !candidateUrl || approved;
+  els.approveBlocklist.textContent = approved ? 'Feed approved' : 'Approve this feed';
+  els.approveBlocklist.title = candidateUrl
+    ? approved ? 'This exact feed is approved' : 'Allow this exact origin and feed URL'
+    : 'Configure an HTTPS feed in settings first';
+  els.revokeBlocklist.hidden = !approvedUrl;
+
   if (!onKick) {
     els.note.textContent = 'Open a Kick tab to change settings.';
   } else if (!status?.countsAvailable) {
@@ -155,6 +178,45 @@ els.telemetry.addEventListener('change', async () => {
     els.telemetry.removeAttribute('aria-busy');
     render();
   }, result.ok ? 150 : 1100);
+});
+
+els.approveBlocklist.addEventListener('click', async () => {
+  const url = els.approveBlocklist.dataset.url || '';
+  if (!url) return;
+  let origin = '';
+  try { origin = `${new URL(url).origin}/*`; } catch { return; }
+
+  els.approveBlocklist.disabled = true;
+  els.approveBlocklist.setAttribute('aria-busy', 'true');
+  els.note.textContent = 'Waiting for origin permission…';
+  const granted = await Promise.resolve(api.permissions.request({ origins: [origin] })).catch(() => false);
+  if (!granted) {
+    els.approveBlocklist.removeAttribute('aria-busy');
+    els.approveBlocklist.disabled = false;
+    els.note.textContent = 'Feed permission was not granted.';
+    return;
+  }
+
+  const result = await Promise.resolve(api.runtime.sendMessage({
+    type: 'kick-focus:approve-blocklist',
+    url,
+  })).catch(() => ({ ok: false }));
+  if (!result?.ok) {
+    await Promise.resolve(api.permissions.remove({ origins: [origin] })).catch(() => false);
+  }
+  els.approveBlocklist.removeAttribute('aria-busy');
+  await render();
+  els.note.textContent = result?.ok ? 'Remote blocklist feed approved.' : 'The feed changed before approval. Reopen the popup.';
+});
+
+els.revokeBlocklist.addEventListener('click', async () => {
+  els.revokeBlocklist.disabled = true;
+  els.note.textContent = 'Removing feed permission…';
+  const result = await Promise.resolve(api.runtime.sendMessage({
+    type: 'kick-focus:revoke-blocklist',
+  })).catch(() => ({ ok: false }));
+  await render();
+  els.note.textContent = result?.ok ? 'Remote blocklist permission removed.' : 'Feed permission could not be removed.';
 });
 
 els.openSettings.addEventListener('click', async () => {
