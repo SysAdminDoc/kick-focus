@@ -577,14 +577,21 @@ test('merged chat reconnects a closed channel through one bounded queue', { tag:
     assert.equal(maxChannelReads, 2);
     for (const release of releases.splice(0)) await release();
     await clock.advance();
-    assert.equal(releases.length, 1, 'the third channel waits for a shared slot');
-    await releases.shift()();
-    await clock.advance();
-    assert.equal(SocketStub.opened.length, 3, 'the remaining channel follows through the same queue');
+    assert.equal(SocketStub.opened.length, 2, 'only two socket handshakes may be active');
+    assert.equal(releases.length, 0, 'credentials finishing does not release a handshake slot');
+    assert.equal(state.mergedChat.inflight, 2);
 
     const alpha = state.mergedChat.connections.get('alpha');
     alpha.socket.fire('open');
     alpha.socket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
+    await clock.advance();
+    assert.equal(releases.length, 1, 'the third channel starts only after one socket opens');
+    await releases.shift()();
+    await clock.advance();
+    assert.equal(SocketStub.opened.length, 3, 'the remaining channel follows through the same queue');
+    for (const slug of ['beta', 'gamma']) state.mergedChat.connections.get(slug).socket.fire('open');
+    await clock.advance();
+    assert.equal(state.mergedChat.inflight, 0);
     assert.equal(alpha.status, 'live');
     const before = requests.filter((url) => url.includes('/channels/alpha')).length;
 
@@ -600,6 +607,34 @@ test('merged chat reconnects a closed channel through one bounded queue', { tag:
     assert.equal(requests.filter((url) => url.includes('/channels/alpha')).length, before + 1,
       'retry refreshes channel and broker credentials');
     surface.closeMergedChat();
+  });
+});
+
+test('removing a merged channel aborts its active credential read and releases the queue slot', { tag: 'unit' }, async () => {
+  const clock = makeMergedClock();
+  const { host, state } = mergedConnectionHost(clock);
+  let activeSignal = null;
+  host.pageFetch = (url, init = {}) => {
+    if (!String(url).includes('/channels/')) {
+      return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify(PUSHER_ANSWER) });
+    }
+    activeSignal = init.signal;
+    return new Promise(() => {});
+  };
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    surface.syncMergedChat(['alpha']);
+    await clock.advance();
+    assert.equal(activeSignal?.aborted, false);
+    assert.equal(state.mergedChat.inflight, 1);
+
+    surface.syncMergedChat([]);
+    assert.equal(activeSignal.aborted, true, 'tile removal aborts the fetch owned by that slot');
+    await clock.advance();
+    assert.equal(state.mergedChat.inflight, 0, 'cancellation releases the shared queue slot');
+    assert.equal(state.mergedChat.connections.size, 0);
+    assert.equal(SocketStub.opened.length, 0);
   });
 });
 
@@ -648,11 +683,16 @@ test('removing a merged channel cancels its pending retry and status stays compa
     const surface = createLive(host);
     surface.syncMergedChat(['alpha', 'beta', 'gamma']);
     await clock.advance();
-    await clock.advance();
-    for (const slot of state.mergedChat.connections.values()) {
+    for (const slug of ['alpha', 'beta']) {
+      const slot = state.mergedChat.connections.get(slug);
       slot.socket.fire('open');
       slot.socket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
     }
+    await clock.advance();
+    const gamma = state.mergedChat.connections.get('gamma');
+    gamma.socket.fire('open');
+    gamma.socket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
+    await clock.advance();
     state.mergedChat.connections.get('gamma').status = 'waiting';
     const status = surface.mergedChatStatus();
     assert.deepEqual(status, { total: 3, live: 2, connecting: 0, waiting: 1 });

@@ -560,7 +560,8 @@ const mergedChatIsReadOnly = (bundle) => {
   // merged path is the failure this exists to catch.
   const open = bundle.indexOf('async function openMergedChannel');
   if (open === -1) return false;
-  const socketRegion = bundle.slice(open, open + 2000);
+  const next = bundle.indexOf('function startMergedChannel', open);
+  const socketRegion = bundle.slice(open, next > open ? next : open + 4000);
   const sends = socketRegion.match(/\.send\(/g) || [];
   return sends.length === 1 && /socket\.send\(realtimeSubscribeFrame\(name\)\)/.test(socketRegion);
 };
@@ -1094,6 +1095,9 @@ const checks = [
   ['a channel removed from the grid stops consuming a merged connection', mergedChatFollowsTheGrid(source)],
   ['merged chat recovery is bounded, sleep-aware, and summarized once', source.includes('MERGED_CHAT_QUEUE_LIMIT = 2')
     && source.includes('MERGED_CHAT_SILENCE_MS = 45_000')
+    && source.includes('slot.controller = controller')
+    && source.includes('slot.finishAttempt = finishAttempt')
+    && source.includes("kickFetchJson(endpoints.channel(slug), { signal: controller.signal })")
     && source.includes("addEventListener?.('online'")
     && source.includes("addEventListener?.('pageshow'")
     && source.includes("addEventListener?.('visibilitychange'")

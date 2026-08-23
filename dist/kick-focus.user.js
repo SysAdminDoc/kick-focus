@@ -3958,20 +3958,34 @@ if (status === 'network') return 'could not be reached';
 if (status === 'oversized') return 'returned more data than this build will read';
     return `answered ${status}`;
 }
-async function kickFetchJson(url, { credentials = 'include' } = {}) {
+async function kickFetchJson(url, { credentials = 'include', signal } = {}) {
 const controller = new AbortController();
+const forwardAbort = () => controller.abort();
+if (signal?.aborted) forwardAbort();
+else signal?.addEventListener?.('abort', forwardAbort, { once: true });
 const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
+let stopAbortWait = () => {};
+const aborted = new Promise((_, reject) => {
+const onAbort = () => {
+const error = new Error('request aborted');
+error.name = 'AbortError';
+reject(error);
+};
+stopAbortWait = () => controller.signal.removeEventListener('abort', onAbort);
+if (controller.signal.aborted) onAbort();
+else controller.signal.addEventListener('abort', onAbort, { once: true });
+});
 try {
 const headers = { accept: 'application/json' };
 if (isKickUrl(url)) {
 const token = kickBearerToken();
         if (token) headers.authorization = `Bearer ${token}`;
 }
-const response = await pageFetch(url, {
+const response = await Promise.race([pageFetch(url, {
 credentials,
 signal: controller.signal,
 headers,
-});
+}), aborted]);
 if (!response.ok) return { ok: false, status: response.status };
 const text = await response.text();
 if (text.length > LIVE_MAX_BYTES) return { ok: false, status: 'oversized' };
@@ -3984,6 +3998,8 @@ return { ok: false, status: 'parse' };
 return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network' };
 } finally {
 clearTimeout(timer);
+stopAbortWait();
+signal?.removeEventListener?.('abort', forwardAbort);
 }
 }
 async function mutateKickChannelFollow(slug, method = 'POST') {
@@ -4283,6 +4299,11 @@ merged.errors.push({ slug, reason, at: mergedNow() });
 if (merged.errors.length > 40) merged.errors.splice(0, merged.errors.length - 40);
 }
 function stopMergedSocket(slot) {
+const controller = slot.controller;
+slot.controller = null;
+if (controller) controller.abort();
+const finishAttempt = slot.finishAttempt;
+if (finishAttempt) finishAttempt();
 const socket = slot.socket;
 slot.socket = null;
 slot.token += 1;
@@ -4298,8 +4319,11 @@ merged.queueTimer = 0;
 if (!merged.connections.size) return;
 const now = mergedNow();
 let dueAt = Number.POSITIVE_INFINITY;
+const hasCapacity = merged.inflight < MERGED_CHAT_QUEUE_LIMIT;
 for (const slot of merged.connections.values()) {
-if (slot.status === 'queued' || slot.status === 'waiting' || slot.status === 'connecting') {
+if (hasCapacity && (slot.status === 'queued' || slot.status === 'waiting')) {
+dueAt = Math.min(dueAt, slot.retryAt || now);
+} else if (slot.status === 'connecting') {
 dueAt = Math.min(dueAt, slot.retryAt || now);
 } else if ((slot.status === 'open' || slot.status === 'live') && slot.socket) {
 dueAt = Math.min(dueAt, slot.lastFrameAt + MERGED_CHAT_SILENCE_MS);
@@ -4401,7 +4425,9 @@ slot.status = 'connecting';
 slot.retryAt = mergedNow() + LIVE_TIMEOUT_MS;
 slot.token += 1;
 const token = slot.token;
-const channelResponse = await kickFetchJson(endpoints.channel(slug));
+const controller = new AbortController();
+slot.controller = controller;
+const channelResponse = await kickFetchJson(endpoints.channel(slug), { signal: controller.signal });
 if (merged.connections.get(slug) !== slot || slot.cancelled || slot.token !== token) return false;
 const channel = channelResponse.ok ? normalizeChannel(channelResponse.body) : null;
 if (!channel?.chatroomId) {
@@ -4409,13 +4435,14 @@ if (!channel?.chatroomId) {
 return false;
 }
 const clientId = crypto.randomUUID();
-const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId));
+const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId), { signal: controller.signal });
 if (merged.connections.get(slug) !== slot || slot.cancelled || slot.token !== token) return false;
 const connection = response.ok ? normalizeRealtimeConnection(response.body) : { ok: false };
 if (!connection.ok) {
       queueMergedRetry(slot, `realtime credentials ${describeKickFetchFailure(response.status)}`);
 return false;
 }
+if (slot.controller === controller) slot.controller = null;
 let socket;
 try {
 socket = new WebSocket(connection.transport.socketUrl(connection));
@@ -4431,6 +4458,13 @@ slot.socket = socket;
 slot.chatroomId = channel.chatroomId;
 slot.channelId = channel.id;
 slot.retryAt = mergedNow() + LIVE_TIMEOUT_MS;
+return new Promise((resolve) => {
+const finishAttempt = () => {
+if (slot.finishAttempt !== finishAttempt) return;
+slot.finishAttempt = null;
+resolve(true);
+};
+slot.finishAttempt = finishAttempt;
 socket.addEventListener('open', () => {
 if (mergedChatState().connections.get(slug) !== slot || slot.socket !== socket) return;
 slot.status = 'open';
@@ -4438,6 +4472,7 @@ slot.lastFrameAt = mergedNow();
 for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
 socket.send(realtimeSubscribeFrame(name));
 }
+finishAttempt();
 scheduleMergedQueue();
 });
 socket.addEventListener('message', (event) => onMergedFrame(slug, socket, event));
@@ -4450,7 +4485,7 @@ socket.addEventListener('close', () => {
 const current = mergedChatState().connections.get(slug);
 if (current === slot && current.socket === socket) queueMergedRetry(slot, 'socket closed');
 });
-return true;
+});
 }
 function startMergedChannel(slot) {
 const merged = mergedChatState();
@@ -4500,6 +4535,8 @@ retryAt: mergedNow(),
 lastError: '',
 token: 0,
 cancelled: false,
+controller: null,
+finishAttempt: null,
 });
 }
 }
@@ -6909,7 +6946,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              846046') || 0;
+const BUNDLE_BYTES = Number('              847441') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const SITE_CSS = `
   :root {

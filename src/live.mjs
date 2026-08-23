@@ -156,20 +156,34 @@ export function createLive(host) {
    * carries the account. Some endpoints need only the first, several need both,
    * and none of them say so — see `kickBearerToken`.
    */
-  async function kickFetchJson(url, { credentials = 'include' } = {}) {
+  async function kickFetchJson(url, { credentials = 'include', signal } = {}) {
     const controller = new AbortController();
+    const forwardAbort = () => controller.abort();
+    if (signal?.aborted) forwardAbort();
+    else signal?.addEventListener?.('abort', forwardAbort, { once: true });
     const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
+    let stopAbortWait = () => {};
+    const aborted = new Promise((_, reject) => {
+      const onAbort = () => {
+        const error = new Error('request aborted');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      stopAbortWait = () => controller.signal.removeEventListener('abort', onAbort);
+      if (controller.signal.aborted) onAbort();
+      else controller.signal.addEventListener('abort', onAbort, { once: true });
+    });
     try {
       const headers = { accept: 'application/json' };
       if (isKickUrl(url)) {
         const token = kickBearerToken();
         if (token) headers.authorization = `Bearer ${token}`;
       }
-      const response = await pageFetch(url, {
+      const response = await Promise.race([pageFetch(url, {
         credentials,
         signal: controller.signal,
         headers,
-      });
+      }), aborted]);
       if (!response.ok) return { ok: false, status: response.status };
       const text = await response.text();
       if (text.length > LIVE_MAX_BYTES) return { ok: false, status: 'oversized' };
@@ -182,6 +196,8 @@ export function createLive(host) {
       return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network' };
     } finally {
       clearTimeout(timer);
+      stopAbortWait();
+      signal?.removeEventListener?.('abort', forwardAbort);
     }
   }
 
@@ -609,6 +625,11 @@ export function createLive(host) {
   }
 
   function stopMergedSocket(slot) {
+    const controller = slot.controller;
+    slot.controller = null;
+    if (controller) controller.abort();
+    const finishAttempt = slot.finishAttempt;
+    if (finishAttempt) finishAttempt();
     const socket = slot.socket;
     slot.socket = null;
     slot.token += 1;
@@ -626,8 +647,11 @@ export function createLive(host) {
 
     const now = mergedNow();
     let dueAt = Number.POSITIVE_INFINITY;
+    const hasCapacity = merged.inflight < MERGED_CHAT_QUEUE_LIMIT;
     for (const slot of merged.connections.values()) {
-      if (slot.status === 'queued' || slot.status === 'waiting' || slot.status === 'connecting') {
+      if (hasCapacity && (slot.status === 'queued' || slot.status === 'waiting')) {
+        dueAt = Math.min(dueAt, slot.retryAt || now);
+      } else if (slot.status === 'connecting') {
         dueAt = Math.min(dueAt, slot.retryAt || now);
       } else if ((slot.status === 'open' || slot.status === 'live') && slot.socket) {
         dueAt = Math.min(dueAt, slot.lastFrameAt + MERGED_CHAT_SILENCE_MS);
@@ -743,8 +767,10 @@ export function createLive(host) {
     slot.retryAt = mergedNow() + LIVE_TIMEOUT_MS;
     slot.token += 1;
     const token = slot.token;
+    const controller = new AbortController();
+    slot.controller = controller;
 
-    const channelResponse = await kickFetchJson(endpoints.channel(slug));
+    const channelResponse = await kickFetchJson(endpoints.channel(slug), { signal: controller.signal });
     if (merged.connections.get(slug) !== slot || slot.cancelled || slot.token !== token) return false;
     const channel = channelResponse.ok ? normalizeChannel(channelResponse.body) : null;
     if (!channel?.chatroomId) {
@@ -753,13 +779,14 @@ export function createLive(host) {
     }
 
     const clientId = crypto.randomUUID();
-    const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId));
+    const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId), { signal: controller.signal });
     if (merged.connections.get(slug) !== slot || slot.cancelled || slot.token !== token) return false;
     const connection = response.ok ? normalizeRealtimeConnection(response.body) : { ok: false };
     if (!connection.ok) {
       queueMergedRetry(slot, `realtime credentials ${describeKickFetchFailure(response.status)}`);
       return false;
     }
+    if (slot.controller === controller) slot.controller = null;
 
     let socket;
     try {
@@ -776,26 +803,34 @@ export function createLive(host) {
     slot.chatroomId = channel.chatroomId;
     slot.channelId = channel.id;
     slot.retryAt = mergedNow() + LIVE_TIMEOUT_MS;
-    socket.addEventListener('open', () => {
-      if (mergedChatState().connections.get(slug) !== slot || slot.socket !== socket) return;
-      slot.status = 'open';
-      slot.lastFrameAt = mergedNow();
-      for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
-        socket.send(realtimeSubscribeFrame(name));
-      }
-      scheduleMergedQueue();
+    return new Promise((resolve) => {
+      const finishAttempt = () => {
+        if (slot.finishAttempt !== finishAttempt) return;
+        slot.finishAttempt = null;
+        resolve(true);
+      };
+      slot.finishAttempt = finishAttempt;
+      socket.addEventListener('open', () => {
+        if (mergedChatState().connections.get(slug) !== slot || slot.socket !== socket) return;
+        slot.status = 'open';
+        slot.lastFrameAt = mergedNow();
+        for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
+          socket.send(realtimeSubscribeFrame(name));
+        }
+        finishAttempt();
+        scheduleMergedQueue();
+      });
+      socket.addEventListener('message', (event) => onMergedFrame(slug, socket, event));
+      socket.addEventListener('error', () => {
+        if (mergedChatState().connections.get(slug) === slot && slot.socket === socket) {
+          queueMergedRetry(slot, 'socket error');
+        }
+      });
+      socket.addEventListener('close', () => {
+        const current = mergedChatState().connections.get(slug);
+        if (current === slot && current.socket === socket) queueMergedRetry(slot, 'socket closed');
+      });
     });
-    socket.addEventListener('message', (event) => onMergedFrame(slug, socket, event));
-    socket.addEventListener('error', () => {
-      if (mergedChatState().connections.get(slug) === slot && slot.socket === socket) {
-        queueMergedRetry(slot, 'socket error');
-      }
-    });
-    socket.addEventListener('close', () => {
-      const current = mergedChatState().connections.get(slug);
-      if (current === slot && current.socket === socket) queueMergedRetry(slot, 'socket closed');
-    });
-    return true;
   }
 
   function startMergedChannel(slot) {
@@ -857,6 +892,8 @@ export function createLive(host) {
           lastError: '',
           token: 0,
           cancelled: false,
+          controller: null,
+          finishAttempt: null,
         });
       }
     }
