@@ -515,6 +515,9 @@ function makeMergedClock(start = 10_000) {
       return id;
     },
     clearTimeout: (id) => timers.delete(id),
+    pendingDelays: () => [...timers.values()]
+      .map((timer) => Math.max(0, timer.at - now))
+      .sort((first, second) => first - second),
     async advance(milliseconds = 0) {
       now += milliseconds;
       for (let round = 0; round < 40; round += 1) {
@@ -580,6 +583,8 @@ test('merged chat reconnects a closed channel through one bounded queue', { tag:
     assert.equal(SocketStub.opened.length, 2, 'only two socket handshakes may be active');
     assert.equal(releases.length, 0, 'credentials finishing does not release a handshake slot');
     assert.equal(state.mergedChat.inflight, 2);
+    assert.deepEqual(clock.pendingDelays(), [8000],
+      'a full queue waits for a handshake timeout instead of spinning on queued work');
 
     const alpha = state.mergedChat.connections.get('alpha');
     alpha.socket.fire('open');
