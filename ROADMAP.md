@@ -235,3 +235,102 @@ Added from the exhaustive repository, live-browser, competitor, standards, and s
   Touches: src/runtime.js notes storage and search surface, src/core.mjs normalization, settings export/import, translations, tests
   Acceptance: A local index lists every channel with a note and searches normalized slug plus note text; results open the channel or edit the note; import, export, reset, and Undo include the index; no note content leaves the browser and an empty index explains how to add the first note.
   Complexity: M
+
+## Research-Driven Additions
+
+### P1, profile comment emote reliability and direct access
+
+- [ ] P1: R-119 - Restore removed emotes individually
+  Why: The picker stores a showHidden state but renders no control for it. After the seven-second Undo expires, the Library can restore only the entire removed set.
+  Evidence: src/runtime.js:5052-5055; src/runtime.js:5548-5556; src/runtime.js:5715-5718; src/settings.mjs:502
+  Touches: shared mutation commands from R-120, src/runtime.js picker views and actions, src/settings.mjs Library views, src/storage.mjs normalized hidden state and bounded tombstones, emote tests, browser verifier
+  Acceptance: Removing an emote keeps a bounded tombstone with its key and safe last-known display metadata; picker and Library both expose a Removed view with a count; one emote, the current selection, or the shown result set can be restored before rediscovery; each restore changes only removed state, offers Undo, survives reload, and announces a concise status; Restore all remains available but is not the only recovery path; migration tests preserve every existing hidden key.
+  Complexity: M
+
+- [ ] P1: R-120 - Use one mutation command layer in the picker and Library
+  Why: The same create, delete, move, remove, and restore intent currently has different persistence and Undo behavior depending on which surface runs it.
+  Evidence: src/runtime.js:5433-5542; src/runtime.js:10525-10619; src/storage.mjs emote-library normalization; RESEARCH.md Competitive Landscape
+  Touches: new pure command module or R-114 emote factory, src/runtime.js, src/settings.mjs, src/storage.mjs, unit and property tests
+  Acceptance: Create group, rename, delete, reorder, favorite, move, remove, and restore have one normalized command contract and one inverse record; picker and Library produce byte-equivalent persisted state for equivalent actions; every destructive action offers one-step Undo; duplicate and invalid commands are no-ops with a visible status; randomized command sequences preserve schema invariants.
+  Complexity: L
+
+- [ ] P1: R-121 - Preserve focus, draft text, selection, and caret through picker rerenders
+  Why: Most picker changes rebuild the organizer controls and lose the active element. A comment-writing tool must not interrupt the draft around it.
+  Evidence: src/runtime.js:4983-5160; src/runtime.js:5369-5379; https://www.w3.org/WAI/ARIA/apg/patterns/grid/; https://www.w3.org/TR/WCAG22/
+  Touches: src/runtime.js render and native-composer adapter, picker state, browser fixtures, accessibility checks
+  Acceptance: Before a rerender, the picker captures a stable control key plus native draft value, selection range, and composer identity; after create, rename, delete, favorite, move, remove, restore, scope, and view changes, focus returns to the equivalent control or a documented nearby fallback; the draft and caret are byte-for-byte unchanged until an emote is intentionally inserted; focus remains visible at 1440, 900, and 680 pixels.
+  Complexity: M
+
+- [ ] P1: R-122 - Make the full profile comment emote journey a browser release contract
+  Why: Current live coverage checks windowing and one favorite update but not the group, recovery, focus, return, or safe-insertion paths that define the feature.
+  Evidence: scripts/verify-extension.mjs:3265-3362; test/boot.test.js:516-549; design/qa/emote-picker-all-v1.38.png; design/qa/emote-picker-narrow-v1.38.png
+  Touches: scripts/verify-extension.mjs, shared Firefox journey work from R-111, deterministic profile fixtures, release checklist, design references
+  Acceptance: Automated journeys cover open and close, create, rename, delete and Undo, favorite and reorder, Select shown, move, remove, individual restore, empty search recovery, Library return, insert without submit, outside click, route change, and reduced motion; the suite runs desktop and narrow states at 1440, 900, and 680 pixels; every state asserts focus, accessible name, persisted result, draft preservation, and zero submit events; supported signed-in live checks run when account state is available.
+  Complexity: L
+
+- [ ] P1: R-123 - Converge emote edits across open Kick tabs
+  Why: Whole-state writes without a convergence listener let an older tab erase newer favorites or group edits made elsewhere.
+  Evidence: src/storage.mjs library commit path; src/runtime.js picker commits; https://developer.chrome.com/docs/extensions/reference/api/storage; https://storage.spec.whatwg.org/
+  Touches: src/storage.mjs versioned mutation log or merge layer, userscript and companion storage listeners, picker and Library refresh, two-context tests
+  Acceptance: Each committed command carries a stable writer ID, per-writer sequence, and command ID; userscript and companion modes observe external changes without reload; concurrent favorites and edits to different groups converge; a stale writer cannot erase a newer change; a true same-field conflict follows one documented deterministic rule and reports it locally; two-tab tests cover reconnect and tab closure.
+  Complexity: L
+
+- [ ] P1: R-124 - Add a compact channel-aware favorites shelf above the native comment input
+  Why: Frequent commenters should reach their most-used emotes without opening the full catalog, while the native composer must remain the source of truth.
+  Evidence: src/runtime.js native composer delegation; https://chromewebstore.google.com/detail/wesutil/igdnndpfofcemcoellnefdflnmcchmle; https://github.com/jakubn11/kick-third-party-emotes; https://github.com/Xzensi/NipahTV
+  Touches: src/runtime.js profile composer adapter and shelf, src/core.mjs bounded preference, translations, picker tests, browser verifier
+  Acceptance: An opt-in shelf shows current-channel favorites first and fills remaining slots from global favorites in stable order; one activation delegates insertion to the native composer and never sends; the shelf hides when empty, can be collapsed from the same surface, follows route and entitlement changes, has readable names and standard keyboard behavior, and fits without covering host controls at 1440, 900, and 680 pixels.
+  Complexity: M
+
+### P2, profile comment emote organization and polish
+
+- [ ] P2: R-125 - Let users reorder custom groups without drag-only interaction
+  Why: Groups append in creation order and cannot be rearranged, so an active collection can remain behind old groups permanently.
+  Evidence: src/runtime.js custom group create and delete paths; src/storage.mjs group normalization; https://www.w3.org/TR/WCAG22/
+  Touches: shared mutation commands from R-120, picker and Library group controls, import and export normalization, translations, tests
+  Acceptance: Each custom group has visible Move earlier and Move later controls in picker and Library; controls disable at the boundaries, preserve selection, and offer Undo; order survives reload, import, export, and two-tab convergence; pointer use is optional and no drag gesture is required.
+  Complexity: S
+
+- [ ] P2: R-126 - Search emotes by name, source, native group, and custom group with stable ranking
+  Why: Picker search currently matches only the descriptor name while the Library considers more context, so the same catalog can return different results.
+  Evidence: src/runtime.js picker filter; src/settings.mjs Library filter; src/storage.mjs normalized descriptor fields; https://www.w3.org/WAI/ARIA/apg/patterns/combobox/
+  Touches: shared pure search index and ranker, picker and Library renderers, translations, search tests, performance probe
+  Acceptance: Both surfaces normalize the same searchable fields; exact name ranks before prefix, then token, then substring; ties prefer current-profile availability, favorites, recent use, and stable catalog order; custom and native group matches are visibly explained; across 100 deterministic queries over 2,400 fixtures, pure search stays at or below 16 ms at p95 on the supported Node 24 baseline; no remote provider or fuzzy dependency is added.
+  Complexity: M
+
+- [ ] P2: R-127 - Assign one emote to a group directly from its tile
+  Why: Moving a single emote currently requires entering Organize, selecting it, choosing a destination, and pressing Move.
+  Evidence: src/runtime.js:5162-5542; design/qa/emote-picker-all-v1.38.png
+  Touches: tile management menu, mutation commands from R-120, picker and Library, translations, browser tests
+  Acceptance: A visible tile action opens an accessible group menu with current membership; one action moves or removes the emote from a custom group without entering batch mode; the result is announced, offers Undo, retains focus on the tile, and uses the same command as Library and batch organization.
+  Complexity: M
+
+- [ ] P2: R-128 - Give the Library an explicit Back to comment return path
+  Why: Opening Library from the picker loses the sense of a temporary detour because the destination offers only a generic Done action.
+  Evidence: src/runtime.js picker Library action; src/settings.mjs Library shell; design/screenshots/emote-library.png
+  Touches: picker launch context, settings navigation, native composer adapter, focus restoration tests
+  Acceptance: Library opened from a profile comment shows Back to comment as its primary exit; returning restores the route, picker view, search, group, scroll window, and focus at the native comment control; if the original composer no longer exists, the action becomes Done and reports that the page changed; opening Library from normal settings keeps the existing settings return path.
+  Complexity: S
+
+- [ ] P2: R-129 - Keep emote management affordances discoverable at every supported width
+  Why: Tile actions rely on hover or focus and narrow top actions become icon-only, which hides organization from pointer and touchpad users who have not learned the surface.
+  Evidence: design/qa/emote-picker-all-v1.38.png; design/qa/emote-picker-narrow-v1.38.png; design/qa/settings-responsive-680.jpg; visual audit on 2026-08-23
+  Touches: picker and Library styles, action labels or overflow menu, settings navigation overflow cue, visual references, browser geometry checks
+  Acceptance: Every tile has one visible management affordance at rest; Favorite and Remove remain reachable in one additional activation at most; narrow top actions use labels where they fit and a named overflow menu otherwise; controls are at least 24 by 24 CSS pixels normally and 40 by 40 when Larger targets is enabled; nothing clips or covers the native composer; screenshot comparison passes at 1440, 900, and 680 pixels in Studio, OLED, and Slate.
+  Complexity: S
+
+- [ ] P2: R-130 - Add a private emote workspace self-check and diagnostics block
+  Why: Current diagnostics cannot distinguish a missing picker anchor, stale catalog, failed storage provider, bad window range, or mutation conflict without inspecting code.
+  Evidence: src/runtime.js diagnostics and picker state; src/storage.mjs providers and seed; src/settings.mjs About diagnostics
+  Touches: sanitized diagnostic adapter, About self-check, picker status, copy-diagnostics output, tests
+  Acceptance: Diagnostics report picker anchor found, active view, catalog count, favorite count, group count, removed count, storage provider, current grid window, state revision, and last mutation result; they never include emote names, channel notes, comment text, or account identifiers; Run self-check validates open, storage round-trip, search index, and native insertion adapter without changing the draft; Copy diagnostics remains local and readable.
+  Complexity: M
+
+### P2, companion response hardening
+
+- [ ] P2: R-131 - Stop blocklist downloads at 512 KiB while reading
+  Why: Commit 29f7584 rejects a declared oversized response and checks the final ArrayBuffer, but a feed with no reliable Content-Length can still allocate the complete body before the limit is enforced.
+  Evidence: src/extension/background.js fetchApprovedBlocklist; src/extension/background.firefox.js fetchApprovedBlocklist; test/companion.test.js streamed-body cases; https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultReader/read
+  Touches: both companion background fetchers, shared transport tests, built extension artifacts
+  Acceptance: Both backgrounds read response chunks, cancel the reader as soon as cumulative bytes exceed 512 KiB, and decode valid UTF-8 only after the bounded read succeeds; the existing Content-Length precheck remains; a test with an endless or oversized chunk source proves consumption stops no later than the first chunk beyond the limit; timeout, MIME, redirect, and exact-URL behavior stay unchanged.
+  Complexity: S
