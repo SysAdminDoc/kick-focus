@@ -90,13 +90,6 @@ Added from the exhaustive repository, live-browser, competitor, standards, and s
 
 ### P0
 
-- [ ] P0 — R-99: Restore followed-channel previews for hover, focus, still image, and reduced motion
-  Why: Three of the six current Chromium failures show that no followed row is tagged and neither the ordinary image nor reduced-motion canvas opens.
-  Evidence: scripts/verify-extension.mjs fresh 2026-08-23 run; src/runtime.js following-preview handlers; https://addons.mozilla.org/en-US/firefox/addon/previews-for-ttv/
-  Touches: src/runtime.js preview tagging and lifecycle, src/compatibility.mjs probes, scripts/fixture-contract.mjs, scripts/verify-extension.mjs, test fixtures
-  Acceptance: The current live sidebar opens an on-screen preview on pointer hover and keyboard focus; Escape closes it and returns focus; Reduced Motion renders one still frame; every preview assertion passes at 1440x900 and 1920x1080 without adding a network permission.
-  Complexity: M
-
 - [ ] P0 — R-100: Restore Viewer Hub cards and anonymous earned-state markers
   Why: Two current Chromium assertions fail because the Viewer Hub renders no cards, so both its six-card contract and anonymous-state explanations disappear.
   Evidence: scripts/verify-extension.mjs fresh 2026-08-23 run; src/runtime.js Viewer Hub renderer; src/core.mjs viewer card registry

@@ -26,7 +26,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { compatibilitySnapshot, DERIVED_EXPECTATIONS, LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { compatibilitySnapshot, DERIVED_EXPECTATIONS, findAllProbe, LOCATOR_PROBES } from '../src/compatibility.mjs';
 import { cardSlugFromPath, qualitySessionValue } from '../src/core.mjs';
 import { FIXTURE_CONTRACT, requiredMarkers } from '../scripts/fixture-contract.mjs';
 
@@ -444,6 +444,18 @@ for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
         `${name}: ${result.id} came out ${result.outcome} (${result.detail}), not ${entry.derived[result.id]}`);
     }
   });
+
+  if (entry.followingPreview) {
+    test(`fixture ${name} resolves the followed-channel preview control`, { tag: 'unit' }, () => {
+      const document = parseFixture(fixtureSource(name));
+      const result = findAllProbe(document, 'followingPreviewControl');
+      assert.equal(result.probe, entry.followingPreview);
+      assert.equal(result.elements.length, 1);
+      const row = result.elements[0];
+      const marker = row.closest('[data-testid^="sidebar-following-channel-"]');
+      assert.ok(marker?.querySelector('img'), 'the followed-channel control keeps its existing image');
+    });
+  }
 }
 
 test('the contract names a real probe for every hook it records', { tag: 'unit' }, () => {

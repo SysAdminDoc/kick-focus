@@ -66,6 +66,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
       'a[href*="/category/"]',
     ]),
     expectedChat: false,
+    followingPreview: 'following-marker-control',
     shell: Object.freeze({
       main: 'main-id', sidebar: 'sidebar-id', chatSeparator: null, chatPanel: null, card: 'card-testid',
     }),

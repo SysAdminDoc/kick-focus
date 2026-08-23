@@ -3365,6 +3365,24 @@ Object.freeze({ id: 'sidebar-testid', selector: '[data-testid="sidebar-wrapper"]
 Object.freeze({ id: 'sidebar-data', selector: '[data-kf-sidebar], [data-kick-sidebar]' }),
 Object.freeze({ id: 'sidebar-owner', selector: '[data-sidebar] [data-testid^="sidebar-"]' }),
 ]),
+followingPreviewControl: Object.freeze([
+Object.freeze({
+id: 'following-marker-control',
+selector: 'a[data-testid^="sidebar-following-channel-"][href], button[data-testid^="sidebar-following-channel-"], [role="link"][data-testid^="sidebar-following-channel-"], [tabindex][data-testid^="sidebar-following-channel-"]',
+}),
+Object.freeze({
+id: 'following-descendant-link',
+selector: '[data-testid^="sidebar-following-channel-"] a[href]',
+}),
+Object.freeze({
+id: 'following-descendant-button',
+selector: '[data-testid^="sidebar-following-channel-"] button',
+}),
+Object.freeze({
+id: 'following-control-owner',
+selector: ':is(a[href], button, [role="link"], [tabindex]):has([data-testid^="sidebar-following-channel-"])',
+}),
+]),
 sidebarCollapse: Object.freeze([
 Object.freeze({ id: 'sidebar-collapse-testid', selector: '[data-testid="sidebar-collapse"]' }),
 Object.freeze({ id: 'sidebar-expanded-control', selector: '[aria-controls="sidebar-wrapper"][aria-expanded="true"]' }),
@@ -6241,6 +6259,8 @@ suspended: false,
 routeSource: '',
 layoutRoute: '',
 applyRunning: false,
+applyQueued: false,
+followingPreviewInteractions: false,
 presenceRequested: false,
 stickerGridScrollTop: null,
 stickerSearchTimer: 0,
@@ -6889,7 +6909,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              843512') || 0;
+const BUNDLE_BYTES = Number('              846046') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const SITE_CSS = `
   :root {
@@ -8790,8 +8810,16 @@ const owner = heading.closest?.('section, [data-kick-rail], div') || heading.par
     if (owner) owner.dataset[`kf${rail[0].toUpperCase()}${rail.slice(1)}Rail`] = 'true';
 }
 }
+function followingPreviewOwner(row) {
+const markerSelector = '[data-testid^="sidebar-following-channel-"]';
+if (row?.matches?.(markerSelector)) return row;
+const wrapper = row?.closest?.(markerSelector);
+if (wrapper) return wrapper;
+if (row?.querySelector?.(markerSelector)) return row;
+return row?.closest?.('li') || row;
+}
 function followingPreviewSource(row) {
-const owner = row?.closest?.('li') || row;
+const owner = followingPreviewOwner(row);
 const images = [...(owner?.querySelectorAll?.('img') || [])]
 .filter((image) => image.currentSrc || image.getAttribute?.('src'))
 .sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
@@ -8809,10 +8837,8 @@ hideFollowingPreview();
 return;
 }
 const tagged = new Set();
-for (const marker of sidebar.querySelectorAll?.('[data-testid^="sidebar-following-channel-"]') || []) {
-const row = marker.matches?.('a[href], button, [role="link"], [tabindex]')
-? marker
-: marker.closest?.('a[href], button, [role="link"], [tabindex]');
+const rows = findAllProbe(sidebar, 'followingPreviewControl').elements;
+for (const row of rows) {
 if (!row || !sidebar.contains(row) || !followingPreviewSource(row)) continue;
 tagged.add(row);
 if (row.dataset.kfFollowingPreview !== 'true') row.dataset.kfFollowingPreview = 'true';
@@ -8823,6 +8849,17 @@ if (!tagged.has(marker)) delete marker.dataset.kfFollowingPreview;
 if (state.followingPreviewRow && !state.followingPreviewRow.matches?.('[data-kf-following-preview="true"]')) {
 hideFollowingPreview();
 }
+}
+function followingPreviewMutation(mutations) {
+const markerSelector = '[data-testid^="sidebar-following-channel-"]';
+for (const mutation of mutations || []) {
+for (const node of [...(mutation.addedNodes || []), ...(mutation.removedNodes || [])]) {
+if (node?.nodeType !== 1) continue;
+if (node.matches?.(markerSelector) || node.querySelector?.(markerSelector)
+|| node.closest?.(markerSelector)) return true;
+}
+}
+return false;
 }
 function ensureFollowingPreview() {
 if (state.followingPreview?.isConnected) return state.followingPreview;
@@ -8936,7 +8973,16 @@ delete host.dataset.kfOpen;
 host.hidden = true;
 }
 function followingPreviewRowFromEvent(event) {
-return event.target?.closest?.('[data-kf-following-preview="true"]') || null;
+const target = event.target;
+const tagged = target?.closest?.('[data-kf-following-preview="true"]');
+if (tagged) return tagged;
+const sidebar = findProbe(document, 'sidebar').element;
+if (!sidebar || !target || !sidebar.contains(target)) return null;
+const row = findAllProbe(sidebar, 'followingPreviewControl').elements
+.find((candidate) => candidate === target || candidate.contains?.(target));
+if (!row || !followingPreviewSource(row)) return null;
+row.dataset.kfFollowingPreview = 'true';
+return row;
 }
 function onFollowingPreviewEnter(event) {
 const row = followingPreviewRowFromEvent(event);
@@ -8954,6 +9000,20 @@ if (event.key !== 'Escape' || event.defaultPrevented
 event.preventDefault();
 event.stopPropagation();
 hideFollowingPreview();
+}
+function installFollowingPreviewInteractions() {
+if (state.runtime.followingPreviewInteractions) return;
+state.runtime.followingPreviewInteractions = true;
+document.addEventListener('mouseover', guard('following preview', onFollowingPreviewEnter), true);
+document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true);
+document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
+document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
+document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
+for (const type of ['scroll', 'wheel']) document.addEventListener(type, hideFollowingPreview, true);
+window.addEventListener('resize', hideFollowingPreview);
+window.addEventListener('blur', hideFollowingPreview);
+const root = document.getElementById('kick-focus-root');
+if (root) root.dataset.kfFollowingPreviewReady = 'true';
 }
 function applySearchEnhancements() {
 const main = findProbe(document, 'main').element;
@@ -11459,6 +11519,10 @@ node.remove();
 }
 function scheduleApply(delay = 50) {
 if (state.runtime.suspended) return;
+if (state.runtime.applyRunning) {
+state.runtime.applyQueued = true;
+return;
+}
 const now = Date.now();
 if (!state.applyPendingSince) state.applyPendingSince = now;
 const effective = nextApplyDelay(delay, now - state.applyPendingSince);
@@ -11473,7 +11537,11 @@ return null;
 }
 }
 async function runApplyCycle() {
-if (state.runtime.suspended || state.runtime.applyRunning) return;
+if (state.runtime.suspended) return;
+if (state.runtime.applyRunning) {
+state.runtime.applyQueued = true;
+return;
+}
 state.runtime.applyRunning = true;
 let elapsed = 0;
 let started = performance.now();
@@ -11540,10 +11608,13 @@ syncQuickButton();
 } catch (error) {
 logAppError('apply cycle', error);
 } finally {
+const rerun = state.runtime.applyQueued;
+state.runtime.applyQueued = false;
 state.runtime.applyRunning = false;
 state.diagnostics.apply = recordApplyCost(state.diagnostics.apply, elapsed + (performance.now() - started));
 updateApplyCostInPlace();
 if (state.currentPage === 'viewer' && state.modal && !state.modal.hidden) renderViewerHubInPlace();
+if (rerun && !state.runtime.suspended) scheduleApply(0);
 }
 }
 function updateApplyCostInPlace() {
@@ -11577,7 +11648,12 @@ pageWindow.addEventListener(ROUTE_EVENT, () => scheduleApply(20));
 }
 function installDocumentObserver() {
 if (state.observers.document) return;
-state.observers.document = new MutationObserver(() => scheduleApply(80));
+state.observers.document = new MutationObserver((mutations) => {
+if (followingPreviewMutation(mutations)) {
+try { tagFollowingPreviewRows(); } catch (error) { logAppError('following preview observer', error); }
+}
+scheduleApply(80);
+});
 state.observers.document.observe(document.documentElement, { childList: true, subtree: true });
 }
 function installRuntimeInteractions() {
@@ -14486,14 +14562,6 @@ document.addEventListener('focusin', guard('emote tooltip', onChatEmoteHover), t
 for (const type of ['mouseleave', 'blur', 'wheel', 'scroll']) {
 document.addEventListener(type, hideChatEmoteTooltip, true);
 }
-document.addEventListener('mouseover', guard('following preview', onFollowingPreviewEnter), true);
-document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true);
-document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
-document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
-document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
-for (const type of ['scroll', 'wheel']) document.addEventListener(type, hideFollowingPreview, true);
-window.addEventListener('resize', hideFollowingPreview);
-window.addEventListener('blur', hideFollowingPreview);
 }
 const settingsSurface = createSettings({
 activeLocale,
@@ -16923,6 +16991,7 @@ bodyObserver.observe(document.documentElement, { childList: true, subtree: true 
 return;
 }
 buildInterface();
+installFollowingPreviewInteractions();
 installRuntimeInteractions();
 installDocumentObserver();
 installRemoteBlocklistTimer();

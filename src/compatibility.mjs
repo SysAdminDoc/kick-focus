@@ -21,6 +21,27 @@ export const LOCATOR_PROBES = Object.freeze({
     Object.freeze({ id: 'sidebar-data', selector: '[data-kf-sidebar], [data-kick-sidebar]' }),
     Object.freeze({ id: 'sidebar-owner', selector: '[data-sidebar] [data-testid^="sidebar-"]' }),
   ]),
+  // The stable shape puts the followed-channel test id on the control. Keep
+  // wrapper and owner shapes as ordered fallbacks so a markup change becomes
+  // visible without turning an unrelated sidebar control into a preview target.
+  followingPreviewControl: Object.freeze([
+    Object.freeze({
+      id: 'following-marker-control',
+      selector: 'a[data-testid^="sidebar-following-channel-"][href], button[data-testid^="sidebar-following-channel-"], [role="link"][data-testid^="sidebar-following-channel-"], [tabindex][data-testid^="sidebar-following-channel-"]',
+    }),
+    Object.freeze({
+      id: 'following-descendant-link',
+      selector: '[data-testid^="sidebar-following-channel-"] a[href]',
+    }),
+    Object.freeze({
+      id: 'following-descendant-button',
+      selector: '[data-testid^="sidebar-following-channel-"] button',
+    }),
+    Object.freeze({
+      id: 'following-control-owner',
+      selector: ':is(a[href], button, [role="link"], [tabindex]):has([data-testid^="sidebar-following-channel-"])',
+    }),
+  ]),
   sidebarCollapse: Object.freeze([
     Object.freeze({ id: 'sidebar-collapse-testid', selector: '[data-testid="sidebar-collapse"]' }),
     Object.freeze({ id: 'sidebar-expanded-control', selector: '[aria-controls="sidebar-wrapper"][aria-expanded="true"]' }),

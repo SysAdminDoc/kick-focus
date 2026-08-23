@@ -10,6 +10,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Followed-channel previews work with Kick's current sidebar wrapper again. A sidebar change that lands while the page update is yielding now gets one follow-up pass instead of disappearing, and hover or focus resolves the row immediately if the background pass is still parked. The preview reuses the image already inside the row, Escape leaves focus on the channel control, and Reduced Motion draws one still frame without a second request.
 - Merged chat now reconnects one stalled channel without disturbing the others. A shared queue refreshes expired credentials after close, silence, sleep, or network recovery, caps connection work at two channels, cancels removed channels, and shows one compact live count.
 
 ## 1.38.0, 2026-08-22

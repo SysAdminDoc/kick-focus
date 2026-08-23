@@ -114,6 +114,28 @@ test('a hideable probe resolves through its ordered fallbacks', { tag: 'unit' },
   assert.deepEqual(findAllProbe(new FakeNode(), 'playerPip'), { elements: [], probe: null });
 });
 
+test('followed-channel preview probes resolve direct, wrapper, and owner controls in order', { tag: 'unit' }, () => {
+  const nestedLink = new FakeNode();
+  const directButton = new FakeNode();
+  const ownerLink = new FakeNode();
+  const selectors = LOCATOR_PROBES.followingPreviewControl.map((probe) => probe.selector);
+
+  const current = new FakeNode({ all: { [selectors[0]]: [directButton] } });
+  assert.deepEqual(findAllProbe(current, 'followingPreviewControl'), {
+    elements: [directButton], probe: 'following-marker-control',
+  });
+
+  const wrapper = new FakeNode({ all: { [selectors[1]]: [nestedLink] } });
+  assert.deepEqual(findAllProbe(wrapper, 'followingPreviewControl'), {
+    elements: [nestedLink], probe: 'following-descendant-link',
+  });
+
+  const ancestor = new FakeNode({ all: { [selectors[3]]: [ownerLink] } });
+  assert.deepEqual(findAllProbe(ancestor, 'followingPreviewControl'), {
+    elements: [ownerLink], probe: 'following-control-owner',
+  });
+});
+
 
 test('hiding declines a probe that is not the recorded winner for the hook', { tag: 'unit' }, () => {
   const button = new FakeNode();

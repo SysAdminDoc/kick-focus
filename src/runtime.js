@@ -158,6 +158,8 @@ const state = {
     // a page and not on every cycle spent there.
     layoutRoute: '',
     applyRunning: false,
+    applyQueued: false,
+    followingPreviewInteractions: false,
     presenceRequested: false,
     stickerGridScrollTop: null,
     stickerSearchTimer: 0,
@@ -3201,9 +3203,21 @@ function applyRailVisibility() {
   }
 }
 
+/** The stable marker owner around a followed-channel control. */
+function followingPreviewOwner(row) {
+  const markerSelector = '[data-testid^="sidebar-following-channel-"]';
+  if (row?.matches?.(markerSelector)) return row;
+  const wrapper = row?.closest?.(markerSelector);
+  if (wrapper) return wrapper;
+  // Older Kick shells put the marker below the link. In that shape the link is
+  // the useful owner because its image can be a sibling of the marked child.
+  if (row?.querySelector?.(markerSelector)) return row;
+  return row?.closest?.('li') || row;
+}
+
 /** The already-loaded image Kick placed inside a followed-channel row. */
 function followingPreviewSource(row) {
-  const owner = row?.closest?.('li') || row;
+  const owner = followingPreviewOwner(row);
   const images = [...(owner?.querySelectorAll?.('img') || [])]
     .filter((image) => image.currentSrc || image.getAttribute?.('src'))
     .sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
@@ -3226,10 +3240,8 @@ function tagFollowingPreviewRows() {
     return;
   }
   const tagged = new Set();
-  for (const marker of sidebar.querySelectorAll?.('[data-testid^="sidebar-following-channel-"]') || []) {
-    const row = marker.matches?.('a[href], button, [role="link"], [tabindex]')
-      ? marker
-      : marker.closest?.('a[href], button, [role="link"], [tabindex]');
+  const rows = findAllProbe(sidebar, 'followingPreviewControl').elements;
+  for (const row of rows) {
     if (!row || !sidebar.contains(row) || !followingPreviewSource(row)) continue;
     tagged.add(row);
     if (row.dataset.kfFollowingPreview !== 'true') row.dataset.kfFollowingPreview = 'true';
@@ -3240,6 +3252,19 @@ function tagFollowingPreviewRows() {
   if (state.followingPreviewRow && !state.followingPreviewRow.matches?.('[data-kf-following-preview="true"]')) {
     hideFollowingPreview();
   }
+}
+
+/** Whether one DOM mutation added or removed part of a followed-channel row. */
+function followingPreviewMutation(mutations) {
+  const markerSelector = '[data-testid^="sidebar-following-channel-"]';
+  for (const mutation of mutations || []) {
+    for (const node of [...(mutation.addedNodes || []), ...(mutation.removedNodes || [])]) {
+      if (node?.nodeType !== 1) continue;
+      if (node.matches?.(markerSelector) || node.querySelector?.(markerSelector)
+        || node.closest?.(markerSelector)) return true;
+    }
+  }
+  return false;
 }
 
 function ensureFollowingPreview() {
@@ -3360,7 +3385,19 @@ function hideFollowingPreview() {
 }
 
 function followingPreviewRowFromEvent(event) {
-  return event.target?.closest?.('[data-kf-following-preview="true"]') || null;
+  const target = event.target;
+  const tagged = target?.closest?.('[data-kf-following-preview="true"]');
+  if (tagged) return tagged;
+  // A cold or backgrounded page can defer the mutation-driven apply pass.
+  // Resolve the same ordered controls at the moment a real hover or focus
+  // arrives so an interaction never depends on that scheduling detail.
+  const sidebar = findProbe(document, 'sidebar').element;
+  if (!sidebar || !target || !sidebar.contains(target)) return null;
+  const row = findAllProbe(sidebar, 'followingPreviewControl').elements
+    .find((candidate) => candidate === target || candidate.contains?.(target));
+  if (!row || !followingPreviewSource(row)) return null;
+  row.dataset.kfFollowingPreview = 'true';
+  return row;
 }
 
 function onFollowingPreviewEnter(event) {
@@ -3381,6 +3418,21 @@ function onFollowingPreviewKeydown(event) {
   event.preventDefault();
   event.stopPropagation();
   hideFollowingPreview();
+}
+
+function installFollowingPreviewInteractions() {
+  if (state.runtime.followingPreviewInteractions) return;
+  state.runtime.followingPreviewInteractions = true;
+  document.addEventListener('mouseover', guard('following preview', onFollowingPreviewEnter), true);
+  document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true);
+  document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
+  document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
+  document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
+  for (const type of ['scroll', 'wheel']) document.addEventListener(type, hideFollowingPreview, true);
+  window.addEventListener('resize', hideFollowingPreview);
+  window.addEventListener('blur', hideFollowingPreview);
+  const root = document.getElementById('kick-focus-root');
+  if (root) root.dataset.kfFollowingPreviewReady = 'true';
 }
 
 function applySearchEnhancements() {
@@ -6609,6 +6661,13 @@ function removeAdShells() {
  */
 function scheduleApply(delay = 50) {
   if (state.runtime.suspended) return;
+  // A mutation can land while the visible half of the current cycle is
+  // yielding. Remember it instead of arming a timer that will fire, see
+  // applyRunning, and discard the only follow-up pass.
+  if (state.runtime.applyRunning) {
+    state.runtime.applyQueued = true;
+    return;
+  }
   const now = Date.now();
   if (!state.applyPendingSince) state.applyPendingSince = now;
   const effective = nextApplyDelay(delay, now - state.applyPendingSince);
@@ -6642,8 +6701,13 @@ function yieldToInput() {
  */
 async function runApplyCycle() {
   // A cycle already mid-yield must not be joined by a second one: they would
-  // interleave writes to the same DOM. The pending timer reschedules anyway.
-  if (state.runtime.suspended || state.runtime.applyRunning) return;
+  // interleave writes to the same DOM. Queue one follow-up pass so mutations
+  // observed during the yield are not lost.
+  if (state.runtime.suspended) return;
+  if (state.runtime.applyRunning) {
+    state.runtime.applyQueued = true;
+    return;
+  }
   state.runtime.applyRunning = true;
   let elapsed = 0;
   let started = performance.now();
@@ -6716,12 +6780,15 @@ async function runApplyCycle() {
   } catch (error) {
     logAppError('apply cycle', error);
   } finally {
+    const rerun = state.runtime.applyQueued;
+    state.runtime.applyQueued = false;
     state.runtime.applyRunning = false;
     state.diagnostics.apply = recordApplyCost(state.diagnostics.apply, elapsed + (performance.now() - started));
     updateApplyCostInPlace();
     // Only while the hub is the page on screen. Off it there is nothing to
     // repaint, and the whole point of the hub is that it reads when looked at.
     if (state.currentPage === 'viewer' && state.modal && !state.modal.hidden) renderViewerHubInPlace();
+    if (rerun && !state.runtime.suspended) scheduleApply(0);
   }
 }
 
@@ -6772,7 +6839,15 @@ function installSpaHooks() {
 
 function installDocumentObserver() {
   if (state.observers.document) return;
-  state.observers.document = new MutationObserver(() => scheduleApply(80));
+  state.observers.document = new MutationObserver((mutations) => {
+    // The full apply cycle deliberately yields. Preview controls are tiny and
+    // interaction-bound, so tag their rare mutations before joining that
+    // queue; otherwise a hover can arrive while the new row is still waiting.
+    if (followingPreviewMutation(mutations)) {
+      try { tagFollowingPreviewRows(); } catch (error) { logAppError('following preview observer', error); }
+    }
+    scheduleApply(80);
+  });
   state.observers.document.observe(document.documentElement, { childList: true, subtree: true });
 }
 
@@ -9863,14 +9938,6 @@ function buildInterface() {
   for (const type of ['mouseleave', 'blur', 'wheel', 'scroll']) {
     document.addEventListener(type, hideChatEmoteTooltip, true);
   }
-  document.addEventListener('mouseover', guard('following preview', onFollowingPreviewEnter), true);
-  document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true);
-  document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
-  document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
-  document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
-  for (const type of ['scroll', 'wheel']) document.addEventListener(type, hideFollowingPreview, true);
-  window.addEventListener('resize', hideFollowingPreview);
-  window.addEventListener('blur', hideFollowingPreview);
 }
 
 const settingsSurface = createSettings({
@@ -12826,6 +12893,7 @@ function startWhenBodyExists() {
     return;
   }
   buildInterface();
+  installFollowingPreviewInteractions();
   installRuntimeInteractions();
   installDocumentObserver();
   installRemoteBlocklistTimer();

@@ -397,18 +397,34 @@ try {
   // tagged or the probe fails. A deliberately hidden rail is a skip because the
   // feature must not punch through the user's layout choice.
   const followingPreviewProbe = await evaluate(pageClient, `(async () => {
-    const sidebar = document.querySelector('#sidebar-wrapper, [data-testid="sidebar-wrapper"], [data-kf-sidebar], [data-kick-sidebar]');
+    const sidebarProbes = ${JSON.stringify(LOCATOR_PROBES.sidebar)};
+    let sidebar = null;
+    for (const probe of sidebarProbes) {
+      const candidate = document.querySelector(probe.selector);
+      if (!candidate) continue;
+      sidebar = probe.id === 'sidebar-owner'
+        ? candidate.closest('[data-sidebar]') || candidate.parentElement || candidate
+        : candidate;
+      break;
+    }
     if (!sidebar || getComputedStyle(sidebar).display === 'none'
       || document.documentElement.dataset.kfSidebar === 'hidden') {
       return { skip: 'the followed-channel rail is hidden on this run' };
     }
+    const ready = await __kfWait(() => document.getElementById('kick-focus-root')?.dataset.kfFollowingPreviewReady === 'true');
+    if (!ready) return { ok: false, why: 'the preview interaction lifecycle never reported ready' };
     const settle = (ms = 90) => new Promise((done) => setTimeout(done, ms));
     const nativeMarkers = () => [...sidebar.querySelectorAll('[data-testid^="sidebar-following-channel-"]')];
     let row = await __kfWait(() => sidebar.querySelector('[data-kf-following-preview="true"]'), { timeout: 1200 });
     const nativeMarkerCount = nativeMarkers().length;
     let synthetic = false;
     if (!row && nativeMarkerCount) {
-      return { ok: false, why: nativeMarkerCount + ' native followed row(s) rendered but none were tagged' };
+      const marker = nativeMarkers()[0];
+      row = marker.matches('a[href], button, [role="link"], [tabindex]')
+        ? marker
+        : marker.querySelector('a[href], button, [role="link"], [tabindex]')
+          || marker.closest('a[href], button, [role="link"], [tabindex]');
+      if (!row) return { ok: false, why: nativeMarkerCount + ' native followed row(s) rendered without a usable control' };
     }
     if (!row) {
       synthetic = true;
@@ -426,11 +442,10 @@ try {
       row.append(image);
       sidebar.append(row);
       await image.decode().catch(() => {});
-      row = await __kfWait(() => sidebar.querySelector('[data-kf-live-preview-probe][data-kf-following-preview="true"]'), { timeout: 2500 });
     }
-    if (!row) return { ok: false, why: 'a visible followed row was never tagged for preview' };
+    if (!row) return { ok: false, why: 'a visible followed row exposed no preview control' };
     row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
-    await settle();
+    await __kfWait(() => document.getElementById('kick-focus-following-preview')?.dataset.kfOpen === 'true', { timeout: 2500 });
     const host = document.getElementById('kick-focus-following-preview');
     const hoverBox = host?.getBoundingClientRect();
     const hoverOpen = host?.dataset.kfOpen === 'true' && host.hidden === false;
@@ -450,8 +465,10 @@ try {
       ok: true,
       synthetic,
       nativeMarkers: nativeMarkerCount,
+      tagged: row.dataset.kfFollowingPreview === 'true',
       hoverOpen,
       focusOpen,
+      focusReturned: document.activeElement === row,
       escapePrevented: escape.defaultPrevented,
       escapeClosed: host?.hidden === true && host?.dataset.kfOpen !== 'true',
       onScreen,
@@ -462,12 +479,14 @@ try {
   })()`);
   const followingPreview = followingPreviewProbe.value || {};
   recordProbe('followed-channel preview opens by hover and focus, stays on-screen, and Escape closes it', followingPreview,
-    followingPreview.ok === true && followingPreview.hoverOpen === true && followingPreview.focusOpen === true
+    followingPreview.ok === true && followingPreview.tagged === true
+      && followingPreview.hoverOpen === true && followingPreview.focusOpen === true
+      && followingPreview.focusReturned === true
       && followingPreview.escapePrevented === true && followingPreview.escapeClosed === true
       && followingPreview.onScreen === true && followingPreview.sourceExisting === true
       && followingPreview.width > 0 && followingPreview.height > 0,
     followingPreview.ok
-      ? `${followingPreview.synthetic ? 'synthetic empty-rail fallback' : `${followingPreview.nativeMarkers} native row(s)`}, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
+      ? `${followingPreview.synthetic ? 'synthetic empty-rail fallback' : `${followingPreview.nativeMarkers} native row(s)`}, tagged=${followingPreview.tagged}, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, focus returned=${followingPreview.focusReturned}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
       : followingPreview.why);
 
   if (!followingPreview.skip) {

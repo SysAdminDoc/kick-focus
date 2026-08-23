@@ -732,10 +732,16 @@ const checks = [
       && !/gm(?:Set|Delete)|localStorage|sessionStorage/.test(region);
   })()],
   ['followed-channel previews reuse existing images, clamp on-screen, and freeze under reduced motion', (() => {
-    const start = source.indexOf('function followingPreviewSource');
+    const start = source.indexOf('function followingPreviewOwner');
     const end = source.indexOf('function applySearchEnhancements', start);
     const region = start >= 0 && end > start ? source.slice(start, end) : '';
     return region.includes("querySelectorAll?.('img')")
+      && region.includes("findAllProbe(sidebar, 'followingPreviewControl')")
+      && region.includes('function followingPreviewOwner')
+      && region.includes("findAllProbe(sidebar, 'followingPreviewControl').elements")
+      && region.includes("row.dataset.kfFollowingPreview = 'true'")
+      && source.includes('if (followingPreviewMutation(mutations))')
+      && source.includes("root.dataset.kfFollowingPreviewReady = 'true'")
       && region.includes('floatingPreviewPosition(')
       && region.includes("matchMedia('(prefers-reduced-motion: reduce)').matches")
       && region.includes('snapshotFollowingThumbnail(source, canvas)')
@@ -793,7 +799,8 @@ const checks = [
     bundleTargets.every(([, bundleSource]) => bundleSource.includes('function yieldToInput')
       && bundleSource.includes("typeof scheduler.yield === 'function'")
       && bundleSource.includes('state.runtime.applyRunning = true')
-      && /if \(state\.runtime\.suspended \|\| state\.runtime\.applyRunning\) return;/.test(bundleSource)
+      && bundleSource.includes('state.runtime.applyQueued = true')
+      && bundleSource.includes('if (rerun && !state.runtime.suspended) scheduleApply(0)')
       // Re-checked after the await, because the panic switch can land mid-yield.
       && /await resume;[\s\S]{0,240}state\.runtime\.suspended\) return;/.test(bundleSource))],
   // Off-screen emote tiles skip layout and paint; the intrinsic size keeps the
