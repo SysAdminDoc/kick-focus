@@ -686,6 +686,10 @@ const checks = [
     && ONLY_ACCOUNT_WRITE.journeys.length === 0],
   ['the live gate reads the signed-in matrix rather than a list of its own',
     liveGate.includes('SIGNED_IN_JOURNEYS') && /for \(const journey of SIGNED_IN_JOURNEYS\)/.test(liveGate)],
+  ['the live Viewer Hub gate reads the card registry rather than a stale count',
+    liveGate.includes("import { VIEWER_HUB_CARDS } from '../src/core.mjs'")
+    && liveGate.includes('hubCards.length === VIEWER_HUB_CARDS.length')
+    && !liveGate.includes('found.length === 6')],
   [`every artifact is inside its size budget${overBudget.length ? `: ${overBudget.join('; ')}` : ''}`, overBudget.length === 0],
   ['every privileged Chromium message type checks its sender', everyMessageChecksSender(background)],
   ['every privileged Firefox message type checks its sender', everyMessageChecksSender(firefoxBackground)],

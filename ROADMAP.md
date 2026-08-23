@@ -90,13 +90,6 @@ Added from the exhaustive repository, live-browser, competitor, standards, and s
 
 ### P0
 
-- [ ] P0 — R-100: Restore Viewer Hub cards and anonymous earned-state markers
-  Why: Two current Chromium assertions fail because the Viewer Hub renders no cards, so both its six-card contract and anonymous-state explanations disappear.
-  Evidence: scripts/verify-extension.mjs fresh 2026-08-23 run; src/runtime.js Viewer Hub renderer; src/core.mjs viewer card registry
-  Touches: src/runtime.js, src/core.mjs, src/api.mjs only if a verified response shape changed, test fixtures, scripts/verify-extension.mjs
-  Acceptance: The live anonymous gate renders all six registered cards; unavailable account readings explain why and never show a false zero; earned-state markers appear only when supported by observed state; fixture and both desktop live checks pass.
-  Complexity: M
-
 - [ ] P0 — R-101: Exclude hidden preload video from the local watch clock
   Why: The current live check records a hidden preload advancing the timer while the visible player is paused.
   Evidence: scripts/verify-extension.mjs fresh 2026-08-23 run; src/runtime.js session watch-time functions

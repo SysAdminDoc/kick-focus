@@ -30,6 +30,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { VIEWER_HUB_CARDS } from '../src/core.mjs';
 import { inlineScriptVerdict } from './csp.mjs';
 import { CAPTURABLE, FIXTURE_CONTRACT } from './fixture-contract.mjs';
 import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
@@ -2568,6 +2569,7 @@ try {
   // them is the exact defect this feature was built to avoid: an unread value
   // rendered as zero, which reads as "you have none".
   const hubProbe = await evaluate(pageClient, `(async () => {
+    const expectedCardIds = ${JSON.stringify(VIEWER_HUB_CARDS.map(({ id }) => id))};
     const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
@@ -2577,9 +2579,18 @@ try {
     await settle();
     const cards = await __kfWait(() => {
       const found = [...shadow.querySelectorAll('[data-kf-hub-card]')];
-      return found.length === 6 ? found : null;
+      return found.length === expectedCardIds.length
+        && found.every((card, index) => card.dataset.kfHubCard === expectedCardIds[index])
+        ? found
+        : null;
     }, { timeout: 8000 });
-    if (!cards) return { ok: false, why: 'the hub rendered no cards, or not all six' };
+    if (!cards) {
+      const found = [...shadow.querySelectorAll('[data-kf-hub-card]')].map((card) => card.dataset.kfHubCard);
+      return {
+        ok: false,
+        why: 'expected ' + expectedCardIds.join(', ') + ' in registry order; found ' + (found.join(', ') || 'no cards'),
+      };
+    }
     // Give the collectible read time to answer, so the loading state is not
     // what gets measured.
     await settle(2500);
@@ -2603,7 +2614,8 @@ try {
   const unexplained = hubCards.filter((card) => !card.explained);
   record('the viewer hub renders every card, and an unread one shows words rather than a zero',
     hub.ok === true
-      && hubCards.length === 6
+      && hubCards.length === VIEWER_HUB_CARDS.length
+      && hubCards.every((card, index) => card.id === VIEWER_HUB_CARDS[index].id)
       && numeric.length === 0
       && unexplained.length === 0
       && String(hub.sources || '').length > 0,
