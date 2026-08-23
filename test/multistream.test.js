@@ -116,6 +116,7 @@ function makeShadow() {
     presence: withAttribute('data-kf-presence-add', 'button'),
     popout: withAttribute('data-kf-multistream-popout', 'button'),
     merged: withAttribute('data-kf-multistream-merged'),
+    mergedStatus: withAttribute('data-kf-multistream-merged-status'),
     mergedList: withAttribute('data-kf-multistream-merged-list', 'ul'),
   };
   const chatToggle = element('button');
@@ -177,9 +178,11 @@ function makeHost(overrides = {}) {
     // The merged-chat connection manager lives in live.mjs; the grid only ever
     // asks it for the current list and reads back what arrived.
     mergedChatEntries: () => host.__mergedEntries,
+    mergedChatStatus: () => host.__mergedStatus,
     syncMergedChat: (slugs) => { host.__mergedSynced.push([...slugs]); },
     closeMergedChat: () => { host.__mergedClosed += 1; },
     __mergedEntries: [],
+    __mergedStatus: { live: 0, total: 0, connecting: 0, waiting: 0 },
     __mergedSynced: [],
     __mergedClosed: 0,
     __slug: '',
@@ -732,6 +735,7 @@ test('switching it on opens one feed per channel and labels every line', { tag: 
     { slug: 'alpha', id: '1', text: 'first', sender: 'ann', color: '#fff', at: 1 },
     { slug: 'beta', id: '2', text: 'second', sender: 'bo', color: '', at: 2 },
   ];
+  host.__mergedStatus = { live: 2, total: 3, connecting: 0, waiting: 1 };
   state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: true });
   surface.renderMultistream();
 
@@ -744,6 +748,7 @@ test('switching it on opens one feed per channel and labels every line', { tag: 
   assert.ok(painted.indexOf('first') < painted.indexOf('second'), 'arrival order is preserved');
   assert.match(painted, /kf-ms-merged-source">alpha</);
   assert.match(painted, /kf-ms-merged-source">beta</);
+  assert.equal(dom.mergedStatus.textContent, '2 of 3 chats live');
   // Read-only: no composer, no form, nothing that could send.
   assert.ok(!/<(input|textarea|form|button)/i.test(painted), 'the merged pane offers no way to send');
   surface.closeMultistream();

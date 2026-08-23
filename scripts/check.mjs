@@ -1081,6 +1081,12 @@ const checks = [
   [`no source file carries a stray control byte${controlByteFiles.length ? `: ${controlByteFiles.join('; ')}` : ''}`, controlByteFiles.length === 0],
   ['the merged chat offers no way to send, and its sockets only subscribe', mergedChatIsReadOnly(source)],
   ['a channel removed from the grid stops consuming a merged connection', mergedChatFollowsTheGrid(source)],
+  ['merged chat recovery is bounded, sleep-aware, and summarized once', source.includes('MERGED_CHAT_QUEUE_LIMIT = 2')
+    && source.includes('MERGED_CHAT_SILENCE_MS = 45_000')
+    && source.includes("addEventListener?.('online'")
+    && source.includes("addEventListener?.('pageshow'")
+    && source.includes("addEventListener?.('visibilitychange'")
+    && source.includes('data-kf-multistream-merged-status')],
   ['the chat pop-out builds its own frame instead of moving the grid one', popOutBuildsItsOwnFrame(source)],
   ['the chat pane is hidden while popped out, and the window is closed on return', popOutReturnsWithoutReload(source)],
   ['every declared derived expectation has a deriver behind it', derivedExpectationsAreWired(source)],

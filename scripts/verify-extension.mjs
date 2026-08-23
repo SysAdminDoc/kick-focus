@@ -1159,6 +1159,7 @@ try {
       const on = {
         paneShown: pane?.hidden === false,
         attr: backdrop.dataset.kfMultistreamMergedOn,
+        status: shadow.querySelector('[data-kf-multistream-merged-status]')?.textContent?.trim() || '',
         // The read-only boundary, asserted against the rendered pane rather
         // than the source: nothing here may take input or submit.
         composer: pane ? pane.querySelectorAll('input, textarea, form, button').length : -1,
@@ -1191,12 +1192,13 @@ try {
       && mergedView.on?.attr === 'true'
       && mergedView.on?.composer === 0
       && mergedView.on?.role === 'log'
+      && /^\d+ of \d+ chats live$/.test(mergedView.on?.status || '')
       && mergedView.on?.tileFrameKept === true
       && mergedView.off?.paneHidden === true
       && mergedView.off?.attr === 'false'
       && mergedView.off?.tileFrameKept === true,
     mergedView.ok
-      ? `off by default=${mergedView.offDefault}; on: pane=${mergedView.on?.paneShown} sendable controls=${mergedView.on?.composer} tile frame kept=${mergedView.on?.tileFrameKept}; back off: pane hidden=${mergedView.off?.paneHidden} tile frame kept=${mergedView.off?.tileFrameKept}`
+      ? `off by default=${mergedView.offDefault}; on: pane=${mergedView.on?.paneShown} status="${mergedView.on?.status}" sendable controls=${mergedView.on?.composer} tile frame kept=${mergedView.on?.tileFrameKept}; back off: pane hidden=${mergedView.off?.paneHidden} tile frame kept=${mergedView.off?.tileFrameKept}`
       : mergedView.why);
 
   // Leave the grid as it was found.

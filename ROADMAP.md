@@ -90,13 +90,6 @@ Added from the exhaustive repository, live-browser, competitor, standards, and s
 
 ### P0
 
-- [ ] P0 — R-98: Reconnect stalled merged-chat channels through one bounded queue
-  Why: A closed socket leaves its slug in connections, so syncMergedChat never opens it again; silent sockets, sleep, and network recovery have the same permanent-loss outcome.
-  Evidence: src/live.mjs:620-690; https://github.com/winters27/StreamNook/issues/170; https://github.com/Chatterino/chatterino2/pull/7168; https://github.com/ilanzgx/multistream/releases/tag/v0.18.15
-  Touches: src/live.mjs, src/runtime.js merged-chat status, test/live.test.js, scripts/verify-extension.mjs
-  Acceptance: One shared queue tracks per-channel status, lastFrameAt, and attempt count; close or sustained silence refreshes credentials and retries with jittered backoff; online, pageshow, and visibility recovery resync the queue; removal or board close cancels pending work; tests cover close, silence, sleep/wake, removal during retry, and a compact “2 of 3 chats live” state.
-  Complexity: M
-
 - [ ] P0 — R-99: Restore followed-channel previews for hover, focus, still image, and reduced motion
   Why: Three of the six current Chromium failures show that no followed row is tagged and neither the ordinary image nor reduced-motion canvas opens.
   Evidence: scripts/verify-extension.mjs fresh 2026-08-23 run; src/runtime.js following-preview handlers; https://addons.mozilla.org/en-US/firefox/addon/previews-for-ttv/

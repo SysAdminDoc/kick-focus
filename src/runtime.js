@@ -2791,6 +2791,7 @@ const {
   liveStatusSummary,
   localUsername: liveLocalUsername,
   mergedChatEntries,
+  mergedChatStatus,
   syncMergedChat,
   mutateKickChannelFollow,
   readCollectibleInventory,
@@ -2829,6 +2830,7 @@ const multistreamSurface = createMultistream({
   kickFetchJson,
   recordApiDrift,
   mergedChatEntries,
+  mergedChatStatus,
   syncMergedChat,
   closeMergedChat,
 });
@@ -7934,7 +7936,8 @@ const UI_CSS = `
   }
   .kf-ms-bar button:hover, .kf-ms-bar .kf-ms-link:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-tile[data-kf-multistream-focused="true"] .kf-ms-name { border-color: var(--accent); color: var(--accent); }
-  .kf-ms-merged { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto 1fr; }
+  .kf-ms-merged { min-width: 0; border-left: 1px solid var(--border); display: grid; grid-template-rows: auto auto 1fr; }
+  .kf-ms-chat-status { margin: 0; padding: 4px 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
   .kf-ms-merged-list { margin: 0; padding: 6px 8px; overflow-y: auto; list-style: none; font-size: 12px; line-height: 1.45; }
   .kf-ms-merged-row { padding: 2px 0; overflow-wrap: anywhere; }
   /* The source channel first and always visible: an interleaved feed is only
@@ -8577,6 +8580,7 @@ const TRANSLATIONS = {
     'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Puntos del canal: Kick indica que la imagen en imagen y la visualización reflejada no acumulan puntos. Mantén abierto un reproductor normal de Kick cuando el progreso importe.',
     'Merge all chats': 'Unir todos los chats',
     'Merged chat from every channel in the grid': 'Chat unificado de todos los canales de la cuadrícula',
+    '{live} of {total} chats live': '{live} de {total} chats activos',
     'One chat per tile': 'Un chat por canal',
     'Read-only. Every channel in the grid, in the order messages arrived.': 'Solo lectura. Todos los canales de la cuadrícula, en el orden en que llegaron los mensajes.',
     'Showing one merged chat for every channel in the grid': 'Mostrando un chat unificado de todos los canales de la cuadrícula',
@@ -9310,6 +9314,7 @@ const TRANSLATIONS = {
     'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Pontos do canal: o Kick informa que Picture-in-Picture e visualização espelhada não acumulam pontos. Mantenha um player normal do Kick aberto quando o progresso for importante.',
     'Merge all chats': 'Juntar todos os chats',
     'Merged chat from every channel in the grid': 'Chat unificado de todos os canais da grelha',
+    '{live} of {total} chats live': '{live} de {total} chats ao vivo',
     'One chat per tile': 'Um chat por canal',
     'Read-only. Every channel in the grid, in the order messages arrived.': 'Apenas leitura. Todos os canais da grelha, na ordem em que as mensagens chegaram.',
     'Showing one merged chat for every channel in the grid': 'A mostrar um chat unificado de todos os canais da grelha',
@@ -9748,6 +9753,7 @@ function buildInterface() {
           <aside class="kf-ms-chat" data-kf-multistream-chat></aside>
           <aside class="kf-ms-merged" data-kf-multistream-merged hidden>
             <p class="kf-ms-chat-notice">Read-only. Every channel in the grid, in the order messages arrived.</p>
+            <p class="kf-ms-chat-status" data-kf-multistream-merged-status>0 of 0 chats live</p>
             <ul class="kf-ms-merged-list" data-kf-multistream-merged-list role="log" aria-live="off" aria-label="Merged chat from every channel in the grid"></ul>
           </aside>
         </div>

@@ -65,6 +65,7 @@ export function createMultistream(host) {
     kickFetchJson,
     recordApiDrift,
     mergedChatEntries,
+    mergedChatStatus,
     syncMergedChat,
     closeMergedChat,
     syncCardMultiState = () => {},
@@ -680,6 +681,9 @@ export function createMultistream(host) {
   function paintMergedChat(backdrop) {
     const list = backdrop?.querySelector?.('[data-kf-multistream-merged-list]');
     if (!list) return;
+    const statusNode = backdrop.querySelector?.('[data-kf-multistream-merged-status]');
+    const status = mergedChatStatus();
+    if (statusNode) statusNode.textContent = trf('{live} of {total} chats live', status);
     const entries = mergedChatEntries();
     // Nothing changed since the last paint: a chat that rewrites identical
     // markup four times a second breaks text selection and burns layout.

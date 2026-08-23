@@ -103,17 +103,33 @@ globalThis.Image = class {
   get src() { return this._src; }
 };
 
-globalThis.window = { setTimeout: (fn, ms) => setTimeout(fn, ms) };
-globalThis.document = {
+function eventMethods(target) {
+  const listeners = new Map();
+  target.addEventListener = (type, listener) => {
+    const current = listeners.get(type) || new Set();
+    current.add(listener);
+    listeners.set(type, current);
+  };
+  target.removeEventListener = (type, listener) => listeners.get(type)?.delete(listener);
+  target.dispatchEvent = (event) => {
+    for (const listener of listeners.get(event.type) || []) listener.call(target, event);
+    return true;
+  };
+  return target;
+}
+
+globalThis.window = eventMethods({ setTimeout: (fn, ms) => setTimeout(fn, ms) });
+globalThis.document = eventMethods({
   cookie: '',
+  hidden: false,
   querySelector: () => null,
   createElement: () => makeNode(),
-};
+});
 
 test('every function the surface hands back can be called against a stub host', { tag: 'unit' }, async () => {
   const { host } = makeHost();
   const surface = createLive(host);
-  assert.equal(Object.keys(surface).length, 17);
+  assert.equal(Object.keys(surface).length, 18);
   for (const [name, fn] of Object.entries(surface)) {
     assert.equal(typeof fn, 'function', `${name} is callable`);
   }
@@ -484,6 +500,173 @@ async function withSocketStub(run) {
 const PUSHER_ANSWER = {
   data: { connections: [{ provider: 'pusher', credentials: { app_key: 'key-1', cluster: 'us2' } }] },
 };
+
+function makeMergedClock(start = 10_000) {
+  let now = start;
+  let nextId = 1;
+  const timers = new Map();
+  const api = {
+    now: () => now,
+    random: () => 0.5,
+    setTimeout: (callback, delay) => {
+      const id = nextId;
+      nextId += 1;
+      timers.set(id, { callback, at: now + Math.max(0, Number(delay) || 0) });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+    async advance(milliseconds = 0) {
+      now += milliseconds;
+      for (let round = 0; round < 40; round += 1) {
+        const due = [...timers.entries()]
+          .filter(([, timer]) => timer.at <= now)
+          .sort((first, second) => first[1].at - second[1].at || first[0] - second[0]);
+        if (due.length) {
+          for (const [id, timer] of due) {
+            timers.delete(id);
+            timer.callback();
+          }
+        }
+        await Promise.resolve();
+      }
+    },
+  };
+  return api;
+}
+
+function mergedConnectionHost(clock) {
+  const requests = [];
+  const made = makeHost({
+    now: clock.now,
+    random: clock.random,
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+    pageFetch: async (url) => {
+      requests.push(String(url));
+      const body = String(url).includes('/channels/')
+        ? { id: 7, slug: String(url).split('/').at(-1), chatroom: { id: 42 } }
+        : PUSHER_ANSWER;
+      return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+    },
+  });
+  return { ...made, requests };
+}
+
+test('merged chat reconnects a closed channel through one bounded queue', { tag: 'unit' }, async () => {
+  const clock = makeMergedClock();
+  const { host, state, requests } = mergedConnectionHost(clock);
+  const fetchNow = host.pageFetch;
+  const releases = [];
+  let activeChannelReads = 0;
+  let maxChannelReads = 0;
+  host.pageFetch = (url, init) => {
+    if (!String(url).includes('/channels/')) return fetchNow(url, init);
+    activeChannelReads += 1;
+    maxChannelReads = Math.max(maxChannelReads, activeChannelReads);
+    return new Promise((resolveResponse) => releases.push(async () => {
+      activeChannelReads -= 1;
+      resolveResponse(await fetchNow(url, init));
+    }));
+  };
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    surface.syncMergedChat(['alpha', 'beta', 'gamma']);
+    await clock.advance();
+    assert.equal(releases.length, 2, 'the shared queue starts no more than two credential reads at once');
+    assert.equal(maxChannelReads, 2);
+    for (const release of releases.splice(0)) await release();
+    await clock.advance();
+    assert.equal(releases.length, 1, 'the third channel waits for a shared slot');
+    await releases.shift()();
+    await clock.advance();
+    assert.equal(SocketStub.opened.length, 3, 'the remaining channel follows through the same queue');
+
+    const alpha = state.mergedChat.connections.get('alpha');
+    alpha.socket.fire('open');
+    alpha.socket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
+    assert.equal(alpha.status, 'live');
+    const before = requests.filter((url) => url.includes('/channels/alpha')).length;
+
+    alpha.socket.fire('close');
+    assert.equal(alpha.status, 'waiting');
+    assert.equal(alpha.attempts, 1);
+    await clock.advance(1999);
+    assert.equal(requests.filter((url) => url.includes('/channels/alpha')).length, before);
+    await clock.advance(1);
+    assert.equal(releases.length, 1, 'the retry re-enters the same queue');
+    await releases.shift()();
+    await clock.advance();
+    assert.equal(requests.filter((url) => url.includes('/channels/alpha')).length, before + 1,
+      'retry refreshes channel and broker credentials');
+    surface.closeMergedChat();
+  });
+});
+
+test('merged chat retries sustained silence and resyncs after sleep or network recovery', { tag: 'unit' }, async () => {
+  const clock = makeMergedClock();
+  const { host, state, requests } = mergedConnectionHost(clock);
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    surface.syncMergedChat(['alpha']);
+    await clock.advance();
+    const first = state.mergedChat.connections.get('alpha');
+    first.socket.fire('open');
+    first.socket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
+    const initialReads = requests.filter((url) => url.includes('/channels/alpha')).length;
+
+    await clock.advance(45_000);
+    assert.equal(first.status, 'waiting', 'an open socket with no frames is treated as stalled');
+    await clock.advance(2000);
+    assert.equal(requests.filter((url) => url.includes('/channels/alpha')).length, initialReads + 1);
+
+    const secondSocket = first.socket;
+    secondSocket.fire('open');
+    secondSocket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
+    window.dispatchEvent({ type: 'pageshow' });
+    await clock.advance();
+    assert.equal(requests.filter((url) => url.includes('/channels/alpha')).length, initialReads + 2,
+      'pageshow forces a fresh credential read after sleep');
+
+    const thirdSocket = first.socket;
+    thirdSocket.fire('open');
+    thirdSocket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
+    window.dispatchEvent({ type: 'online' });
+    await clock.advance();
+    assert.equal(requests.filter((url) => url.includes('/channels/alpha')).length, initialReads + 3,
+      'online recovery resyncs the same queue');
+    surface.closeMergedChat();
+  });
+});
+
+test('removing a merged channel cancels its pending retry and status stays compact', { tag: 'unit' }, async () => {
+  const clock = makeMergedClock();
+  const { host, state, requests } = mergedConnectionHost(clock);
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    surface.syncMergedChat(['alpha', 'beta', 'gamma']);
+    await clock.advance();
+    await clock.advance();
+    for (const slot of state.mergedChat.connections.values()) {
+      slot.socket.fire('open');
+      slot.socket.fire('message', { data: JSON.stringify({ event: 'pusher:connection_established' }) });
+    }
+    state.mergedChat.connections.get('gamma').status = 'waiting';
+    const status = surface.mergedChatStatus();
+    assert.deepEqual(status, { total: 3, live: 2, connecting: 0, waiting: 1 });
+
+    const before = requests.filter((url) => url.includes('/channels/gamma')).length;
+    state.mergedChat.connections.get('gamma').socket.fire('close');
+    surface.syncMergedChat(['alpha', 'beta']);
+    await clock.advance(45_000);
+    assert.equal(requests.filter((url) => url.includes('/channels/gamma')).length, before,
+      'a removed channel cannot reopen from an old timer');
+    assert.equal(state.mergedChat.connections.has('gamma'), false);
+    surface.closeMergedChat();
+  });
+});
 
 test('the socket subscribes to every channel it needs, and one close schedules one retry', { tag: 'unit' }, async () => {
   const { host, state } = makeHost();

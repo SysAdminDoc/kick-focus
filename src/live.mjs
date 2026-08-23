@@ -48,6 +48,9 @@ import {
 const LIVE_TIMEOUT_MS = 8000;
 const LIVE_MAX_BYTES = 4_000_000;
 const REALTIME_BACKOFF_MS = [2000, 5000, 15000, 45000];
+const MERGED_CHAT_BACKOFF_MS = [2000, 5000, 15000, 45000];
+const MERGED_CHAT_SILENCE_MS = 45_000;
+const MERGED_CHAT_QUEUE_LIMIT = 2;
 
 /**
  * Harvest emotes seen in realtime chat frames into the library.
@@ -570,8 +573,114 @@ export function createLive(host) {
   // -------------------------------------------------------------------------
 
   function mergedChatState() {
-    if (!state.mergedChat) state.mergedChat = { entries: [], connections: new Map(), errors: [] };
+    if (!state.mergedChat) {
+      state.mergedChat = {
+        entries: [],
+        connections: new Map(),
+        errors: [],
+        queueTimer: 0,
+        inflight: 0,
+        recoveryListeners: null,
+      };
+    }
     return state.mergedChat;
+  }
+
+  const mergedNow = () => (typeof host.now === 'function' ? host.now() : Date.now());
+  const mergedRandom = () => (typeof host.random === 'function' ? host.random() : Math.random());
+  const mergedSetTimeout = (callback, delay) => (typeof host.setTimeout === 'function'
+    ? host.setTimeout(callback, delay)
+    : window.setTimeout(callback, delay));
+  const mergedClearTimeout = (timer) => {
+    if (typeof host.clearTimeout === 'function') host.clearTimeout(timer);
+    else clearTimeout(timer);
+  };
+
+  function mergedRetryDelay(attempts) {
+    const base = MERGED_CHAT_BACKOFF_MS[Math.min(Math.max(0, attempts - 1), MERGED_CHAT_BACKOFF_MS.length - 1)];
+    const jitter = Math.max(0, Math.min(1, Number(mergedRandom()) || 0));
+    return Math.round(base * (0.8 + (jitter * 0.4)));
+  }
+
+  function noteMergedError(slug, reason) {
+    const merged = mergedChatState();
+    merged.errors.push({ slug, reason, at: mergedNow() });
+    if (merged.errors.length > 40) merged.errors.splice(0, merged.errors.length - 40);
+  }
+
+  function stopMergedSocket(slot) {
+    const socket = slot.socket;
+    slot.socket = null;
+    slot.token += 1;
+    if (!socket) return;
+    try { socket.close(); } catch { /* Already gone. */ }
+  }
+
+  function scheduleMergedQueue() {
+    const merged = mergedChatState();
+    if (merged.queueTimer) {
+      mergedClearTimeout(merged.queueTimer);
+      merged.queueTimer = 0;
+    }
+    if (!merged.connections.size) return;
+
+    const now = mergedNow();
+    let dueAt = Number.POSITIVE_INFINITY;
+    for (const slot of merged.connections.values()) {
+      if (slot.status === 'queued' || slot.status === 'waiting' || slot.status === 'connecting') {
+        dueAt = Math.min(dueAt, slot.retryAt || now);
+      } else if ((slot.status === 'open' || slot.status === 'live') && slot.socket) {
+        dueAt = Math.min(dueAt, slot.lastFrameAt + MERGED_CHAT_SILENCE_MS);
+      }
+    }
+    if (!Number.isFinite(dueAt)) return;
+    merged.queueTimer = mergedSetTimeout(runMergedQueue, Math.max(0, dueAt - now));
+  }
+
+  function queueMergedRetry(slot, reason, immediate = false) {
+    const merged = mergedChatState();
+    if (merged.connections.get(slot.slug) !== slot) return;
+    stopMergedSocket(slot);
+    if (!immediate) slot.attempts += 1;
+    slot.status = immediate ? 'queued' : 'waiting';
+    slot.lastError = reason;
+    slot.retryAt = mergedNow() + (immediate ? 0 : mergedRetryDelay(slot.attempts));
+    noteMergedError(slot.slug, reason);
+    scheduleMergedQueue();
+  }
+
+  function bindMergedRecovery() {
+    const merged = mergedChatState();
+    if (merged.recoveryListeners) return;
+    const recover = (event) => recoverMergedChatQueue(event?.type || 'recovery');
+    const visible = () => {
+      if (!document.hidden) recoverMergedChatQueue('visibilitychange');
+    };
+    window.addEventListener?.('online', recover);
+    window.addEventListener?.('pageshow', recover);
+    document.addEventListener?.('visibilitychange', visible);
+    merged.recoveryListeners = { recover, visible };
+  }
+
+  function unbindMergedRecovery() {
+    const merged = mergedChatState();
+    const listeners = merged.recoveryListeners;
+    if (!listeners) return;
+    window.removeEventListener?.('online', listeners.recover);
+    window.removeEventListener?.('pageshow', listeners.recover);
+    document.removeEventListener?.('visibilitychange', listeners.visible);
+    merged.recoveryListeners = null;
+  }
+
+  function recoverMergedChatQueue(reason) {
+    const merged = mergedChatState();
+    const now = mergedNow();
+    for (const slot of merged.connections.values()) {
+      const force = reason === 'online' || reason === 'pageshow';
+      const stale = slot.lastFrameAt > 0 && now - slot.lastFrameAt >= MERGED_CHAT_SILENCE_MS;
+      if (!slot.socket || force || stale) queueMergedRetry(slot, reason, true);
+    }
+    scheduleMergedQueue();
   }
 
   function closeMergedChannel(slug) {
@@ -579,29 +688,39 @@ export function createLive(host) {
     const entry = merged.connections.get(slug);
     merged.connections.delete(slug);
     if (!entry) return;
-    try {
-      entry.socket?.close();
-    } catch {
-      // Already gone.
-    }
+    entry.cancelled = true;
+    stopMergedSocket(entry);
     // The messages go with the connection: a channel removed from the grid must
     // stop occupying the reader's attention as well as the network.
     merged.entries = dropMergedChannel(merged.entries, slug);
+    scheduleMergedQueue();
   }
 
   function closeMergedChat() {
     const merged = mergedChatState();
     for (const slug of [...merged.connections.keys()]) closeMergedChannel(slug);
+    if (merged.queueTimer) mergedClearTimeout(merged.queueTimer);
+    merged.queueTimer = 0;
     merged.entries = [];
     merged.errors = [];
+    unbindMergedRecovery();
   }
 
-  function onMergedFrame(slug, event) {
+  function onMergedFrame(slug, socket, event) {
+    const merged = mergedChatState();
+    const slot = merged.connections.get(slug);
+    if (!slot || slot.socket !== socket) return;
+    slot.lastFrameAt = mergedNow();
     const frame = parseRealtimeFrame(event.data);
+    if (frame.kind !== 'unparsable') {
+      slot.status = 'live';
+      slot.attempts = 0;
+      slot.lastError = '';
+    }
+    scheduleMergedQueue();
     if (frame.kind !== 'chat-message') return;
     const message = normalizeChatMessage(frame.payload);
     if (!message) return;
-    const merged = mergedChatState();
     merged.entries = appendMergedMessage(merged.entries, {
       slug,
       id: message.id,
@@ -613,31 +732,32 @@ export function createLive(host) {
   }
 
   /**
-   * Open one channel's feed. Every failure is silent and local: a channel whose
-   * realtime credentials Kick will not issue simply contributes nothing, and the
-   * other eight carry on.
+   * Open one channel's feed. Credentials are fetched on every attempt because
+   * the broker response can expire while a tab sleeps.
    */
-  async function openMergedChannel(slug) {
+  async function openMergedChannel(slot) {
     const merged = mergedChatState();
-    if (merged.connections.has(slug)) return false;
-    // Claim the slot before the first await, so two syncs in the same tick
-    // cannot open two sockets for one channel.
-    merged.connections.set(slug, { socket: null });
+    const { slug } = slot;
+    if (merged.connections.get(slug) !== slot || slot.cancelled) return false;
+    slot.status = 'connecting';
+    slot.retryAt = mergedNow() + LIVE_TIMEOUT_MS;
+    slot.token += 1;
+    const token = slot.token;
 
     const channelResponse = await kickFetchJson(endpoints.channel(slug));
-    if (!merged.connections.has(slug)) return false;
+    if (merged.connections.get(slug) !== slot || slot.cancelled || slot.token !== token) return false;
     const channel = channelResponse.ok ? normalizeChannel(channelResponse.body) : null;
     if (!channel?.chatroomId) {
-      closeMergedChannel(slug);
+      queueMergedRetry(slot, `channel credentials ${describeKickFetchFailure(channelResponse.status)}`);
       return false;
     }
 
     const clientId = crypto.randomUUID();
     const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId));
-    if (!merged.connections.has(slug)) return false;
+    if (merged.connections.get(slug) !== slot || slot.cancelled || slot.token !== token) return false;
     const connection = response.ok ? normalizeRealtimeConnection(response.body) : { ok: false };
     if (!connection.ok) {
-      closeMergedChannel(slug);
+      queueMergedRetry(slot, `realtime credentials ${describeKickFetchFailure(response.status)}`);
       return false;
     }
 
@@ -645,30 +765,70 @@ export function createLive(host) {
     try {
       socket = new WebSocket(connection.transport.socketUrl(connection));
     } catch {
-      closeMergedChannel(slug);
+      queueMergedRetry(slot, 'socket construction failed');
       return false;
     }
-    const held = merged.connections.get(slug);
-    if (!held) {
+    if (merged.connections.get(slug) !== slot || slot.cancelled || slot.token !== token) {
       try { socket.close(); } catch { /* already gone */ }
       return false;
     }
-    held.socket = socket;
-    held.chatroomId = channel.chatroomId;
+    slot.socket = socket;
+    slot.chatroomId = channel.chatroomId;
+    slot.channelId = channel.id;
+    slot.retryAt = mergedNow() + LIVE_TIMEOUT_MS;
     socket.addEventListener('open', () => {
+      if (mergedChatState().connections.get(slug) !== slot || slot.socket !== socket) return;
+      slot.status = 'open';
+      slot.lastFrameAt = mergedNow();
       for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
         socket.send(realtimeSubscribeFrame(name));
       }
+      scheduleMergedQueue();
     });
-    socket.addEventListener('message', (event) => onMergedFrame(slug, event));
-    // No reconnect ladder here on purpose. The single-channel path reconnects
-    // because losing it degrades features the user is relying on; a merged feed
-    // that quietly drops one of nine is better than nine timers competing.
+    socket.addEventListener('message', (event) => onMergedFrame(slug, socket, event));
+    socket.addEventListener('error', () => {
+      if (mergedChatState().connections.get(slug) === slot && slot.socket === socket) {
+        queueMergedRetry(slot, 'socket error');
+      }
+    });
     socket.addEventListener('close', () => {
       const current = mergedChatState().connections.get(slug);
-      if (current?.socket === socket) current.socket = null;
+      if (current === slot && current.socket === socket) queueMergedRetry(slot, 'socket closed');
     });
     return true;
+  }
+
+  function startMergedChannel(slot) {
+    const merged = mergedChatState();
+    if (merged.connections.get(slot.slug) !== slot || slot.cancelled || merged.inflight >= MERGED_CHAT_QUEUE_LIMIT) return;
+    merged.inflight += 1;
+    openMergedChannel(slot)
+      .catch(() => queueMergedRetry(slot, 'connection failed'))
+      .finally(() => {
+        merged.inflight = Math.max(0, merged.inflight - 1);
+        scheduleMergedQueue();
+      });
+  }
+
+  function runMergedQueue() {
+    const merged = mergedChatState();
+    merged.queueTimer = 0;
+    const now = mergedNow();
+
+    for (const slot of merged.connections.values()) {
+      const stalled = (slot.status === 'open' || slot.status === 'live')
+        && slot.socket && now - slot.lastFrameAt >= MERGED_CHAT_SILENCE_MS;
+      const hung = slot.status === 'connecting' && slot.retryAt <= now;
+      if (stalled || hung) queueMergedRetry(slot, stalled ? 'socket silent' : 'connection timed out');
+    }
+
+    const due = [...merged.connections.values()]
+      .filter((slot) => !slot.cancelled
+        && (slot.status === 'queued' || slot.status === 'waiting')
+        && slot.retryAt <= now)
+      .sort((first, second) => first.retryAt - second.retryAt || first.slug.localeCompare(second.slug));
+    while (due.length && merged.inflight < MERGED_CHAT_QUEUE_LIMIT) startMergedChannel(due.shift());
+    scheduleMergedQueue();
   }
 
   /**
@@ -686,8 +846,22 @@ export function createLive(host) {
       if (!wantedSet.has(slug)) closeMergedChannel(slug);
     }
     for (const slug of wanted) {
-      if (!merged.connections.has(slug)) openMergedChannel(slug);
+      if (!merged.connections.has(slug)) {
+        merged.connections.set(slug, {
+          slug,
+          socket: null,
+          status: 'queued',
+          lastFrameAt: 0,
+          attempts: 0,
+          retryAt: mergedNow(),
+          lastError: '',
+          token: 0,
+          cancelled: false,
+        });
+      }
     }
+    if (merged.connections.size) bindMergedRecovery();
+    scheduleMergedQueue();
     return merged;
   }
 
@@ -697,6 +871,16 @@ export function createLive(host) {
 
   function mergedChatChannels() {
     return [...mergedChatState().connections.keys()];
+  }
+
+  function mergedChatStatus() {
+    const slots = [...mergedChatState().connections.values()];
+    return {
+      total: slots.length,
+      live: slots.filter((slot) => slot.status === 'live').length,
+      connecting: slots.filter((slot) => slot.status === 'queued' || slot.status === 'connecting' || slot.status === 'open').length,
+      waiting: slots.filter((slot) => slot.status === 'waiting').length,
+    };
   }
 
   function onRealtimeFrame(event) {
@@ -976,6 +1160,7 @@ export function createLive(host) {
     closeMergedChat,
     mergedChatChannels,
     mergedChatEntries,
+    mergedChatStatus,
     syncMergedChat,
     connectRealtime,
     kickFetchJson,
