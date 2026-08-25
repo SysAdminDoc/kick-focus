@@ -116,7 +116,14 @@ const child = spawn(CHROME, [
   `--load-extension=${EXT}`,
   `--disable-extensions-except=${EXT}`,
   ...(process.env.KF_HEADLESS ? ['--headless=new'] : []),
-  ...(process.env.KF_WINDOW_POSITION ? [`--window-position=${process.env.KF_WINDOW_POSITION}`] : []),
+  `--window-position=${process.env.KF_WINDOW_POSITION || '-32000,-32000'}`,
+  // This browser is deliberately offscreen. Chromium otherwise treats it as
+  // occluded and stretches sub-second probe timers to a minute, which can turn
+  // a healthy journey into a CDP timeout and make scroll anchoring sample the
+  // DOM before its observer has run.
+  '--disable-background-timer-throttling',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding',
   '--no-first-run',
   '--no-default-browser-check',
   `--window-size=${WINDOW_SIZE}`,
@@ -145,6 +152,7 @@ function unsupportedBinaryHint() {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const CDP_CALL_TIMEOUT_MS = 70_000;
 const results = [];
 const record = (label, ok, detail = '') => {
   results.push({ label, ok, detail, outcome: ok ? 'pass' : 'fail' });
@@ -236,10 +244,19 @@ function cdp(wsUrl) {
   ws.addEventListener('message', (event) => {
     const msg = JSON.parse(event.data);
     if (msg.id && pending.has(msg.id)) {
-      pending.get(msg.id)(msg);
+      const request = pending.get(msg.id);
       pending.delete(msg.id);
+      clearTimeout(request.timer);
+      request.resolve(msg);
     } else if (msg.method) {
       events.push(msg);
+    }
+  });
+  ws.addEventListener('close', () => {
+    for (const [id, request] of pending) {
+      clearTimeout(request.timer);
+      request.reject(new Error(`CDP ${request.method} closed before replying`));
+      pending.delete(id);
     }
   });
   return {
@@ -247,9 +264,19 @@ function cdp(wsUrl) {
     events,
     send(method, params = {}) {
       const id = nextId++;
-      return new Promise((resolve) => {
-        pending.set(id, resolve);
-        ws.send(JSON.stringify({ id, method, params }));
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`CDP ${method} timed out after ${CDP_CALL_TIMEOUT_MS}ms`));
+        }, CDP_CALL_TIMEOUT_MS);
+        pending.set(id, { resolve, reject, timer, method });
+        try {
+          ws.send(JSON.stringify({ id, method, params }));
+        } catch (error) {
+          clearTimeout(timer);
+          pending.delete(id);
+          reject(error);
+        }
       });
     },
     close: () => ws.close(),
@@ -257,15 +284,21 @@ function cdp(wsUrl) {
 }
 
 async function evaluate(client, expression, options = {}) {
-  const res = await client.send('Runtime.evaluate', {
-    expression,
-    awaitPromise: true,
-    returnByValue: true,
-    // Transient activation, for the one API that refuses without it:
-    // `documentPictureInPicture.requestWindow()` throws unless the call is
-    // attributable to a user gesture.
-    userGesture: options.userGesture === true,
-  });
+  let res;
+  try {
+    res = await client.send('Runtime.evaluate', {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+      // Transient activation, for the one API that refuses without it:
+      // `documentPictureInPicture.requestWindow()` throws unless the call is
+      // attributable to a user gesture.
+      userGesture: options.userGesture === true,
+    });
+  } catch (error) {
+    const label = options.label ? `${options.label}: ` : '';
+    throw new Error(`${label}${error.message}`);
+  }
   if (res.result?.exceptionDetails) return { error: res.result.exceptionDetails.text };
   return { value: res.result?.result?.value };
 }
@@ -506,8 +539,9 @@ try {
       const restoreReducedMotion = control.getAttribute('aria-checked') === 'true';
       if (restoreReducedMotion) { control.click(); await settle(450); }
       shadow.querySelector('[data-action="close-settings"]')?.click();
-      row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
-      await settle();
+      row.focus();
+      row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
+      await __kfWait(() => document.getElementById('kick-focus-following-preview')?.dataset.kfOpen === 'true', { timeout: 1600 });
       const host = document.getElementById('kick-focus-following-preview');
       return {
         ok: true,
@@ -531,8 +565,15 @@ try {
     const reducedFollowingPreviewProbe = await evaluate(pageClient, `(async () => {
       const row = document.querySelector('[data-kf-live-preview-probe], [data-kf-following-preview="true"]');
       if (!row) return { ok: false, why: 'the followed row disappeared before the reduced-motion pass' };
-      row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
-      await new Promise((done) => setTimeout(done, 100));
+      row.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
+      row.blur();
+      await new Promise((done) => setTimeout(done, 80));
+      row.focus();
+      row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
+      await __kfWait(() => {
+        const host = document.getElementById('kick-focus-following-preview');
+        return host?.dataset.kfOpen === 'true' && host.dataset.kfStatic === 'true';
+      }, { timeout: 1600 });
       const host = document.getElementById('kick-focus-following-preview');
       const result = {
         ok: true,
@@ -1740,7 +1781,7 @@ try {
       initialTheater = document.documentElement.dataset.kfTheater === 'true';
       const ownerTagged = outer.dataset.kfChatPanel === 'true';
       const innerTagged = panel.dataset.kfChatPanel === 'true';
-      const bound = separator.dataset.kfChatResizeBound === 'true';
+      const separatorTagged = separator.dataset.kfChatSeparator === 'true';
       const splitTagged = split.dataset.kfChatSplit === 'true';
       const before = { owner: outer.getBoundingClientRect().width, inner: panel.getBoundingClientRect().width };
       const leftRects = {
@@ -1785,7 +1826,7 @@ try {
       }
       await settle(180);
       return {
-        ok: true, leftSelected, leftStored, ownerTagged, innerTagged, splitTagged, bound,
+        ok: true, leftSelected, leftStored, ownerTagged, innerTagged, splitTagged, separatorTagged,
         placedLeft, separatorOnPlayerEdge, restoredRight, before, theater, expected, dragged, bounded,
       };
     } finally {
@@ -1801,7 +1842,7 @@ try {
     chatLayout.ok === true
       && chatLayout.leftSelected === true && chatLayout.leftStored === true
       && chatLayout.ownerTagged === true && chatLayout.innerTagged === false && chatLayout.splitTagged === true
-      && chatLayout.bound === true && chatLayout.placedLeft === true
+      && chatLayout.separatorTagged === true && chatLayout.placedLeft === true
       && chatLayout.separatorOnPlayerEdge === true && chatLayout.restoredRight === true
       && chatLayout.theater === true && chatLayout.bounded === true
       && Math.abs(chatLayout.before?.owner - chatLayout.before?.inner) <= 1
@@ -1810,7 +1851,7 @@ try {
       && chatLayout.dragged?.aria === chatLayout.expected
       && chatLayout.dragged?.css === chatLayout.expected,
     chatLayout.ok
-      ? `left selected/stored=${chatLayout.leftSelected}/${chatLayout.leftStored}; owner ${chatLayout.before?.owner}px / inner ${chatLayout.before?.inner}px; dragged both to ${chatLayout.dragged?.owner}px (aria ${chatLayout.dragged?.aria}, css ${chatLayout.dragged?.css}); left=${chatLayout.placedLeft}, separator edge=${chatLayout.separatorOnPlayerEdge}, restored right=${chatLayout.restoredRight}, bounded=${chatLayout.bounded}`
+      ? `left selected/stored=${chatLayout.leftSelected}/${chatLayout.leftStored}; tags owner/inner/split/separator=${chatLayout.ownerTagged}/${chatLayout.innerTagged}/${chatLayout.splitTagged}/${chatLayout.separatorTagged}; owner ${chatLayout.before?.owner}px / inner ${chatLayout.before?.inner}px; theater=${chatLayout.theater}; dragged both to ${chatLayout.dragged?.owner}px (aria ${chatLayout.dragged?.aria}, css ${chatLayout.dragged?.css}); left=${chatLayout.placedLeft}, separator edge=${chatLayout.separatorOnPlayerEdge}, restored right=${chatLayout.restoredRight}, bounded=${chatLayout.bounded}`
       : chatLayout.why);
 
   const composerRecallProbe = await evaluate(pageClient, `(async () => {
@@ -3521,35 +3562,41 @@ try {
     const shadow = await __kfWait(() => host && host.shadowRoot);
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const q = (selector) => shadow.querySelector(selector);
+    const settle = (ms = 350) => new Promise((done) => setTimeout(done, ms));
     const press = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     const open = () => ({
-      settings: q('[data-kf-settings-backdrop]').hidden === false,
-      confirm: q('[data-kf-confirm]').hidden === false,
+      settings: q('[data-kf-settings-backdrop]')?.hidden === false,
+      confirm: q('[data-kf-confirm]')?.hidden === false,
     });
     q('[data-kf-quick]').click();
     q('[data-action="command:settings"]').click();
+    await settle();
     if (!open().settings) return { ok: false, why: 'settings did not open' };
-    // Land on a page that actually has settings to reset: About disables the
-    // control, so leaving the page to whatever ran before makes this pass or
-    // fail on probe order rather than on behaviour.
+    // Land on a page that actually has settings to reset. The reset acts now
+    // and leaves a persistent recovery toast instead of stacking a prompt over
+    // Settings, so the gate checks that current contract directly.
     q('[data-page="layout"]').click();
     q('[data-action="reset-page"]').click();
-    const prompted = open();
-    const focusedPrompt = shadow.activeElement
-      && shadow.activeElement.closest('.kf-confirm-card') !== null;
+    await settle();
+    const toast = q('[data-kf-toast]');
+    const recovery = {
+      ...open(),
+      visible: toast?.hidden === false,
+      text: String(toast?.querySelector('.kf-toast-text')?.textContent || ''),
+      actions: [...(toast?.querySelectorAll('.kf-toast-action') || [])].map((button) => String(button.textContent || '').trim()),
+    };
     press();
-    const afterEscape = open();
-    press();
-    return { ok: true, prompted, focusedPrompt, afterEscape, closed: open() };
+    await settle(100);
+    return { ok: true, recovery, closed: open() };
   })()`);
   const esc = escapeProbe.value || {};
-  record('Escape on the reset prompt cancels only the prompt, leaving Settings open',
+  record('Reset acts immediately, keeps recovery visible, and Escape closes Settings',
     esc.ok === true
-      && esc.prompted?.settings === true && esc.prompted?.confirm === true
-      && esc.focusedPrompt === true
-      && esc.afterEscape?.confirm === false && esc.afterEscape?.settings === true
+      && esc.recovery?.settings === true && esc.recovery?.confirm === false
+      && esc.recovery?.visible === true && /settings reset/i.test(esc.recovery?.text || '')
+      && esc.recovery?.actions?.includes('Undo') && esc.recovery?.actions?.includes('Dismiss')
       && esc.closed?.settings === false,
-    esc.ok ? `prompted=${JSON.stringify(esc.prompted)} focusedPrompt=${esc.focusedPrompt} afterEscape=${JSON.stringify(esc.afterEscape)} closed=${JSON.stringify(esc.closed)}` : esc.why);
+    esc.ok ? `recovery=${JSON.stringify(esc.recovery)} closed=${JSON.stringify(esc.closed)}` : esc.why);
 
   // These describe how Kick Focus treats Kick's own markup, so they are only
   // meaningful when Kick's markup is present. Reported as skipped rather than
@@ -3900,7 +3947,7 @@ try {
   record('popup reflects the stored telemetry setting', popupTelemetry.value === true, String(popupTelemetry.value));
 
   // Theme tokens have to reach three separate layers: the page, this build's
-  // shadow-root dialogs, and the extension popup. Source inspection proves the
+  // shadow-root command menu, and the extension popup. Source inspection proves the
   // variables exist but not that nested text resolves against the right
   // surface, so each non-default theme is measured at runtime.
   const storedPageTheme = await evaluate(pageClient, 'document.documentElement.dataset.kfTheme || "studio"');
@@ -3946,14 +3993,17 @@ try {
       const shell = shadow.querySelector('[data-kf-settings-shell]');
       const heading = shadow.querySelector('.kf-page-header h2');
       const shellMetric = measure(heading, shell);
-      shadow.querySelector('[data-action="reset-page"]')?.click();
+      const commandBackdrop = shadow.querySelector('[data-kf-command-backdrop]');
+      if (!commandBackdrop) return { ok: false, why: 'the command menu is unavailable' };
+      commandBackdrop.hidden = false;
       await settle(250);
-      const confirm = shadow.querySelector('.kf-confirm-card');
-      const title = confirm?.querySelector('h2');
-      const copy = confirm?.querySelector('p');
-      const dialogTitle = measure(title, confirm);
-      const dialogCopy = measure(copy, confirm);
-      shadow.querySelector('[data-action="cancel-reset"]')?.click();
+      document.documentElement.dataset.kfTheme = '${theme}';
+      const command = shadow.querySelector('.kf-command-shell');
+      const commandItem = command?.querySelector('.kf-command-item');
+      if (!command || !commandItem) return { ok: false, why: 'the command menu is unavailable' };
+      const dialogTitle = measure(commandItem.querySelector('strong'), commandItem);
+      const dialogCopy = measure(commandItem.querySelector('span'), commandItem);
+      commandBackdrop.hidden = true;
       // Exercise the real toast path without changing storage: submitting the
       // empty hidden-channel field is validation only.
       shadow.querySelector('[data-page="content"]')?.click();
@@ -3977,7 +4027,7 @@ try {
         dialogCopy,
         toast: measure(toast?.querySelector('.kf-toast-text'), toast),
       };
-    })()`);
+    })()`, { label: `${theme} page theme contrast` });
     await sleep(500);
     const popupTheme = await evaluate(popupClient, `(async () => {
       // This exercises the same validated appearance function render() calls
@@ -4011,7 +4061,7 @@ try {
     const pageSample = pageTheme.value || {};
     const popupSample = popupTheme.value || {};
     const pageMetrics = [pageSample.shell, pageSample.dialogTitle, pageSample.dialogCopy, pageSample.toast];
-    record(`${theme === 'oled' ? 'OLED' : 'Slate'} keeps settings, nested dialogs, toasts, and the popup readable`,
+    record(`${theme === 'oled' ? 'OLED' : 'Slate'} keeps settings, the command menu, toasts, and the popup readable`,
       pageSample.ok === true
         && pageSample.theme === theme
         && pageMetrics.every((metric) => metric?.ratio >= 4.5 && metric.visible === true)
@@ -4162,7 +4212,7 @@ try {
       landedOn,
       inputCleared,
     };
-  })()`);
+  })()`, { label: 'settings search journey' });
   const found = search.value || {};
   recordProbe('settings search spans every page, and a result goes where the setting lives', found,
     found.ok === true
@@ -4229,7 +4279,7 @@ try {
       } catch { seen.push({ name, status: 'network' }); }
     }
     return JSON.stringify({ channelStatus, channelId, seen });
-  })()`);
+  })()`, { label: 'endpoint liveness' });
   const endpointState = JSON.parse(liveness.value || '{}');
   const seenEndpoints = endpointState.seen || [];
   const goneEndpoints = seenEndpoints.filter((entry) => entry.status === 404 || entry.status === 410);

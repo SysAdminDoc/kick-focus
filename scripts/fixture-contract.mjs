@@ -147,7 +147,10 @@ export const FIXTURE_CONTRACT = Object.freeze({
      * is, which is the case that matters: that is Kick dropping the test id and
      * a looser selector picking up something else.
      */
-    optional: Object.freeze(['card']),
+    // The separator is conditional too. One logged-out /xqc load omitted it
+    // while a fresh capture minutes later served two ranged separators. Either
+    // absence is valid; a different winning probe is still drift.
+    optional: Object.freeze(['card', 'chatSeparator']),
     derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'ok', channelPlayer: 'ok', qualityHeight: 'absent' }),
     markers: Object.freeze(['id="sidebar-wrapper"', 'channel-chatroom', 'chatroom-messages', 'aria-valuemin']),
     synthetic: Object.freeze({}),

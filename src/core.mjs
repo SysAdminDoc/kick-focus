@@ -1,4 +1,4 @@
-export const VERSION = '1.40.0';
+export const VERSION = '1.41.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 5;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.41.0': Object.freeze({
+    summary: 'Settings now opens reliably and stays inside the viewport down to 375 pixels. Reset recovery waits for you, Viewer status is clearer, emote management is easier to find, composer recall is visible, and the companion follows English, Spanish, or Portuguese.',
+    defaults: Object.freeze([]),
+  }),
   '1.40.0': Object.freeze({
     summary: 'Kick keeps its own keyboard: the six configurable shortcuts are gone and every action they reached is on the command menu, which now has a button in the header and one in Settings. Resetting acts straight away and offers one step of Undo instead of asking first, the page behind a dialog is properly out of reach, and the chat separator can be moved with the arrow keys.',
     defaults: Object.freeze([]),

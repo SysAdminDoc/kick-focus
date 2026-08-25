@@ -68,6 +68,22 @@ test('every mandatory live check names an assertion its gate actually makes', { 
   }
 });
 
+test('the Chromium gate cannot wait forever for a CDP reply', { tags: ['unit'] }, async () => {
+  const chromium = await readFile(resolve(root, 'scripts/verify-extension.mjs'), 'utf8');
+
+  assert.match(chromium, /const CDP_CALL_TIMEOUT_MS = 70_000/);
+  assert.match(chromium, /reject\(new Error\(`CDP \$\{method\} timed out after \$\{CDP_CALL_TIMEOUT_MS\}ms`\)\)/);
+  assert.match(chromium, /pending\.delete\(id\);\n\s*reject/);
+  assert.match(chromium, /--window-position=\$\{process\.env\.KF_WINDOW_POSITION \|\| '-32000,-32000'\}/);
+  for (const flag of [
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+  ]) {
+    assert.ok(chromium.includes(flag), `the offscreen gate omits ${flag}`);
+  }
+});
+
 test('the release command applies the contract to both engines and refuses to package', { tags: ['unit'] }, async () => {
   // The decision is unit-tested above; this is the wiring, which can only be
   // observed here without spawning two browsers. Each engine has to be checked

@@ -1,11 +1,15 @@
-/* Kick Focus 1.40.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.41.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.40.0';
+const VERSION = '1.41.0';
 const SETTINGS_SCHEMA = 5;
 const VERSION_NOTES = Object.freeze({
+'1.41.0': Object.freeze({
+summary: 'Settings now opens reliably and stays inside the viewport down to 375 pixels. Reset recovery waits for you, Viewer status is clearer, emote management is easier to find, composer recall is visible, and the companion follows English, Spanish, or Portuguese.',
+defaults: Object.freeze([]),
+}),
 '1.40.0': Object.freeze({
 summary: 'Kick keeps its own keyboard: the six configurable shortcuts are gone and every action they reached is on the command menu, which now has a button in the header and one in Settings. Resetting acts straight away and offers one step of Undo instead of asking first, the page behind a dialog is properly out of reach, and the chat separator can be moved with the arrow keys.',
 defaults: Object.freeze([]),
@@ -7107,7 +7111,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              853179') || 0;
+const BUNDLE_BYTES = Number('              853507') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `

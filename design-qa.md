@@ -34,8 +34,11 @@ The implementation is exercised through `test/fixtures/settings-preview.html` at
 - `design/screenshots/settings-appearance-themes.png`
 - `design/screenshots/multistream-board.png`
 - `design/screenshots/extension-popup.png`
+- `design/screenshots/emote-picker.png`
+- `design/screenshots/emote-library.png`
+- `design/screenshots/profile-stats-button.png`
 
-Each retained image contains the normalized target and its browser implementation together in the same comparison frame. Standalone browser captures and normalization intermediates were intentionally excluded from version control.
+The retained QA comparisons contain the normalized target and browser implementation in the same frame. The files under `design/screenshots` are final standalone captures from the verified v1.41.0 bundle.
 
 ## Focused evidence
 
@@ -101,6 +104,12 @@ The first implementation still read as a card-heavy preferences dialog. The shel
 - P2: full reset deleted the local reward-check record even though its Undo snapshot did not carry that record. Reset now leaves the operational cooldown untouched, so a handled reward cannot look due again after settings are cleared.
 - P2: the About page now states what reset clears, what it keeps, and why. The longer copy fits beside the destructive action without crowding the local-storage section below it.
 
+### Iteration 10, release-state verification
+
+- P1: the release gate still expected the old reset confirmation and an obsolete chat-resizer dataset flag. It now drives the immediate reset with persistent Undo and Dismiss, then proves the controller-bound separator through a real drag and restore.
+- P2: an off-screen Chromium window throttled sub-second timers, which made otherwise healthy focus, scroll, and search journeys intermittent. The gate now keeps ordinary timer behavior while remaining off-screen and bounds every browser command to 70 seconds.
+- P2: Kick serves its ranged chat separator inconsistently between channel loads. The fixture contract treats its absence as valid while still failing if another selector starts winning.
+
 ### Residual P3 differences
 
 - Layout uses a live textual Current setup summary instead of the mock's tiny schematic, improving legibility while preserving the same hierarchy.
@@ -124,6 +133,9 @@ No actionable P0, P1, or P2 visual differences remain.
 - Enabled composer recall, verified its disabled empty state, recorded two public sends, cycled both from the visible control, and checked the focused control at 1440 and 680 pixels.
 - Scrolled the About page to the destructive section and verified the reset explanation, action alignment, wrapping, and separation from the storage table.
 - Ran all seven settings pages at 1440 × 900, 900 × 800, 680 × 760, and 375 × 812. The second pass found a fixed Appearance control column and an oversized protection log at 375 pixels. Appearance now stacks those controls, long request paths wrap inside a fixed table, and the repeated matrix has no clipped page control or page-level horizontal overflow.
+- Ran the packaged v1.41.0 companion at 1440 × 900 and 1920 × 1080. Chromium passed 98 of 98 asserted checks at each viewport with 15 documented anonymous-session skips. Firefox passed 8 of 8 asserted checks with one documented popup-navigation skip.
+- Compared the final 1440-pixel Home capture beside `design/mockups/kick-home-premium.png` at equal height. The canvas, navigation, featured stream, chat rail, category grid, and Focus entry point stay inside the viewport with no clipped controls or broken spacing.
+- Ran 460 tests, 213 artifact checks, and 91 deliberate negative probes. The userscript is 855,323 bytes, leaving 94,677 bytes below its injection ceiling after the library seed allowance.
 - Browser console inspection after the final build returned no warnings or errors.
 
 ## Main Kick theme, v1.31.0

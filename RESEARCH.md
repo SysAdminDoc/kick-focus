@@ -1,4 +1,4 @@
-# Research - Kick Focus
+# Kick Focus research
 
 Date: **2026-08-23**. This document replaces all prior research. The product baseline is v1.38.0 plus companion hardening and merged-chat recovery through commit [`e00a20d`](https://github.com/SysAdminDoc/kick-focus/commit/e00a20d).
 
@@ -171,7 +171,7 @@ The Node suite passes 399 of 399 tests. Overall instrumented coverage is 89.84% 
 
 The comment picker has good pure and static checks for normalization, windowing, and source wiring. It lacks a complete browser journey for create, rename, delete, Undo, select shown, move, remove, restore, search empty state, return from Library, insertion without submission, focus retention, and narrow layout (`scripts/verify-extension.mjs:3265-3362`, `test/boot.test.js:516-549`). This is the first profile-picker roadmap item because it converts the user's main workflow into a release contract.
 
-Chromium owns 96 journey checks. Firefox owns eight narrower checks. Browser-neutral comment-picker contracts should run against both companion builds after R-111 establishes the shared harness (`scripts/verify-extension.mjs`, `scripts/verify-firefox.mjs`).
+Chromium owns 98 journey checks. Firefox owns eight narrower checks. Browser-neutral comment-picker contracts should run against both companion builds after R-111 establishes the shared runner (`scripts/verify-extension.mjs`, `scripts/verify-firefox.mjs`).
 
 ### Visual audit
 

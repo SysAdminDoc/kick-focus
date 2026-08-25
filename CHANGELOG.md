@@ -4,6 +4,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.41.0, 2026-08-25
+
 ### Fixed
 
 - Settings opens reliably again. The runtime now supplies the section-composition helper that was missed when the renderer moved into its own module, and a host-contract test protects that wiring.
@@ -21,6 +23,7 @@ All notable changes are documented here. Dates use ISO 8601.
 - The emote organizer keeps Organize and Library visible at compact desktop widths, then wraps both labelled actions on the narrowest chat rail.
 - Every emote tile now keeps a quiet Favorite control visible. Remove appears on hover or focus, normal management controls meet the 24-pixel floor, and Larger pointer targets expands them to 40 pixels without breaking the virtualized grid.
 - The companion popup and browser metadata now follow English, Spanish, or Portuguese. A saved `pt` interface setting maps to `pt-BR`, and both packages reject missing or unused locale keys during verification.
+- Browser release checks now run off-screen without background timer throttling, stop with a named error if Chrome stops replying, and accept Kick's chat separator as the conditional element it currently is.
 
 ## 1.40.0, 2026-08-25
 
@@ -224,7 +227,7 @@ measurably wrong rather than something that looked untidy.
 
 - Settings page composition now lives in its own module behind an explicit host boundary. The shipped interface is unchanged, while the page renderers, navigation model, settings search, and their dependencies can now be checked without keeping them inside the main DOM runtime.
 - The live browser gate now measures text contrast across OLED and Slate settings, confirmation dialogs, toasts, and the companion popup without writing test settings into a retained browser profile. It also proves that an anonymous run reports every signed-in journey as a skip. Chromium passes 95 of 95 checks at 1440 by 900, and Firefox passes 8 of 8.
-- Firefox verification now starts an isolated browser process, subscribes only to the network events it asserts, gives loaded-machine commands a bounded 90 seconds to answer, and retries a transient navigation refusal. Another Firefox harness or an unused log subscription can no longer stall the run.
+- Firefox verification now starts an isolated browser process, subscribes only to the network events it asserts, gives loaded-machine commands a bounded 90 seconds to answer, and retries a transient navigation refusal. Another Firefox test run or an unused log subscription can no longer stall the run.
 
 ## 1.33.0, 2026-08-21
 
@@ -604,7 +607,7 @@ Two operator-requested flagship features, collecting emotes straight from chat a
 
 - Pluralization now goes through a locale-correct `Intl.PluralRules` helper instead of a hand-built `n === 1 ? word : word + "s"` rule, which is wrong for Spanish and Portuguese (both have a "many" category English lacks). Count words route through a `plural()` helper keyed to the active locale, ready for the remaining dynamic-copy localization pass.
 - The artifact checks no longer pass vacuously. The DNR and content-script gates now fail on an empty host list or a broad `<all_urls>` match instead of an empty `.every()` reporting success, a shared exfiltration regex is proven to catch an off-origin API call and a lookalike host, and seven red probes assert each de-vacuumed gate can actually fire. The keyboard-shortcut conflict rejection the README advertises is extracted to a pure function and tested, and `normalizeShortcut` is covered.
-- A boot-execution gate now runs the concatenated bundle in a stubbed environment and asserts it bootstraps without a temporal-dead-zone read or bad const ordering across the four-module concat, a class of failure that previously passed every offline gate and surfaced only in the live browser harness. A companion red test injects a mis-ordered const and asserts the gate catches it.
+- A boot-execution gate now runs the concatenated bundle in a stubbed environment and asserts it bootstraps without a temporal-dead-zone read or bad const ordering across the four-module concat, a class of failure that previously passed every offline gate and surfaced only in the live browser run. A companion red test injects a mis-ordered const and asserts the gate catches it.
 - The emote-preferences migration from every historical schema (1 through 5) to the current schema is now covered by a test that asserts favorites, custom groups, assignments, and Kick-edit provenance survive the upgrade losslessly, the highest-risk previously untested area, which the reset/backup changes above all touch.
 - Replaced a literal NUL byte in `src/core.mjs` (the favorites-key separator) with a `\u0000` escape. The runtime string is identical, but the source is now plain text, so ripgrep no longer classifies the settings-schema module as binary, restoring the repo's own re-grep-after-edit safeguard.
 
@@ -632,7 +635,7 @@ Emote schema 4. Existing libraries migrate without loss.
 - **Saved layouts are shareable and show who is live.** A layout copies as a kick.com link carrying channel names and nothing else; opening one revalidates every slug through the same rules the grid uses, then strips the parameter so a reload does not silently reopen it. Live status for the grid and every saved layout comes from one bulk request rather than per-channel polling.
 - **The badges Kick's own markup omits now render.** Kick's chat payload carries collectible and global badges the legacy array leaves out, so a client reading only the DOM showed a gap. Badges Kick already drew are skipped, and a badge image that fails to load is replaced by its name rather than an empty box.
 - **API drift detection.** When a normalizer rejects a payload for a shape reason, the endpoint and reason are recorded, and the About page reports accumulated drift instead of silently falling back.
-- **A locked emote now says why it is locked**, subscriber emote, collectible you have not pulled, or a denial Kick gives no reason for, and links to Kick's own unlock path. Nothing is enabled or sent; the link is the only action offered. Entitlement is read across every shape Kick has used, and the default with no signal is unlocked, because the expensive failure is greying out an emote you actually own.
+- **A locked emote now says why it is locked**, subscriber emote, collectible you have not pulled, or a denial Kick gives no reason for, and links to Kick's own access path. Nothing is enabled or sent; the link is the only action offered. Entitlement is read across every shape Kick has used, and the default with no signal is available, because the expensive failure is greying out an emote you actually own.
 
 ### Changed
 
@@ -684,7 +687,7 @@ Accessibility, data safety, and hardening pass over everything 1.5.0 shipped.
 
 - **The two limitations users would otherwise hit blind are now stated.** Multi-stream chat is read-only because Kick's popout chat refuses to send from inside an iframe by design; and if Kick sign-in, sign-up, or Follow stops working, the cause is an ad-blocker filter list rather than this extension, Kick Focus blocks eleven third-party hosts and no kick.com host at all.
 - A translation-coverage gate that fails when any rendered string has no dictionary entry, verified red before being trusted.
-- The live harness now explains itself when run on a binary that cannot load extensions: Chrome 139 removed the flags it depends on from official builds.
+- The live verifier now explains itself when run on a binary that cannot load extensions: Chrome 139 removed the flags it depends on from official builds.
 
 ### Changed
 
