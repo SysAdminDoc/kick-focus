@@ -84,6 +84,12 @@ The first implementation still read as a card-heavy preferences dialog. The shel
 - P2: the companion popup and both manifests remained English-only after the main settings surface gained Spanish and Portuguese. The packages now carry matching en, es, and pt_BR catalogs, while a stored pt setting renders with pt-BR document metadata.
 - P2: longer Spanish and Portuguese status copy could have crowded the 360-pixel popup. Offline, disabled, and recovery states were rendered at 420 by 620 pixels in both languages. Labels wrap inside their cards without clipping the checkbox, state badge, feed action, or primary button.
 
+### Iteration 7, emote management discovery
+
+- P2: emote management was hidden until hover or focus. Favorite now stays visible at rest with quiet contrast, while Remove appears on hover or focus and remains one direct action away.
+- P2: the accessibility target setting enlarged the settings shell but left emote controls at their compact size. Normal emote controls now measure 24 by 24 pixels, Larger pointer targets grows them to 40 by 40 pixels, and the virtualized row geometry follows the 88-pixel tiles.
+- P2: the compact organizer had no proof across every theme. Paired reference checks at 1440 and 900 pixels plus a nine-shot Studio, OLED, and Slate matrix at 1440, 900, and 680 pixels found no overlap, clipping, or composer obstruction.
+
 ### Residual P3 differences
 
 - Layout uses a live textual Current setup summary instead of the mock's tiny schematic, improving legibility while preserving the same hierarchy.
@@ -103,6 +109,7 @@ No actionable P0, P1, or P2 visual differences remain.
 - Verified the settings shell and populated multi-stream board at 900 and 680 pixels without document-level horizontal overflow.
 - Exercised multi-stream empty, invalid-channel, disabled-control, populated-player, and read-only chat states.
 - Opened the packaged companion popup without an extension service in English, Spanish, and Portuguese. Its unavailable and disabled states remained legible with the same card geometry.
+- Verified emote Favorite visibility, Remove reachability, 24-pixel normal controls, and 40-pixel Larger pointer targets. Compared Studio, OLED, and Slate at 1440, 900, and 680 pixels.
 - Browser console inspection after the final build returned no warnings or errors.
 
 ## Main Kick theme, v1.31.0

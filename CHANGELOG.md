@@ -16,6 +16,7 @@ All notable changes are documented here. Dates use ISO 8601.
 - Reset Undo stays available until it is used or dismissed. The toast sits above the settings footer and never moves focus.
 - Kick Focus no longer claims a page-wide keyboard shortcut. Pause and recovery remain on the visible Focus control and command menu.
 - The emote organizer keeps Organize and Library visible at compact desktop widths, then wraps both labelled actions on the narrowest chat rail.
+- Every emote tile now keeps a quiet Favorite control visible. Remove appears on hover or focus, normal management controls meet the 24-pixel floor, and Larger pointer targets expands them to 40 pixels without breaking the virtualized grid.
 - The companion popup and browser metadata now follow English, Spanish, or Portuguese. A saved `pt` interface setting maps to `pt-BR`, and both packages reject missing or unused locale keys during verification.
 
 ## 1.40.0, 2026-08-25

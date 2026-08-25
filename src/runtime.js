@@ -75,6 +75,8 @@ const STICKER_USAGE_SECTION_LIMIT = 24;
 const STICKER_TILE_HEIGHT = 62;
 const STICKER_GRID_GAP = 7;
 const STICKER_TILE_MIN_WIDTH = 50;
+const STICKER_LARGE_TILE_HEIGHT = 88;
+const STICKER_LARGE_TILE_MIN_WIDTH = 84;
 // How close the viewport may get to the rendered window's edge before the
 // window moves. Four rows of slack keeps a slow scroll from re-rendering
 // continuously while never letting the viewer reach an unrendered gap.
@@ -2108,9 +2110,9 @@ const SITE_CSS = `
     [data-kf-sticker-tools] { display: flex !important; position: absolute !important; top: 3px !important; right: 3px !important; bottom: 3px !important; z-index: 3 !important; flex-direction: column !important; justify-content: space-between !important; pointer-events: none !important; }
     [data-kf-sticker-tools] button {
       display: grid !important;
-      width: 23px !important;
-      height: 23px !important;
-      min-height: 23px !important;
+      width: 24px !important;
+      height: 24px !important;
+      min-height: 24px !important;
       padding: 0 !important;
       place-items: center !important;
       border: 1px solid var(--kf-border) !important;
@@ -2122,6 +2124,9 @@ const SITE_CSS = `
       pointer-events: auto !important;
       transition: opacity 100ms ease, border-color 100ms ease, color 100ms ease !important;
     }
+    /* One quiet management action remains visible at rest. It teaches the tile
+       without covering it in controls; Remove appears on hover or focus. */
+    [data-kf-sticker-tools] [data-kf-sticker-action="pin"] { opacity: .68 !important; border-color: transparent !important; background: rgba(8,12,9,.72) !important; }
     [data-kf-sticker-item]:hover [data-kf-sticker-tools] button,
     [data-kf-sticker-item]:focus-within [data-kf-sticker-tools] button,
     [data-kf-sticker-item][data-kf-sticker-pinned="true"] [data-kf-sticker-action="pin"] { opacity: 1 !important; }
@@ -2131,6 +2136,11 @@ const SITE_CSS = `
     [data-kf-sticker-tools] button[aria-pressed="true"] .kf-icon { fill: currentColor !important; }
     [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:hover,
     [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:focus-visible { border-color: var(--kf-danger) !important; color: var(--kf-danger) !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-grid] { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important; grid-auto-rows: 88px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-item] { min-height: 88px !important; contain-intrinsic-size: auto 88px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-proxy] { min-height: 84px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-tools] button { width: 40px !important; height: 40px !important; min-height: 40px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-tools] .kf-icon { width: 18px !important; height: 18px !important; }
     [data-kf-sticker-empty] { display: grid !important; min-height: 112px !important; place-items: center !important; padding: 18px !important; color: var(--kf-text-muted) !important; font-size: 12px !important; line-height: 1.45 !important; text-align: center !important; }
     [data-kf-sticker-empty] strong { display: block !important; margin-bottom: 3px !important; color: var(--kf-text) !important; font-size: 13px !important; }
 
@@ -5396,11 +5406,18 @@ function renderStickerOrganizer() {
   measureEmoteAspect(organizer);
 }
 
+function stickerGridMetrics() {
+  return state.settings.accessibility.largeTargets
+    ? { tileHeight: STICKER_LARGE_TILE_HEIGHT, tileMinWidth: STICKER_LARGE_TILE_MIN_WIDTH }
+    : { tileHeight: STICKER_TILE_HEIGHT, tileMinWidth: STICKER_TILE_MIN_WIDTH };
+}
+
 /** How many columns the auto-fill grid resolves to at its current width. */
 function stickerGridColumns(grid) {
   const width = grid?.clientWidth || 0;
   if (!width) return 1;
-  return Math.max(1, Math.floor((width + STICKER_GRID_GAP) / (STICKER_TILE_MIN_WIDTH + STICKER_GRID_GAP)));
+  const { tileMinWidth } = stickerGridMetrics();
+  return Math.max(1, Math.floor((width + STICKER_GRID_GAP) / (tileMinWidth + STICKER_GRID_GAP)));
 }
 
 /**
@@ -5412,7 +5429,8 @@ function stickerGridColumns(grid) {
 function stickerSpacerMarkup(count, columns, side) {
   const rows = Math.ceil(Math.max(0, count) / Math.max(1, columns));
   if (rows <= 0) return '';
-  const height = rows * STICKER_TILE_HEIGHT + (rows - 1) * STICKER_GRID_GAP;
+  const { tileHeight } = stickerGridMetrics();
+  const height = rows * tileHeight + (rows - 1) * STICKER_GRID_GAP;
   return `<div data-kf-sticker-spacer="${side}" aria-hidden="true" style="height:${height}px"></div>`;
 }
 
@@ -5448,7 +5466,7 @@ function renderStickerGrid(gridHost, visible, view) {
   const grid = gridHost.querySelector('[data-kf-sticker-grid]');
   const columns = stickerGridColumns(grid);
   const slice = visibleWindow(visible, state.runtime.stickerGridAnchor);
-  const signature = [activeLocale(), view, String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end),
+  const signature = [activeLocale(), view, String(state.settings.accessibility.largeTargets), String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end),
     slice.items.map((descriptor) => descriptor.key).join(',')].join('\u0001');
   if (gridHost.dataset.kfStickerGridSignature === signature) {
     // Same tiles, possibly different state on one of them.
@@ -5560,7 +5578,7 @@ function bindStickerGridScroll(gridHost) {
     const [start, end] = String(gridHost.dataset.kfStickerWindow || '0-0').split('-').map(Number);
     if (end - start >= total) return; // everything is rendered; nothing to move
     const columns = stickerGridColumns(grid);
-    const rowHeight = STICKER_TILE_HEIGHT + STICKER_GRID_GAP;
+    const rowHeight = stickerGridMetrics().tileHeight + STICKER_GRID_GAP;
     const first = Math.floor(grid.scrollTop / rowHeight) * columns;
     const last = first + (Math.ceil(grid.clientHeight / rowHeight) + 1) * columns;
     const guard = STICKER_WINDOW_GUARD_ROWS * columns;

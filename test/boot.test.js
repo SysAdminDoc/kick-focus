@@ -553,6 +553,14 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
     'the compact emote grid must never expose a horizontal scrollbar');
   assert.match(site, /\[data-kf-sticker-scroll\][^}]*overflow-x: hidden !important/,
     'Kick own scroll shell must not expose a horizontal scrollbar around the organizer');
+  assert.match(site, /\[data-kf-sticker-tools\] \[data-kf-sticker-action="pin"\][^}]*opacity:\s*\.68 !important/,
+    'every emote tile needs one visible management affordance at rest');
+  assert.match(site, /\[data-kf-sticker-tools\] button[\s\S]*?width:\s*24px !important[\s\S]*?height:\s*24px !important/,
+    'normal emote management targets must meet the 24px floor');
+  assert.match(site, /data-kf-large-targets="true"\]\s+\[data-kf-sticker-tools\] button[^}]*width:\s*40px !important[^}]*height:\s*40px !important/,
+    'Larger targets must give emote management controls a 40px target');
+  assert.match(source, /function stickerGridMetrics\(\)[\s\S]*state\.settings\.accessibility\.largeTargets[\s\S]*STICKER_LARGE_TILE_HEIGHT[\s\S]*STICKER_LARGE_TILE_MIN_WIDTH/,
+    'large emote targets need matching virtual-grid geometry');
 
   // The tile markup and the rule that styles it must agree on the selector.
   assert.match(source, /<button type="button" data-kf-sticker-action="send"[^>]*data-kf-sticker-proxy/,

@@ -231,11 +231,12 @@ None open.
   Acceptance: Library opened from a profile comment shows Back to comment as its primary exit; returning restores the route, picker view, search, group, scroll window, and focus at the native comment control; if the original composer no longer exists, the action becomes Done and reports that the page changed; opening Library from normal settings keeps the existing settings return path.
   Complexity: S
 
-- [ ] P2: R-129: Keep emote management affordances discoverable at every supported width
+- [x] P2: R-129: Keep emote management affordances discoverable at every supported width
   Why: Tile actions rely on hover or focus and narrow top actions become icon-only, which hides organization from pointer and touchpad users who have not learned the surface.
   Evidence: design/qa/emote-picker-all-v1.38.png; design/qa/emote-picker-narrow-v1.38.png; design/qa/settings-responsive-680.jpg; visual audit on 2026-08-23
   Touches: picker and Library styles, action labels or overflow menu, settings navigation overflow cue, visual references, browser geometry checks
   Acceptance: Every tile has one visible management affordance at rest; Favorite and Remove remain reachable in one additional activation at most; narrow top actions use labels where they fit and a named overflow menu otherwise; controls are at least 24 by 24 CSS pixels normally and 40 by 40 when Larger targets is enabled; nothing clips or covers the native composer; screenshot comparison passes at 1440, 900, and 680 pixels in Studio, OLED, and Slate.
+  Shipped 2026-08-25: Favorite stays visible at rest and Remove remains directly reachable on hover or focus. Browser geometry measured 24-pixel normal controls and 40-pixel Larger pointer targets, with matching virtual-grid rows. Paired reference checks and a nine-shot theme and width matrix verified the native composer and organizer at 1440, 900, and 680 pixels in Studio, OLED, and Slate.
   Complexity: S
 
 - [ ] P2: R-130: Add a private emote workspace self-check and diagnostics block
