@@ -3,8 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertArtifactFresh } from '../scripts/artifact-freshness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// These tests read dist/. Refuse to judge a build older than the sources it
+// came from, rather than report on the previous one.
+await assertArtifactFresh();
 
 /**
  * Read the TRANSLATIONS literal out of the source and count *authored* keys.

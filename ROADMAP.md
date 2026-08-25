@@ -302,12 +302,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P1
 
-- [ ] P1 — R-145: Stop the artifact tests from passing over a stale build
-  Why: `npm test` runs `node --test` and nothing else, but a third of the suite reads `dist/kick-focus.user.js`. After any source edit those tests judge the previous build, so they can report green on code that was never built and red on code that was already fixed. Hit on 2026-08-25: a TDZ fix looked like it had not worked, because the run that "verified" it was reading the bundle from before the edit.
-  Where: package.json `test` and `coverage` scripts; the artifact-tagged tests in test/boot.test.js, test/i18n.test.js and test/strip-comments.test.js; scripts/build.mjs
-  Acceptance: A test run cannot judge a bundle older than the sources it was built from. Either the artifact-tagged tests build first, or they compare the newest source mtime against the artifact and fail with a message naming the stale file rather than asserting against it. `npm run test:unit` stays build-free, because skipping the build is the point of that one.
-  Complexity: S
-
 - [ ] P1 — R-144: Stop muting a video from demoting the player it belongs to
   Why: `sessionWatchVideoCandidate` treats `muted` as evidence a video is decorative, and rescues only what Kick's four channel-player selectors claim. Browsers autoplay muted and plenty of people watch that way, so the day `#injected-channel-player` is renamed, every muted viewer loses the session watch clock, the uptime chip and the recording countdown together, silently.
   Where: src/runtime.js `sessionWatchVideoCandidate` (the `background` field) and `VIDEO_CHANNEL_PLAYER_SELECTOR`; scripts/verify-extension.mjs session-watch probe; src/compatibility.mjs, which is where Kick's selector drift is already tracked

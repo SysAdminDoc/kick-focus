@@ -5,8 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { HIDEABLE_ELEMENTS, STICKER_GROUP_LIMIT, colorContrastRatio } from '../src/core.mjs';
+import { assertArtifactFresh } from '../scripts/artifact-freshness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// These tests read dist/. Refuse to judge a build older than the sources it
+// came from, rather than report on the previous one.
+await assertArtifactFresh();
 
 /**
  * A stub DOM node that answers every method the boot path calls. It never

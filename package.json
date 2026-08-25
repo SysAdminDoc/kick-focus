@@ -7,10 +7,10 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "npm run build && node --check dist/kick-focus.user.js && node scripts/check.mjs",
-    "test": "node --test",
+    "test": "npm run build && node --test",
     "test:unit": "node --test --experimental-test-tag-filter=unit",
     "test:artifact": "npm run build && node --test --experimental-test-tag-filter=artifact",
-    "coverage": "node --test --experimental-test-coverage",
+    "coverage": "npm run build && node --test --experimental-test-coverage",
     "verify": "npm run check && npm test",
     "verify:extension": "node scripts/verify-extension.mjs",
     "verify:firefox": "node scripts/verify-firefox.mjs",

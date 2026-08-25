@@ -5,8 +5,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { colorContrastRatio } from '../src/core.mjs';
+import { assertArtifactFresh } from '../scripts/artifact-freshness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// These tests read dist/. Refuse to judge a build older than the sources it
+// came from, rather than report on the previous one.
+await assertArtifactFresh();
 
 test('the popup chooses the higher-contrast ink for a boundary custom accent', async () => {
   const source = await readFile(resolve(root, 'src/extension/popup.js'), 'utf8');
