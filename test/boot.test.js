@@ -521,6 +521,13 @@ test('reset recovery persists without a timer and the page keyboard stays with K
   const handler = source.slice(source.indexOf('function onGlobalKeydown'), source.indexOf('\n}\n\nconst HEADER_BUTTON_BASE_CSS'));
   assert.doesNotMatch(handler, /ctrlKey|shiftKey|toLowerCase\(\) === 'f'/,
     'the global key handler still claims a page-wide shortcut');
+  const composerHandler = source.slice(source.indexOf('function onComposerSendKeydown'), source.indexOf('\n}\n\nfunction onComposerRecallClick'));
+  assert.doesNotMatch(composerHandler, /ArrowUp|preventDefault|stopPropagation|isComposerRecallGesture/,
+    'composer recall still takes a keyboard gesture instead of using its visible control');
+  assert.match(source, /\[data-kf-composer-recall\][\s\S]*?min-height:\s*32px !important/,
+    'the visible Recall control needs a normal desktop target');
+  assert.match(source, /data-kf-large-targets="true"\]\s+\[data-kf-composer-recall\][^}]*min-height:\s*40px !important/,
+    'Larger targets must grow the visible Recall control to 40px');
 });
 
 test('the emote shelf is styled by the sheet that can actually reach it', { tags: ['artifact'] }, async () => {

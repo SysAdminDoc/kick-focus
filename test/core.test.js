@@ -30,7 +30,6 @@ import {
   COMPOSER_RECALL_LIMIT,
   appendComposerRecall,
   composerRecallAt,
-  isComposerRecallGesture,
   VIEWER_HUB_CARDS,
   earnedState,
   VIEWER_HUB_STALE_MS,
@@ -3588,7 +3587,7 @@ test('chat history is bounded by age, rows, and bytes at once', { tags: ['unit']
   assert.equal(byBytes[byBytes.length - 1].id, 'h3');
 });
 
-test('composer recall is a five-message memory ring and only Shift+Up enters it', { tags: ['unit'] }, () => {
+test('composer recall is a five-message private memory ring', { tags: ['unit'] }, () => {
   assert.equal(DEFAULT_SETTINGS.content.chatComposerRecall, false);
   let messages = [];
   for (let index = 0; index < COMPOSER_RECALL_LIMIT + 2; index += 1) {
@@ -3600,9 +3599,6 @@ test('composer recall is a five-message memory ring and only Shift+Up enters it'
   assert.equal(composerRecallAt(messages, 5), 'sent 6');
   assert.deepEqual(appendComposerRecall(messages, '/w friend private'), messages);
   assert.deepEqual(appendComposerRecall(messages, 'private composer', true), messages);
-  assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: true }), true);
-  assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: false }), false);
-  assert.equal(isComposerRecallGesture({ key: 'ArrowUp', shiftKey: true, ctrlKey: true }), false);
   assert.equal(normalizeSettings({ content: { chatComposerRecall: true } }).content.chatComposerRecall, true);
 });
 

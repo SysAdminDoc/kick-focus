@@ -826,13 +826,6 @@ ageMs: 60 * 60 * 1000,
 });
 const CHAT_HISTORY_MAX_TEXT = 400;
 const COMPOSER_RECALL_LIMIT = 5;
-function isComposerRecallGesture(event = {}) {
-return event.key === 'ArrowUp'
-&& event.shiftKey === true
-&& event.altKey !== true
-&& event.ctrlKey !== true
-&& event.metaKey !== true;
-}
 function appendComposerRecall(messages = [], value = '', whisper = false) {
 const list = (Array.isArray(messages) ? messages : [])
 .filter((message) => typeof message === 'string' && message.trim())
@@ -6102,7 +6095,7 @@ const companion = companionInfo();
           ${row('People worth noticing', 'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.', `<input class="kf-text" type="text" data-set="content.chatPriorityPeople" value="${escapeHtml((value.chatPriorityPeople || []).join(', '))}" placeholder="name, name" aria-label="People worth noticing">`)}
           ${row('Sound on a mention', 'A short tone when a message matches your highlights, comes from someone you listed, or says your name. Synthesised in the browser, so nothing is downloaded. Silent while the tab is in the background, silent for your own messages, and never more than once every few seconds.', toggle('content.chatMentionSound', value.chatMentionSound, { label: 'Sound on a mention' }))}
           ${row('Hide a message for yourself', 'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.', toggle('content.chatHideMessages', value.chatHideMessages, { label: 'Hide a message for yourself' }))}
-          ${row('Recall my sent messages', 'Keep the last five messages sent from this tab in memory. Shift+Up cycles them. Whispers are skipped, reload clears them, and ordinary Arrow Up stays with Kick.', toggle('content.chatComposerRecall', value.chatComposerRecall, { label: 'Recall my sent messages' }))}
+          ${row('Recall my sent messages', 'Keep the last five messages sent from this tab in memory. A Recall button appears beside chat and cycles them. Whispers are skipped, and reload clears the list.', toggle('content.chatComposerRecall', value.chatComposerRecall, { label: 'Recall my sent messages' }))}
           ${row('Search this session’s chat', 'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.', toggle('content.chatHistory', value.chatHistory, { label: 'Search this session’s chat' }))}
           ${value.chatHistory ? `<div class="kf-row kf-row-wide" data-kf-chat-history>
             <div><h3>Session chat log</h3><p>${state.chatComfort.rows.length} ${plural(state.chatComfort.rows.length, 'message held. Capped at 400 messages, 200 KB, and one hour.', 'messages held. Capped at 400 messages, 200 KB, and one hour.')}</p></div>
@@ -7134,7 +7127,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              850149') || 0;
+const BUNDLE_BYTES = Number('              853941') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -7982,6 +7975,27 @@ const SITE_CSS = `
       background: var(--kf-panel) !important;
       box-shadow: 0 -18px 48px rgba(0,0,0,.42) !important;
     }
+
+    [data-kf-composer-recall] {
+      appearance: none !important;
+      display: inline-flex !important;
+      flex: 0 0 auto !important;
+      min-height: 32px !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 0 10px !important;
+      border: 1px solid var(--kf-border-strong) !important;
+      border-radius: 6px !important;
+      background: var(--kf-panel-raised) !important;
+      color: var(--kf-text-secondary) !important;
+      font: 700 12px/1 var(--kf-font) !important;
+      cursor: pointer !important;
+      transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease !important;
+    }
+    [data-kf-composer-recall]:hover:not(:disabled) { border-color: var(--kf-accent) !important; background: var(--kf-surface-hover) !important; color: var(--kf-text) !important; }
+    [data-kf-composer-recall]:active:not(:disabled) { background: var(--kf-surface-selected) !important; }
+    [data-kf-composer-recall]:disabled { opacity: .46 !important; cursor: not-allowed !important; }
+    html[data-kf-large-targets="true"] [data-kf-composer-recall] { min-height: 40px !important; }
 
     [data-kf-sticker-scroll] { min-width: 0 !important; overflow-x: hidden !important; }
     [data-kf-sticker-native-shell] { min-width: 0 !important; width: 100% !important; grid-template-columns: minmax(0, 1fr) !important; }
@@ -12021,6 +12035,7 @@ applyMediaMemory();
 syncSessionWatchTime();
 applyPlayerResilience();
 applyChatPause();
+syncComposerRecallControl();
 observeChatStickerDiscovery();
 refreshLiveChannel().catch(() => {});
 const resume = yieldToInput();
@@ -12192,9 +12207,12 @@ state.runtime.chatPaused = false;
 state.observers.chat?.disconnect?.();
 state.observers.chat = null;
 }
-if (path === 'content.chatComposerRecall' && !state.settings.content.chatComposerRecall) {
+if (path === 'content.chatComposerRecall') {
+if (!state.settings.content.chatComposerRecall) {
 state.chatComfort.composerRecall = [];
 state.chatComfort.composerRecallIndex = -1;
+}
+syncComposerRecallControl();
 }
 if (path === 'content.blocklistSubscription' && !state.settings.content.blocklistSubscription) clearRemoteBlocklist();
 if (path === 'content.blocklistUrl' && state.remoteBlocklist.source !== state.settings.content.blocklistUrl) clearRemoteBlocklist();
@@ -13354,7 +13372,11 @@ const TRANSLATIONS = {
 'Hide a message for yourself': ['Ocultar un mensaje solo para ti', 'Esconder uma mensagem só para ti'],
 'Adds a small dismiss control to each message. It hides that message in your own browser for this session only, changes nothing for anyone else, and offers an undo.': ['Añade un pequeño control de descarte a cada mensaje. Oculta ese mensaje en tu navegador solo durante esta sesión, no cambia nada para los demás y ofrece deshacer.', 'Adiciona um pequeno controlo de dispensa a cada mensagem. Esconde essa mensagem no teu navegador apenas nesta sessão, não muda nada para os outros e oferece anular.'],
 'Recall my sent messages': ['Recordar mis mensajes enviados', 'Recordar as minhas mensagens enviadas'],
-'Keep the last five messages sent from this tab in memory. Shift+Up cycles them. Whispers are skipped, reload clears them, and ordinary Arrow Up stays with Kick.': ['Guarda en memoria los últimos cinco mensajes enviados desde esta pestaña. Mayús+Arriba los recorre. Los susurros se omiten, recargar los borra y Flecha arriba sigue siendo de Kick.', 'Guarda na memória as últimas cinco mensagens enviadas neste separador. Shift+Cima percorre-as. Os sussurros são ignorados, recarregar apaga-as e a Seta para cima continua com o Kick.'],
+'Keep the last five messages sent from this tab in memory. A Recall button appears beside chat and cycles them. Whispers are skipped, and reload clears the list.': ['Guarda en memoria los últimos cinco mensajes enviados desde esta pestaña. Un botón Recordar aparece junto al chat y los recorre. Los susurros se omiten y recargar borra la lista.', 'Guarda na memória as últimas cinco mensagens enviadas neste separador. Um botão Recordar aparece ao lado do chat e percorre-as. Os sussurros são ignorados e recarregar apaga a lista.'],
+'Recall': ['Recordar', 'Recordar'],
+'No sent messages to recall yet.': ['Todavía no hay mensajes enviados para recordar.', 'Ainda não há mensagens enviadas para recordar.'],
+'Recall a previous sent message. {count} saved in this tab.': ['Recordar un mensaje enviado anteriormente. Hay {count} guardados en esta pestaña.', 'Recordar uma mensagem enviada anteriormente. Há {count} guardadas neste separador.'],
+'Recalled saved message {position} of {count}.': ['Mensaje guardado {position} de {count} recuperado.', 'Mensagem guardada {position} de {count} recuperada.'],
 'Search this session’s chat': ['Buscar en el chat de esta sesión', 'Procurar no chat desta sessão'],
 'Keeps what this tab has seen so you can find it again. It stays in memory, never reaches storage, and is gone on reload. Whispers are never recorded, and a message a moderator removes leaves the log the moment the deletion arrives.': ['Guarda lo que esta pestaña ha visto para que puedas encontrarlo otra vez. Queda en memoria, nunca llega al almacenamiento y desaparece al recargar. Los susurros no se guardan nunca, y un mensaje que un moderador elimine sale del registro en cuanto llega el borrado.', 'Guarda o que este separador viu para que o possas encontrar outra vez. Fica em memória, nunca chega ao armazenamento e desaparece ao recarregar. Os sussurros nunca são guardados, e uma mensagem que um moderador apague sai do registo assim que a eliminação chega.'],
 'Session chat log': ['Registro del chat de esta sesión', 'Registo do chat desta sessão'],
@@ -14348,8 +14370,9 @@ GM_registerMenuCommand('Open Kick Focus commands', () => openCommandMenu());
 } catch {
 }
 document.addEventListener('keydown', onGlobalKeydown, true);
-document.addEventListener('keydown', guard('composer recall', onComposerKeydown), true);
+document.addEventListener('keydown', guard('composer history', onComposerSendKeydown), true);
 document.addEventListener('submit', guard('composer recall', onComposerSubmit), true);
+document.addEventListener('click', guard('composer recall', onComposerRecallClick), true);
 document.addEventListener('click', guard('composer recall', onComposerSendClick), true);
 document.addEventListener('click', rememberWatchedCard, true);
 document.addEventListener('visibilitychange', () => {
@@ -15911,6 +15934,40 @@ function composerIsWhisper(input) {
 return /^\/messages(?:\/|$)/i.test(location.pathname)
 || Boolean(input?.closest?.('[data-testid*="whisper" i], [data-testid*="direct-message" i], [data-testid*="message-thread" i]'));
 }
+function syncComposerRecallControl() {
+const controls = [...document.querySelectorAll('[data-kf-composer-recall]')];
+if (!state.settings.content.chatComposerRecall) {
+for (const control of controls) control.remove();
+return;
+}
+const input = chatMessageInput();
+const room = input?.closest?.(CHAT_ROOM_SELECTOR);
+for (const control of controls) if (!room || !room.contains(control)) control.remove();
+if (!input || !room) return;
+const emoteTrigger = [...room.querySelectorAll('button[aria-controls*="emote" i], button[data-testid*="emote" i], button[aria-label*="emote" i], button[data-fixture-emote-toggle]')]
+.find((candidate) => !candidate.closest('#chat-emotes-picker-panel, [data-testid*="emotes-picker-panel" i]'));
+const host = emoteTrigger?.parentElement || input.parentElement;
+if (!host || !room.contains(host)) return;
+let control = room.querySelector('[data-kf-composer-recall]');
+if (!control) {
+control = document.createElement('button');
+control.type = 'button';
+control.dataset.kfComposerRecall = 'true';
+}
+if (emoteTrigger) {
+if (control.parentElement !== host || control.nextElementSibling !== emoteTrigger) host.insertBefore(control, emoteTrigger);
+} else if (control.parentElement !== host) {
+host.append(control);
+}
+const count = state.chatComfort.composerRecall.length;
+control.textContent = tr('Recall');
+control.disabled = count === 0;
+const description = count
+? trf('Recall a previous sent message. {count} saved in this tab.', { count })
+: tr('No sent messages to recall yet.');
+control.setAttribute('aria-label', description);
+control.title = description;
+}
 function rememberComposerMessage(input) {
 if (!state.settings.content.chatComposerRecall || !input) return;
 const text = composerText(input);
@@ -15924,6 +15981,7 @@ state.chatComfort.composerRecall = next;
 state.chatComfort.composerRecallIndex = -1;
 state.runtime.composerRememberedText = text;
 state.runtime.composerRememberedAt = now;
+syncComposerRecallControl();
 }
 function replaceComposerText(input, text) {
 state.runtime.recallingComposer = true;
@@ -15950,20 +16008,26 @@ return document.execCommand('insertText', false, text) === true;
 state.runtime.recallingComposer = false;
 }
 }
-function onComposerKeydown(event) {
+function onComposerSendKeydown(event) {
 const input = composerInputFor(event.target);
 if (!input) return;
 if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
 rememberComposerMessage(input);
-return;
 }
-if (!state.settings.content.chatComposerRecall || !isComposerRecallGesture(event)) return;
+}
+function onComposerRecallClick(event) {
+const control = event.target?.closest?.('[data-kf-composer-recall]');
+if (!control || control.disabled || !state.settings.content.chatComposerRecall) return;
+const room = control.closest(CHAT_ROOM_SELECTOR);
+const input = room ? validChatComposer(room.querySelector(CHAT_COMPOSER_SELECTOR)) : null;
+if (!input) return;
 const messages = state.chatComfort.composerRecall;
 if (!messages.length) return;
 const nextIndex = (state.chatComfort.composerRecallIndex + 1) % messages.length;
 const recalled = composerRecallAt(messages, nextIndex);
 if (!recalled || !replaceComposerText(input, recalled)) return;
 state.chatComfort.composerRecallIndex = nextIndex;
+announce(trf('Recalled saved message {position} of {count}.', { position: nextIndex + 1, count: messages.length }));
 event.preventDefault();
 event.stopPropagation();
 }
@@ -15979,7 +16043,7 @@ const input = room ? validChatComposer(event.target?.querySelector?.(CHAT_COMPOS
 rememberComposerMessage(input);
 }
 function onComposerSendClick(event) {
-const button = event.target?.closest?.('[data-testid="chat-send-button"], [data-testid="send-message"], button[type="submit"][aria-label*="send" i]');
+const button = event.target?.closest?.('[data-testid="chat-send"], [data-testid="chat-send-button"], [data-testid="send-message"], button[type="submit"][aria-label*="send" i]');
 const room = button?.closest?.(CHAT_ROOM_SELECTOR);
 if (!room) return;
 rememberComposerMessage(validChatComposer(room.querySelector(CHAT_COMPOSER_SELECTOR)));
@@ -16094,8 +16158,8 @@ if (key.startsWith('kf')) delete root.dataset[key];
 for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
 root.style.removeProperty(property);
 }
-for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization], [data-kf-following-preview]')) {
-if (node.matches?.('[data-kf-card-actions], [data-kf-card-uptime], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
+for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization], [data-kf-following-preview], [data-kf-composer-recall]')) {
+if (node.matches?.('[data-kf-card-actions], [data-kf-card-uptime], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-composer-recall]')) node.remove();
 else {
 for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
 }

@@ -1393,15 +1393,6 @@ export const CHAT_HISTORY_MAX_TEXT = 400;
 /** Small by design. This is a composer convenience, not another chat log. */
 export const COMPOSER_RECALL_LIMIT = 5;
 
-/** Only the modified gesture belongs to this feature. Plain ArrowUp stays with Kick. */
-export function isComposerRecallGesture(event = {}) {
-  return event.key === 'ArrowUp'
-    && event.shiftKey === true
-    && event.altKey !== true
-    && event.ctrlKey !== true
-    && event.metaKey !== true;
-}
-
 /**
  * Keep one local send in a bounded ring. Private-message commands and an
  * explicitly private composer are refused before any text reaches the ring.
@@ -1415,7 +1406,7 @@ export function appendComposerRecall(messages = [], value = '', whisper = false)
   return [...list, text].slice(-COMPOSER_RECALL_LIMIT);
 }
 
-/** Newest first and circular, so repeated Shift+Up never falls into an empty state. */
+/** Newest first and circular, so repeated Recall presses never reach an empty state. */
 export function composerRecallAt(messages = [], index = 0) {
   const list = (Array.isArray(messages) ? messages : []).filter((message) => typeof message === 'string');
   if (!list.length) return '';

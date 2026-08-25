@@ -1837,7 +1837,10 @@ try {
     chat.style.cssText = 'position:fixed;left:-3000px;top:0';
     const input = document.createElement('textarea');
     input.setAttribute('data-testid', 'chat-input');
-    chat.append(input);
+    const emotes = document.createElement('button');
+    emotes.type = 'button';
+    emotes.setAttribute('aria-label', 'Emotes');
+    chat.append(input, emotes);
     document.body.prepend(chat);
     const type = (value) => {
       input.value = value;
@@ -1869,18 +1872,24 @@ try {
       type('draft stays');
       const plainPrevented = key('ArrowUp');
       const plainValue = input.value;
-      const firstPrevented = key('ArrowUp', true);
+      const recall = chat.querySelector('[data-kf-composer-recall]');
+      const controlVisible = Boolean(recall?.getClientRects().length);
+      const controlEnabled = recall?.disabled === false;
+      const controlText = recall?.textContent?.trim() || '';
+      const controlLabel = recall?.getAttribute('aria-label') || '';
+      recall?.click();
       const first = input.value;
-      const secondPrevented = key('ArrowUp', true);
+      recall?.click();
       const second = input.value;
-      const thirdPrevented = key('ArrowUp', true);
+      recall?.click();
       const third = input.value;
       await setEnabled(false);
+      const removedWhenDisabled = !chat.querySelector('[data-kf-composer-recall]');
       type('disabled draft');
       const disabledPrevented = key('ArrowUp', true);
       return {
-        ok: true, plainPrevented, plainValue, firstPrevented, first,
-        secondPrevented, second, thirdPrevented, third,
+        ok: true, plainPrevented, plainValue, controlVisible, controlEnabled, controlText, controlLabel,
+        first, second, third, removedWhenDisabled,
         disabledPrevented, disabledValue: input.value,
       };
     } finally {
@@ -1895,15 +1904,18 @@ try {
     }
   })()`);
   const composerRecall = composerRecallProbe.value || {};
-  record('composer recall cycles only this tab own public sends on Shift+Up',
+  record('composer recall cycles only this tab own public sends from a visible control',
     composerRecall.ok === true
       && composerRecall.plainPrevented === false && composerRecall.plainValue === 'draft stays'
-      && composerRecall.firstPrevented === true && composerRecall.first === 'second local send'
-      && composerRecall.secondPrevented === true && composerRecall.second === 'first local send'
-      && composerRecall.thirdPrevented === true && composerRecall.third === 'second local send'
+      && composerRecall.controlVisible === true && composerRecall.controlEnabled === true
+      && composerRecall.controlText === 'Recall' && composerRecall.controlLabel.includes('2')
+      && composerRecall.first === 'second local send'
+      && composerRecall.second === 'first local send'
+      && composerRecall.third === 'second local send'
+      && composerRecall.removedWhenDisabled === true
       && composerRecall.disabledPrevented === false && composerRecall.disabledValue === 'disabled draft',
     composerRecall.ok
-      ? `plain=${composerRecall.plainPrevented}/${JSON.stringify(composerRecall.plainValue)}, recalls=${JSON.stringify([composerRecall.first, composerRecall.second, composerRecall.third])}, disabled=${composerRecall.disabledPrevented}/${JSON.stringify(composerRecall.disabledValue)}`
+      ? `control=${composerRecall.controlVisible}/${composerRecall.controlEnabled}/${JSON.stringify(composerRecall.controlText)}, plain=${composerRecall.plainPrevented}/${JSON.stringify(composerRecall.plainValue)}, recalls=${JSON.stringify([composerRecall.first, composerRecall.second, composerRecall.third])}, removed=${composerRecall.removedWhenDisabled}, disabled=${composerRecall.disabledPrevented}/${JSON.stringify(composerRecall.disabledValue)}`
       : composerRecall.why);
 
   // StreamerStats refuses framing with X-Frame-Options: DENY, so the profile

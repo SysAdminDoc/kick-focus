@@ -1229,15 +1229,19 @@ const checks = [
     return grid >= 0 && separator >= 0 && release > grid && release > separator
       && extractFunction(source, 'restoreEnhancedPage').includes('syncPageInert()');
   })()],
-  ['composer recall is opt-in, session-only, and leaves plain ArrowUp to Kick', (() => {
-    const start = source.indexOf('function rememberComposerMessage');
+  ['composer recall is opt-in, session-only, visible, and leaves the keyboard to Kick', (() => {
+    const start = source.indexOf('function syncComposerRecallControl');
     const end = source.indexOf('function insertStickerName', start);
     const region = start >= 0 && end > start ? source.slice(start, end) : '';
     return source.includes('chatComposerRecall: false')
-      && source.includes("document.addEventListener('keydown', guard('composer recall', onComposerKeydown), true)")
+      && source.includes("document.addEventListener('keydown', guard('composer history', onComposerSendKeydown), true)")
+      && source.includes("document.addEventListener('click', guard('composer recall', onComposerRecallClick), true)")
       && region.includes('validChatComposer')
       && region.includes('closest?.(CHAT_ROOM_SELECTOR)')
-      && region.includes('isComposerRecallGesture(event)')
+      && region.includes('data-kf-composer-recall')
+      && region.includes("textContent = tr('Recall')")
+      && !region.includes('isComposerRecallGesture')
+      && !source.includes('Shift+Up')
       && !/gm(?:Set|Delete)|localStorage|sessionStorage/.test(region);
   })()],
   ['followed-channel previews reuse existing images, clamp on-screen, and freeze under reduced motion', (() => {
