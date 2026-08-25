@@ -9684,6 +9684,7 @@ const settingsSurface = createSettings({
   refreshViewerCollectibles,
   remoteBlocklistSummary,
   renderChatHistoryResults,
+  resettableSection,
   rewardStatusSummary,
   setMarkup,
   settingsFocusSelector,

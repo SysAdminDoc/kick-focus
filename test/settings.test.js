@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createSettings } from '../src/settings.mjs';
 import {
   DEFAULT_SETTINGS,
@@ -28,6 +29,8 @@ const EXPECTED_HOST_KEYS = [
   'storageHealth', 'TELEMETRY_HOSTS', 'tr', 'trf', 'VERSION', 'VIEWER_HUB_REASONS',
   'resettableSection', 'undoSlotLabel', 'VIEWER_HUB_REWARD_WORDS', 'VIEWER_HUB_TITLES', 'viewerHubCards', 'viewerHubSummary',
 ].sort();
+
+const RUNTIME_SOURCE = readFileSync(new URL('../src/runtime.js', import.meta.url), 'utf8');
 
 function makeHost() {
   const reads = new Set();
@@ -70,6 +73,15 @@ test('the settings factory declares every page-owned dependency through its host
     'NAV_ITEMS', 'uiIcon', 'stickerLibrarySummary', 'renderViewerHubCards', 'renderSettingsPage',
   ]);
   assert.equal(typeof surface.renderSettingsPage, 'function');
+});
+
+test('the runtime supplies every collaborator the settings factory declares', { tags: ['unit'] }, () => {
+  const block = RUNTIME_SOURCE.match(/const settingsSurface = createSettings\(\{([\s\S]*?)\n\}\);/);
+  assert.ok(block, 'the runtime settings host object could not be found');
+  const supplied = [...block[1].matchAll(/^\s{2}([A-Za-z_$][\w$]*),$/gm)]
+    .map((match) => match[1])
+    .sort();
+  assert.deepEqual(supplied, EXPECTED_HOST_KEYS);
 });
 
 test('the extracted surface still composes navigation, icons, summaries, and viewer cards', { tags: ['unit'] }, () => {

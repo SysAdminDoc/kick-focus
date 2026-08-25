@@ -7120,7 +7120,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              846212') || 0;
+const BUNDLE_BYTES = Number('              846231') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -14363,6 +14363,7 @@ rankSettingsMatches,
 refreshViewerCollectibles,
 remoteBlocklistSummary,
 renderChatHistoryResults,
+resettableSection,
 rewardStatusSummary,
 setMarkup,
 settingsFocusSelector,
