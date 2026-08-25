@@ -7,7 +7,7 @@ import { engineComplaint, SUPPORTED_ENGINE } from '../scripts/engine.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the supported Node range is the 24 LTS line, at both ends', { tag: 'unit' }, () => {
+test('the supported Node range is the 24 LTS line, at both ends', { tags: ['unit'] }, () => {
   // Inside.
   for (const version of ['v24.19.0', '24.19.0', 'v24.19.5', 'v24.20.0', 'v24.99.99']) {
     assert.equal(engineComplaint(version), '', `${version} should be supported`);
@@ -32,14 +32,14 @@ test('the supported Node range is the 24 LTS line, at both ends', { tag: 'unit' 
   }
 });
 
-test('the declared engine range and the enforced one are the same range', { tag: 'unit' }, async () => {
+test('the declared engine range and the enforced one are the same range', { tags: ['unit'] }, async () => {
   // package.json is what a reader and npm see; scripts/engine.mjs is what
   // actually stops a run. Two copies of a range is how one of them drifts.
   const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
   assert.equal(manifest.engines.node, SUPPORTED_ENGINE);
 });
 
-test('the build and every gate refuse an unsupported interpreter', { tag: 'unit' }, async () => {
+test('the build and every gate refuse an unsupported interpreter', { tags: ['unit'] }, async () => {
   // A guard nothing calls is a comment. Each of these is an entry point a
   // release actually goes through.
   for (const script of ['build.mjs', 'check.mjs', 'release-checklist.mjs']) {

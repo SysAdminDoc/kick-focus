@@ -27,7 +27,7 @@ class FakeNode {
   }
 }
 
-test('ordered compatibility probes match current and localized shell shapes', { tag: 'unit' }, () => {
+test('ordered compatibility probes match current and localized shell shapes', { tags: ['unit'] }, () => {
   const main = new FakeNode({
     all: {
       '[data-testid="livestream-results-card"], [data-testid="stream-card"]': [new FakeNode()],
@@ -58,7 +58,7 @@ test('ordered compatibility probes match current and localized shell shapes', { 
   });
 });
 
-test('the separator probes ignore this build own decoration', { tag: 'unit' }, () => {
+test('the separator probes ignore this build own decoration', { tags: ['unit'] }, () => {
   // tagChatPanel writes role="separator" plus the range values onto whichever
   // element won. Without the :not(), the day Kick's test id disappears the
   // fallback probes would match Kick Focus's own attributes and report a
@@ -81,7 +81,7 @@ test('the separator probes ignore this build own decoration', { tag: 'unit' }, (
   assert.equal(snapshot.probes.chatSeparator, null);
 });
 
-test('compatibility self-test is route-aware and names missing hooks', { tag: 'unit' }, () => {
+test('compatibility self-test is route-aware and names missing hooks', { tags: ['unit'] }, () => {
   const main = new FakeNode();
   const sidebar = new FakeNode();
   const root = new FakeNode({ query: {
@@ -98,7 +98,7 @@ test('compatibility self-test is route-aware and names missing hooks', { tag: 'u
   assert.match(compatibilitySummary(channel), /missing chat/);
 });
 
-test('every hideable element names a probe that exists and is ordered', { tag: 'unit' }, () => {
+test('every hideable element names a probe that exists and is ordered', { tags: ['unit'] }, () => {
   // The catalog stores a probe *name*, so a typo or a renamed hook produces a
   // switch in the settings panel that silently hides nothing at all.
   for (const entry of HIDEABLE_ELEMENTS) {
@@ -111,7 +111,7 @@ test('every hideable element names a probe that exists and is ordered', { tag: '
   }
 });
 
-test('a hideable probe resolves through its ordered fallbacks', { tag: 'unit' }, () => {
+test('a hideable probe resolves through its ordered fallbacks', { tags: ['unit'] }, () => {
   const button = new FakeNode();
   const fallback = new FakeNode();
 
@@ -137,7 +137,7 @@ test('a hideable probe resolves through its ordered fallbacks', { tag: 'unit' },
   assert.deepEqual(findAllProbe(new FakeNode(), 'playerPip'), { elements: [], probe: null });
 });
 
-test('followed-channel preview probes resolve direct, wrapper, and owner controls in order', { tag: 'unit' }, () => {
+test('followed-channel preview probes resolve direct, wrapper, and owner controls in order', { tags: ['unit'] }, () => {
   const nestedLink = new FakeNode();
   const directButton = new FakeNode();
   const ownerLink = new FakeNode();
@@ -160,7 +160,7 @@ test('followed-channel preview probes resolve direct, wrapper, and owner control
 });
 
 
-test('hiding declines a probe that is not the recorded winner for the hook', { tag: 'unit' }, () => {
+test('hiding declines a probe that is not the recorded winner for the hook', { tags: ['unit'] }, () => {
   const button = new FakeNode();
   const fallback = new FakeNode();
 
@@ -198,7 +198,7 @@ test('hiding declines a probe that is not the recorded winner for the hook', { t
   assert.equal(unrecorded.declined, 'unrecorded');
 });
 
-test('every hideable hook records a winner that is one of its own probes', { tag: 'unit' }, () => {
+test('every hideable hook records a winner that is one of its own probes', { tags: ['unit'] }, () => {
   for (const entry of HIDEABLE_ELEMENTS) {
     const recorded = HIDEABLE_PROBE_WINNERS[entry.probe];
     assert.ok(recorded, `${entry.id} has no recorded winning probe, so it can never hide anything`);
@@ -241,7 +241,7 @@ function derivedRoot() {
   return { root, card, categoryCard, video, container, rows: [rowA, rowB] };
 }
 
-test('card loading skeletons are absent, not a broken slug derivation', { tag: 'unit' }, () => {
+test('card loading skeletons are absent, not a broken slug derivation', { tags: ['unit'] }, () => {
   const skeleton = new FakeNode();
   const root = new FakeNode({
     all: { '[data-testid="livestream-results-card"], [data-testid="stream-card"]': [skeleton] },
@@ -251,7 +251,7 @@ test('card loading skeletons are absent, not a broken slug derivation', { tag: '
   assert.equal(result.checked, 0);
 });
 
-test('a probe that resolves while its derived value does not is reported as broken', { tag: 'unit' }, () => {
+test('a probe that resolves while its derived value does not is reported as broken', { tags: ['unit'] }, () => {
   const { root, card, video, container, rows } = derivedRoot();
 
   const healthy = derivedSnapshot(root, {
@@ -301,7 +301,7 @@ test('a probe that resolves while its derived value does not is reported as brok
   assert.match(slug.detail, /resolved but derived an empty string/);
 });
 
-test('a container that is the video itself is the defect, not a near miss', { tag: 'unit' }, () => {
+test('a container that is the video itself is the defect, not a near miss', { tags: ['unit'] }, () => {
   const { root, video, container } = derivedRoot();
   // `closest()` matches the element it starts from — the 2026-08-17 bug that
   // killed three features while every probe reported a match.
@@ -321,7 +321,7 @@ test('a container that is the video itself is the defect, not a near miss', { ta
   assert.equal(ancestor.outcome, 'ok');
 });
 
-test('an implausible quality height fails, and Auto does not', { tag: 'unit' }, () => {
+test('an implausible quality height fails, and Auto does not', { tags: ['unit'] }, () => {
   const { root } = derivedRoot();
   const run = (qualityHeight) => derivedSnapshot(root, {
     cardSlug: () => 'somestreamer',
@@ -339,7 +339,7 @@ test('an implausible quality height fails, and Auto does not', { tag: 'unit' }, 
   assert.equal(run(() => '720').outcome, 'broken', 'a string is not a height');
 });
 
-test('nothing to derive from is absent, and no deriver is unchecked — neither is a defect', { tag: 'unit' }, () => {
+test('nothing to derive from is absent, and no deriver is unchecked — neither is a defect', { tags: ['unit'] }, () => {
   const empty = new FakeNode();
   const absent = derivedSnapshot(empty, { cardSlug: () => '', playerContainer: () => null, channelPlayer: () => 'generic', qualityHeight: () => NaN });
   assert.deepEqual([...new Set(absent.map((entry) => entry.outcome))], ['absent'],
@@ -350,7 +350,7 @@ test('nothing to derive from is absent, and no deriver is unchecked — neither 
     'no deriver says nothing either way rather than quietly passing');
 });
 
-test('the summary names both the probe and the derived value', { tag: 'unit' }, () => {
+test('the summary names both the probe and the derived value', { tags: ['unit'] }, () => {
   const { root, container } = derivedRoot();
   const withBreak = compatibilitySnapshot(root, {
     expectedChat: false,
@@ -371,7 +371,7 @@ test('the summary names both the probe and the derived value', { tag: 'unit' }, 
   assert.match(summary, /card resolved but a card yields a channel slug failed/);
 });
 
-test('every declared expectation names a probe and can judge', { tag: 'unit' }, () => {
+test('every declared expectation names a probe and can judge', { tags: ['unit'] }, () => {
   assert.ok(DERIVED_EXPECTATIONS.length >= 3);
   for (const expectation of DERIVED_EXPECTATIONS) {
     assert.ok(expectation.id && expectation.probe && expectation.claim, 'an expectation must say what it checks');
@@ -381,7 +381,7 @@ test('every declared expectation names a probe and can judge', { tag: 'unit' }, 
 });
 
 
-test('a category card yielding no channel slug is normal, not drift', { tag: 'unit' }, () => {
+test('a category card yielding no channel slug is normal, not drift', { tags: ['unit'] }, () => {
   const { root, card, container } = derivedRoot();
   // A discovery page mixes channel cards with category cards, and
   // `cardSlugFromPath` returns '' for a category on purpose. Only a clean
@@ -404,7 +404,7 @@ test('a category card yielding no channel slug is normal, not drift', { tag: 'un
   assert.equal(sweep.failed, 2);
 });
 
-test('a single bad player container is broken even among many', { tag: 'unit' }, () => {
+test('a single bad player container is broken even among many', { tags: ['unit'] }, () => {
   const { root } = derivedRoot();
   // Unlike cards, there is no legitimate reason for a container to be the
   // video, so this expectation tolerates nothing.

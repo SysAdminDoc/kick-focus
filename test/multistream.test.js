@@ -232,7 +232,7 @@ globalThis.BroadcastChannel = class {
 const framesIn = (grid) => grid.querySelectorAll('[data-kf-multistream-tile]')
   .map((tile) => ({ slug: tile.dataset.kfMultistreamTile, frame: tile.querySelector('iframe'), tile }));
 
-test('every function the surface hands back can be called against a stub host', { tag: 'unit' }, async () => {
+test('every function the surface hands back can be called against a stub host', { tags: ['unit'] }, async () => {
   // The point of the host boundary: a dependency the module forgot to take
   // would resolve out of the bundle scope in the artifact and be invisible,
   // but throws a ReferenceError here. Calling all fifteen is the check.
@@ -247,7 +247,7 @@ test('every function the surface hands back can be called against a stub host', 
   }
 });
 
-test('a tile that is still wanted keeps the exact iframe it already had', { tag: 'unit' }, () => {
+test('a tile that is still wanted keeps the exact iframe it already had', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha' } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -274,7 +274,7 @@ test('a tile that is still wanted keeps the exact iframe it already had', { tag:
   assert.equal(trimmed[0].frame, before[0].frame, 'alpha survives the removal untouched');
 });
 
-test('exactly one tile carries audio, and pausing unloads every document', { tag: 'unit' }, () => {
+test('exactly one tile carries audio, and pausing unloads every document', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta', 'gamma'], focus: 'beta' } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -298,7 +298,7 @@ test('exactly one tile carries audio, and pausing unloads every document', { tag
   assert.deepEqual(sources, ['about:blank', 'about:blank', 'about:blank'], 'pausing stops every player');
 });
 
-test('a re-render only re-points the frames whose audio actually changed', { tag: 'unit' }, () => {
+test('a re-render only re-points the frames whose audio actually changed', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha' } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -317,7 +317,7 @@ test('a re-render only re-points the frames whose audio actually changed', { tag
   assert.deepEqual(writes.sort(), ['alpha', 'beta'], 'moving focus touches only the two frames that swapped audio');
 });
 
-test('a commit merges with what another tab stored rather than overwriting it', { tag: 'unit' }, () => {
+test('a commit merges with what another tab stored rather than overwriting it', { tags: ['unit'] }, () => {
   const { host, state, store } = makeHost({ multistream: { streams: ['alpha'] } });
   const surface = createMultistream(host);
 
@@ -335,7 +335,7 @@ test('a commit merges with what another tab stored rather than overwriting it', 
   assert.deepEqual([...after.streams].sort(), ['alpha', 'delta', 'gamma']);
 });
 
-test('the roll-call answers with a slug only from a channel page, and offers what is missing', { tag: 'unit' }, () => {
+test('the roll-call answers with a slug only from a channel page, and offers what is missing', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha'] } });
   const surface = createMultistream(host);
 
@@ -372,7 +372,7 @@ test('the roll-call answers with a slug only from a channel page, and offers wha
   assert.deepEqual([...state.multistream.streams].sort(), ['alpha', 'beta']);
 });
 
-test('the header toggle adds, removes, and offers an undo for each', { tag: 'unit' }, () => {
+test('the header toggle adds, removes, and offers an undo for each', { tags: ['unit'] }, () => {
   const { host, state, calls } = makeHost();
   const surface = createMultistream(host);
   host.__slug = 'alpha';
@@ -406,7 +406,7 @@ test('the header toggle adds, removes, and offers an undo for each', { tag: 'uni
   assert.equal(calls.toasts.length, before);
 });
 
-test('a typed channel is parsed, and junk is reported instead of added', { tag: 'unit' }, () => {
+test('a typed channel is parsed, and junk is reported instead of added', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost();
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -421,7 +421,7 @@ test('a typed channel is parsed, and junk is reported instead of added', { tag: 
   assert.equal(dom.error.hidden, false);
 });
 
-test('closing the grid drops every player document', { tag: 'unit' }, () => {
+test('closing the grid drops every player document', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha' } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -435,7 +435,7 @@ test('closing the grid drops every player document', { tag: 'unit' }, () => {
   assert.equal(state.observers.multistream, null);
 });
 
-test('opening and closing the grid tells the page to re-decide what is inert', { tag: 'unit' }, () => {
+test('opening and closing the grid tells the page to re-decide what is inert', { tags: ['unit'] }, () => {
   // The grid is a modal overlay owned by another module, so the page behind it
   // can only be made inert if the grid says when it opened and when it closed.
   // Without both calls the grid is modal for Tab and open for the pointer.
@@ -455,7 +455,7 @@ test('opening and closing the grid tells the page to re-decide what is inert', {
   assert.deepEqual(calls, [false, true]);
 });
 
-test('an add is broadcast once, and applying it twice lands in the same place', { tag: 'unit' }, () => {
+test('an add is broadcast once, and applying it twice lands in the same place', { tags: ['unit'] }, () => {
   const { host: a, state: aState, store } = makeHost({ multistream: { streams: ['alpha'] } });
   const surfaceA = createMultistream(a);
   surfaceA.multistreamSyncChannel();
@@ -499,7 +499,7 @@ test('an add is broadcast once, and applying it twice lands in the same place', 
   assert.deepEqual([...aState.multistream.streams].sort(), ['alpha', 'beta']);
 });
 
-test('a re-read on open picks up what a tab never heard broadcast', { tag: 'unit' }, () => {
+test('a re-read on open picks up what a tab never heard broadcast', { tags: ['unit'] }, () => {
   const { host, state, store, dom } = makeHost({ multistream: { streams: ['alpha'] } });
   const surface = createMultistream(host);
   surface.multistreamSyncChannel();
@@ -516,7 +516,7 @@ test('a re-read on open picks up what a tab never heard broadcast', { tag: 'unit
   assert.equal(dom.backdrop.hidden, false);
 });
 
-test('closing the grid hands focus back to whatever opened it', { tag: 'unit' }, () => {
+test('closing the grid hands focus back to whatever opened it', { tags: ['unit'] }, () => {
   // The opener used to be read with document.activeElement, which retargets to
   // the shadow host whenever focus is inside a shadow root. Every control this
   // build injects is in one, and the two hosts are a plain span and a plain
@@ -537,7 +537,7 @@ test('closing the grid hands focus back to whatever opened it', { tag: 'unit' },
   assert.equal(state.multistreamOpener, null, 'and the slot is released');
 });
 
-test('the card chip toggles one channel and refuses a full grid', { tag: 'unit' }, () => {
+test('the card chip toggles one channel and refuses a full grid', { tags: ['unit'] }, () => {
   const painted = [];
   const { host, state, calls } = makeHost({ host: { syncCardMultiState: () => painted.push(true) } });
   const surface = createMultistream(host);
@@ -564,7 +564,7 @@ test('the card chip toggles one channel and refuses a full grid', { tag: 'unit' 
   assert.equal(surface.toggleMultistreamSlug('chan0').added, false);
 });
 
-test('only a plain record is treated as a message payload', { tag: 'unit' }, () => {
+test('only a plain record is treated as a message payload', { tags: ['unit'] }, () => {
   assert.equal(isPlainRecord({ type: 'who' }), true);
   // An array is the one that matters: it is an object, and indexing a message
   // that turned out to be a list would read undefined rather than reject.
@@ -614,7 +614,7 @@ async function withPip(run, { deny = false } = {}) {
 const pipFrame = (pip) => pip.document.body.children.find((node) => node.tagName === 'IFRAME');
 const gridFrame = (chat) => chat.children.find((node) => node.tagName === 'IFRAME');
 
-test('without a top-layer window API the control is never offered', { tag: 'unit' }, () => {
+test('without a top-layer window API the control is never offered', { tags: ['unit'] }, () => {
   const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   assert.equal(surface.canPopOutChat(), false);
@@ -626,7 +626,7 @@ test('without a top-layer window API the control is never offered', { tag: 'unit
   assert.equal(surface.chatPoppedOut(), false);
 });
 
-test('popping chat out gives the window its own frame and never moves the grid one', { tag: 'unit' }, async () => {
+test('popping chat out gives the window its own frame and never moves the grid one', { tags: ['unit'] }, async () => {
   const { host, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -660,7 +660,7 @@ test('popping chat out gives the window its own frame and never moves the grid o
   });
 });
 
-test('the popped-out chat follows the focused tile, and only when it changed', { tag: 'unit' }, async () => {
+test('the popped-out chat follows the focused tile, and only when it changed', { tags: ['unit'] }, async () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -683,7 +683,7 @@ test('the popped-out chat follows the focused tile, and only when it changed', {
   });
 });
 
-test('closing the window returns chat to the grid without losing the tile', { tag: 'unit' }, async () => {
+test('closing the window returns chat to the grid without losing the tile', { tags: ['unit'] }, async () => {
   const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -707,7 +707,7 @@ test('closing the window returns chat to the grid without losing the tile', { ta
   });
 });
 
-test('a refused window changes nothing and says so', { tag: 'unit' }, async () => {
+test('a refused window changes nothing and says so', { tags: ['unit'] }, async () => {
   const { host, dom, calls } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -721,7 +721,7 @@ test('a refused window changes nothing and says so', { tag: 'unit' }, async () =
   }, { deny: true });
 });
 
-test('the second press returns chat rather than opening another window', { tag: 'unit' }, async () => {
+test('the second press returns chat rather than opening another window', { tags: ['unit'] }, async () => {
   const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -735,7 +735,7 @@ test('the second press returns chat rather than opening another window', { tag: 
 });
 
 
-test('the merged view is opt-in, and off leaves the per-tile chat alone', { tag: 'unit' }, () => {
+test('the merged view is opt-in, and off leaves the per-tile chat alone', { tags: ['unit'] }, () => {
   const { host, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -747,7 +747,7 @@ test('the merged view is opt-in, and off leaves the per-tile chat alone', { tag:
   assert.ok(dom.chat.children.some((node) => node.tagName === 'IFRAME'), 'the per-tile chat is untouched');
 });
 
-test('switching it on opens one feed per channel and labels every line', { tag: 'unit' }, () => {
+test('switching it on opens one feed per channel and labels every line', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -774,7 +774,7 @@ test('switching it on opens one feed per channel and labels every line', { tag: 
   surface.closeMultistream();
 });
 
-test('the merged pane replaces the per-tile chat rather than competing with it', { tag: 'unit' }, () => {
+test('the merged pane replaces the per-tile chat rather than competing with it', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -787,7 +787,7 @@ test('the merged pane replaces the per-tile chat rather than competing with it',
   surface.closeMultistream();
 });
 
-test('closing the grid tears down every merged connection', { tag: 'unit' }, () => {
+test('closing the grid tears down every merged connection', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;
@@ -798,7 +798,7 @@ test('closing the grid tears down every merged connection', { tag: 'unit' }, () 
   assert.ok(host.__mergedClosed > 0, 'the sockets go with the grid');
 });
 
-test('a channel removed from the grid stops consuming a connection', { tag: 'unit' }, () => {
+test('a channel removed from the grid stops consuming a connection', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha', 'beta'], focus: 'alpha', chat: 'alpha', showChat: true } });
   const surface = createMultistream(host);
   dom.backdrop.hidden = false;

@@ -12,7 +12,7 @@ import { directiveAllowsInline, inlineScriptVerdict, scriptDirective, splitPolic
  * the failure that would let the Firefox companion die silently.
  */
 
-test('no policy means nothing is blocking an inline script', { tag: 'unit' }, () => {
+test('no policy means nothing is blocking an inline script', { tags: ['unit'] }, () => {
   assert.equal(inlineScriptVerdict(null).allowed, true);
   assert.equal(inlineScriptVerdict('').allowed, true);
   assert.equal(inlineScriptVerdict(null).policies, 0);
@@ -20,7 +20,7 @@ test('no policy means nothing is blocking an inline script', { tag: 'unit' }, ()
   assert.equal(inlineScriptVerdict("img-src 'self'; frame-ancestors 'none'").allowed, true);
 });
 
-test('the script source list is chosen by precedence, not by position', { tag: 'unit' }, () => {
+test('the script source list is chosen by precedence, not by position', { tags: ['unit'] }, () => {
   assert.equal(scriptDirective("default-src 'self'; script-src 'self' 'unsafe-inline'"), "script-src 'self' 'unsafe-inline'");
   assert.equal(scriptDirective("script-src 'unsafe-inline'; script-src-elem 'nonce-r4nd0m'"), "script-src-elem 'nonce-r4nd0m'");
   assert.equal(scriptDirective("default-src 'self'"), "default-src 'self'");
@@ -29,7 +29,7 @@ test('the script source list is chosen by precedence, not by position', { tag: '
   assert.equal(scriptDirective("script-src 'unsafe-inline'; script-src 'none'"), "script-src 'unsafe-inline'");
 });
 
-test('the most common real layout is read correctly', { tag: 'unit' }, () => {
+test('the most common real layout is read correctly', { tags: ['unit'] }, () => {
   // default-src restrictive, script-src permissive. The browser runs the inline
   // script; an implementation that reads default-src first calls this blocked.
   const verdict = inlineScriptVerdict("default-src 'self'; script-src 'self' 'unsafe-inline'");
@@ -37,7 +37,7 @@ test('the most common real layout is read correctly', { tag: 'unit' }, () => {
   assert.deepEqual(verdict.blockedBy, []);
 });
 
-test("'unsafe-inline' is inert beside a nonce, a hash, or strict-dynamic", { tag: 'unit' }, () => {
+test("'unsafe-inline' is inert beside a nonce, a hash, or strict-dynamic", { tags: ['unit'] }, () => {
   assert.equal(directiveAllowsInline("script-src 'unsafe-inline'"), true);
   assert.equal(directiveAllowsInline("script-src 'unsafe-inline' 'nonce-r4nd0m'"), false);
   assert.equal(directiveAllowsInline("script-src 'unsafe-inline' 'sha256-abc123'"), false);
@@ -48,7 +48,7 @@ test("'unsafe-inline' is inert beside a nonce, a hash, or strict-dynamic", { tag
   assert.equal(inlineScriptVerdict("script-src 'unsafe-inline'; script-src-elem 'nonce-r4nd0m'").allowed, false);
 });
 
-test('content must pass every enforcing policy, not just one of them', { tag: 'unit' }, () => {
+test('content must pass every enforcing policy, not just one of them', { tags: ['unit'] }, () => {
   // Repeated headers, which Headers.get() hands back comma-joined.
   const joined = inlineScriptVerdict("default-src 'self', script-src 'unsafe-inline'");
   assert.equal(joined.policies, 2);
@@ -66,14 +66,14 @@ test('content must pass every enforcing policy, not just one of them', { tag: 'u
   assert.equal(both.governing.length, 2);
 });
 
-test('policies are split the same way however they were joined', { tag: 'unit' }, () => {
+test('policies are split the same way however they were joined', { tags: ['unit'] }, () => {
   assert.deepEqual(splitPolicies("a 'b', c 'd'"), ["a 'b'", "c 'd'"]);
   assert.deepEqual(splitPolicies(["a 'b'", "c 'd'"]), ["a 'b'", "c 'd'"]);
   assert.deepEqual(splitPolicies([null, '', '  ']), []);
   assert.deepEqual(splitPolicies(undefined), []);
 });
 
-test('a policy that blocks inline scripts no longer stops the Firefox companion', { tag: 'artifact' }, async () => {
+test('a policy that blocks inline scripts no longer stops the Firefox companion', { tags: ['artifact'] }, async () => {
   // The Firefox package used to inject its page bundle as an inline script, so
   // the day kick.com shipped a script-src without 'unsafe-inline' its whole page
   // layer would have stopped loading, silently. The bundle is a declared

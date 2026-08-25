@@ -11,7 +11,7 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('a run that skipped a check it may not skip cannot be packaged', { tag: 'unit' }, () => {
+test('a run that skipped a check it may not skip cannot be packaged', { tags: ['unit'] }, () => {
   const mandatory = ['loaded', 'booted'];
 
   assert.deepEqual(
@@ -51,7 +51,7 @@ test('a run that skipped a check it may not skip cannot be packaged', { tag: 'un
   );
 });
 
-test('every mandatory live check names an assertion its gate actually makes', { tag: 'unit' }, async () => {
+test('every mandatory live check names an assertion its gate actually makes', { tags: ['unit'] }, async () => {
   // A renamed label would otherwise turn the contract into "never ran" and fail
   // every release for a reason that is not a defect. This is the pairing that
   // keeps the two lists honest with each other.
@@ -68,7 +68,7 @@ test('every mandatory live check names an assertion its gate actually makes', { 
   }
 });
 
-test('the release command applies the contract to both engines and refuses to package', { tag: 'unit' }, async () => {
+test('the release command applies the contract to both engines and refuses to package', { tags: ['unit'] }, async () => {
   // The decision is unit-tested above; this is the wiring, which can only be
   // observed here without spawning two browsers. Each engine has to be checked
   // and each has to stop the run, and the Chromium check has to sit inside the

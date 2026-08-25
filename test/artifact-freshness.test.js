@@ -34,7 +34,7 @@ async function tree({ sourceAt, artifactAt, missing = [] }) {
 const T0 = '2026-08-25T10:00:00Z';
 const T1 = '2026-08-25T10:00:05Z';
 
-test('a build newer than every source is accepted', { tag: 'unit' }, async () => {
+test('a build newer than every source is accepted', { tags: ['unit'] }, async () => {
   const { options, cleanup } = await tree({ sourceAt: T0, artifactAt: T1 });
   try {
     await assertArtifactFresh(options);
@@ -44,7 +44,7 @@ test('a build newer than every source is accepted', { tag: 'unit' }, async () =>
   }
 });
 
-test('a source newer than the build is refused, and the message names both files', { tag: 'unit' }, async () => {
+test('a source newer than the build is refused, and the message names both files', { tags: ['unit'] }, async () => {
   const { options, cleanup } = await tree({ sourceAt: T1, artifactAt: T0 });
   try {
     await assert.rejects(
@@ -60,7 +60,7 @@ test('a source newer than the build is refused, and the message names both files
   }
 });
 
-test('the oldest artifact decides, not the newest', { tag: 'unit' }, async () => {
+test('the oldest artifact decides, not the newest', { tags: ['unit'] }, async () => {
   // The build writes the userscript first and the companion trees afterwards, so
   // a run that died in between leaves the companions stale while the userscript
   // looks current. Judging by the newest would call that tree fresh.
@@ -75,7 +75,7 @@ test('the oldest artifact decides, not the newest', { tag: 'unit' }, async () =>
   }
 });
 
-test('a build script counts as a source, not only the sources it reads', { tag: 'unit' }, async () => {
+test('a build script counts as a source, not only the sources it reads', { tags: ['unit'] }, async () => {
   const { options, cleanup } = await tree({ sourceAt: T0, artifactAt: T1 });
   try {
     await assertArtifactFresh(options);
@@ -86,7 +86,7 @@ test('a build script counts as a source, not only the sources it reads', { tag: 
   }
 });
 
-test('an artifact that was never built says so instead of comparing times', { tag: 'unit' }, async () => {
+test('an artifact that was never built says so instead of comparing times', { tags: ['unit'] }, async () => {
   const { options, cleanup } = await tree({ sourceAt: T0, artifactAt: T1, missing: ['dist/two.js'] });
   try {
     await assert.rejects(assertArtifactFresh(options), /dist\/two\.js has not been built/);
@@ -95,7 +95,7 @@ test('an artifact that was never built says so instead of comparing times', { ta
   }
 });
 
-test('every build input the real build reads is one the guard watches', { tag: 'unit' }, async () => {
+test('every build input the real build reads is one the guard watches', { tags: ['unit'] }, async () => {
   // scripts/zip.mjs was missed on the first pass: build.mjs imports it, so a
   // change there changes the archives while the guard called the tree fresh.
   const build = await readArtifact('scripts/build.mjs', {
@@ -114,7 +114,7 @@ test('every build input the real build reads is one the guard watches', { tag: '
   }
 });
 
-test('no test reads a built file except through the guarded reader', { tag: 'unit' }, async () => {
+test('no test reads a built file except through the guarded reader', { tags: ['unit'] }, async () => {
   // The call sites were added by hand once. This is what stops a test file
   // arriving later and reading dist/ straight, which is the shape of the
   // original defect rather than a new one.

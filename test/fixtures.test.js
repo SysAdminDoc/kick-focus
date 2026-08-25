@@ -415,12 +415,12 @@ const DERIVERS = {
 const fixtureSource = (name) => readFileSync(resolve(root, `${name}.html`), 'utf8');
 
 for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
-  test(`fixture ${name} keeps every marker it is supposed to carry`, { tag: 'unit' }, () => {
+  test(`fixture ${name} keeps every marker it is supposed to carry`, { tags: ['unit'] }, () => {
     const html = fixtureSource(name);
     for (const marker of requiredMarkers(name)) assert.ok(html.includes(marker), `${name} fixture lost ${marker}`);
   });
 
-  test(`fixture ${name} carries nothing Kick has stopped serving`, { tag: 'unit' }, () => {
+  test(`fixture ${name} carries nothing Kick has stopped serving`, { tags: ['unit'] }, () => {
     // The other direction, and the one that let this suite rot: a marker Kick
     // dropped stays plausible forever unless something says it is gone. Each
     // entry here was measured at 0 on the live route, with the reason recorded.
@@ -432,7 +432,7 @@ for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
 
   if (!entry.shell) continue;
 
-  test(`fixture ${name} resolves the shell hooks the live route resolves`, { tag: 'unit' }, () => {
+  test(`fixture ${name} resolves the shell hooks the live route resolves`, { tags: ['unit'] }, () => {
     const document = parseFixture(fixtureSource(name));
     const snapshot = compatibilitySnapshot(document, { expectedChat: entry.expectedChat, derive: DERIVERS });
     // An optional hook is one the live route renders only sometimes, so a
@@ -449,7 +449,7 @@ for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
     if (snapshot.probes.card) assert.ok(snapshot.cards > 0, `${name} fixture resolved a card probe but found no cards`);
   });
 
-  test(`fixture ${name} still yields the values derived from those hooks`, { tag: 'unit' }, () => {
+  test(`fixture ${name} still yields the values derived from those hooks`, { tags: ['unit'] }, () => {
     const document = parseFixture(fixtureSource(name));
     const snapshot = compatibilitySnapshot(document, { expectedChat: entry.expectedChat, derive: DERIVERS });
     for (const result of snapshot.derived) {
@@ -459,7 +459,7 @@ for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
   });
 
   if (entry.followingPreview) {
-    test(`fixture ${name} resolves the followed-channel preview control`, { tag: 'unit' }, () => {
+    test(`fixture ${name} resolves the followed-channel preview control`, { tags: ['unit'] }, () => {
       const document = parseFixture(fixtureSource(name));
       const result = findAllProbe(document, 'followingPreviewControl');
       assert.equal(result.probe, entry.followingPreview);
@@ -471,7 +471,7 @@ for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
   }
 }
 
-test('the contract names a real probe for every hook it records', { tag: 'unit' }, () => {
+test('the contract names a real probe for every hook it records', { tags: ['unit'] }, () => {
   const derivedIds = DERIVED_EXPECTATIONS.map((expectation) => expectation.id);
   for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
     if (entry.shell) {
@@ -499,7 +499,7 @@ test('the contract names a real probe for every hook it records', { tag: 'unit' 
   }
 });
 
-test('the fixture parser resolves the selector shapes the probes actually use', { tag: 'unit' }, () => {
+test('the fixture parser resolves the selector shapes the probes actually use', { tags: ['unit'] }, () => {
   // The parser is the thing every assertion above trusts, so it is checked
   // against the selector features `LOCATOR_PROBES` relies on rather than left
   // to be validated by the fixtures it parses.

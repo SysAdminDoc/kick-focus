@@ -158,7 +158,7 @@ import {
   normalizeChannelLayouts,
 } from '../src/core.mjs';
 
-test('settings focus returns to the exact option after a re-render', { tag: 'unit' }, () => {
+test('settings focus returns to the exact option after a re-render', { tags: ['unit'] }, () => {
   const attributes = new Map([
     ['data-set', 'appearance.theme'],
     ['data-value', 'slate'],
@@ -173,7 +173,7 @@ const READY = { enabled: true, hasTrigger: true, dialogOpen: true, hasAction: tr
 const at = (hour, minute = 0, day = 12) => new Date(2026, 7, day, hour, minute, 0, 0).getTime();
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-test('a reward is claimed only when Kick itself says it is ready', { tag: 'unit' }, () => {
+test('a reward is claimed only when Kick itself says it is ready', { tags: ['unit'] }, () => {
   assert.equal(decideRewardClaim(READY).action, 'claim');
 
   // Every way Kick says no. A disabled button is a refusal, and the whole
@@ -187,14 +187,14 @@ test('a reward is claimed only when Kick itself says it is ready', { tag: 'unit'
   assert.equal(decideRewardClaim({ enabled: true, hasTrigger: true, dialogOpen: true }).action, 'wait');
 });
 
-test('the setting is what gates it, not the presence of a button', { tag: 'unit' }, () => {
+test('the setting is what gates it, not the presence of a button', { tags: ['unit'] }, () => {
   // Off means the dialog is never even opened, on a page that is showing a
   // ready reward — the strongest form of the guarantee.
   assert.deepEqual(decideRewardClaim({ ...READY, enabled: false }), { action: 'absent', reason: 'off' });
   assert.deepEqual(decideRewardClaim({ ...READY, enabled: false, dialogOpen: false }), { action: 'absent', reason: 'off' });
 });
 
-test('one stored time decides whether to look, and nothing else', { tag: 'unit' }, () => {
+test('one stored time decides whether to look, and nothing else', { tags: ['unit'] }, () => {
   const base = { enabled: true, hasTrigger: true, dialogOpen: false, now: at(15) };
   assert.equal(decideRewardClaim(base).action, 'open', 'no schedule yet, so look now');
   assert.deepEqual(decideRewardClaim({ ...base, nextCheckAt: at(15, 1) }), { action: 'cooling', reason: 'not-due' });
@@ -203,7 +203,7 @@ test('one stored time decides whether to look, and nothing else', { tag: 'unit' 
   assert.equal(decideRewardClaim({ ...base, nextCheckAt: at(15) }).action, 'open');
 });
 
-test('the rollover is the next 8pm, today or tomorrow', { tag: 'unit' }, () => {
+test('the rollover is the next 8pm, today or tomorrow', { tags: ['unit'] }, () => {
   assert.equal(nextClaimResetAt(at(15)), at(CLAIM_RESET_HOUR), 'afternoon waits for tonight');
   assert.equal(nextClaimResetAt(at(19, 59)), at(CLAIM_RESET_HOUR), 'a minute before, still tonight');
   // On the boundary the rollover has happened, so the next one is tomorrow —
@@ -213,14 +213,14 @@ test('the rollover is the next 8pm, today or tomorrow', { tag: 'unit' }, () => {
   assert.equal(nextClaimResetAt(at(2)), at(CLAIM_RESET_HOUR), 'after midnight is still today’s rollover');
 });
 
-test('a claimed reward sleeps to the rollover instead of being re-checked', { tag: 'unit' }, () => {
+test('a claimed reward sleeps to the rollover instead of being re-checked', { tags: ['unit'] }, () => {
   // The trigger stays in Kick's header after a claim, so without this the
   // dialog would reopen every ten minutes for the rest of the day.
   assert.equal(nextRewardCheckAt({ outcome: 'claimed', now: at(21, 5) }), at(CLAIM_RESET_HOUR, 0, 13));
   assert.equal(nextRewardCheckAt({ outcome: 'claimed', now: at(9) }), at(CLAIM_RESET_HOUR));
 });
 
-test('a reward already collected by hand also sleeps to the rollover', { tag: 'unit' }, () => {
+test('a reward already collected by hand also sleeps to the rollover', { tags: ['unit'] }, () => {
   // What an already-taken reward looks like: the dialog renders, but there is
   // no action to press and nothing counting down. Re-checking that all day is
   // exactly the polling this replaces.
@@ -235,7 +235,7 @@ test('a reward already collected by hand also sleeps to the rollover', { tag: 'u
   );
 });
 
-test('Kick’s own countdown sets the next check, not a fixed interval', { tag: 'unit' }, () => {
+test('Kick’s own countdown sets the next check, not a fixed interval', { tags: ['unit'] }, () => {
   // "Watch 54 more minutes" → look again in 55, not in 10.
   const soon = nextRewardCheckAt({ outcome: 'not-ready', now: at(15), minutesRemaining: 54 });
   assert.equal(soon, at(15, 55));
@@ -246,7 +246,7 @@ test('Kick’s own countdown sets the next check, not a fixed interval', { tag: 
   assert.equal(nextRewardCheckAt({ outcome: 'not-ready', now: at(15), minutesRemaining: 99_999 }), at(CLAIM_RESET_HOUR));
 });
 
-test('the whole nightly cycle: claim, sleep to 8pm, wake, claim near 9pm', { tag: 'unit' }, () => {
+test('the whole nightly cycle: claim, sleep to 8pm, wake, claim near 9pm', { tags: ['unit'] }, () => {
   // This is the shape the schedule exists to produce, end to end.
   const claimed = nextRewardCheckAt({ outcome: 'claimed', now: at(21, 30) });
   assert.equal(clock(claimed), clock(at(CLAIM_RESET_HOUR, 0, 13)), 'sleeps to tomorrow’s rollover');
@@ -267,7 +267,7 @@ test('the whole nightly cycle: claim, sleep to 8pm, wake, claim near 9pm', { tag
   assert.ok(pollCount > 100, `the fixed-interval alternative would be ${pollCount} openings a day`);
 });
 
-test('the countdown Kick renders is read back, and nothing else is', { tag: 'unit' }, () => {
+test('the countdown Kick renders is read back, and nothing else is', { tags: ['unit'] }, () => {
   assert.equal(parseClaimCountdown('Watch 54 more minutes to claim'), 54);
   assert.equal(parseClaimCountdown('watch 1 more minute to claim'), 1);
   assert.equal(parseClaimCountdown('  Watch   7   more   minutes to claim  '), 7);
@@ -276,7 +276,7 @@ test('the countdown Kick renders is read back, and nothing else is', { tag: 'uni
   }
 });
 
-test('the action button is recognised by every verb the reward uses', { tag: 'unit' }, () => {
+test('the action button is recognised by every verb the reward uses', { tags: ['unit'] }, () => {
   // It is a roulette reveal, so the label varies by reward.
   for (const label of ['Claim', 'Open', 'Spin', 'Reveal', 'Collect', '  claim ', 'Claim reward']) {
     assert.ok(CLAIM_ACTION.test(label), `${JSON.stringify(label)} is an action button`);
@@ -287,7 +287,7 @@ test('the action button is recognised by every verb the reward uses', { tag: 'un
   }
 });
 
-test('a colon only triggers completion where it starts a token', { tag: 'unit' }, () => {
+test('a colon only triggers completion where it starts a token', { tags: ['unit'] }, () => {
   assert.deepEqual(emoteTriggerAt(':pep'), { query: 'pep', length: 4 });
   assert.deepEqual(emoteTriggerAt('hello :pep'), { query: 'pep', length: 4 });
   assert.deepEqual(emoteTriggerAt('hello :PepeH'), { query: 'PepeH', length: 6 });
@@ -307,7 +307,7 @@ test('a colon only triggers completion where it starts a token', { tag: 'unit' }
   assert.equal(emoteTriggerAt(null), null);
 });
 
-test('a name that starts with the query outranks one that merely contains it', { tag: 'unit' }, () => {
+test('a name that starts with the query outranks one that merely contains it', { tags: ['unit'] }, () => {
   // Chatterino #1962: typing the start of an emote name surfaced everything
   // containing those letters ahead of the emote actually named that way.
   const candidates = [
@@ -325,7 +325,7 @@ test('a name that starts with the query outranks one that merely contains it', {
   assert.equal(rankEmoteCompletions('pep', candidates, { usage })[0].name, 'Pepega');
 });
 
-test('completions are ordered by what this user actually sends, here first', { tag: 'unit' }, () => {
+test('completions are ordered by what this user actually sends, here first', { tags: ['unit'] }, () => {
   const candidates = [
     { key: 'k:1', id: '1', name: 'PepeLaugh' },
     { key: 'k:2', id: '2', name: 'PepeHands' },
@@ -344,7 +344,7 @@ test('completions are ordered by what this user actually sends, here first', { t
   assert.equal(rankEmoteCompletions('pepe', candidates, { usage, channel: 'xqc', favorites: new Set(['k:3']) })[0].name, 'PepeD');
 });
 
-test('two emotes with the same name resolve deterministically, never by luck', { tag: 'unit' }, () => {
+test('two emotes with the same name resolve deterministically, never by luck', { tags: ['unit'] }, () => {
   // Chatterino #3440: the same name published by two providers. Both are
   // offered — they are different images — and the order cannot flap.
   const candidates = [
@@ -362,7 +362,7 @@ test('two emotes with the same name resolve deterministically, never by luck', {
   assert.equal(rankEmoteCompletions('clap', duplicated).length, 3);
 });
 
-test('only a name chat would treat as one token is ever offered', { tag: 'unit' }, () => {
+test('only a name chat would treat as one token is ever offered', { tags: ['unit'] }, () => {
   const candidates = [
     { key: 'k:1', id: '1', name: 'GoodName' },
     { key: 'k:2', id: '2', name: '[emote:123:GoodName]' },
@@ -380,7 +380,7 @@ test('only a name chat would treat as one token is ever offered', { tag: 'unit' 
 const usageStore = (global = {}, channels = {}) => ({ global, channels });
 const use = (name, count, lastAt) => ({ name, count, firstAt: 1, lastAt });
 
-test('the recent shelf orders by when an emote was last sent, not how often', { tag: 'unit' }, () => {
+test('the recent shelf orders by when an emote was last sent, not how often', { tags: ['unit'] }, () => {
   const counts = usageStore({
     a: use('Alpha', 100, 1_000),
     b: use('Beta', 2, 9_000),
@@ -393,7 +393,7 @@ test('the recent shelf orders by when an emote was last sent, not how often', { 
   assert.deepEqual(rankEmoteUsage(counts).map((entry) => entry.name), ['Alpha', 'Gamma', 'Beta']);
 });
 
-test('the recent shelf prefers this channel record and falls back to the rollup', { tag: 'unit' }, () => {
+test('the recent shelf prefers this channel record and falls back to the rollup', { tags: ['unit'] }, () => {
   const counts = usageStore(
     { a: use('Alpha', 10, 9_000), b: use('Beta', 10, 8_000) },
     { xqc: { a: use('Alpha', 1, 1_000) } },
@@ -404,7 +404,7 @@ test('the recent shelf prefers this channel record and falls back to the rollup'
   assert.deepEqual(recentEmoteUsage(counts, { channel: 'nobody' }).map((entry) => entry.name), ['Alpha', 'Beta']);
 });
 
-test('an entry with no timestamp never reaches a list ordered by timestamp', { tag: 'unit' }, () => {
+test('an entry with no timestamp never reaches a list ordered by timestamp', { tags: ['unit'] }, () => {
   // What an imported file that predates the field looks like.
   const counts = usageStore({ a: use('Alpha', 5, 0), b: use('Beta', 1, 3_000) });
   assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.name), ['Beta']);
@@ -413,7 +413,7 @@ test('an entry with no timestamp never reaches a list ordered by timestamp', { t
   assert.deepEqual(recentEmoteUsage(counts, { limit: 0 }), []);
 });
 
-test('ties in the recent shelf resolve the same way every render', { tag: 'unit' }, () => {
+test('ties in the recent shelf resolve the same way every render', { tags: ['unit'] }, () => {
   const counts = usageStore({
     b: use('Beta', 1, 5_000),
     a: use('Alpha', 1, 5_000),
@@ -425,7 +425,7 @@ test('ties in the recent shelf resolve the same way every render', { tag: 'unit'
   assert.deepEqual(recentEmoteUsage(counts).map((entry) => entry.id), recentEmoteUsage(counts).map((entry) => entry.id));
 });
 
-test('a discovery card yields a channel only when it actually points at one', { tag: 'unit' }, () => {
+test('a discovery card yields a channel only when it actually points at one', { tags: ['unit'] }, () => {
   assert.equal(cardSlugFromPath('/xqc'), 'xqc');
   assert.equal(cardSlugFromPath('/xqc/videos'), 'xqc');
   assert.equal(cardSlugFromPath('/xqc?ref=browse'), 'xqc');
@@ -450,14 +450,14 @@ test('a discovery card yields a channel only when it actually points at one', { 
   assert.equal(cardSlugFromPath('/1337'), '1337');
 });
 
-test('a list shorter than the window is rendered whole, with no spacers', { tag: 'unit' }, () => {
+test('a list shorter than the window is rendered whole, with no spacers', { tags: ['unit'] }, () => {
   const entries = Array.from({ length: 12 }, (_v, index) => index);
   const slice = visibleWindow(entries, 0, 240);
   assert.deepEqual(slice, { start: 0, end: 12, items: entries, before: 0, after: 0 });
   assert.equal(slice.items, entries, 'no copy is made when the whole list fits');
 });
 
-test('a library at the cap renders one window and accounts for the rest', { tag: 'unit' }, () => {
+test('a library at the cap renders one window and accounts for the rest', { tags: ['unit'] }, () => {
   const entries = Array.from({ length: 2400 }, (_v, index) => index);
 
   const top = visibleWindow(entries, 0);
@@ -482,7 +482,7 @@ test('a library at the cap renders one window and accounts for the rest', { tag:
   assert.equal(bottom.after, 0);
 });
 
-test('a nonsense anchor or size cannot produce a window outside the list', { tag: 'unit' }, () => {
+test('a nonsense anchor or size cannot produce a window outside the list', { tags: ['unit'] }, () => {
   const entries = Array.from({ length: 500 }, (_v, index) => index);
   for (const anchor of [-100, Number.NaN, Number.POSITIVE_INFINITY, 10_000, undefined]) {
     const slice = visibleWindow(entries, anchor);
@@ -496,7 +496,7 @@ test('a nonsense anchor or size cannot produce a window outside the list', { tag
   assert.deepEqual(visibleWindow(null, 0), { start: 0, end: 0, items: [], before: 0, after: 0 });
 });
 
-test('sanitizeErrorMessage strips query strings and long tokens for the local error log', { tag: 'unit' }, () => {
+test('sanitizeErrorMessage strips query strings and long tokens for the local error log', { tags: ['unit'] }, () => {
   assert.equal(sanitizeErrorMessage('Failed at https://kick.com/api/v1/log?token=abc123'), 'Failed at https://kick.com/api/v1/log');
   assert.equal(sanitizeErrorMessage('id abcdefghijklmnopqrstuvwxyz0123456789ABCD done'), 'id … done');
   assert.equal(sanitizeErrorMessage(new Error('boom').message), 'boom');
@@ -504,7 +504,7 @@ test('sanitizeErrorMessage strips query strings and long tokens for the local er
   assert.ok(sanitizeErrorMessage('x'.repeat(500)).length <= 300);
 });
 
-test('pluralForm follows CLDR locale rules, including the es/pt "many" category English lacks', { tag: 'unit' }, () => {
+test('pluralForm follows CLDR locale rules, including the es/pt "many" category English lacks', { tags: ['unit'] }, () => {
   assert.equal(pluralForm(1, { one: 'emote', other: 'emotes' }, 'en'), 'emote');
   assert.equal(pluralForm(3, { one: 'emote', other: 'emotes' }, 'en'), 'emotes');
   assert.equal(new Intl.PluralRules('en').select(1000000), 'other'); // English never "many"
@@ -520,7 +520,7 @@ test('pluralForm follows CLDR locale rules, including the es/pt "many" category 
   assert.equal(pluralForm(1, { other: 'b' }, 'en'), 'b');
 });
 
-test('a profile that stored custom shortcuts loses them without error', { tag: 'unit' }, () => {
+test('a profile that stored custom shortcuts loses them without error', { tags: ['unit'] }, () => {
   // Two tests stood here, for normalizeShortcut and findShortcutConflict. Both
   // covered a feature that was deliberately removed: this build no longer takes
   // page-wide chords or bare letters from Kick's keyboard. What has to keep
@@ -545,7 +545,7 @@ test('a profile that stored custom shortcuts loses them without error', { tag: '
   assert.equal('shortcuts' in DEFAULT_SETTINGS, false);
 });
 
-test('a roll-call collects open tabs, expires stale answers, and offers only what fits', { tag: 'unit' }, () => {
+test('a roll-call collects open tabs, expires stale answers, and offers only what fits', { tags: ['unit'] }, () => {
   const now = 1_000_000;
   const fresh = now - 1000;
   const stale = now - PRESENCE_TTL_MS - 1;
@@ -604,7 +604,7 @@ test('a roll-call collects open tabs, expires stale answers, and offers only wha
   assert.deepEqual(presenceOffer(null, null), []);
 });
 
-test('emote keys carry a platform prefix, and every store migrates together losslessly', { tag: 'unit' }, () => {
+test('emote keys carry a platform prefix, and every store migrates together losslessly', { tags: ['unit'] }, () => {
   assert.equal(platformStickerKey('id:37226'), 'kick:id:37226');
   assert.equal(platformStickerKey('name:kekw|src:https://files.kick.com/emotes/1/fullsize'),
     'kick:name:kekw|src:https://files.kick.com/emotes/1/fullsize');
@@ -652,7 +652,7 @@ test('emote keys carry a platform prefix, and every store migrates together loss
   assert.deepEqual(long.hidden, [`kick:${longest}`], 'a 320-character key must not be dropped by the migration');
 });
 
-test('keyword spans are case-insensitive, sorted, merged, and capped', { tag: 'unit' }, () => {
+test('keyword spans are case-insensitive, sorted, merged, and capped', { tags: ['unit'] }, () => {
   assert.deepEqual(findKeywordSpans('Free GIVEAWAY tonight, giveaway!', ['giveaway']), [
     { start: 5, end: 13 }, { start: 23, end: 31 },
   ]);
@@ -672,7 +672,7 @@ test('keyword spans are case-insensitive, sorted, merged, and capped', { tag: 'u
   assert.deepEqual(findKeywordSpans('hello', 'not-a-list'), []);
 });
 
-test('apply-cycle cost accumulates as plain numbers with a sliding recent average', { tag: 'unit' }, () => {
+test('apply-cycle cost accumulates as plain numbers with a sliding recent average', { tags: ['unit'] }, () => {
   let stats = recordApplyCost({}, 12);
   stats = recordApplyCost(stats, 4);
   stats = recordApplyCost(stats, 30);
@@ -698,7 +698,7 @@ test('apply-cycle cost accumulates as plain numbers with a sliding recent averag
   assert.match(applyCostSummary(recordApplyCost({}, 0.44)), /last 0\.4 ms/);
 });
 
-test('an emote insertion plan carries the plain name and never the wire token', { tag: 'unit' }, () => {
+test('an emote insertion plan carries the plain name and never the wire token', { tags: ['unit'] }, () => {
   const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];
 
   const plain = insertionPlanFor({ name: 'KEKW', id: 4821 }, [], 'observed');
@@ -743,7 +743,7 @@ function plan_has_no_id(plan) {
   return !JSON.stringify(plan).includes('4821');
 }
 
-test('an emote says where it can be sent, or says nothing at all', { tag: 'unit' }, () => {
+test('an emote says where it can be sent, or says nothing at all', { tags: ['unit'] }, () => {
   // Reach is not access. Measured 2026-08-16 by posting each kind into a real
   // chatroom: a free channel emote is refused outside its channel
   // (FOREIGN_CHANNEL_EMOTE_ERROR), an owned subscriber emote is accepted
@@ -775,7 +775,7 @@ test('an emote says where it can be sent, or says nothing at all', { tag: 'unit'
   );
 });
 
-test('owned emotes are grouped by source without mistaking local reach for ownership', { tag: 'unit' }, () => {
+test('owned emotes are grouped by source without mistaking local reach for ownership', { tags: ['unit'] }, () => {
   const groups = ownedEmoteGroups([
     { key: 'kick:3', name: 'GlobalB', access: 'available', usableEverywhere: true, nativeGroups: ['Collectibles'] },
     { key: 'kick:2', name: 'ChannelB', access: 'available', usableEverywhere: true, sourceSlug: 'peyx', nativeGroups: ['Peyx'] },
@@ -790,7 +790,7 @@ test('owned emotes are grouped by source without mistaking local reach for owner
   assert.deepEqual(ownedEmoteGroups(null), []);
 });
 
-test('uptime counts from Kick own start time and refuses implausible values', { tag: 'unit' }, () => {
+test('uptime counts from Kick own start time and refuses implausible values', { tags: ['unit'] }, () => {
   const now = Date.UTC(2026, 7, 16, 12, 0, 0);
   assert.equal(formatUptime(now - 45_000, now), '0:45');
   assert.equal(formatUptime(now - 5 * 60_000 - 7000, now), '5:07');
@@ -813,7 +813,7 @@ test('uptime counts from Kick own start time and refuses implausible values', { 
   assert.notEqual(formatUptime(now - MAX_UPTIME_MS + 1000, now), '');
 });
 
-test('the chat emote hover card names the set, access, capture and shadowing winner', { tag: 'unit' }, () => {
+test('the chat emote hover card names the set, access, capture and shadowing winner', { tags: ['unit'] }, () => {
   const collisions = [{ name: 'PogChamp', winner: { setName: 'bigchannel' }, shadowed: [], sets: ['a', 'b'] }];
   const entry = {
     name: 'PogChamp', nativeGroups: ['Seen in chat'], access: 'observed', firstSeen: Date.UTC(2026, 0, 15),
@@ -864,7 +864,7 @@ test('the chat emote hover card names the set, access, capture and shadowing win
   );
 });
 
-test('a multi-store write is sized and serialized before any of it is committed', { tag: 'unit' }, () => {
+test('a multi-store write is sized and serialized before any of it is committed', { tags: ['unit'] }, () => {
   const plan = planStorageCommit([['a', { x: 1 }], ['b', [1, 2, 3]]]);
   assert.equal(plan.ok, true);
   assert.equal(plan.staged.length, 2);
@@ -893,7 +893,7 @@ test('a multi-store write is sized and serialized before any of it is committed'
   assert.equal(planStorageCommit([]).ok, true);
 });
 
-test('a quota failure part-way through an import leaves the prior state intact', { tag: 'unit' }, () => {
+test('a quota failure part-way through an import leaves the prior state intact', { tags: ['unit'] }, () => {
   // The store the runtime writes into, plus a backend that starts failing after
   // the second key — the shape of a quota ceiling reached mid-import.
   const store = new Map([['settings', 'old-settings'], ['library', 'old-library']]);
@@ -932,7 +932,7 @@ test('a quota failure part-way through an import leaves the prior state intact',
   assert.equal(store.has('notes'), false);
 });
 
-test('a layer that closes hands focus and Escape back to the one underneath', { tag: 'unit' }, () => {
+test('a layer that closes hands focus and Escape back to the one underneath', { tags: ['unit'] }, () => {
   // This was written for the reset confirmation, which was nested inside the
   // settings shell: the trap scoped to Settings, so Tab walked the obscured
   // page behind the dialog and Escape closed all of Settings rather than the
@@ -953,7 +953,7 @@ test('a layer that closes hands focus and Escape back to the one underneath', { 
   assert.equal(topmostOverlayLayer({ settings: true, resetConfirm: true }).layer, 'settings');
 });
 
-test('every overlay ranks the same way for Tab and for Escape', { tag: 'unit' }, () => {
+test('every overlay ranks the same way for Tab and for Escape', { tags: ['unit'] }, () => {
   // These two ladders were written separately and disagreed: the trap ranked the
   // command menu above settings, Escape ranked settings above the command menu.
   assert.equal(topmostOverlayLayer({ command: true, settings: true }).layer, 'command');
@@ -974,7 +974,7 @@ test('every overlay ranks the same way for Tab and for Escape', { tag: 'unit' },
   }
 });
 
-test('multi-stream merge survives two tabs adding different channels', { tag: 'unit' }, () => {
+test('multi-stream merge survives two tabs adding different channels', { tags: ['unit'] }, () => {
   // Tab A boots with [x], adds a. Tab B boots with [x] (stale), adds b after A wrote.
   const afterA = mergeMultistream({ streams: ['x'] }, { streams: ['x', 'a'] }, ['a'], []);
   assert.deepEqual(afterA.streams, ['x', 'a']);
@@ -982,19 +982,19 @@ test('multi-stream merge survives two tabs adding different channels', { tag: 'u
   assert.deepEqual([...afterB.streams].sort(), ['a', 'b', 'x']); // A's add survived B's write
 });
 
-test('multi-stream merge applies this tab removal without dropping another tab add', { tag: 'unit' }, () => {
+test('multi-stream merge applies this tab removal without dropping another tab add', { tags: ['unit'] }, () => {
   const merged = mergeMultistream({ streams: ['x', 'a'] }, { streams: ['x'] }, [], ['x']);
   assert.deepEqual(merged.streams, ['a']);
 });
 
-test('multi-stream merge preserves this tab order and caps at the max', { tag: 'unit' }, () => {
+test('multi-stream merge preserves this tab order and caps at the max', { tags: ['unit'] }, () => {
   const reordered = mergeMultistream({ streams: ['a', 'b'] }, { streams: ['b', 'a'] }, [], []);
   assert.deepEqual(reordered.streams, ['b', 'a']);
   const many = Array.from({ length: MULTISTREAM_MAX + 3 }, (_, index) => `c${index}`);
   assert.equal(mergeMultistream({ streams: [] }, { streams: [] }, many, []).streams.length, MULTISTREAM_MAX);
 });
 
-test('chat-frame emotes become CDN-scoped observations, deduped by id', { tag: 'unit' }, () => {
+test('chat-frame emotes become CDN-scoped observations, deduped by id', { tags: ['unit'] }, () => {
   const url = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
   const observations = observationsFromChatEmotes([
     { type: 'emote', id: '37226', name: 'PogChamp' },
@@ -1015,7 +1015,7 @@ test('chat-frame emotes become CDN-scoped observations, deduped by id', { tag: '
   assert.equal(observationsFromChatEmotes('nope', url).length, 0);
 });
 
-test('a blocklist URL is accepted only when it is a well-formed https URL', { tag: 'unit' }, () => {
+test('a blocklist URL is accepted only when it is a well-formed https URL', { tags: ['unit'] }, () => {
   assert.equal(normalizeBlocklistUrl('https://example.com/list.json'), 'https://example.com/list.json');
   assert.equal(normalizeBlocklistUrl('  https://example.com/list.json  '), 'https://example.com/list.json');
   assert.equal(normalizeBlocklistUrl('http://example.com/list.json'), ''); // not https
@@ -1029,7 +1029,7 @@ test('a blocklist URL is accepted only when it is a well-formed https URL', { ta
   assert.equal(normalizeSettings({ content: { blocklistUrl: 'https://ok/list' } }).content.blocklistUrl, 'https://ok/list');
 });
 
-test('the store registry keeps the library on reset but marks every private store for clearing', { tag: 'unit' }, () => {
+test('the store registry keeps the library on reset but marks every private store for clearing', { tags: ['unit'] }, () => {
   const byKey = Object.fromEntries(STORAGE_STORES.map((store) => [store.key, store]));
   // The library is the one irreplaceable store: backed up, but never reset.
   assert.equal(byKey['kick-focus:sticker-preferences'].backup, true);
@@ -1044,7 +1044,7 @@ test('the store registry keeps the library on reset but marks every private stor
   }
 });
 
-test('the export payload carries every store the registry marks for backup', { tag: 'unit' }, () => {
+test('the export payload carries every store the registry marks for backup', { tags: ['unit'] }, () => {
   const probe = buildSettingsExport({
     settings: { schema: 1, layout: { density: 'compact' } },
     stickers: { schema: 5 }, usage: { global: {}, channels: {} }, multistream: { streams: [] },
@@ -1058,7 +1058,7 @@ test('the export payload carries every store the registry marks for backup', { t
   }
 });
 
-test('import drops prototype-pollution keys in every store and never touches Object.prototype', { tag: 'unit' }, () => {
+test('import drops prototype-pollution keys in every store and never touches Object.prototype', { tags: ['unit'] }, () => {
   // Raw JSON (not an object literal, which would set the prototype instead of an
   // own key) so the pollution keys actually travel through JSON.parse as data.
   const malicious = '{"layout":{"density":"compact"},"channelNotes":{"__proto__":{"polluted":"yes"},"/xqc":"ok"},"mediaPreferences":{"constructor":1,"volume:/xqc":0.5}}';
@@ -1071,7 +1071,7 @@ test('import drops prototype-pollution keys in every store and never touches Obj
   assert.equal(result.mediaPreferences['volume:/xqc'], 0.5);
 });
 
-test('a blocklist URL carrying credentials is refused, not carried', { tag: 'unit' }, () => {
+test('a blocklist URL carrying credentials is refused, not carried', { tags: ['unit'] }, () => {
   // On a userscript-only install this value goes out through GM_xmlhttpRequest
   // under @connect *, so credentials in it are credentials sent to whatever host
   // the URL names. The four extension copies of this rule refused them and this
@@ -1094,7 +1094,7 @@ test('a blocklist URL carrying credentials is refused, not carried', { tag: 'uni
   assert.equal(normalizeBlocklistUrl('  https://example.com/list.json  '), 'https://example.com/list.json');
 });
 
-test('an imported file cannot switch on a subscription to a host the user has not seen', { tag: 'unit' }, () => {
+test('an imported file cannot switch on a subscription to a host the user has not seen', { tags: ['unit'] }, () => {
   // Every other field in a settings file is local. This one becomes a repeating
   // outbound request under the userscript's @connect * grant, so a shared
   // "settings pack" was a way to point somebody's browser at your server and
@@ -1159,7 +1159,7 @@ test('an imported file cannot switch on a subscription to a host the user has no
   assert.ok(!off.notes.some((note) => note.includes('switched off')));
 });
 
-test('a subscription cannot outlive the URL it points at', { tag: 'unit' }, () => {
+test('a subscription cannot outlive the URL it points at', { tags: ['unit'] }, () => {
   // Refusing credentials blanks a URL somebody already had saved. Leaving the
   // switch on beside an empty field pinned the sync in a permanent error state
   // with nothing on screen to explain it, so the switch goes with the URL.
@@ -1205,7 +1205,7 @@ test('a subscription cannot outlive the URL it points at', { tag: 'unit' }, () =
   );
 });
 
-test('import round-trips the previously omitted stores with their bounds enforced', { tag: 'unit' }, () => {
+test('import round-trips the previously omitted stores with their bounds enforced', { tags: ['unit'] }, () => {
   const payload = buildSettingsExport({
     settings: { schema: 1 },
     favoriteChannels: ['/xqc', 'https://evil.com/haxor', '/xqc'],
@@ -1224,7 +1224,7 @@ test('import round-trips the previously omitted stores with their bounds enforce
   assert.ok(!('bad key' in result.mediaPreferences)); // malformed key rejected
 });
 
-test('emote usage global rollup is capped on both read and write', { tag: 'unit' }, () => {
+test('emote usage global rollup is capped on both read and write', { tags: ['unit'] }, () => {
   const oversized = { global: {}, channels: {} };
   for (let i = 0; i < USAGE_GLOBAL_LIMIT + 500; i += 1) {
     oversized.global[`e${i}`] = { name: `E${i}`, count: (i % 50) + 1, firstAt: 1, lastAt: i + 1 };
@@ -1237,7 +1237,7 @@ test('emote usage global rollup is capped on both read and write', { tag: 'unit'
   assert.ok(Object.keys(counts.global).length <= USAGE_GLOBAL_LIMIT);
 });
 
-test('litix.io stays in the telemetry set but out of the network-layer cancel list', { tag: 'unit' }, () => {
+test('litix.io stays in the telemetry set but out of the network-layer cancel list', { tags: ['unit'] }, () => {
   // Blocking litix.io hard triggers a retry storm; the page realm answers it
   // empty-200 instead, so it must never reach the DNR/webRequest cancel set.
   assert.ok(TELEMETRY_HOSTS.includes('litix.io'));
@@ -1248,7 +1248,7 @@ test('litix.io stays in the telemetry set but out of the network-layer cancel li
   }
 });
 
-test('normalization clamps values and keeps core ad defense enabled', { tag: 'unit' }, () => {
+test('normalization clamps values and keeps core ad defense enabled', { tags: ['unit'] }, () => {
   const value = normalizeSettings({
     layout: { chatWidth: 900, sidebar: 'wild' },
     content: { blockAds: false },
@@ -1268,14 +1268,14 @@ test('normalization clamps values and keeps core ad defense enabled', { tag: 'un
   assert.equal(normalizeSettings({ layout: { chat: 'upside-down' } }).layout.chat, 'right');
 });
 
-test('chat separator drag grows away from the player on either side', { tag: 'unit' }, () => {
+test('chat separator drag grows away from the player on either side', { tags: ['unit'] }, () => {
   assert.equal(chatWidthAfterDrag('right', 410, 900, 830), 480);
   assert.equal(chatWidthAfterDrag('left', 410, 340, 410), 480);
   assert.equal(chatWidthAfterDrag('right', 500, 900, 700), 520);
   assert.equal(chatWidthAfterDrag('left', 340, 340, 200), 320);
 });
 
-test('the separator moves the same way for an arrow key as for a drag', { tag: 'unit' }, () => {
+test('the separator moves the same way for an arrow key as for a drag', { tags: ['unit'] }, () => {
   // Arrows move the separator, not the chat, so the same key widens the chat on
   // the right and narrows it on the left. Anything else would mean the control
   // moved one way on screen and the other way in the layout.
@@ -1310,7 +1310,7 @@ test('the separator moves the same way for an arrow key as for a drag', { tag: '
   }
 });
 
-test('a modal makes the page behind it inert, and gives it back exactly as it was', { tag: 'unit' }, () => {
+test('a modal makes the page behind it inert, and gives it back exactly as it was', { tags: ['unit'] }, () => {
   const node = (id, alreadyInert = false) => {
     const attributes = new Set(alreadyInert ? ['inert'] : []);
     return {
@@ -1381,7 +1381,7 @@ test('a modal makes the page behind it inert, and gives it back exactly as it wa
   assert.equal(alreadyInert.isInert, false, 'the second run restored the first run\u2019s snapshot');
 });
 
-test('one undo slot, and it says which destructive action it holds', { tag: 'unit' }, () => {
+test('one undo slot, and it says which destructive action it holds', { tags: ['unit'] }, () => {
   assert.equal(readUndoSlot(null), null);
   assert.equal(readUndoSlot('nonsense'), null);
   assert.equal(readUndoSlot(42), null);
@@ -1411,7 +1411,7 @@ test('one undo slot, and it says which destructive action it holds', { tag: 'uni
     'a slot with no payload was read as a reset with nothing in it');
 });
 
-test('an inner overlay closing does not uncover the page under the outer one', { tag: 'unit' }, () => {
+test('an inner overlay closing does not uncover the page under the outer one', { tags: ['unit'] }, () => {
   // The inert manager takes "is anything open" as an argument; the answer comes
   // from the same ladder the focus trap ranks. That is what stands in for a
   // reference count, so it is what has to be tested: a counter is the thing
@@ -1440,7 +1440,7 @@ test('an inner overlay closing does not uncover the page under the outer one', {
   assert.equal(anyOpen({}), false);
 });
 
-test('muting cannot demote the player, and cannot rescue scenery either', { tag: 'unit' }, () => {
+test('muting cannot demote the player, and cannot rescue scenery either', { tags: ['unit'] }, () => {
   const bg = (over) => videoIsBackground(over);
 
   // Marked background is the end of it, whatever else is true.
@@ -1479,7 +1479,7 @@ test('muting cannot demote the player, and cannot rescue scenery either', { tag:
   assert.equal(videoIsBackground(undefined), false);
 });
 
-test('with Kick\u2019s selector working, the rule is the one the live gate proved', { tag: 'unit' }, () => {
+test('with Kick\u2019s selector working, the rule is the one the live gate proved', { tags: ['unit'] }, () => {
   // This is the load-bearing assertion of the change, and the reason it is safe
   // to make at all. Two earlier attempts to widen the muted rule passed every
   // offline test and failed the live gate identically, because both changed
@@ -1532,7 +1532,7 @@ test('with Kick\u2019s selector working, the rule is the one the live gate prove
   ], 'the drift rescue changed more than the one case it exists for');
 });
 
-test('a listbox moves its active option, wraps, and refuses to invent one', { tag: 'unit' }, () => {
+test('a listbox moves its active option, wraps, and refuses to invent one', { tags: ['unit'] }, () => {
   // The command palette hard-coded aria-selected on the first option, so a
   // reader was told the first match was selected wherever the user had
   // arrowed, and Enter always ran that one.
@@ -1568,7 +1568,7 @@ test('a listbox moves its active option, wraps, and refuses to invent one', { ta
   }
 });
 
-test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {
+test('custom accents stay visible across every dark theme surface', { tags: ['unit'] }, () => {
   assert.equal(normalizeCustomAccent('#2a0030'), '#FF5CA8', 'a dark picker value must not erase focus rings');
   assert.equal(normalizeCustomAccent('#38d7d0'), '#38D7D0');
   assert.equal(normalizeCustomAccent('not-a-color'), '#FF5CA8');
@@ -1604,7 +1604,7 @@ test('custom accents stay visible across every dark theme surface', { tag: 'unit
     'an accent that disappears on a raised surface must not be accepted');
 });
 
-test('viewing presets change layout and style without touching content choices', { tag: 'unit' }, () => {
+test('viewing presets change layout and style without touching content choices', { tags: ['unit'] }, () => {
   const starting = normalizeSettings({
     layout: { hidden: ['player-clip'] },
     content: { hideCasino: true, hiddenChannels: ['/quiet-channel'] },
@@ -1621,7 +1621,7 @@ test('viewing presets change layout and style without touching content choices',
   assert.deepEqual(applyViewingPreset(starting, 'unknown'), starting);
 });
 
-test('v2 migrates the former desktop defaults without overwriting custom layout choices', { tag: 'unit' }, () => {
+test('v2 migrates the former desktop defaults without overwriting custom layout choices', { tags: ['unit'] }, () => {
   const migrated = normalizeSettings({ schema: 1, layout: { sidebar: 'compact', chatWidth: 380 } });
   // Track the constant, not a literal: this assertion is about the migration,
   // and pinning the number makes every later schema bump look like a failure.
@@ -1634,7 +1634,7 @@ test('v2 migrates the former desktop defaults without overwriting custom layout 
   assert.equal(custom.layout.chatWidth, 455);
 });
 
-test('Poor mode is opt-in and identifies only spending controls', { tag: 'unit' }, () => {
+test('Poor mode is opt-in and identifies only spending controls', { tags: ['unit'] }, () => {
   assert.equal(DEFAULT_SETTINGS.content.hideMonetization, false);
   assert.equal(normalizeSettings({ content: { hideMonetization: true } }).content.hideMonetization, true);
   assert.equal(normalizeSettings({ content: { hideMonetization: 'yes' } }).content.hideMonetization, false);
@@ -1676,7 +1676,7 @@ test('Poor mode is opt-in and identifies only spending controls', { tag: 'unit' 
   assert.equal(monetizationKind({ text: 'Subscription settings' }), '');
 });
 
-test('emote preferences keep favorites, removals, and view modes bounded and local', { tag: 'unit' }, () => {
+test('emote preferences keep favorites, removals, and view modes bounded and local', { tags: ['unit'] }, () => {
   // Schema 4 and earlier stored a flat `pinned` array. Position in it was the
   // order, so it migrates to ordered global favorites with nothing lost.
   const value = normalizeStickerPreferences({
@@ -1703,7 +1703,7 @@ test('emote preferences keep favorites, removals, and view modes bounded and loc
   );
 });
 
-test('favorites are scoped per channel with a global fallback', { tag: 'unit' }, () => {
+test('favorites are scoped per channel with a global fallback', { tags: ['unit'] }, () => {
   const favorites = normalizeStickerPreferences({
     favorites: [
       { key: 'id:g1', channel: '', order: 0 },
@@ -1735,7 +1735,7 @@ test('favorites are scoped per channel with a global fallback', { tag: 'unit' },
   assert.deepEqual(favoritesForChannel(undefined, 'xqc'), []);
 });
 
-test('favorites can be reordered explicitly, within their own scope only', { tag: 'unit' }, () => {
+test('favorites can be reordered explicitly, within their own scope only', { tags: ['unit'] }, () => {
   let favorites = normalizeStickerPreferences({
     favorites: [
       { key: 'a', channel: '', order: 0 },
@@ -1763,7 +1763,7 @@ test('favorites can be reordered explicitly, within their own scope only', { tag
   assert.deepEqual(favoritesForChannel(moveStickerFavorite(favorites, 'nope', '', -1), ''), ['c', 'a', 'b']);
 });
 
-test('toggling a favorite touches one scope and respects the ceiling', { tag: 'unit' }, () => {
+test('toggling a favorite touches one scope and respects the ceiling', { tags: ['unit'] }, () => {
   let favorites = [];
 
   favorites = toggleStickerFavorite(favorites, 'a', '');
@@ -1793,7 +1793,7 @@ test('toggling a favorite touches one scope and respects the ceiling', { tag: 'u
   assert.equal(scoped.filter((entry) => entry.channel === 'xqc').length, 1);
 });
 
-test('a hidden emote can never be favorited, in any scope', { tag: 'unit' }, () => {
+test('a hidden emote can never be favorited, in any scope', { tags: ['unit'] }, () => {
   // Hidden wins, or the shelf keeps offering an emote the user just removed.
   const value = normalizeStickerPreferences({
     hidden: ['id:gone'],
@@ -1807,7 +1807,7 @@ test('a hidden emote can never be favorited, in any scope', { tag: 'unit' }, () 
   assert.deepEqual(favoritesForChannel(value.favorites, 'xqc'), ['kick:id:kept']);
 });
 
-test('sticker library keeps portable metadata, catalog access, custom groups, and one assignment per sticker', { tag: 'unit' }, () => {
+test('sticker library keeps portable metadata, catalog access, custom groups, and one assignment per sticker', { tags: ['unit'] }, () => {
   const value = normalizeStickerPreferences({
     schema: 3,
     view: 'group',
@@ -1843,7 +1843,7 @@ test('sticker library keeps portable metadata, catalog access, custom groups, an
   assert.equal(normalizeStickerPreferences({ view: 'recent' }).view, 'recent');
 });
 
-test('an emote asset is pinned to Kick by the URL parser, not by how the string starts', { tag: 'unit' }, () => {
+test('an emote asset is pinned to Kick by the URL parser, not by how the string starts', { tags: ['unit'] }, () => {
   // A relative path was returned unparsed whenever it did not begin "//". For a
   // special scheme the URL parser reads a backslash as a slash, so "/\host/..."
   // is protocol-relative as well and a browser resolved it straight to that
@@ -1884,7 +1884,7 @@ test('an emote asset is pinned to Kick by the URL parser, not by how the string 
     'https://files.kick.com/asset.png?src=/emotes/1.png');
 });
 
-test('eviction protects available, favorited, and assigned emotes and drops oldest chat-only first', { tag: 'unit' }, () => {
+test('eviction protects available, favorited, and assigned emotes and drops oldest chat-only first', { tags: ['unit'] }, () => {
   const at = (day) => Date.UTC(2026, 0, day);
   const entry = (key, access, lastSeen) => ({
     key, id: key.slice(3), name: key, src: `https://files.kick.com/emotes/${key.slice(3)}/fullsize`,
@@ -1908,7 +1908,7 @@ test('eviction protects available, favorited, and assigned emotes and drops olde
   assert.ok(!kept.some((item) => item.key === 'kick:id:observed-old'));
 });
 
-test('a full library evicts an old observed entry rather than dropping the new one', { tag: 'unit' }, () => {
+test('a full library evicts an old observed entry rather than dropping the new one', { tags: ['unit'] }, () => {
   // The R-06 precondition: at the cap, a newly-seen emote must be recorded.
   const base = (n) => ({
     key: `id:${n}`, id: String(n), name: `E${n}`, src: `https://files.kick.com/emotes/${n}/fullsize`,
@@ -1922,7 +1922,7 @@ test('a full library evicts an old observed entry rather than dropping the new o
   assert.ok(!value.library.some((item) => item.key === 'kick:id:1'), 'the oldest observed emote is evicted');
 });
 
-test('removed keys are never re-materialised into the library on normalize', { tag: 'unit' }, () => {
+test('removed keys are never re-materialised into the library on normalize', { tags: ['unit'] }, () => {
   const value = normalizeStickerPreferences({
     schema: STICKER_PREFERENCES_SCHEMA,
     hidden: ['id:gone'],
@@ -1934,7 +1934,7 @@ test('removed keys are never re-materialised into the library on normalize', { t
   assert.deepEqual(value.library.map((item) => item.key), ['kick:id:kept']);
 });
 
-test('the emote preferences migrate losslessly from every historical schema to the current schema', { tag: 'unit' }, () => {
+test('the emote preferences migrate losslessly from every historical schema to the current schema', { tags: ['unit'] }, () => {
   const cdn = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
   const day = Date.UTC(2026, 0, 10);
 
@@ -2001,7 +2001,7 @@ test('the emote preferences migrate losslessly from every historical schema to t
   assert.ok(!('wasName' in clean.library[0]), 'wasName equal to name must not be recorded');
 });
 
-test('emote library preserves the source and follow-gate evidence used by click-to-save', { tag: 'unit' }, () => {
+test('emote library preserves the source and follow-gate evidence used by click-to-save', { tags: ['unit'] }, () => {
   const value = normalizeStickerPreferences({
     schema: 6,
     library: [{
@@ -2024,7 +2024,7 @@ test('emote library preserves the source and follow-gate evidence used by click-
   assert.equal(value.library[0].subscribersOnly, false);
 });
 
-test('route classifier covers every audited desktop surface', { tag: 'unit' }, () => {
+test('route classifier covers every audited desktop surface', { tags: ['unit'] }, () => {
   assert.equal(routeKind('https://kick.com/'), 'home');
   assert.equal(routeKind('/browse'), 'browse');
   assert.equal(routeKind('/browse/categories'), 'categories');
@@ -2041,7 +2041,7 @@ test('route classifier covers every audited desktop surface', { tag: 'unit' }, (
   assert.equal(routeKind('/creator-dashboard'), 'other');
 });
 
-test('StreamerStats profile links accept channel slugs and reject path injection', { tag: 'unit' }, () => {
+test('StreamerStats profile links accept channel slugs and reject path injection', { tags: ['unit'] }, () => {
   assert.equal(streamerStatsProfileUrl('xQc'), 'https://streamerstats.com/kick/channels/xQc');
   assert.equal(streamerStatsProfileUrl('channel_name-2'), 'https://streamerstats.com/kick/channels/channel_name-2');
   assert.equal(streamerStatsProfileUrl('../login'), '');
@@ -2049,7 +2049,7 @@ test('StreamerStats profile links accept channel slugs and reject path injection
   assert.equal(streamerStatsProfileUrl(''), '');
 });
 
-test('ad hosts and optional telemetry are separated from first-party playback', { tag: 'unit' }, () => {
+test('ad hosts and optional telemetry are separated from first-party playback', { tags: ['unit'] }, () => {
   assert.equal(classifyRequest('https://imasdk.googleapis.com/pal/sdkloader/pal.js').category, 'advertising');
   assert.equal(classifyRequest('https://pubads.g.doubleclick.net/adsid/integrator.json').blocked, true);
   assert.equal(classifyRequest('https://4g1csfd6d0egt72a3mo5kgi77.litix.io/', { reduceTelemetry: true }).category, 'telemetry');
@@ -2057,13 +2057,13 @@ test('ad hosts and optional telemetry are separated from first-party playback', 
   assert.equal(classifyRequest('https://web.kick.com/api/v1/stream/123/playback', { reduceTelemetry: true }).blocked, false);
 });
 
-test('diagnostic URLs never preserve query strings or long identifiers', { tag: 'unit' }, () => {
+test('diagnostic URLs never preserve query strings or long identifiers', { tags: ['unit'] }, () => {
   const value = sanitizeDiagnosticUrl('https://web.kick.com/api/v1/stream/01a00174-9260-7c4d-958b-e555d56d4566/playback?token=secret');
   assert.equal(value, 'web.kick.com/api/v1/stream/:id/playback');
   assert.equal(value.includes('secret'), false);
 });
 
-test('content labels distinguish casino, mature, promoted, and drops surfaces', { tag: 'unit' }, () => {
+test('content labels distinguish casino, mature, promoted, and drops surfaces', { tags: ['unit'] }, () => {
   assert.deepEqual(detectContentLabels('LIVE Slots & Casino 18+ Sponsored Kick Drops'), {
     casino: true,
     mature: true,
@@ -2072,7 +2072,7 @@ test('content labels distinguish casino, mature, promoted, and drops surfaces', 
   });
 });
 
-test('settings import reports malformed and future schemas', { tag: 'unit' }, () => {
+test('settings import reports malformed and future schemas', { tags: ['unit'] }, () => {
   const malformed = validateImportedSettings('{oops');
   assert.equal(malformed.ok, false);
   assert.equal(malformed.errorKey, 'That file is not valid JSON.');
@@ -2087,7 +2087,7 @@ test('settings import reports malformed and future schemas', { tag: 'unit' }, ()
   assert.equal(validateImportedSettings('{"schema":1}').ok, false);
 });
 
-test('settings import names whatever it could not keep', { tag: 'unit' }, () => {
+test('settings import names whatever it could not keep', { tags: ['unit'] }, () => {
   // A value outside the supported range is clamped, and the change is stated
   // rather than silently applied.
   const clamped = validateImportedSettings('{"schema":1,"layout":{"chatWidth":9000}}');
@@ -2114,7 +2114,7 @@ test('settings import names whatever it could not keep', { tag: 'unit' }, () => 
   assert.deepEqual(clean.noteDetails, []);
 });
 
-test('this build’s own export imports back without a single note', { tag: 'unit' }, () => {
+test('this build’s own export imports back without a single note', { tags: ['unit'] }, () => {
   // The export spreads the whole settings record, so it carries lastSeenVersion
   // alongside schema. That key was missing from the importer's known set, and a
   // plain round trip therefore accused the app's own file of holding an unknown
@@ -2128,7 +2128,7 @@ test('this build’s own export imports back without a single note', { tag: 'uni
   assert.deepEqual(round.noteDetails, []);
 });
 
-test('a schema stamp that is not a number reads as unversioned', { tag: 'unit' }, () => {
+test('a schema stamp that is not a number reads as unversioned', { tags: ['unit'] }, () => {
   // Number('abc') is NaN, and NaN fails both `> SETTINGS_SCHEMA` and
   // `< SETTINGS_SCHEMA`, so a junk stamp used to clear the "too new" refusal and
   // skip the upgrade note as well, importing as though it were already current.
@@ -2162,7 +2162,7 @@ test('a schema stamp that is not a number reads as unversioned', { tag: 'unit' }
   }
 });
 
-test('settings import round-trips the sticker library without treating it as an unknown section', { tag: 'unit' }, () => {
+test('settings import round-trips the sticker library without treating it as an unknown section', { tags: ['unit'] }, () => {
   const imported = validateImportedSettings(JSON.stringify({
     schema: 1,
     stickers: {
@@ -2182,7 +2182,7 @@ test('settings import round-trips the sticker library without treating it as an 
   assert.match(validateImportedSettings('{"schema":1,"stickers":{"schema":99}}').error, /Emote schema 99/);
 });
 
-test('sticker import names dropped entries rather than reporting a bare count', { tag: 'unit' }, () => {
+test('sticker import names dropped entries rather than reporting a bare count', { tags: ['unit'] }, () => {
   // Two valid entries plus one missing its asset URL: the dropped one is named.
   const result = validateImportedSettings(JSON.stringify({
     schema: 1,
@@ -2208,7 +2208,7 @@ test('sticker import names dropped entries rather than reporting a bare count', 
   assert.ok(/^1 emote/.test(note), 'expected singular phrasing for one dropped entry');
 });
 
-test('hidden channels normalize and round-trip through settings', { tag: 'unit' }, () => {
+test('hidden channels normalize and round-trip through settings', { tags: ['unit'] }, () => {
   // A channel path or URL is normalized to a clean path.
   assert.equal(normalizeChannelPath('xQc'), '/xqc');
   assert.equal(normalizeChannelPath('https://kick.com/Creator/'), '/creator');
@@ -2226,7 +2226,7 @@ test('hidden channels normalize and round-trip through settings', { tag: 'unit' 
   assert.deepEqual(settings.content.hiddenChannels, ['/a', '/b', '/c']);
 });
 
-test('a diagnostic settings diff names changed keys and not hidden-channel slugs', { tag: 'unit' }, () => {
+test('a diagnostic settings diff names changed keys and not hidden-channel slugs', { tags: ['unit'] }, () => {
   const empty = diagnosticSettingsDiff(DEFAULT_SETTINGS);
   assert.deepEqual(empty, {});
   const diff = diagnosticSettingsDiff({
@@ -2241,7 +2241,7 @@ test('a diagnostic settings diff names changed keys and not hidden-channel slugs
   assert.ok(!JSON.stringify(diff).includes('xqc'));
 });
 
-test('stored channel keys are canonicalized on the way in', { tag: 'unit' }, () => {
+test('stored channel keys are canonicalized on the way in', { tags: ['unit'] }, () => {
   const layouts = normalizeChannelLayouts({ '/XQC/': { focus: true }, '/xqc': { theater: true } });
   assert.equal(Object.keys(layouts).length, 1);
   assert.equal(layouts['/xqc'].theater, true);
@@ -2257,7 +2257,7 @@ test('stored channel keys are canonicalized on the way in', { tag: 'unit' }, () 
   assert.equal('volume:/' in media, false);
 });
 
-test('remote blocklists accept data-only entries and reject executable or unknown fields', { tag: 'unit' }, () => {
+test('remote blocklists accept data-only entries and reject executable or unknown fields', { tags: ['unit'] }, () => {
   const valid = validateRemoteBlocklist({
     schema: 1,
     channels: ['https://kick.com/Creator-One/', '/creator-two'],
@@ -2272,7 +2272,7 @@ test('remote blocklists accept data-only entries and reject executable or unknow
   assert.equal(validateRemoteBlocklist({ channels: [42] }).ok, false);
 });
 
-test('filtering fails open when it would hide most of a grid', { tag: 'unit' }, () => {
+test('filtering fails open when it would hide most of a grid', { tags: ['unit'] }, () => {
   // A grid that is mostly promotional is far more likely to be a labelling
   // change than the truth, so nothing is hidden and the caller is told why.
   const suspended = filterDecision(12, 7);
@@ -2289,21 +2289,21 @@ test('filtering fails open when it would hide most of a grid', { tag: 'unit' }, 
   assert.equal(filterDecision(12, 4).apply, false);
 });
 
-test('filter ceiling ignores samples too small to judge', { tag: 'unit' }, () => {
+test('filter ceiling ignores samples too small to judge', { tags: ['unit'] }, () => {
   // A channel page may legitimately show two cards, both filtered.
   assert.equal(filterDecision(FILTER_MIN_SAMPLE - 1, FILTER_MIN_SAMPLE - 1).apply, true);
   assert.equal(filterDecision(0, 0).apply, true);
   assert.equal(filterDecision(1, 1).apply, true);
 });
 
-test('filter decision tolerates nonsense counts', { tag: 'unit' }, () => {
+test('filter decision tolerates nonsense counts', { tags: ['unit'] }, () => {
   assert.equal(filterDecision(-3, 5).apply, true);
   assert.equal(filterDecision(10, 999).apply, false);
   assert.equal(filterDecision(undefined, undefined).apply, true);
   assert.equal(filterDecision(10, 999).hidden, 10);
 });
 
-test('apply delay is capped so a busy page cannot starve the work', { tag: 'unit' }, () => {
+test('apply delay is capped so a busy page cannot starve the work', { tags: ['unit'] }, () => {
   // Fresh request: the caller's debounce is honoured.
   assert.equal(nextApplyDelay(80, 0), 80);
 
@@ -2319,7 +2319,7 @@ test('apply delay is capped so a busy page cannot starve the work', { tag: 'unit
   assert.equal(nextApplyDelay(undefined, undefined), 0);
 });
 
-test('structured card evidence outranks prose', { tag: 'unit' }, () => {
+test('structured card evidence outranks prose', { tags: ['unit'] }, () => {
   // The failure this replaces: ordinary titles reading as promotional content.
   const beat = detectContentLabels('DJ set - Drop the beat! | Music', {
     categories: ['music'],
@@ -2350,7 +2350,7 @@ test('structured card evidence outranks prose', { tag: 'unit' }, () => {
   assert.equal(real.mature, true);
 });
 
-test('label detection falls back to text only without structured evidence', { tag: 'unit' }, () => {
+test('label detection falls back to text only without structured evidence', { tags: ['unit'] }, () => {
   const fallback = detectContentLabels('Slots & Casino 18+', {});
   assert.equal(fallback.casino, true);
   assert.equal(fallback.mature, true);
@@ -2362,7 +2362,7 @@ test('label detection falls back to text only without structured evidence', { ta
   assert.equal(detectContentLabels('casino talk', { badges: ['LIVE'], categories: ['irl'] }).casino, false);
 });
 
-test('the ceiling yields to an explicit category page', { tag: 'unit' }, () => {
+test('the ceiling yields to an explicit category page', { tags: ['unit'] }, () => {
   // Browsing /category/slots with the casino filter on should empty the page:
   // that is the filter working, not a labelling failure.
   const category = filterDecision(24, 24, { route: 'category' });
@@ -2374,7 +2374,7 @@ test('the ceiling yields to an explicit category page', { tag: 'unit' }, () => {
   assert.equal(filterDecision(24, 24).apply, false);
 });
 
-test('playback payloads have their ad flags cleared', { tag: 'unit' }, () => {
+test('playback payloads have their ad flags cleared', { tags: ['unit'] }, () => {
   const payload = JSON.stringify({
     playback_url: { live: 'https://stream.kick.com/x.m3u8' },
     video_session: { auto_ads_enabled: true, id: 'abc' },
@@ -2407,7 +2407,7 @@ test('playback payloads have their ad flags cleared', { tag: 'unit' }, () => {
   assert.equal(parsed.video_player.player.player_name, 'ivs');
 });
 
-test('playback rewriting leaves unrelated or clean payloads alone', { tag: 'unit' }, () => {
+test('playback rewriting leaves unrelated or clean payloads alone', { tags: ['unit'] }, () => {
   assert.equal(neutralizePlaybackPayload('not json').changed, false);
   assert.equal(neutralizePlaybackPayload('').changed, false);
   assert.equal(neutralizePlaybackPayload('[1,2,3]').changed, false);
@@ -2416,7 +2416,7 @@ test('playback rewriting leaves unrelated or clean payloads alone', { tag: 'unit
   assert.equal(neutralizePlaybackPayload('{"video_player":{"player":{}}}').changed, false);
 });
 
-test('playback URLs are recognised across endpoint shapes', { tag: 'unit' }, () => {
+test('playback URLs are recognised across endpoint shapes', { tags: ['unit'] }, () => {
   assert.equal(isPlaybackUrl('https://web.kick.com/api/v1/stream/abc-123/playback'), true);
   assert.equal(isPlaybackUrl('https://web.kick.com/api/v2/channels/x/playback?foo=1'), true);
   assert.equal(isPlaybackUrl('/stream/abc/playback'), true);
@@ -2425,7 +2425,7 @@ test('playback URLs are recognised across endpoint shapes', { tag: 'unit' }, () 
   assert.equal(isPlaybackUrl(''), false);
 });
 
-test('injection timing is described from what the page already contained', { tag: 'unit' }, () => {
+test('injection timing is described from what the page already contained', { tags: ['unit'] }, () => {
   // Ideal: nothing has parsed yet.
   assert.equal(describeInjection({ readyState: 'loading', scriptCount: 0, hasBody: false }).grade, 'first');
 
@@ -2441,7 +2441,7 @@ test('injection timing is described from what the page already contained', { tag
   assert.equal(describeInjection({}).grade, 'first');
 });
 
-test('ad stack drift is reported instead of passing silently', { tag: 'unit' }, () => {
+test('ad stack drift is reported instead of passing silently', { tags: ['unit'] }, () => {
   // Nothing seen yet says so, rather than implying health.
   assert.equal(assessAdStack({ sawPlayback: false }).status, 'unknown');
 
@@ -2462,7 +2462,7 @@ test('ad stack drift is reported instead of passing silently', { tag: 'unit' }, 
   assert.equal(absent.drifted, true);
 });
 
-test('emote access merging handles a first observation and never downgrades access', { tag: 'unit' }, () => {
+test('emote access merging handles a first observation and never downgrades access', { tags: ['unit'] }, () => {
   assert.equal(preferredStickerAccess(undefined, 'observed'), 'observed');
   assert.equal(preferredStickerAccess(undefined, 'channel'), 'channel');
   assert.equal(preferredStickerAccess('available', 'observed'), 'available');
@@ -2471,7 +2471,7 @@ test('emote access merging handles a first observation and never downgrades acce
   assert.equal(preferredStickerAccess('unknown', 'unknown'), 'locked');
 });
 
-test('the emote library records when Kick changes an emote under the user', { tag: 'unit' }, () => {
+test('the emote library records when Kick changes an emote under the user', { tags: ['unit'] }, () => {
   const day1 = Date.UTC(2026, 0, 10);
   const day2 = Date.UTC(2026, 5, 20);
   const day3 = Date.UTC(2026, 7, 1);
@@ -2529,7 +2529,7 @@ test('the emote library records when Kick changes an emote under the user', { ta
   assert.equal(countChangedStickers(undefined), 0);
 });
 
-test('emote history survives the export round-trip and rejects impossible dates', { tag: 'unit' }, () => {
+test('emote history survives the export round-trip and rejects impossible dates', { tags: ['unit'] }, () => {
   const seen = Date.UTC(2026, 2, 3);
   const imported = validateImportedSettings(JSON.stringify({
     schema: SETTINGS_SCHEMA,
@@ -2571,7 +2571,7 @@ test('emote history survives the export round-trip and rejects impossible dates'
   assert.equal(noop.stickers.library[0].wasName, undefined);
 });
 
-test('a layout link carries channel names and nothing else, and is revalidated on the way in', { tag: 'unit' }, () => {
+test('a layout link carries channel names and nothing else, and is revalidated on the way in', { tags: ['unit'] }, () => {
   const link = multistreamLayoutLink(['xQc', 'Adin_Ross']);
   assert.equal(link, 'https://kick.com/?kf-multi=xQc%2CAdin_Ross');
   assert.deepEqual(parseMultistreamLink(link), ['xQc', 'Adin_Ross']);
@@ -2595,7 +2595,7 @@ test('a layout link carries channel names and nothing else, and is revalidated o
   assert.equal(multistreamLayoutLink(['../nope']), '');
 });
 
-test('chat badges fill the gap Kick leaves without duplicating what it drew', { tag: 'unit' }, () => {
+test('chat badges fill the gap Kick leaves without duplicating what it drew', { tags: ['unit'] }, () => {
   const collectible = 'https://ext.cdn.kick.com/chat/badges/collectible-gold.svg';
   const sub = 'https://ext.cdn.kick.com/chat/badges/sub.svg';
 
@@ -2633,7 +2633,7 @@ test('chat badges fill the gap Kick leaves without duplicating what it drew', { 
   assert.deepEqual(chatBadgesToRender(undefined), []);
 });
 
-test('API drift is accumulated and reported instead of silently falling back', { tag: 'unit' }, () => {
+test('API drift is accumulated and reported instead of silently falling back', { tags: ['unit'] }, () => {
   // No drift is the normal case.
   const clean = assessApiDrift([]);
   assert.equal(clean.drifted, false);
@@ -2656,7 +2656,7 @@ test('API drift is accumulated and reported instead of silently falling back', {
   assert.equal(deduped.count, 1);
 });
 
-test('failed writes are named and recovered writes clear themselves', { tag: 'unit' }, () => {
+test('failed writes are named and recovered writes clear themselves', { tags: ['unit'] }, () => {
   let registry = {};
 
   // A failure names the data in the user's words, not the storage key.
@@ -2683,7 +2683,7 @@ test('failed writes are named and recovered writes clear themselves', { tag: 'un
   assert.equal(describeStorageFailures(registry), null);
 });
 
-test('storage size is reported largest-first in units a person reads', { tag: 'unit' }, () => {
+test('storage size is reported largest-first in units a person reads', { tags: ['unit'] }, () => {
   const report = approximateStorageBytes({
     'kick-focus:settings': { a: 1 },
     'kick-focus:sticker-preferences': { library: new Array(400).fill('collectiblesGoldenLULW') },
@@ -2702,7 +2702,7 @@ test('storage size is reported largest-first in units a person reads', { tag: 'u
   assert.equal(formatBytes(5 * 1024 * 1024), '5.00 MB');
 });
 
-test('imported keys hidden by the prototype chain are reported, not swallowed', { tag: 'unit' }, () => {
+test('imported keys hidden by the prototype chain are reported, not swallowed', { tags: ['unit'] }, () => {
   const payload = JSON.parse('{"schema":2,"layout":{"__proto__":{"polluted":true},"constructor":1,"toString":"x","density":"compact"}}');
   const result = validateImportedSettings(JSON.stringify(payload));
   assert.equal(result.ok, true);
@@ -2717,7 +2717,7 @@ test('imported keys hidden by the prototype chain are reported, not swallowed', 
   assert.equal(result.value.layout.density, 'compact');
 });
 
-test('ad preflight scripts are matched exactly, not by hostname alone', { tag: 'unit' }, () => {
+test('ad preflight scripts are matched exactly, not by hostname alone', { tags: ['unit'] }, () => {
   const origin = 'https://kick.com';
 
   // The three Kick actually waits on before it will request playback.
@@ -2736,7 +2736,7 @@ test('ad preflight scripts are matched exactly, not by hostname alone', { tag: '
   assert.equal(isAdPreflightScript('not a url at all', 'also not a url'), false);
 });
 
-test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', { tag: 'unit' }, async () => {
+test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', { tags: ['unit'] }, async () => {
   const {
     MULTISTREAM_MAX, addMultistreamChannel, multistreamColumns,
     normalizeMultistream, removeMultistreamChannel, saveMultistreamLayout,
@@ -2785,7 +2785,7 @@ test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', {
   assert.equal(multistreamColumns(0), 1);
 });
 
-test('adding a channel never recreates a tile that is already playing', { tag: 'unit' }, async () => {
+test('adding a channel never recreates a tile that is already playing', { tags: ['unit'] }, async () => {
   const { planMultistreamTiles, normalizeMultistream, addMultistreamChannel } = await import('../src/core.mjs');
 
   // Replacing an <iframe> restarts its stream, so the nine already playing must
@@ -2824,7 +2824,7 @@ test('adding a channel never recreates a tile that is already playing', { tag: '
   }
 });
 
-test('exactly one tile is ever unmuted, across every reachable grid state', { tag: 'unit' }, async () => {
+test('exactly one tile is ever unmuted, across every reachable grid state', { tags: ['unit'] }, async () => {
   const { normalizeMultistream, multistreamTileMuted } = await import('../src/core.mjs');
 
   // The rule is load-bearing: a nine-way grid that gets it wrong is nine
@@ -2851,7 +2851,7 @@ test('exactly one tile is ever unmuted, across every reachable grid state', { ta
   assert.equal(empty.streams.filter((slug) => !multistreamTileMuted(empty, slug)).length, 0);
 });
 
-test('pausing and muting the grid are separate controls', { tag: 'unit' }, async () => {
+test('pausing and muting the grid are separate controls', { tags: ['unit'] }, async () => {
   const { normalizeMultistream, multistreamTileMuted } = await import('../src/core.mjs');
 
   const grid = normalizeMultistream({ streams: ['a', 'b', 'c'], focus: 'b' });
@@ -2884,7 +2884,7 @@ test('pausing and muting the grid are separate controls', { tag: 'unit' }, async
   assert.equal(junk.muted, false);
 });
 
-test('suspended tiles unload, but never the one carrying audio', { tag: 'unit' }, async () => {
+test('suspended tiles unload, but never the one carrying audio', { tags: ['unit'] }, async () => {
   const { normalizeMultistream, multistreamTileActive } = await import('../src/core.mjs');
   const grid = normalizeMultistream({ streams: ['a', 'b', 'c'], focus: 'b' });
 
@@ -2909,7 +2909,7 @@ test('suspended tiles unload, but never the one carrying audio', { tag: 'unit' }
   assert.equal(multistreamTileActive(null, 'a', new Set()), true);
 });
 
-test('export carries usage counts and layouts, and import validates them', { tag: 'unit' }, async () => {
+test('export carries usage counts and layouts, and import validates them', { tags: ['unit'] }, async () => {
   const { normalizeEmoteUsage } = await import('../src/core.mjs');
 
   // A full round-trip of everything the About page claims is stored.
@@ -2959,7 +2959,7 @@ test('export carries usage counts and layouts, and import validates them', { tag
   assert.ok(lossy.notes.some((n) => /multi-stream grid to 9 supported channels/.test(n)));
 });
 
-test('the hideable catalog is internally consistent and every entry is reachable', { tag: 'unit' }, () => {
+test('the hideable catalog is internally consistent and every entry is reachable', { tags: ['unit'] }, () => {
   const ids = HIDEABLE_ELEMENTS.map((entry) => entry.id);
   assert.equal(new Set(ids).size, ids.length, 'ids must be unique — they key both the CSS and the settings value');
   const probes = HIDEABLE_ELEMENTS.map((entry) => entry.probe);
@@ -2974,7 +2974,7 @@ test('the hideable catalog is internally consistent and every entry is reachable
   }
 });
 
-test('hidden-element ids are validated, deduped, and stored in catalog order', { tag: 'unit' }, () => {
+test('hidden-element ids are validated, deduped, and stored in catalog order', { tags: ['unit'] }, () => {
   assert.deepEqual(normalizeHiddenElements(null), []);
   assert.deepEqual(normalizeHiddenElements('player-clip'), [], 'a bare string is not a list');
   assert.deepEqual(normalizeHiddenElements(['player-clip', 'player-clip']), ['player-clip']);
@@ -2991,7 +2991,7 @@ test('hidden-element ids are validated, deduped, and stored in catalog order', {
   assert.deepEqual(DEFAULT_SETTINGS.layout.hidden, [], 'nothing is hidden until asked for by name');
 });
 
-test('quality labels rank by height then frame rate, and Auto never wins', { tag: 'unit' }, () => {
+test('quality labels rank by height then frame rate, and Auto never wins', { tags: ['unit'] }, () => {
   assert.ok(qualityRank('1080p60') > qualityRank('1080p'), 'frame rate breaks a height tie');
   assert.ok(qualityRank('1080p') > qualityRank('720p60'), 'height outranks frame rate');
   assert.ok(qualityRank('720p60') > qualityRank('480p'));
@@ -3011,7 +3011,7 @@ test('quality labels rank by height then frame rate, and Auto never wins', { tag
   assert.equal(qualityRank(null), -1);
 });
 
-test('the best option is picked from what Kick actually offered, or nothing at all', { tag: 'unit' }, () => {
+test('the best option is picked from what Kick actually offered, or nothing at all', { tags: ['unit'] }, () => {
   assert.equal(bestQualityOption(['Auto', '1080p60', '720p60', '480p', '360p', '160p']), '1080p60');
   assert.equal(bestQualityOption([' 720p60 ']), '720p60', 'the stored label is trimmed, not the raw text node');
   // A channel that only offers Auto, and a menu that has not rendered its
@@ -3022,7 +3022,7 @@ test('the best option is picked from what Kick actually offered, or nothing at a
   assert.equal(bestQualityOption(['mystery']), '', 'an unrecognized label is never guessed at');
 });
 
-test('the session key gets the bare height Kick writes, never the menu label', { tag: 'unit' }, () => {
+test('the session key gets the bare height Kick writes, never the menu label', { tags: ['unit'] }, () => {
   // Measured against a live channel on 2026-08-16 by picking each rung and
   // reading `sessionStorage['stream_quality']` back. Writing the label instead
   // — which is what this build did before — hands the player a value it does
@@ -3047,7 +3047,7 @@ test('the session key gets the bare height Kick writes, never the menu label', {
  * cases here are the two that must stay silent: this build cannot honestly say
  * what changed for someone it has never seen before.
  */
-test('an update is announced, a first install is not', { tag: 'unit' }, () => {
+test('an update is announced, a first install is not', { tags: ['unit'] }, () => {
   assert.equal(updateNotice('', '1.22.0'), null, 'a profile with no recorded version has seen nothing');
   assert.equal(updateNotice(null, '1.22.0'), null, 'neither has one that predates the field');
   assert.equal(updateNotice('1.22.0', '1.22.0'), null, 'the same build is not an update');
@@ -3064,7 +3064,7 @@ test('an update is announced, a first install is not', { tag: 'unit' }, () => {
   assert.equal(downgrade.to, '1.21.0');
 });
 
-test('a stored version is validated before it is compared or shown', { tag: 'unit' }, () => {
+test('a stored version is validated before it is compared or shown', { tags: ['unit'] }, () => {
   // It is read back out of a settings file a user can hand-edit or import, and
   // it reaches the interface, so it is treated as untrusted input.
   for (const junk of ['../evil', '<img onerror=1>', 'v1.2.3', '1.2.3.4.5', 'x'.repeat(40), '99999.0']) {
@@ -3075,14 +3075,14 @@ test('a stored version is validated before it is compared or shown', { tag: 'uni
   assert.equal(normalizeVersion('  1.21.0  '), '1.21.0', 'surrounding whitespace is tolerated');
 });
 
-test('a version with no note still records itself rather than repeating', { tag: 'unit' }, () => {
+test('a version with no note still records itself rather than repeating', { tags: ['unit'] }, () => {
   const notice = updateNotice('1.20.0', '1.21.0', { });
   assert.equal(notice.to, '1.21.0');
   assert.equal(notice.summary, '', 'a version nobody wrote a note for says nothing');
   assert.deepEqual(notice.defaults, []);
 });
 
-test('normalizeSettings carries the recorded version and refuses a junk one', { tag: 'unit' }, () => {
+test('normalizeSettings carries the recorded version and refuses a junk one', { tags: ['unit'] }, () => {
   assert.equal(normalizeSettings({ lastSeenVersion: '1.21.0' }).lastSeenVersion, '1.21.0');
   assert.equal(normalizeSettings({ lastSeenVersion: '../evil' }).lastSeenVersion, '');
   assert.equal(normalizeSettings({}).lastSeenVersion, '', 'a fresh profile has seen nothing');
@@ -3100,20 +3100,20 @@ const SEARCH_ROWS = [
   { page: 'appearance', pageTitle: 'Appearance', title: 'Theme', description: 'Choose the overall surface treatment for chat and the shell.', terms: 'Theme\nChoose the overall surface treatment for chat and the shell.' },
 ];
 
-test('a title match outranks a description-only match, and a prefix outranks both', { tag: 'unit' }, () => {
+test('a title match outranks a description-only match, and a prefix outranks both', { tags: ['unit'] }, () => {
   const found = rankSettingsMatches('chat', SEARCH_ROWS);
   assert.deepEqual(found.map((row) => row.title), ['Chat width', 'Organize chat stickers', 'Theme'],
     'prefix of a title, then inside a title, then description only');
 });
 
-test('a one-letter query opens nothing, because it matches most of the panel', { tag: 'unit' }, () => {
+test('a one-letter query opens nothing, because it matches most of the panel', { tags: ['unit'] }, () => {
   assert.deepEqual(rankSettingsMatches('c', SEARCH_ROWS), []);
   assert.deepEqual(rankSettingsMatches('', SEARCH_ROWS), []);
   assert.deepEqual(rankSettingsMatches('   ', SEARCH_ROWS), []);
   assert.equal(rankSettingsMatches('ch', SEARCH_ROWS).length > 0, true, 'two letters is the floor');
 });
 
-test('search matches a translated term as well as its English source', { tag: 'unit' }, () => {
+test('search matches a translated term as well as its English source', { tags: ['unit'] }, () => {
   // The interface is assembled in English and translated afterwards, so the
   // index carries both — otherwise a Spanish reader could never find a row by
   // the words actually on their screen.
@@ -3126,7 +3126,7 @@ test('search matches a translated term as well as its English source', { tag: 'u
   assert.equal(rankSettingsMatches('nothing', bilingual).length, 0);
 });
 
-test('search results are capped and deterministic', { tag: 'unit' }, () => {
+test('search results are capped and deterministic', { tags: ['unit'] }, () => {
   const many = Array.from({ length: 60 }, (_, index) => ({
     page: 'layout', pageTitle: 'Layout', title: `Chat setting ${String(index).padStart(2, '0')}`, description: '', terms: `Chat setting ${index}`,
   }));
@@ -3137,7 +3137,7 @@ test('search results are capped and deterministic', { tag: 'unit' }, () => {
 });
 
 
-test('a VOD expires 7 days out, or 30 when the channel is verified', { tag: 'unit' }, () => {
+test('a VOD expires 7 days out, or 30 when the channel is verified', { tags: ['unit'] }, () => {
   const day = 24 * 60 * 60 * 1000;
   const now = Date.UTC(2026, 7, 18, 12, 0, 0);
   const started = now - 2 * day;
@@ -3153,7 +3153,7 @@ test('a VOD expires 7 days out, or 30 when the channel is verified', { tag: 'uni
   assert.equal(verified.remaining, 28 * day);
 });
 
-test('an unknown tier is a silence, never a default', { tag: 'unit' }, () => {
+test('an unknown tier is a silence, never a default', { tags: ['unit'] }, () => {
   const now = Date.UTC(2026, 7, 18, 12, 0, 0);
   const started = now - 2 * 24 * 60 * 60 * 1000;
   // The whole point of the item: 7 and 30 are four-fold apart, so guessing is
@@ -3167,7 +3167,7 @@ test('an unknown tier is a silence, never a default', { tag: 'unit' }, () => {
   assert.equal(vodExpiry(now + 3 * 24 * 60 * 60 * 1000, true, now), null);
 });
 
-test('an expired VOD reports as expired and formats as nothing', { tag: 'unit' }, () => {
+test('an expired VOD reports as expired and formats as nothing', { tags: ['unit'] }, () => {
   const day = 24 * 60 * 60 * 1000;
   const now = Date.UTC(2026, 7, 18, 12, 0, 0);
   const expiry = vodExpiry(now - 9 * day, false, now);
@@ -3176,7 +3176,7 @@ test('an expired VOD reports as expired and formats as nothing', { tag: 'unit' }
   assert.equal(formatVodRetention(expiry.remaining), '');
 });
 
-test('the retention label narrows its unit as the deadline approaches', { tag: 'unit' }, () => {
+test('the retention label narrows its unit as the deadline approaches', { tags: ['unit'] }, () => {
   const hour = 3600_000;
   assert.equal(formatVodRetention(6 * 24 * hour), '6d');
   assert.equal(formatVodRetention(48 * hour), '2d');
@@ -3191,7 +3191,7 @@ test('the retention label narrows its unit as the deadline approaches', { tag: '
 });
 
 
-test('the merged buffer keeps arrival order and caps from the front', { tag: 'unit' }, () => {
+test('the merged buffer keeps arrival order and caps from the front', { tags: ['unit'] }, () => {
   let entries = [];
   for (let i = 0; i < 5; i += 1) {
     entries = appendMergedMessage(entries, { slug: i % 2 ? 'beta' : 'alpha', id: String(i), text: `m${i}`, sender: 'x', at: i }, 3);
@@ -3202,7 +3202,7 @@ test('the merged buffer keeps arrival order and caps from the front', { tag: 'un
   assert.deepEqual(entries.map((entry) => entry.slug), ['alpha', 'beta', 'alpha']);
 });
 
-test('a replayed message is not shown twice, but two channels may share an id', { tag: 'unit' }, () => {
+test('a replayed message is not shown twice, but two channels may share an id', { tags: ['unit'] }, () => {
   let entries = appendMergedMessage([], { slug: 'alpha', id: '7', text: 'hello', sender: 'a', at: 1 });
   entries = appendMergedMessage(entries, { slug: 'alpha', id: '7', text: 'hello', sender: 'a', at: 2 });
   assert.equal(entries.length, 1, 'Kick replays recent history on reconnect');
@@ -3212,7 +3212,7 @@ test('a replayed message is not shown twice, but two channels may share an id', 
   assert.equal(entries.length, 2);
 });
 
-test('the merged buffer refuses junk rather than propagating it', { tag: 'unit' }, () => {
+test('the merged buffer refuses junk rather than propagating it', { tags: ['unit'] }, () => {
   assert.deepEqual(appendMergedMessage([], null), []);
   assert.deepEqual(appendMergedMessage([], { slug: '', text: 'x' }), []);
   assert.deepEqual(appendMergedMessage([], { slug: 'alpha', text: '' }), []);
@@ -3225,7 +3225,7 @@ test('the merged buffer refuses junk rather than propagating it', { tag: 'unit' 
   assert.equal(entry.at, 0);
 });
 
-test('dropping a channel removes only its messages', { tag: 'unit' }, () => {
+test('dropping a channel removes only its messages', { tags: ['unit'] }, () => {
   let entries = [];
   entries = appendMergedMessage(entries, { slug: 'alpha', id: '1', text: 'a', at: 1 });
   entries = appendMergedMessage(entries, { slug: 'beta', id: '2', text: 'b', at: 2 });
@@ -3236,7 +3236,7 @@ test('dropping a channel removes only its messages', { tag: 'unit' }, () => {
 });
 
 
-test('the completion list never offers an emote Kick is on record as refusing', { tag: 'unit' }, () => {
+test('the completion list never offers an emote Kick is on record as refusing', { tags: ['unit'] }, () => {
   const here = 'alpha';
   const candidates = [
     { key: 'k:1', id: '1', name: 'poggers', usableHere: true, usableEverywhere: true },
@@ -3251,7 +3251,7 @@ test('the completion list never offers an emote Kick is on record as refusing', 
   assert.deepEqual(offered.sort(), ['poggers', 'pogging']);
 });
 
-test('an unknown reach is still offered, because an anonymous read cannot know', { tag: 'unit' }, () => {
+test('an unknown reach is still offered, because an anonymous read cannot know', { tags: ['unit'] }, () => {
   // The signed-out case: Kick returns the same shape for an emote the account
   // owns and one it never will, so filtering on uncertainty would empty the
   // list for every signed-out user.
@@ -3265,7 +3265,7 @@ test('an unknown reach is still offered, because an anonymous read cannot know',
     'nothing is hidden without a positive refusal on record');
 });
 
-test('completionWouldBounce answers only from positive knowledge', { tag: 'unit' }, () => {
+test('completionWouldBounce answers only from positive knowledge', { tags: ['unit'] }, () => {
   assert.equal(completionWouldBounce({ usableHere: false }, 'alpha'), true);
   assert.equal(completionWouldBounce({ usableEverywhere: false, sourceSlug: 'beta' }, 'alpha'), true);
   // Case is Kick's, not the user's.
@@ -3277,7 +3277,7 @@ test('completionWouldBounce answers only from positive knowledge', { tag: 'unit'
   assert.equal(completionWouldBounce(null, 'alpha'), false);
 });
 
-test('the viewer hub always renders every card, in the same order', { tag: 'unit' }, () => {
+test('the viewer hub always renders every card, in the same order', { tags: ['unit'] }, () => {
   // A hub that drops a card when its source is missing changes shape under the
   // reader, and the missing card is the one worth explaining.
   const cards = viewerHubCards({}, 1000);
@@ -3285,7 +3285,7 @@ test('the viewer hub always renders every card, in the same order', { tag: 'unit
   assert.ok(cards.every((entry) => entry.state === 'unavailable' && entry.reason === 'not-read'));
 });
 
-test('an absent reading never arrives as a zero', { tag: 'unit' }, () => {
+test('an absent reading never arrives as a zero', { tags: ['unit'] }, () => {
   // The whole reason this module exists. A viewer with no points and a viewer
   // whose points could not be read must not look the same.
   const absent = viewerHubCards({
@@ -3310,7 +3310,7 @@ test('an absent reading never arrives as a zero', { tag: 'unit' }, () => {
   assert.equal(zero.find((entry) => entry.id === 'collectibles').value, 0);
 });
 
-test('every card fails on its own', { tag: 'unit' }, () => {
+test('every card fails on its own', { tags: ['unit'] }, () => {
   // One source going down must cost one card, not the hub.
   const cards = viewerHubCards({
     points: { onChannel: true, value: 4200, observedAt: 900 },
@@ -3329,7 +3329,7 @@ test('every card fails on its own', { tag: 'unit' }, () => {
   assert.equal(by.level.reason, 'dialog-closed');
 });
 
-test('an anonymous page says so, and says it per card', { tag: 'unit' }, () => {
+test('an anonymous page says so, and says it per card', { tags: ['unit'] }, () => {
   // Signed out, Kick renders no reward control, no points control, no Drops
   // entry, and answers the collectible read with 403. Each is its own sentence.
   const cards = viewerHubCards({
@@ -3360,7 +3360,7 @@ test('an anonymous page says so, and says it per card', { tag: 'unit' }, () => {
   });
 });
 
-test('session watch time advances only across active playback and formats as a clock', { tag: 'unit' }, () => {
+test('session watch time advances only across active playback and formats as a clock', { tags: ['unit'] }, () => {
   let record = advanceSessionWatchTime({}, 1000, true);
   assert.deepEqual(record, { elapsedMs: 0, activeSince: 1000 });
   assert.equal(sessionWatchElapsed(record, 61_500), 60_500);
@@ -3374,7 +3374,7 @@ test('session watch time advances only across active playback and formats as a c
   assert.equal(formatSessionWatchTime(3_720_500), '1:02:00');
 });
 
-test('session watch playback requires one visible channel-player owner', { tag: 'unit' }, () => {
+test('session watch playback requires one visible channel-player owner', { tags: ['unit'] }, () => {
   const base = {
     route: 'channel',
     documentVisible: true,
@@ -3415,7 +3415,7 @@ test('session watch playback requires one visible channel-player owner', { tag: 
   }
 });
 
-test('session watch owner ranking ignores autoplay and changes ownership without double-counting', { tag: 'unit' }, () => {
+test('session watch owner ranking ignores autoplay and changes ownership without double-counting', { tags: ['unit'] }, () => {
   const owner = selectSessionWatchOwner([
     {
       id: 'preview', route: 'channel', documentVisible: true, connected: true,
@@ -3437,7 +3437,7 @@ test('session watch owner ranking ignores autoplay and changes ownership without
     'an active owner swap stays continuous and an inactive owner banks the interval once');
 });
 
-test('level and streak are only read while Kick has the reward dialog open', { tag: 'unit' }, () => {
+test('level and streak are only read while Kick has the reward dialog open', { tags: ['unit'] }, () => {
   // Neither is persisted to fill the gap: a level kept from yesterday is a
   // number that looks live and is not.
   const closed = viewerHubCards({ level: { dialogOpen: false, value: 12 }, streak: { dialogOpen: false, value: 3 } }, 1000);
@@ -3457,7 +3457,7 @@ test('level and streak are only read while Kick has the reward dialog open', { t
   assert.equal(empty.find((entry) => entry.id === 'level').reason, 'not-shown');
 });
 
-test('the reward card distinguishes claimed, waiting, and available', { tag: 'unit' }, () => {
+test('the reward card distinguishes claimed, waiting, and available', { tags: ['unit'] }, () => {
   const at = 10_000_000;
   const rolledOver = at - 3_600_000;
   const base = { trigger: true, previousResetAt: rolledOver, observedAt: at - 1000 };
@@ -3474,7 +3474,7 @@ test('the reward card distinguishes claimed, waiting, and available', { tag: 'un
   assert.equal(waiting.find((entry) => entry.id === 'reward').value, 'waiting');
 });
 
-test('a reading that stopped updating is shown as an old one, not as current', { tag: 'unit' }, () => {
+test('a reading that stopped updating is shown as an old one, not as current', { tags: ['unit'] }, () => {
   const now = 5_000_000;
   const fresh = viewerHubCards({ points: { onChannel: true, value: 7, observedAt: now - 1000 } }, now);
   assert.equal(fresh.find((entry) => entry.id === 'points').stale, false);
@@ -3488,7 +3488,7 @@ test('a reading that stopped updating is shown as an old one, not as current', {
   assert.equal(viewerHubSummary(old).stale, 1);
 });
 
-test('the hub summary tells DOM-derived values from API-derived ones', { tag: 'unit' }, () => {
+test('the hub summary tells DOM-derived values from API-derived ones', { tags: ['unit'] }, () => {
   const now = 5_000_000;
   const cards = viewerHubCards({
     points: { onChannel: true, value: 7, observedAt: now },
@@ -3505,7 +3505,7 @@ test('the hub summary tells DOM-derived values from API-derived ones', { tag: 'u
   assert.ok(cards.filter((entry) => entry.state !== 'ready').every((entry) => entry.source === 'none'));
 });
 
-test('a hub still loading says loading, per card, rather than empty', { tag: 'unit' }, () => {
+test('a hub still loading says loading, per card, rather than empty', { tags: ['unit'] }, () => {
   const cards = viewerHubCards({
     collectibles: { loading: true },
     points: { loading: true },
@@ -3516,7 +3516,7 @@ test('a hub still loading says loading, per card, rather than empty', { tag: 'un
   assert.equal(by.collectibles.value, null);
 });
 
-test('an earned state is marked only when Kick itself says one is waiting', { tag: 'unit' }, () => {
+test('an earned state is marked only when Kick itself says one is waiting', { tags: ['unit'] }, () => {
   const at = 10_000_000;
   const rolledOver = at - 3_600_000;
   const base = { trigger: true, previousResetAt: rolledOver, observedAt: at - 1000 };
@@ -3532,7 +3532,7 @@ test('an earned state is marked only when Kick itself says one is waiting', { ta
   assert.equal(earnedState(viewerHubCards({}, at)), null);
 });
 
-test('nothing but the reward is ever marked as earned', { tag: 'unit' }, () => {
+test('nothing but the reward is ever marked as earned', { tags: ['unit'] }, () => {
   // No streak flourish, no collectible confetti, no progress toward anything.
   // A number that Kick reports and does not call earned is just a number.
   const at = 10_000_000;
@@ -3546,7 +3546,7 @@ test('nothing but the reward is ever marked as earned', { tag: 'unit' }, () => {
   assert.equal(earnedState(null), null);
 });
 
-test('chat history is bounded by age, rows, and bytes at once', { tag: 'unit' }, () => {
+test('chat history is bounded by age, rows, and bytes at once', { tags: ['unit'] }, () => {
   const now = 10_000_000;
   const limits = { rows: 5, bytes: 100_000, ageMs: 60_000 };
   const rows = [
@@ -3566,7 +3566,7 @@ test('chat history is bounded by age, rows, and bytes at once', { tag: 'unit' },
   assert.equal(byBytes[byBytes.length - 1].id, 'h3');
 });
 
-test('composer recall is a five-message memory ring and only Shift+Up enters it', { tag: 'unit' }, () => {
+test('composer recall is a five-message memory ring and only Shift+Up enters it', { tags: ['unit'] }, () => {
   assert.equal(DEFAULT_SETTINGS.content.chatComposerRecall, false);
   let messages = [];
   for (let index = 0; index < COMPOSER_RECALL_LIMIT + 2; index += 1) {
@@ -3584,7 +3584,7 @@ test('composer recall is a five-message memory ring and only Shift+Up enters it'
   assert.equal(normalizeSettings({ content: { chatComposerRecall: true } }).content.chatComposerRecall, true);
 });
 
-test('following preview placement prefers the rail edge and clamps to the viewport', { tag: 'unit' }, () => {
+test('following preview placement prefers the rail edge and clamps to the viewport', { tags: ['unit'] }, () => {
   assert.deepEqual(
     floatingPreviewPosition(
       { left: 12, right: 228, top: 640, height: 40 },
@@ -3603,7 +3603,7 @@ test('following preview placement prefers the rail edge and clamps to the viewpo
   );
 });
 
-test('a whisper, an unidentifiable message, and a repeat are all refused', { tag: 'unit' }, () => {
+test('a whisper, an unidentifiable message, and a repeat are all refused', { tags: ['unit'] }, () => {
   const now = 1000;
   let rows = [];
   rows = appendChatEntry(rows, { id: 'a', author: 'someone', text: 'hello', at: now }, CHAT_HISTORY_LIMITS, now);
@@ -3624,7 +3624,7 @@ test('a whisper, an unidentifiable message, and a repeat are all refused', { tag
   assert.equal(stored.author.length, 40);
 });
 
-test('a message Kick deleted leaves the history immediately', { tag: 'unit' }, () => {
+test('a message Kick deleted leaves the history immediately', { tags: ['unit'] }, () => {
   // The one rule this feature cannot bend: a local record must not outlive a
   // moderator's decision.
   const now = 2000;
@@ -3637,7 +3637,7 @@ test('a message Kick deleted leaves the history immediately', { tag: 'unit' }, (
   assert.equal(dropChatMessage(rows, '').length, 2);
 });
 
-test('history search answers newest first, over text and author', { tag: 'unit' }, () => {
+test('history search answers newest first, over text and author', { tags: ['unit'] }, () => {
   const now = 3000;
   let rows = [];
   rows = appendChatEntry(rows, { id: '1', author: 'ana', text: 'good morning', at: now - 300 }, CHAT_HISTORY_LIMITS, now);
@@ -3651,7 +3651,7 @@ test('history search answers newest first, over text and author', { tag: 'unit' 
   assert.equal(searchChatHistory(rows, '', 2).length, 2);
 });
 
-test('the people list takes names and refuses everything else', { tag: 'unit' }, () => {
+test('the people list takes names and refuses everything else', { tags: ['unit'] }, () => {
   assert.deepEqual(parsePeopleList('@Ana, bo\ncy_1'), ['ana', 'bo', 'cy_1']);
   assert.deepEqual(parsePeopleList('ana, ANA, @ana'), ['ana'], 'the same person was listed three times');
   assert.deepEqual(parsePeopleList('has space, <script>, , -leading'), []);
@@ -3664,7 +3664,7 @@ test('the people list takes names and refuses everything else', { tag: 'unit' },
   assert.equal(isPriorityPerson(['ana'], ''), false);
 });
 
-test('the sound stays quiet unless every condition is met', { tag: 'unit' }, () => {
+test('the sound stays quiet unless every condition is met', { tags: ['unit'] }, () => {
   const base = { enabled: true, matched: true, own: false, hidden: false, now: 100_000, lastPlayedAt: 0 };
   assert.equal(shouldPlayMentionSound(base), true);
   assert.equal(shouldPlayMentionSound({ ...base, enabled: false }), false);
@@ -3679,7 +3679,7 @@ test('the sound stays quiet unless every condition is met', { tag: 'unit' }, () 
   assert.equal(shouldPlayMentionSound({}), false);
 });
 
-test('the export is readable, names the channel, and carries only what was stored', { tag: 'unit' }, () => {
+test('the export is readable, names the channel, and carries only what was stored', { tags: ['unit'] }, () => {
   const now = Date.UTC(2026, 7, 19, 12, 0, 0);
   const rows = [{ id: '1', author: 'ana', text: 'hello', at: now }];
   const text = buildChatHistoryExport(rows, 'somechannel');
@@ -3690,14 +3690,14 @@ test('the export is readable, names the channel, and carries only what was store
   assert.match(buildChatHistoryExport([], ''), /this session, 0 messages/);
 });
 
-test('a chat time is a local clock, and nothing at all for a time that is not one', { tag: 'unit' }, () => {
+test('a chat time is a local clock, and nothing at all for a time that is not one', { tags: ['unit'] }, () => {
   assert.match(formatChatTime(Date.UTC(2026, 7, 19, 12, 34), 'en-GB'), /^\d{2}:\d{2}$/);
   assert.equal(formatChatTime(null), '');
   assert.equal(formatChatTime(NaN), '');
   assert.equal(formatChatTime('nope'), '');
 });
 
-test('every default setting survives normalization, in every group', { tag: 'unit' }, () => {
+test('every default setting survives normalization, in every group', { tags: ['unit'] }, () => {
   // The trap this exists for, hit 2026-08-19: `normalizeSettings` rebuilds the
   // settings object key by key, so a setting added to DEFAULT_SETTINGS and not
   // added here is simply dropped. Every reader then sees `undefined`, which
@@ -3713,7 +3713,7 @@ test('every default setting survives normalization, in every group', { tag: 'uni
   }
 });
 
-test('a saved layout carries the discovery settings and nothing else', { tag: 'unit' }, () => {
+test('a saved layout carries the discovery settings and nothing else', { tags: ['unit'] }, () => {
   const settings = normalizeSettings({});
   settings.layout.density = 'compact';
   settings.content.hideCasino = true;
@@ -3732,7 +3732,7 @@ test('a saved layout carries the discovery settings and nothing else', { tag: 'u
   assert.equal(buildDiscoveryLayout('', settings, []).name, 'Saved view');
 });
 
-test('stored layouts are cleaned by type, de-duplicated, and capped', { tag: 'unit' }, () => {
+test('stored layouts are cleaned by type, de-duplicated, and capped', { tags: ['unit'] }, () => {
   const settings = normalizeSettings({});
   const cleaned = normalizeDiscoveryLayouts([
     // A string where a boolean belongs: dropped at that key rather than pushed
@@ -3756,7 +3756,7 @@ test('stored layouts are cleaned by type, de-duplicated, and capped', { tag: 'un
   assert.deepEqual(normalizeDiscoveryLayouts(null, settings), []);
 });
 
-test('applying a layout moves only what differs, and says what it moved', { tag: 'unit' }, () => {
+test('applying a layout moves only what differs, and says what it moved', { tags: ['unit'] }, () => {
   const settings = normalizeSettings({});
   const layout = { name: 'dense', routes: ['browse'], values: { 'layout.density': 'compact', 'content.hideCasino': true } };
 
@@ -3775,7 +3775,7 @@ test('applying a layout moves only what differs, and says what it moved', { tag:
   assert.equal(layoutMatchesSettings({ name: 'empty', values: {} }, settings), false);
 });
 
-test('a route gets the first layout that claims it, and no other route does', { tag: 'unit' }, () => {
+test('a route gets the first layout that claims it, and no other route does', { tags: ['unit'] }, () => {
   const first = { name: 'a', routes: ['browse'], values: { 'layout.density': 'compact' } };
   const second = { name: 'b', routes: ['browse', 'home'], values: { 'layout.density': 'cozy' } };
   assert.equal(layoutForRoute([first, second], 'browse').name, 'a');

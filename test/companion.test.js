@@ -277,7 +277,7 @@ function jsonResponse(url, text = '{"blocked":[]}', overrides = {}) {
   };
 }
 
-test('the Firefox background cancels ad requests from Firefox-shaped details', { tag: 'artifact' }, async () => {
+test('the Firefox background cancels ad requests from Firefox-shaped details', { tags: ['artifact'] }, async () => {
   const { listener, badges } = await loadFirefoxBackground();
   assert.ok(listener, 'no onBeforeRequest listener was registered');
 
@@ -309,7 +309,7 @@ test('the Firefox background cancels ad requests from Firefox-shaped details', {
   assert.ok(badges.length >= 4, 'blocked requests should paint a badge count');
 });
 
-test('the Firefox background leaves other sites and benign requests alone', { tag: 'artifact' }, async () => {
+test('the Firefox background leaves other sites and benign requests alone', { tags: ['artifact'] }, async () => {
   const { listener } = await loadFirefoxBackground();
 
   // Not a Kick page — the companion must never change how another site loads.
@@ -415,7 +415,7 @@ for (const browserCase of [
     blocklistApproval: { url: approvedUrl, origin, approvedAt: 1 },
   };
 
-  test(`${browserCase.name} fetches only the exact approved JSON feed`, { tag: 'artifact' }, async () => {
+  test(`${browserCase.name} fetches only the exact approved JSON feed`, { tags: ['artifact'] }, async () => {
     const background = await loadBackground(browserCase.file, {
       stored: approvedStore,
       granted: [origin],
@@ -433,7 +433,7 @@ for (const browserCase of [
     assert.equal(background.timeouts[0], 8000);
   });
 
-  test(`${browserCase.name} refuses page-selected and stale blocklist URLs`, { tag: 'artifact' }, async () => {
+  test(`${browserCase.name} refuses page-selected and stale blocklist URLs`, { tags: ['artifact'] }, async () => {
     const selected = await loadBackground(browserCase.file, {
       stored: approvedStore,
       granted: [origin],
@@ -483,7 +483,7 @@ for (const browserCase of [
       error: /512 KiB/i,
     },
   ]) {
-    test(`${browserCase.name} rejects blocklist ${invalid.label}`, { tag: 'artifact' }, async () => {
+    test(`${browserCase.name} rejects blocklist ${invalid.label}`, { tags: ['artifact'] }, async () => {
       const background = await loadBackground(browserCase.file, {
         stored: approvedStore,
         granted: [origin],
@@ -495,7 +495,7 @@ for (const browserCase of [
     });
   }
 
-  test(`${browserCase.name} stops reading a blocklist at the limit, not after it`, { tag: 'artifact' }, async () => {
+  test(`${browserCase.name} stops reading a blocklist at the limit, not after it`, { tags: ['artifact'] }, async () => {
     // A feed can answer with chunked encoding and declare no length at all, and
     // reading the whole body first means an arbitrarily large allocation that
     // is only refused afterwards. 512 KiB in 64 KiB chunks is nine reads: eight
@@ -516,7 +516,7 @@ for (const browserCase of [
       'the reader was left open, so a refused feed keeps streaming');
   });
 
-  test(`${browserCase.name} reads a streamed blocklist that fits`, { tag: 'artifact' }, async () => {
+  test(`${browserCase.name} reads a streamed blocklist that fits`, { tags: ['artifact'] }, async () => {
     // The bound must not cost the ordinary case: a body that arrives in several
     // chunks has to come back whole, and still decode as strict UTF-8.
     const text = '{"blocked":["one","two"]}';
@@ -547,7 +547,7 @@ for (const browserCase of [
     assert.equal(answer.text, text, 'a chunked body came back joined wrongly');
   });
 
-  test(`${browserCase.name} aborts blocklist fetches at eight seconds`, { tag: 'artifact' }, async () => {
+  test(`${browserCase.name} aborts blocklist fetches at eight seconds`, { tags: ['artifact'] }, async () => {
     const background = await loadBackground(browserCase.file, {
       stored: approvedStore,
       granted: [origin],
@@ -563,7 +563,7 @@ for (const browserCase of [
     assert.deepEqual(background.timeouts, [8000]);
   });
 
-  test(`${browserCase.name} accepts exact feed approval only from its popup`, { tag: 'artifact' }, async () => {
+  test(`${browserCase.name} accepts exact feed approval only from its popup`, { tags: ['artifact'] }, async () => {
     const settings = { settings: { content: { blocklistUrl: approvedUrl } } };
     const background = await loadBackground(browserCase.file, { stored: settings, granted: [origin] });
     const pageAnswer = await askBackground(background, {
@@ -612,7 +612,7 @@ test('the popup requests only the configured feed origin from optional permissio
  * proves the guard rejects other extensions and uninjected frames, not that it
  * survives a compromised browser.
  */
-test('the Firefox background refuses privileged messages from a sender it does not know', { tag: 'artifact' }, async () => {
+test('the Firefox background refuses privileged messages from a sender it does not know', { tags: ['artifact'] }, async () => {
   const { messageListener } = await loadFirefoxBackground();
   assert.ok(messageListener, 'no onMessage listener was registered');
 

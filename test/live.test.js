@@ -132,7 +132,7 @@ globalThis.document = eventMethods({
   createElement: () => makeNode(),
 });
 
-test('every function the surface hands back can be called against a stub host', { tag: 'unit' }, async () => {
+test('every function the surface hands back can be called against a stub host', { tags: ['unit'] }, async () => {
   const { host } = makeHost();
   const surface = createLive(host);
   assert.equal(Object.keys(surface).length, 18);
@@ -151,7 +151,7 @@ test('every function the surface hands back can be called against a stub host', 
   await surface.connectRealtime();
 });
 
-test('a slow endpoint is abandoned rather than left hanging', { tag: 'unit' }, async () => {
+test('a slow endpoint is abandoned rather than left hanging', { tags: ['unit'] }, async () => {
   let aborted = false;
   const { host } = makeHost({
     pageFetch: (_url, init) => new Promise((_resolve, reject) => {
@@ -173,7 +173,7 @@ test('a slow endpoint is abandoned rather than left hanging', { tag: 'unit' }, a
   globalThis.window.setTimeout = (fn, ms) => setTimeout(fn, ms);
 });
 
-test('an oversized body is refused instead of parsed', { tag: 'unit' }, async () => {
+test('an oversized body is refused instead of parsed', { tags: ['unit'] }, async () => {
   const { host } = makeHost({
     pageFetch: async () => ({ ok: true, status: 200, text: async () => 'x'.repeat(4_000_001) }),
   });
@@ -188,7 +188,7 @@ test('an oversized body is refused instead of parsed', { tag: 'unit' }, async ()
   assert.deepEqual(ok, { ok: true, status: 200, body: { id: 7 } });
 });
 
-test('malformed JSON is reported as a failure, never thrown at the caller', { tag: 'unit' }, async () => {
+test('malformed JSON is reported as a failure, never thrown at the caller', { tags: ['unit'] }, async () => {
   const { host } = makeHost({
     pageFetch: async () => ({ ok: true, status: 200, text: async () => 'not json' }),
   });
@@ -196,7 +196,7 @@ test('malformed JSON is reported as a failure, never thrown at the caller', { ta
   assert.deepEqual(result, { ok: false, status: 'parse' });
 });
 
-test('a channel API that returns HTML is reported as unreadable, not as a network failure', { tag: 'unit' }, async () => {
+test('a channel API that returns HTML is reported as unreadable, not as a network failure', { tags: ['unit'] }, async () => {
   const { host, state } = makeHost({
     pageFetch: async () => ({ ok: true, status: 200, text: async () => '<html>nope</html>' }),
   });
@@ -205,7 +205,7 @@ test('a channel API that returns HTML is reported as unreadable, not as a networ
   assert.equal(state.live.channel, null);
 });
 
-test('the follow mutation refuses a junk channel before it reaches the network', { tag: 'unit' }, async () => {
+test('the follow mutation refuses a junk channel before it reaches the network', { tags: ['unit'] }, async () => {
   const attempts = [];
   const { host } = makeHost({
     pageFetch: async (url, init) => { attempts.push({ url, init }); return { ok: true, status: 200 }; },
@@ -231,7 +231,7 @@ test('the follow mutation refuses a junk channel before it reaches the network',
   assert.deepEqual(await createLive(conflict).mutateKickChannelFollow('alpha'), { ok: true, status: 409 });
 });
 
-test('drift is accumulated up to a cap rather than growing without bound', { tag: 'unit' }, () => {
+test('drift is accumulated up to a cap rather than growing without bound', { tags: ['unit'] }, () => {
   const { host, state } = makeHost();
   const surface = createLive(host);
   for (let index = 0; index < 60; index += 1) surface.recordApiDrift('channel', 'shape-changed', String(index));
@@ -239,7 +239,7 @@ test('drift is accumulated up to a cap rather than growing without bound', { tag
   assert.equal(state.live.apiDrift.at(-1).detail, '49');
 });
 
-test('the status line names the source, the transport, and the reason it fell back', { tag: 'unit' }, () => {
+test('the status line names the source, the transport, and the reason it fell back', { tags: ['unit'] }, () => {
   const { host, state } = makeHost();
   const surface = createLive(host);
   assert.match(surface.liveStatusSummary(), /Emote catalog from the picker\./);
@@ -257,14 +257,14 @@ test('the status line names the source, the transport, and the reason it fell ba
   assert.match(surface.liveStatusSummary(), /Kick answered 503\.$/);
 });
 
-test('a message selector escapes the id it was handed', { tag: 'unit' }, () => {
+test('a message selector escapes the id it was handed', { tags: ['unit'] }, () => {
   globalThis.CSS = { escape: (value) => String(value).replace(/["\\]/g, (c) => `\\${c}`) };
   const selector = chatMessageSelector('a"b');
   assert.equal(selector.includes('a\\"b'), true, 'the quote is escaped, not closing the attribute');
   assert.equal(selector.split(',').length, 3, 'all three id attributes Kick uses are covered');
 });
 
-test('a route with no channel tears the socket down instead of leaving it open', { tag: 'unit' }, async () => {
+test('a route with no channel tears the socket down instead of leaving it open', { tags: ['unit'] }, async () => {
   let closed = false;
   const { host, state } = makeHost();
   host.__slug = '';
@@ -281,7 +281,7 @@ test('a route with no channel tears the socket down instead of leaving it open',
   assert.equal(state.live.channel, null);
 });
 
-test('a channel whose payload changed shape falls back and says so', { tag: 'unit' }, async () => {
+test('a channel whose payload changed shape falls back and says so', { tags: ['unit'] }, async () => {
   const { host, state } = makeHost({
     pageFetch: async () => ({ ok: true, status: 200, text: async () => '{"unexpected":true}' }),
   });
@@ -292,7 +292,7 @@ test('a channel whose payload changed shape falls back and says so', { tag: 'uni
   assert.deepEqual(state.live.apiDrift.map((entry) => [entry.endpoint, entry.reason]), [['channel', 'shape-changed']]);
 });
 
-test('with both live settings off, the channel read is never made', { tag: 'unit' }, async () => {
+test('with both live settings off, the channel read is never made', { tags: ['unit'] }, async () => {
   const requests = [];
   const { host, state } = makeHost({ pageFetch: async (url) => { requests.push(url); return { ok: false, status: 0 }; } });
   state.settings.content.liveEmoteCatalog = false;
@@ -303,7 +303,7 @@ test('with both live settings off, the channel read is never made', { tag: 'unit
   assert.equal(state.live.slug, 'alpha', 'the route is still tracked');
 });
 
-test('a deletion is annotated once, bounded, and replayed onto a remounted node', { tag: 'unit' }, () => {
+test('a deletion is annotated once, bounded, and replayed onto a remounted node', { tags: ['unit'] }, () => {
   globalThis.CSS = { escape: (value) => String(value) };
   let node = makeNode();
   globalThis.document.querySelector = () => node;
@@ -342,7 +342,7 @@ test('a deletion is annotated once, bounded, and replayed onto a remounted node'
  */
 const frame = (event, data) => ({ data: JSON.stringify({ event, data: JSON.stringify(data) }) });
 
-test('an unreadable run of frames is counted, and one good frame clears it', { tag: 'unit' }, () => {
+test('an unreadable run of frames is counted, and one good frame clears it', { tags: ['unit'] }, () => {
   const { host, state } = makeHost();
   const surface = createLive(host);
 
@@ -356,7 +356,7 @@ test('an unreadable run of frames is counted, and one good frame clears it', { t
   assert.ok(state.live.lastFrameAt > 0);
 });
 
-test('a message from somebody else never lands in this user’s usage counts', { tag: 'unit' }, async () => {
+test('a message from somebody else never lands in this user’s usage counts', { tags: ['unit'] }, async () => {
   const { host, state, merged } = makeHost();
   state.settings.content.organizeChatStickers = true;
   state.live.slug = 'alpha';
@@ -387,7 +387,7 @@ test('a message from somebody else never lands in this user’s usage counts', {
     'an emote from somebody else is still collected into the library');
 });
 
-test('images that never settle cannot wedge the harvest', { tag: 'unit' }, async () => {
+test('images that never settle cannot wedge the harvest', { tags: ['unit'] }, async () => {
   const { host, state, merged } = makeHost();
   state.settings.content.organizeChatStickers = true;
   state.live.slug = 'alpha';
@@ -445,7 +445,7 @@ test('images that never settle cannot wedge the harvest', { tag: 'unit' }, async
   globalThis.document.querySelector = () => null;
 });
 
-test('a deletion is annotated once per node, and a reconnect is scheduled with backoff', { tag: 'unit' }, () => {
+test('a deletion is annotated once per node, and a reconnect is scheduled with backoff', { tags: ['unit'] }, () => {
   const { host, state } = makeHost();
   const surface = createLive(host);
 
@@ -458,7 +458,7 @@ test('a deletion is annotated once per node, and a reconnect is scheduled with b
   assert.equal(state.live.deletions.has('m319'), true, 'the newest is always kept');
 });
 
-test('the surface refuses to act on chat events the user switched off', { tag: 'unit' }, () => {
+test('the surface refuses to act on chat events the user switched off', { tags: ['unit'] }, () => {
   const { host, state, merged } = makeHost();
   state.settings.content.countEmoteUsage = false;
   state.settings.content.showChatBadges = false;
@@ -478,7 +478,7 @@ test('the surface refuses to act on chat events the user switched off', { tag: '
   assert.equal(state.live.deletions.size, 0, 'moderation reasons are off');
 });
 
-test('badges are drawn once, survive a remount, and are dropped when the node never comes', { tag: 'unit' }, () => {
+test('badges are drawn once, survive a remount, and are dropped when the node never comes', { tags: ['unit'] }, () => {
   const { host, state } = makeHost();
   state.settings.content.showChatBadges = true;
   let node = null;
@@ -505,7 +505,7 @@ test('badges are drawn once, survive a remount, and are dropped when the node ne
   globalThis.document.querySelector = () => null;
 });
 
-test('an unusable realtime answer degrades to the page instead of retrying blind', { tag: 'unit' }, async () => {
+test('an unusable realtime answer degrades to the page instead of retrying blind', { tags: ['unit'] }, async () => {
   const { host, state } = makeHost();
   state.live.channel = { chatroomId: 42 };
   host.pageFetch = async () => ({
@@ -619,7 +619,7 @@ function mergedConnectionHost(clock) {
   return { ...made, requests };
 }
 
-test('merged chat reconnects a closed channel through one bounded queue', { tag: 'unit' }, async () => {
+test('merged chat reconnects a closed channel through one bounded queue', { tags: ['unit'] }, async () => {
   const clock = makeMergedClock();
   const { host, state, requests } = mergedConnectionHost(clock);
   const fetchNow = host.pageFetch;
@@ -679,7 +679,7 @@ test('merged chat reconnects a closed channel through one bounded queue', { tag:
   });
 });
 
-test('removing a merged channel aborts its active credential read and releases the queue slot', { tag: 'unit' }, async () => {
+test('removing a merged channel aborts its active credential read and releases the queue slot', { tags: ['unit'] }, async () => {
   const clock = makeMergedClock();
   const { host, state } = mergedConnectionHost(clock);
   let activeSignal = null;
@@ -707,7 +707,7 @@ test('removing a merged channel aborts its active credential read and releases t
   });
 });
 
-test('merged chat retries sustained silence and resyncs after sleep or network recovery', { tag: 'unit' }, async () => {
+test('merged chat retries sustained silence and resyncs after sleep or network recovery', { tags: ['unit'] }, async () => {
   const clock = makeMergedClock();
   const { host, state, requests } = mergedConnectionHost(clock);
 
@@ -744,7 +744,7 @@ test('merged chat retries sustained silence and resyncs after sleep or network r
   });
 });
 
-test('removing a merged channel cancels its pending retry and status stays compact', { tag: 'unit' }, async () => {
+test('removing a merged channel cancels its pending retry and status stays compact', { tags: ['unit'] }, async () => {
   const clock = makeMergedClock();
   const { host, state, requests } = mergedConnectionHost(clock);
 
@@ -777,7 +777,7 @@ test('removing a merged channel cancels its pending retry and status stays compa
   });
 });
 
-test('the socket subscribes to every channel it needs, and one close schedules one retry', { tag: 'unit' }, async () => {
+test('the socket subscribes to every channel it needs, and one close schedules one retry', { tags: ['unit'] }, async () => {
   const { host, state } = makeHost();
   state.live.channel = { chatroomId: 42, id: 7 };
   host.pageFetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(PUSHER_ANSWER) });
@@ -812,7 +812,7 @@ test('the socket subscribes to every channel it needs, and one close schedules o
   globalThis.window.setTimeout = (fn, ms) => setTimeout(fn, ms);
 });
 
-test('an unverified transport that never delivered a frame degrades instead of retrying forever', { tag: 'unit' }, async () => {
+test('an unverified transport that never delivered a frame degrades instead of retrying forever', { tags: ['unit'] }, async () => {
   const { host, state } = makeHost();
   state.live.channel = { chatroomId: 42, id: 7 };
   host.pageFetch = async () => ({
@@ -839,7 +839,7 @@ test('an unverified transport that never delivered a frame degrades instead of r
   globalThis.window.setTimeout = (fn, ms) => setTimeout(fn, ms);
 });
 
-test('a chat frame over the Kick gateway is what marks that transport verified', { tag: 'unit' }, async () => {
+test('a chat frame over the Kick gateway is what marks that transport verified', { tags: ['unit'] }, async () => {
   // REALTIME_TRANSPORTS.KICK ships verified: false because nothing in this
   // project has ever read a message over it. The handshake alone does not
   // change that — a socket opening proves a socket opened. A frame this build
@@ -878,7 +878,7 @@ test('a chat frame over the Kick gateway is what marks that transport verified',
   });
 });
 
-test('a verified transport is preferred while Kick still offers one', { tag: 'unit' }, async () => {
+test('a verified transport is preferred while Kick still offers one', { tags: ['unit'] }, async () => {
   // The migration only takes effect once Kick stops offering the path this
   // project has actually run against, so a broker answering with both must
   // still hand back Pusher.
@@ -901,7 +901,7 @@ test('a verified transport is preferred while Kick still offers one', { tag: 'un
   });
 });
 
-test('teardown drops the socket so a route change cannot leave two open', { tag: 'unit' }, async () => {
+test('teardown drops the socket so a route change cannot leave two open', { tags: ['unit'] }, async () => {
   const { host, state } = makeHost();
   state.live.channel = { chatroomId: 42, id: 7 };
   host.pageFetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(PUSHER_ANSWER) });
@@ -918,7 +918,7 @@ test('teardown drops the socket so a route change cannot leave two open', { tag:
   });
 });
 
-test('a refused emote catalog says so and leaves the picker as the source', { tag: 'unit' }, async () => {
+test('a refused emote catalog says so and leaves the picker as the source', { tags: ['unit'] }, async () => {
   const calls = [];
   const { host, state } = makeHost({
     pageFetch: async (url) => {
@@ -965,7 +965,7 @@ function vodHost(overrides = {}) {
   return { ...made, requests };
 }
 
-test('a VOD opened from the channel list is dated, though the slug never changed', { tag: 'unit' }, async () => {
+test('a VOD opened from the channel list is dated, though the slug never changed', { tags: ['unit'] }, async () => {
   // The defect this pins: `refreshLiveChannel` returns early when the slug and
   // channel are unchanged, and moving from /alpha/videos to a recording is an
   // SPA navigation that changes only the last path segment. Reached through the
@@ -985,7 +985,7 @@ test('a VOD opened from the channel list is dated, though the slug never changed
   assert.equal(state.live.vod?.startedAt, Date.UTC(2026, 7, 18, 0, 47, 57));
 });
 
-test('a recording already dated is not re-read, and leaving one drops it', { tag: 'unit' }, async () => {
+test('a recording already dated is not re-read, and leaving one drops it', { tags: ['unit'] }, async () => {
   const { host, state, requests } = vodHost();
   host.__vodId = VOD_ID;
   await createLive(host).refreshLiveChannel();
@@ -1000,7 +1000,7 @@ test('a recording already dated is not re-read, and leaving one drops it', { tag
   assert.equal(state.live.vod, null, 'leaving a VOD drops the deadline rather than stranding it');
 });
 
-test('with the retention setting off, no VOD list is ever requested', { tag: 'unit' }, async () => {
+test('with the retention setting off, no VOD list is ever requested', { tags: ['unit'] }, async () => {
   const { host, state, requests } = vodHost();
   state.settings.content.showVodExpiry = false;
   host.__vodId = VOD_ID;
@@ -1009,7 +1009,7 @@ test('with the retention setting off, no VOD list is ever requested', { tag: 'un
   assert.equal(requests.filter((url) => url.includes('/videos')).length, 0, 'a setting that is off costs no request');
 });
 
-test('a recording outside Kick returned window is a silence, not a drift report', { tag: 'unit' }, async () => {
+test('a recording outside Kick returned window is a silence, not a drift report', { tags: ['unit'] }, async () => {
   const { host, state } = vodHost();
   host.__vodId = '00000000-0000-7000-8000-000000000000';
   await createLive(host).refreshLiveChannel();
@@ -1019,7 +1019,7 @@ test('a recording outside Kick returned window is a silence, not a drift report'
   assert.deepEqual(state.live.apiDrift, []);
 });
 
-test('a VOD list whose shape changed is reported as drift', { tag: 'unit' }, async () => {
+test('a VOD list whose shape changed is reported as drift', { tags: ['unit'] }, async () => {
   const { host, state } = vodHost({
     pageFetch: async (url) => (String(url).includes('/videos')
       ? { ok: true, status: 200, text: async () => '{"videos":[]}' }

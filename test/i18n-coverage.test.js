@@ -193,7 +193,7 @@ async function collect(override = null) {
   return { locales, rendered };
 }
 
-test('the parser finds the dictionaries and the rendered strings', { tag: 'unit' }, async () => {
+test('the parser finds the dictionaries and the rendered strings', { tags: ['unit'] }, async () => {
   const { locales, rendered } = await collect();
   // Guard the guard: if these regexes stop matching, every assertion below
   // passes vacuously and the gate becomes decorative.
@@ -204,7 +204,7 @@ test('the parser finds the dictionaries and the rendered strings', { tag: 'unit'
   assert.ok(rendered.size > 100, `parsed only ${rendered.size} rendered strings — suspect the parser`);
 });
 
-test('each scanner still matches its own surface, so none can silently go blind', { tag: 'unit' }, async () => {
+test('each scanner still matches its own surface, so none can silently go blind', { tags: ['unit'] }, async () => {
   // A scanner whose regex stops matching contributes nothing and takes the
   // strings it used to cover out of the gate without failing anything. Every
   // one of them must find something in the real source.
@@ -226,7 +226,7 @@ const untranslated = ({ locales, rendered }) => {
   return [...rendered].filter((value) => names.some((name) => !locales[name].has(value)));
 };
 
-test('every rendered string has an entry in every locale', { tag: 'unit' }, async () => {
+test('every rendered string has an entry in every locale', { tags: ['unit'] }, async () => {
   const missing = untranslated(await collect());
   assert.deepEqual(
     missing,
@@ -253,29 +253,29 @@ async function sabotaged(insert) {
 ${marker}`);
 }
 
-expectFailure('a rendered string with no dictionary entry fails the coverage gate', { tag: 'unit' }, async () => {
+expectFailure('a rendered string with no dictionary entry fails the coverage gate', { tags: ['unit'] }, async () => {
   const missing = untranslated(await collect(await sabotaged("  tr('An untranslated sentence this build would render');")));
   assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });
 
-expectFailure('a settings row with no dictionary entry fails the coverage gate', { tag: 'unit' }, async () => {
+expectFailure('a settings row with no dictionary entry fails the coverage gate', { tags: ['unit'] }, async () => {
   const missing = untranslated(await collect(await sabotaged("  row('An untitled row', 'An undescribed row', control);")));
   assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });
 
-expectFailure('a ternary toast with untranslated literals fails the coverage gate', { tag: 'unit' }, async () => {
+expectFailure('a ternary toast with untranslated literals fails the coverage gate', { tags: ['unit'] }, async () => {
   const missing = untranslated(await collect(await sabotaged(`  showToast(ok
     ? 'An untranslated success'
     : 'An untranslated failure');`)));
   assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });
 
-expectFailure('an indirect save status with no translation fails the coverage gate', { tag: 'unit' }, async () => {
+expectFailure('an indirect save status with no translation fails the coverage gate', { tags: ['unit'] }, async () => {
   const missing = untranslated(await collect(await sabotaged("  updateSetting('layout.density', nextDensity, 'An untranslated save status');")));
   assert.deepEqual(missing, [], `expected the gate to catch it, instead it found ${missing.length}`);
 });
 
-test('an accessible name written by script goes through the translator', { tag: 'unit' }, async () => {
+test('an accessible name written by script goes through the translator', { tags: ['unit'] }, async () => {
   // The attribute scanner reads markup, so a name set with setAttribute was
   // invisible to it. That is not only a coverage hole: the emote completion
   // list lives in its own shadow root, which localizeInterface never walks, so
@@ -289,7 +289,7 @@ test('an accessible name written by script goes through the translator', { tag: 
     `${bare.length} accessible name(s) are set from a bare literal: ${bare.join(' | ')}`);
 });
 
-test('no toast or announcement carries prose a dictionary never sees', { tag: 'unit' }, async () => {
+test('no toast or announcement carries prose a dictionary never sees', { tags: ['unit'] }, async () => {
   // A template literal is not a fixed string, so no scanner can look it up and
   // every one of these stayed English in es and pt. Composing from already
   // translated pieces is fine and common, so the rule is about prose: letters

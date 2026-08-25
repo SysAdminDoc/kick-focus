@@ -167,20 +167,20 @@ function makeBootEnvironment(extras = {}) {
   return context;
 }
 
-test('the built bundle boots in a stubbed environment without a TDZ or bad const order', { tag: 'artifact' }, async () => {
+test('the built bundle boots in a stubbed environment without a TDZ or bad const order', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   vm.runInNewContext(bundle, context);
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
-test('the built bundle resolves every embedded visual asset', { tag: 'artifact' }, async () => {
+test('the built bundle resolves every embedded visual asset', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   assert.equal(bundle.includes('__KICK_FOCUS_ICON__'), false, 'icon placeholder survived the build');
   assert.equal(bundle.includes('__KICK_FOCUS_PREVIEW__'), false, 'preview placeholder survived the build');
 });
 
-test('the bundle knows its own size, and the number is the file', { tag: 'artifact' }, async () => {
+test('the bundle knows its own size, and the number is the file', { tags: ['artifact'] }, async () => {
   // About shows this against the 1 MB injection ceiling, so a stale or
   // approximate number is worse than none: it would read as a measurement.
   // The build pads the stamp to the placeholder's exact width for this reason —
@@ -196,7 +196,7 @@ test('the bundle knows its own size, and the number is the file', { tag: 'artifa
   assert.ok(bytes < 1000000, `the userscript is ${bytes} B, past its injection ceiling`);
 });
 
-test('with the Navigation API, route changes come from the browser and history is left untouched', { tag: 'artifact' }, async () => {
+test('with the Navigation API, route changes come from the browser and history is left untouched', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const listeners = {};
   const navigation = { addEventListener(type, handler) { listeners[type] = handler; } };
@@ -216,7 +216,7 @@ test('with the Navigation API, route changes come from the browser and history i
   assert.ok(context.window.__dispatched.includes('kick-focus:routechange'), 'currententrychange raises the route event');
 });
 
-test('without the Navigation API the history wrapper is the fallback and still fires', { tag: 'artifact' }, async () => {
+test('without the Navigation API the history wrapper is the fallback and still fires', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   assert.equal(context.navigation, undefined);
@@ -227,7 +227,7 @@ test('without the Navigation API the history wrapper is the fallback and still f
   assert.ok(context.window.__dispatched.includes('kick-focus:routechange'), 'the wrapper raises the route event');
 });
 
-test('with constructable stylesheets the site CSS is adopted once and no <style> element is made', { tag: 'artifact' }, async () => {
+test('with constructable stylesheets the site CSS is adopted once and no <style> element is made', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const constructed = [];
   class FakeSheet {
@@ -247,7 +247,7 @@ test('with constructable stylesheets the site CSS is adopted once and no <style>
     'no <style> element is created when the sheet can be adopted');
 });
 
-test('without constructable stylesheets the site CSS falls back to a <style> element', { tag: 'artifact' }, async () => {
+test('without constructable stylesheets the site CSS falls back to a <style> element', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   assert.equal(context.CSSStyleSheet, undefined);
@@ -257,7 +257,7 @@ test('without constructable stylesheets the site CSS falls back to a <style> ele
     'exactly one fallback <style> element for the site CSS');
 });
 
-test('under enforced Trusted Types the bundle takes its own policy, never the default', { tag: 'artifact' }, async () => {
+test('under enforced Trusted Types the bundle takes its own policy, never the default', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const created = [];
   // A strict environment: policies are handed out by name, and creating one
@@ -277,7 +277,7 @@ test('under enforced Trusted Types the bundle takes its own policy, never the de
   assert.deepEqual(created, ['kick-focus'], 'exactly one policy, under this build’s own name');
 });
 
-test('a page without Trusted Types boots without reaching for the API', { tag: 'artifact' }, async () => {
+test('a page without Trusted Types boots without reaching for the API', { tags: ['artifact'] }, async () => {
   // Feature-detected, never version-sniffed: today kick.com ships no CSP at
   // all, so the absent case is the one that actually runs.
   const bundle = await readArtifact('dist/kick-focus.user.js');
@@ -287,7 +287,7 @@ test('a page without Trusted Types boots without reaching for the API', { tag: '
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
-test('the adopted sheet carries one hide rule per catalog entry', { tag: 'artifact' }, async () => {
+test('the adopted sheet carries one hide rule per catalog entry', { tags: ['artifact'] }, async () => {
   // The rules are generated at runtime from HIDEABLE_ELEMENTS, so the bundle
   // source only holds the generator — grepping it proves nothing. This runs it
   // and reads the stylesheet that actually reached the document, which is the
@@ -320,7 +320,7 @@ test('the adopted sheet carries one hide rule per catalog entry', { tag: 'artifa
   assert.notDeepEqual(remaining, HIDEABLE_ELEMENTS.map((entry) => entry.id), 'the gate cannot detect a missing rule');
 });
 
-test('a mis-ordered const in the bundle is caught by the boot gate (red test)', { tag: 'artifact' }, async () => {
+test('a mis-ordered const in the bundle is caught by the boot gate (red test)', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   // Inject a temporal-dead-zone read right after the boot guard: a const is read
   // before its declaration. A correct bundle never does this; this proves the
@@ -332,7 +332,7 @@ test('a mis-ordered const in the bundle is caught by the boot gate (red test)', 
   assert.throws(() => vm.runInNewContext(broken, context), /KF_TDZ_PROBE|before initialization/);
 });
 
-test('the high-contrast control setting raises every border it promises to raise', { tag: 'artifact' }, async () => {
+test('the high-contrast control setting raises every border it promises to raise', { tags: ['artifact'] }, async () => {
   // The setting says "Increase separation for controls, borders, and surfaces".
   // It used to share one attribute with the text-contrast setting and style
   // nothing but a text-shadow, so the promise was unmet and the two toggles
@@ -373,7 +373,7 @@ test('the high-contrast control setting raises every border it promises to raise
   }
 });
 
-test('every preset accent is readable as text on every theme surface', { tag: 'artifact' }, async () => {
+test('every preset accent is readable as text on every theme surface', { tags: ['artifact'] }, async () => {
   // The four preset accents were never contrast-checked; only a custom accent
   // was. --kf-accent is used as text at 11px and 14px (the toast action and the
   // merged-chat channel label), and violet measured 4.01:1 on Slate's raised
@@ -402,7 +402,7 @@ test('every preset accent is readable as text on every theme surface', { tag: 'a
   }
 });
 
-test('interface scale reaches the whole settings surface, not just its font size', { tag: 'artifact' }, async () => {
+test('interface scale reaches the whole settings surface, not just its font size', { tags: ['artifact'] }, async () => {
   // The setting says "Set the size of Kick Focus controls". It used to be read
   // in one declaration, the root font-size, while the surface carried about 120
   // absolute font sizes and a ladder of fixed control heights, so no control
@@ -441,7 +441,7 @@ test('interface scale reaches the whole settings surface, not just its font size
   assert.match(source, /setProperty\('--kf-interface-scale', String\(appearance\.interfaceScale \/ 100\)\)/);
 });
 
-test('one focus treatment, defined once and used everywhere', { tag: 'artifact' }, async () => {
+test('one focus treatment, defined once and used everywhere', { tags: ['artifact'] }, async () => {
   // There were five: 3px accent in the settings panel, 2px accent on the nav
   // search and the injected page, 2px plain text on a toast action, and on
   // every text input an outline of 0 with a box-shadow instead. That last one
@@ -477,7 +477,7 @@ test('one focus treatment, defined once and used everywhere', { tag: 'artifact' 
     `a focus rule still removes its outline: ${suppressed.map((l) => l.trim()).join(' | ')}`);
 });
 
-test('the emote shelf is styled by the sheet that can actually reach it', { tag: 'artifact' }, async () => {
+test('the emote shelf is styled by the sheet that can actually reach it', { tags: ['artifact'] }, async () => {
   // The shelf is built into Kick's own emote picker, in the light DOM, so
   // SITE_CSS is the only stylesheet that reaches it: UI_CSS is adopted into a
   // shadow root. Two rules had drifted onto the wrong side of that line. The
@@ -515,7 +515,7 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tag:
     'nothing styles that class; the attribute is what SITE_CSS keys on');
 });
 
-test('emote organization has a direct route, visible search, and batch controls', { tag: 'artifact' }, async () => {
+test('emote organization has a direct route, visible search, and batch controls', { tags: ['artifact'] }, async () => {
   const runtime = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
   const settings = await readFile(resolve(root, 'src/settings.mjs'), 'utf8');
 
@@ -555,7 +555,7 @@ test('emote organization has a direct route, visible search, and batch controls'
     'Enter must commit a group rename directly');
 });
 
-test('an emote observed in the page is cleaned before it can become an href', { tag: 'artifact' }, async () => {
+test('an emote observed in the page is cleaned before it can become an href', { tags: ['artifact'] }, async () => {
   const runtime = await readArtifact('dist/kick-focus.user.js');
   // The library card renders sticker.src as an href and escapeHtml does not stop
   // a scheme, so the persist-time cleaner has to run at the moment the value is
@@ -567,7 +567,7 @@ test('an emote observed in the page is cleaned before it can become an href', { 
   assert.match(info, /if \(!src\) return null/, 'a rejected URL must drop the observation, not record an empty one');
 });
 
-test('the chat emote harvest queue is capped at its only push site', { tag: 'artifact' }, async () => {
+test('the chat emote harvest queue is capped at its only push site', { tags: ['artifact'] }, async () => {
   const runtime = await readArtifact('dist/kick-focus.user.js');
   // A stalled key never reaches the negative set, so every later sighting
   // re-queues it. The cap is the backstop, and it lives inside a closure with
@@ -581,7 +581,7 @@ test('the chat emote harvest queue is capped at its only push site', { tag: 'art
   assert.match(runtime, /HARVEST_QUEUE_CAP = \d+/, 'HARVEST_QUEUE_CAP is not a named constant');
 });
 
-test('the memoised playback owner is invalidated everywhere it can go stale', { tag: 'artifact' }, async () => {
+test('the memoised playback owner is invalidated everywhere it can go stale', { tags: ['artifact'] }, async () => {
   const runtime = await readArtifact('dist/kick-focus.user.js');
   // Measuring the owner walks every video ancestor through getComputedStyle, and
   // four callers ask for it inside one apply cycle, so the answer is cached for
@@ -595,7 +595,7 @@ test('the memoised playback owner is invalidated everywhere it can go stale', { 
     'the watch timer tick does not invalidate the owner before reading it');
 });
 
-test('the emote hover card is described to a screen reader, not hidden from one', { tag: 'artifact' }, async () => {
+test('the emote hover card is described to a screen reader, not hidden from one', { tags: ['artifact'] }, async () => {
   // The host carried aria-hidden="true" and nothing referenced it, so the
   // access, reach, ownership and shadowing lines were sighted-only. It opens on
   // focusin as well as hover, so keyboard readers could see it and not hear it.

@@ -18,13 +18,13 @@ const EXPECTED_JOURNEYS = [
   'notifications', 'drops', 'collectibles', 'emote-catalog',
 ];
 
-test('the matrix covers every signed-in surface this build touches', { tag: 'unit' }, () => {
+test('the matrix covers every signed-in surface this build touches', { tags: ['unit'] }, () => {
   const ids = SIGNED_IN_JOURNEYS.map((journey) => journey.id);
   assert.deepEqual([...ids].sort(), [...EXPECTED_JOURNEYS].sort());
   assert.equal(new Set(ids).size, ids.length, 'two journeys share an id');
 });
 
-test('every journey is read-only, and the build has no write it could reach', { tag: 'unit' }, () => {
+test('every journey is read-only, and the build has no write it could reach', { tags: ['unit'] }, () => {
   for (const journey of SIGNED_IN_JOURNEYS) {
     assert.equal(journey.mutates, false, `${journey.id} is not declared read-only`);
     for (const read of journey.reads) {
@@ -37,7 +37,7 @@ test('every journey is read-only, and the build has no write it could reach', { 
   assert.deepEqual(ONLY_ACCOUNT_WRITE.journeys, []);
 });
 
-test('every journey says why a session is needed, in words somebody can act on', { tag: 'unit' }, () => {
+test('every journey says why a session is needed, in words somebody can act on', { tags: ['unit'] }, () => {
   for (const journey of SIGNED_IN_JOURNEYS) {
     // The same bar the live gate holds its skip reasons to. A skip nobody can
     // act on is silence with extra steps.
@@ -51,7 +51,7 @@ test('every journey says why a session is needed, in words somebody can act on',
   }
 });
 
-test('the matrix carries no account data, only selectors and routes', { tag: 'unit' }, () => {
+test('the matrix carries no account data, only selectors and routes', { tags: ['unit'] }, () => {
   // A matrix is a committed file read for years. Screenshots, balances, display
   // names, chat lines and session tokens have no business in one, and the way
   // that goes wrong is somebody pasting a real capture in "just to be precise".
@@ -68,7 +68,7 @@ test('the matrix carries no account data, only selectors and routes', { tag: 'un
   }
 });
 
-test('theme contrast verification never writes an operator-owned profile', { tag: 'unit' }, () => {
+test('theme contrast verification never writes an operator-owned profile', { tags: ['unit'] }, () => {
   const source = readFileSync(resolve('scripts/verify-extension.mjs'), 'utf8');
   const start = source.indexOf('// Theme tokens have to reach three separate layers');
   const end = source.indexOf('const popupErrors', start);

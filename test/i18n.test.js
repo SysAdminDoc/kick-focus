@@ -51,7 +51,7 @@ async function readLocales() {
   return locales;
 }
 
-test('no locale declares the same key twice', { tag: 'unit' }, async () => {
+test('no locale declares the same key twice', { tags: ['unit'] }, async () => {
   const locales = await readLocales();
   for (const [locale, keys] of locales) {
     const seen = new Set();
@@ -68,7 +68,7 @@ test('no locale declares the same key twice', { tag: 'unit' }, async () => {
   }
 });
 
-test('the translator is forward-only and never renames a language', { tag: 'unit' }, async () => {
+test('the translator is forward-only and never renames a language', { tags: ['unit'] }, async () => {
   const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
 
   // The reverse map was ambiguous by construction: several English source
@@ -94,7 +94,7 @@ test('the translator is forward-only and never renames a language', { tag: 'unit
   }
 });
 
-test('every locale covers the same strings', { tag: 'unit' }, async () => {
+test('every locale covers the same strings', { tags: ['unit'] }, async () => {
   const locales = await readLocales();
   const union = new Set([...locales.values()].flat());
   for (const [locale, keys] of locales) {
@@ -108,7 +108,7 @@ test('every locale covers the same strings', { tag: 'unit' }, async () => {
   }
 });
 
-test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
+test('no locale carries a key nothing renders', { tags: ['unit'] }, async () => {
   // Dead entries cost nothing at runtime, but they hide which strings are
   // really in use and they are not free in a build that sits against a 1 MB
   // injection ceiling. Two of the twenty-five removed when this gate was
@@ -162,7 +162,7 @@ test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
     `${dead.length} dictionary key(s) have no call site, starting with: ${dead.slice(0, 5).map((k) => JSON.stringify(k)).join(' | ')}`);
 });
 
-test('the shipped dictionary resolves, in the shape the translator reads', { tag: 'artifact' }, async () => {
+test('the shipped dictionary resolves, in the shape the translator reads', { tags: ['artifact'] }, async () => {
   // Evaluated from the artifact rather than imported, because the shape and the
   // lookup have to agree in the file a user actually installs. When the two
   // per-locale maps were collapsed into one row per string, a parser that only

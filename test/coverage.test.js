@@ -54,7 +54,7 @@ async function sourceFiles(directory = 'src', prefix = '') {
   return files;
 }
 
-test('every source file is imported by the suite or documented as unreachable', { tag: 'unit' }, async () => {
+test('every source file is imported by the suite or documented as unreachable', { tags: ['unit'] }, async () => {
   const testFiles = (await readdir(resolve(root, 'test'))).filter((name) => name.endsWith('.js'));
   const suite = (await Promise.all(testFiles.map((name) => readFile(resolve(root, 'test', name), 'utf8')))).join('\n');
   const files = await sourceFiles();
@@ -78,5 +78,36 @@ test('every source file is imported by the suite or documented as unreachable', 
   for (const [name, reason] of UNCOVERABLE) {
     assert.ok(reason.length > 20, `${name} needs a real reason, not a placeholder`);
     assert.ok(files.some((file) => file.split('/').pop() === name), `${name} is listed as uncoverable but no longer exists`);
+  }
+});
+
+test('the tag-filtered commands actually select tests', { tags: ['unit'] }, async () => {
+  // Node's option is `tags: ['unit']`. Written as `tag: 'unit'` it is not an
+  // error and not a warning: the property is simply ignored, the filter matches
+  // nothing, and `npm run test:unit` reports a pass count equal to the number
+  // of files while running none of their tests. It read as green for months.
+  const dir = resolve(root, 'test');
+  const offenders = [];
+  for (const entry of await readdir(dir)) {
+    if (!entry.endsWith('.test.js')) continue;
+    const source = await readFile(resolve(dir, entry), 'utf8');
+    if (/\{\s*tag:\s*'/.test(source)) {
+      offenders.push(`${entry} declares a singular "tag", which Node ignores; the option is "tags" and takes an array`);
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], []);
+
+  // And the two filtered commands must still name a tag that exists, or they
+  // select nothing for a different reason.
+  const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
+  const suite = (await Promise.all((await readdir(dir))
+    .filter((name) => name.endsWith('.test.js'))
+    .map((name) => readFile(resolve(dir, name), 'utf8')))).join('\n');
+  for (const script of ['test:unit', 'test:artifact']) {
+    const tag = manifest.scripts[script].match(/--experimental-test-tag-filter=([\w,]+)/)?.[1];
+    assert.ok(tag, `${script} no longer filters by tag`);
+    for (const name of tag.split(',')) {
+      assert.ok(suite.includes(`tags: ['${name}']`), `${script} filters on '${name}', which no test declares`);
+    }
   }
 });

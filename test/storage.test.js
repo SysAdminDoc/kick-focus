@@ -82,7 +82,7 @@ function makeStore(overrides = {}) {
   return { store, idb, errors, seed: () => fallback };
 }
 
-test('the seed carries everything small and the newest slice of the library', { tag: 'unit' }, () => {
+test('the seed carries everything small and the newest slice of the library', { tags: ['unit'] }, () => {
   const value = preferences(libraryOf(1000));
   const plan = planLibraryPersist(value, { seedLimit: 50 });
 
@@ -101,7 +101,7 @@ test('the seed carries everything small and the newest slice of the library', { 
   assert.equal(isSeedPartial(plan.full), false);
 });
 
-test('an oversized library is trimmed by bytes, not only by entry count', { tag: 'unit' }, () => {
+test('an oversized library is trimmed by bytes, not only by entry count', { tags: ['unit'] }, () => {
   // Every field of a library record is length-bounded on its own, and at all of
   // those ceilings at once one entry serialises to about 3.4 KB — so the 400
   // the count allows is 1.3 MB of localStorage sitting beside an injected
@@ -159,7 +159,7 @@ const realisticEntry = (index) => ({
   lastSeen: index,
 });
 
-test('the byte budget, not the entry count, is what bounds a realistic library', { tag: 'unit' }, () => {
+test('the byte budget, not the entry count, is what bounds a realistic library', { tags: ['unit'] }, () => {
   const one = utf8ByteLength(JSON.stringify(realisticEntry(0)));
   assert.ok(one > 150 && one < 400, `a realistic record measured ${one} B, so this test is no longer modelling one`);
 
@@ -182,7 +182,7 @@ test('the byte budget, not the entry count, is what bounds a realistic library',
   assert.equal(plan.full.library.length, LIBRARY_SEED_LIMIT, 'the database still holds every entry');
 });
 
-test('a stored seed carries the number the panel needs, with no write to learn it', { tag: 'unit' }, () => {
+test('a stored seed carries the number the panel needs, with no write to learn it', { tags: ['unit'] }, () => {
   // The runtime learns the trim from a write. A user who opens settings without
   // touching an emote never triggers one, so the number has to be readable from
   // what is already on disk. This is the contract readStoredLibrarySeed uses.
@@ -202,7 +202,7 @@ test('a stored seed carries the number the panel needs, with no write to learn i
   assert.equal(Number(whole.seed.librarySeedTotal), 12);
 });
 
-test('a trimmed seed says so, and a complete one stays silent', { tag: 'unit' }, () => {
+test('a trimmed seed says so, and a complete one stays silent', { tags: ['unit'] }, () => {
   assert.equal(describeLibrarySeed({ truncated: 0, total: 400 }), null);
   assert.equal(describeLibrarySeed(), null);
   assert.equal(describeLibrarySeed({ truncated: -5, total: 10 }), null, 'a negative count is not a trim');
@@ -217,13 +217,13 @@ test('a trimmed seed says so, and a complete one stays silent', { tag: 'unit' },
   assert.match(note.messageKey, /\{total\}/);
 });
 
-test('browser storage budgets count UTF-8 bytes instead of UTF-16 code units', { tag: 'unit' }, () => {
+test('browser storage budgets count UTF-8 bytes instead of UTF-16 code units', { tags: ['unit'] }, () => {
   const value = 'plain é 🧪 表';
   assert.equal(utf8ByteLength(value), Buffer.byteLength(value, 'utf8'));
   assert.ok(utf8ByteLength(value) > value.length, 'the probe must distinguish bytes from characters');
 });
 
-test('a library that fits leaves nothing behind and is not marked partial', { tag: 'unit' }, () => {
+test('a library that fits leaves nothing behind and is not marked partial', { tags: ['unit'] }, () => {
   const value = preferences(libraryOf(12));
   const plan = planLibraryPersist(value, { seedLimit: LIBRARY_SEED_LIMIT });
   assert.equal(plan.truncated, 0);
@@ -231,7 +231,7 @@ test('a library that fits leaves nothing behind and is not marked partial', { ta
   assert.deepEqual(mergeHydratedLibrary(plan.seed, plan.full), value);
 });
 
-test('the round trip through both halves is lossless, at any size', { tag: 'unit' }, () => {
+test('the round trip through both halves is lossless, at any size', { tags: ['unit'] }, () => {
   // The migration invariant: whatever is split across the two backends comes
   // back as exactly what went in, including the library's order.
   for (const size of [0, 1, 399, 400, 401, 2400]) {
@@ -244,7 +244,7 @@ test('the round trip through both halves is lossless, at any size', { tag: 'unit
   }
 });
 
-test('a write that only reached the seed is not lost to an older database record', { tag: 'unit' }, () => {
+test('a write that only reached the seed is not lost to an older database record', { tags: ['unit'] }, () => {
   // The case that actually loses data otherwise: the seed was written, the tab
   // closed before the queued database write ran, and the next boot reads both.
   const stored = preferences([entry('kick:id:1', 100), entry('kick:id:2', 100)]);
@@ -260,7 +260,7 @@ test('a write that only reached the seed is not lost to an older database record
   assert.equal('librarySeedTotal' in merged, false, 'the seed marker never reaches the store');
 });
 
-test('with no database the seed is the store, and nothing throws', { tag: 'unit' }, async () => {
+test('with no database the seed is the store, and nothing throws', { tags: ['unit'] }, async () => {
   const { store, seed } = makeStore({ idb: null, seedLimit: 10 });
   assert.equal(store.provider(), 'localstorage');
   assert.equal(store.score(), PROVIDER_SCORES.localstorage);
@@ -275,7 +275,7 @@ test('with no database the seed is the store, and nothing throws', { tag: 'unit'
   assert.equal(await store.getBlob('k'), null);
 });
 
-test('a database that refuses to open falls back rather than failing', { tag: 'unit' }, async () => {
+test('a database that refuses to open falls back rather than failing', { tags: ['unit'] }, async () => {
   // Private browsing and a blocked upgrade both land here.
   const { store, errors } = makeStore({ idb: fakeIndexedDB({ failOpen: true }) });
   store.write(preferences(libraryOf(5)));
@@ -285,7 +285,7 @@ test('a database that refuses to open falls back rather than failing', { tag: 'u
   assert.deepEqual(errors, [], 'an unavailable database is not an error to report');
 });
 
-test('the full record goes to the database and comes back merged', { tag: 'unit' }, async () => {
+test('the full record goes to the database and comes back merged', { tags: ['unit'] }, async () => {
   const { store, idb, seed } = makeStore({ seedLimit: 10 });
   const value = preferences(libraryOf(300));
   store.write(value);
@@ -301,7 +301,7 @@ test('the full record goes to the database and comes back merged', { tag: 'unit'
   assert.deepEqual(merged, value);
 });
 
-test('rapid writes coalesce instead of queueing one transaction each', { tag: 'unit' }, async () => {
+test('rapid writes coalesce instead of queueing one transaction each', { tags: ['unit'] }, async () => {
   const { store, idb } = makeStore({ seedLimit: 5 });
   // The library is rewritten on every emote observed in chat, so a busy channel
   // is hundreds of writes a minute against one record.
@@ -312,7 +312,7 @@ test('rapid writes coalesce instead of queueing one transaction each', { tag: 'u
   assert.equal(idb.__stores.get(LIBRARY_STORE).get('preferences').library.length, 20, 'the last write is the one stored');
 });
 
-test('blobs live in their own store, so a library read does not pull images', { tag: 'unit' }, async () => {
+test('blobs live in their own store, so a library read does not pull images', { tags: ['unit'] }, async () => {
   const { store, idb } = makeStore();
   assert.equal(await store.putBlob('kick:id:1', 'pretend-bytes'), true);
   assert.equal(await store.getBlob('kick:id:1'), 'pretend-bytes');
@@ -326,7 +326,7 @@ test('blobs live in their own store, so a library read does not pull images', { 
   assert.equal(idb.__stores.get(LIBRARY_STORE).size, 0);
 });
 
-test('a failing write is reported and does not wedge the queue', { tag: 'unit' }, async () => {
+test('a failing write is reported and does not wedge the queue', { tags: ['unit'] }, async () => {
   const { store, errors, seed } = makeStore({ idb: fakeIndexedDB({ failWrite: true }), seedLimit: 5 });
   store.write(preferences(libraryOf(50)));
   await store.flush();
@@ -340,7 +340,7 @@ test('a failing write is reported and does not wedge the queue', { tag: 'unit' }
   assert.equal(errors.length, 2);
 });
 
-test('junk in either half is handled rather than propagated', { tag: 'unit' }, () => {
+test('junk in either half is handled rather than propagated', { tags: ['unit'] }, () => {
   assert.deepEqual(planLibraryPersist(null).seed.library, []);
   assert.deepEqual(planLibraryPersist({ library: 'not-an-array' }).full.library, []);
   assert.deepEqual(mergeHydratedLibrary(null, null), {});

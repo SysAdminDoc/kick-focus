@@ -62,7 +62,7 @@ function makeHost() {
   return { host, reads };
 }
 
-test('the settings factory declares every page-owned dependency through its host', { tag: 'unit' }, () => {
+test('the settings factory declares every page-owned dependency through its host', { tags: ['unit'] }, () => {
   const { host, reads } = makeHost();
   const surface = createSettings(host);
   assert.deepEqual([...reads].sort(), EXPECTED_HOST_KEYS);
@@ -72,7 +72,7 @@ test('the settings factory declares every page-owned dependency through its host
   assert.equal(typeof surface.renderSettingsPage, 'function');
 });
 
-test('the extracted surface still composes navigation, icons, summaries, and viewer cards', { tag: 'unit' }, () => {
+test('the extracted surface still composes navigation, icons, summaries, and viewer cards', { tags: ['unit'] }, () => {
   const { host } = makeHost();
   const surface = createSettings(host);
   assert.deepEqual(surface.NAV_ITEMS.map(([id]) => id), [
@@ -241,7 +241,7 @@ function settingRows(markup) {
   }));
 }
 
-test('every settings control takes its accessible name from the row it sits in', { tag: 'unit' }, () => {
+test('every settings control takes its accessible name from the row it sits in', { tags: ['unit'] }, () => {
   const { rendered, pages } = makeRenderHost();
   assert.deepEqual([...rendered.keys()], pages, 'a page rendered nothing at all');
 
@@ -456,7 +456,7 @@ function renderAllScenarios() {
   return SCENARIOS.map(([name, options]) => [name, makeRenderHost(options)]);
 }
 
-test('every settings page renders in every state a real profile reaches', { tag: 'unit' }, () => {
+test('every settings page renders in every state a real profile reaches', { tags: ['unit'] }, () => {
   for (const [name, { rendered, pages }] of renderAllScenarios()) {
     assert.deepEqual([...rendered.keys()], pages, `${name}: a page rendered nothing at all`);
     for (const [id, markup] of rendered) {
@@ -469,7 +469,7 @@ test('every settings page renders in every state a real profile reaches', { tag:
   }
 });
 
-test('no page ships a placeholder it never filled in', { tag: 'unit' }, () => {
+test('no page ships a placeholder it never filled in', { tags: ['unit'] }, () => {
   // trf substitutes {name} style fields. One that is never supplied leaves the
   // brace form in the markup, which is the shape of a sentence with a hole in
   // it — and it renders as literal text rather than failing.
@@ -482,7 +482,7 @@ test('no page ships a placeholder it never filled in', { tag: 'unit' }, () => {
   }
 });
 
-test('every control writes to a setting that exists', { tag: 'unit' }, () => {
+test('every control writes to a setting that exists', { tags: ['unit'] }, () => {
   // A data-set path is what updateSetting is handed. A typo there is silent:
   // updateSetting returns early on an unknown key, so the control renders,
   // responds, announces a save, and changes nothing at all.
@@ -504,7 +504,7 @@ test('every control writes to a setting that exists', { tag: 'unit' }, () => {
   assert.ok(seen.size >= 40, `only ${seen.size} distinct settings are reachable from the panel`);
 });
 
-test('a page says what is wrong rather than rendering as though it were fine', { tag: 'unit' }, () => {
+test('a page says what is wrong rather than rendering as though it were fine', { tags: ['unit'] }, () => {
   const fresh = new Map(makeRenderHost().rendered);
   const broken = new Map(makeRenderHost(scenario('things going wrong')).rendered);
 
@@ -520,7 +520,7 @@ test('a page says what is wrong rather than rendering as though it were fine', {
     'a refused emote catalog renders identically to an empty one');
 });
 
-test('a used profile renders more than an empty one, on the pages that hold data', { tag: 'unit' }, () => {
+test('a used profile renders more than an empty one, on the pages that hold data', { tags: ['unit'] }, () => {
   const fresh = new Map(makeRenderHost().rendered);
   const used = new Map(makeRenderHost(scenario('a used profile')).rendered);
   for (const id of ['emotes', 'about']) {
@@ -529,7 +529,7 @@ test('a used profile renders more than an empty one, on the pages that hold data
   }
 });
 
-test('a signed-in viewer hub reads differently from an anonymous one', { tag: 'unit' }, () => {
+test('a signed-in viewer hub reads differently from an anonymous one', { tags: ['unit'] }, () => {
   const anonymous = new Map(makeRenderHost().rendered).get('viewer');
   const signedIn = new Map(makeRenderHost(scenario('a signed-in viewer')).rendered).get('viewer');
   assert.notEqual(signedIn, anonymous, 'the Viewer page renders the same signed in or out');
@@ -579,7 +579,7 @@ const NAV = [
   ['emotes', 'Emotes'], ['accessibility', 'Accessibility'], ['viewer', 'Viewer'], ['about', 'About'],
 ];
 
-test('the settings search indexes every page and ranks what it finds', { tag: 'unit' }, () => {
+test('the settings search indexes every page and ranks what it finds', { tags: ['unit'] }, () => {
   const { scratch, restore } = installScratchDocument();
   try {
     const { state, surface, host } = makeRenderHost({ scratch, pageList: NAV });
@@ -616,7 +616,7 @@ test('the settings search indexes every page and ranks what it finds', { tag: 'u
   }
 });
 
-test('every setting that exists has a control that reaches it', { tag: 'unit' }, () => {
+test('every setting that exists has a control that reaches it', { tags: ['unit'] }, () => {
   // The other direction from the test above. That one catches a control
   // writing to a setting that is not there; this catches a setting that
   // normalizes correctly, round-trips through export and import, and has no
