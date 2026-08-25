@@ -8,6 +8,8 @@
  * public API.
  */
 
+import { isValidSlug } from './api.mjs';
+
 export const LOCATOR_PROBES = Object.freeze({
   main: Object.freeze([
     Object.freeze({ id: 'main-id', selector: '#main-container' }),
@@ -390,7 +392,7 @@ export const DERIVED_EXPECTATIONS = Object.freeze([
       try { return Boolean(card.matches?.('a[href]') || card.querySelector?.('a[href]')); }
       catch { return false; }
     }),
-    judge: (value) => typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value),
+    judge: (value) => isValidSlug(value),
     // Only a clean sweep counts. A discovery page mixes channel cards with
     // category cards, and `cardSlugFromPath` returns '' for a category on
     // purpose — so "some cards yield nothing" is the normal state of the home

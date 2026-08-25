@@ -963,6 +963,13 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['the channel-slug rule is written once', (() => {
+    // It was written out at nine sites across four files. A rule copied that
+    // many times is one that drifts, and this one decides what counts as a
+    // channel everywhere from a card link to a saved layout to a network read.
+    const copies = [...source.matchAll(/\[A-Za-z0-9_\]\[A-Za-z0-9_-\]\{0,63\}/g)];
+    return copies.length === 1 && source.includes('KICK_SLUG_PATTERN');
+  })()],
   ['no export ships that only its own tests read', (() => {
     // The coverage gate is file-granular: it knows whether a file is imported
     // at all, not whether a symbol inside it has a caller. Three exports with
@@ -1665,7 +1672,7 @@ const checks = [
     && source.includes('multistreamTileMuted')
     && source.includes("node.dataset.kfDeletionNoted === 'true'")],
 
-  // A reverse scan of 252 entries per string, on every text node, on every
+  // A reverse scan of every dictionary entry per string, on every text node, on every
   // render — and ambiguous, because some English sources are also translated
   // values. Lookup is one forward hit against a remembered original.
   ['translation is a forward lookup with no reverse scan',

@@ -29,6 +29,7 @@ import {
   emoteImageUrl,
   endpoints,
   findShadowedNames,
+  isValidSlug,
   joinCollectibleRarity,
   normalizeChannel,
   normalizeChannelVideos,
@@ -220,7 +221,7 @@ export function createLive(host) {
    * marks follow-gated; ordinary channel emotes never reach this path.
    */
   async function mutateKickChannelFollow(slug, method = 'POST') {
-    if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug || '')) return { ok: false, status: 'invalid-channel' };
+    if (!isValidSlug(slug || '')) return { ok: false, status: 'invalid-channel' };
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
     try {

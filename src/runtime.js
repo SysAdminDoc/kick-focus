@@ -8,6 +8,10 @@ const CHAT_KEYWORDS_KEY = 'kick-focus:chat-keywords';
 const CHANNEL_NOTES_KEY = 'kick-focus:channel-notes';
 const STICKER_PREFERENCES_KEY = 'kick-focus:sticker-preferences';
 const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
+// The same 512 KiB the companion refuses at, named once here too: the
+// userscript reads the feed itself when no extension is installed, and the two
+// paths disagreeing about the cap would be a difference nobody would look for.
+const BLOCKLIST_MAX_TEXT = 512 * 1024;
 const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
@@ -2936,7 +2940,7 @@ function pageFetch(url, init) {
 function currentChannelSlug() {
   if (routeKind(location.href) !== 'channel') return '';
   const slug = location.pathname.split('/').filter(Boolean)[0] || '';
-  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug) ? slug : '';
+  return isValidSlug(slug) ? slug : '';
 }
 
 /**
@@ -6851,7 +6855,7 @@ function scheduleRemoteBlocklistSync(force = false) {
   updateRemoteBlocklistInPlace();
   fetchBlocklistText(url.href)
     .then(({ text, method }) => {
-      if (text.length > 512 * 1024) throw new Error('blocklist too large');
+      if (text.length > BLOCKLIST_MAX_TEXT) throw new Error('blocklist too large');
       const result = validateRemoteBlocklist(JSON.parse(text));
       if (!result.ok) throw new Error(result.error);
       const payload = result.value;
@@ -10699,7 +10703,7 @@ function onInterfaceInput(event) {
   const settingsSearch = event.target.closest('input[data-kf-settings-search]');
   if (settingsSearch) {
     // Debounced: re-rendering the results on every keystroke re-serialises the
-    // whole page body, and the index behind it renders five pages the first time.
+    // whole page body, and the index behind it renders seven pages the first time.
     clearTimeout(state.settingsSearchTimer);
     const value = settingsSearch.value;
     state.settingsSearchTimer = window.setTimeout(() => {

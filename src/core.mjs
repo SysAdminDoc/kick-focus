@@ -178,6 +178,24 @@ export function rankSettingsMatches(query, entries, limit = 40) {
   return scored.slice(0, Math.max(0, Math.floor(Number(limit)) || 0)).map((row) => row.entry);
 }
 
+// The pink a custom accent falls back to when the stored value is not a
+// colour. Written four times across this file and both bridges; the bridges
+// are standalone scripts and keep their own copy, checked against this one.
+/**
+ * What Kick accepts as a channel slug.
+ *
+ * Written out at nine separate sites across four files, which is how a rule
+ * like this drifts. Declared here because core is concatenated first; api.mjs
+ * imports it for `isValidSlug`, and everything that loads after api calls that
+ * rather than carrying a tenth copy.
+ *
+ * No `g` flag on purpose: a shared regex with one would carry `lastIndex`
+ * between unrelated callers and start matching from the middle of a string.
+ */
+export const KICK_SLUG_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
+
+const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
+
 export const DEFAULT_SETTINGS = Object.freeze({
   schema: SETTINGS_SCHEMA,
   // Recorded rather than defaulted to VERSION: a fresh profile has seen nothing,
@@ -205,7 +223,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   appearance: Object.freeze({
     theme: 'studio',
     accent: 'kick',
-    customAccent: '#FF5CA8',
+    customAccent: CUSTOM_ACCENT_FALLBACK,
     language: 'auto',
     radius: 'balanced',
     thumbnail: 55,
@@ -497,7 +515,6 @@ export function clamp(value, minimum, maximum, fallback) {
   return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
 }
 
-const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
 /**
  * Every surface an accent is actually drawn on, across all three themes.
  *
@@ -995,7 +1012,7 @@ export function decideRewardClaim(facts = {}) {
 //
 // Cards are independent by construction: each is derived from its own fact,
 // inside its own try, so a card that throws becomes one card in `error` and the
-// other five still render. That is the difference between a hub and a hub-shaped
+// other six still render. That is the difference between a hub and a hub-shaped
 // blank page.
 //
 // The decisions live here, where they are testable without a browser. The
@@ -1180,8 +1197,8 @@ const BUILDERS = {
     const nextAt = measured(fact.nextCheckAt);
     const rest = freshness(fact.observedAt, now);
     // Claimed since the last rollover: the one case where there is nothing to
-    // wait for. `resetAt` is passed in rather than recomputed so the caller and
-    // this agree about when the day turns over.
+    // wait for. `previousResetAt` is passed in rather than recomputed so the
+    // caller and this agree about when the day turns over.
     const rolledOverAt = measured(fact.previousResetAt) || 0;
     if (claimedAt && claimedAt >= rolledOverAt) {
       return card('reward', 'dom', 'ready', { value: 'claimed', ...rest });
@@ -2373,7 +2390,7 @@ export function routeKind(input) {
 /** The current StreamerStats analytics page for a validated Kick channel slug. */
 export function streamerStatsProfileUrl(slug) {
   const channel = String(slug ?? '').trim();
-  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(channel)) return '';
+  if (!KICK_SLUG_PATTERN.test(channel)) return '';
   return `https://streamerstats.com/kick/channels/${encodeURIComponent(channel)}`;
 }
 
@@ -2871,7 +2888,7 @@ function cleanCaptureTime(value) {
 // this cap silently dropped the longest name-and-src keys during migration.
 const STICKER_KEY_MAX_LENGTH = 360;
 
-function cleanStickerKeys(input, limit = 2400) {
+function cleanStickerKeys(input, limit = STICKER_LIBRARY_LIMIT) {
   if (!Array.isArray(input)) return [];
   const values = [];
   const seen = new Set();
@@ -2967,7 +2984,7 @@ function cleanStickerAssignments(input, groupIds) {
     if (!key || !groupIds.has(groupId) || keys.has(key)) continue;
     keys.add(key);
     assignments.push({ key, groupId });
-    if (assignments.length >= 2400) break;
+    if (assignments.length >= STICKER_LIBRARY_LIMIT) break;
   }
   return assignments;
 }
@@ -3932,7 +3949,7 @@ function cleanSlugList(input) {
   const slugs = [];
   for (const raw of input) {
     const slug = typeof raw === 'string' ? raw.trim() : '';
-    if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
+    if (!KICK_SLUG_PATTERN.test(slug)) continue;
     const key = slug.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -4017,7 +4034,7 @@ export function cardSlugFromPath(path) {
   }
   const [first] = rest.split(/[?#]/)[0].split('/').filter(Boolean);
   if (!first || NON_CHANNEL_SEGMENTS.has(first.toLowerCase())) return '';
-  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(first) ? first : '';
+  return KICK_SLUG_PATTERN.test(first) ? first : '';
 }
 
 export function compactPresence(entries, now = 0) {
@@ -4026,7 +4043,7 @@ export function compactPresence(entries, now = 0) {
     if (!isRecord(entry)) continue;
     const slug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
     const ts = Number(entry.ts);
-    if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
+    if (!KICK_SLUG_PATTERN.test(slug)) continue;
     if (!Number.isFinite(ts) || now - ts > PRESENCE_TTL_MS || ts > now + PRESENCE_TTL_MS) continue;
     const key = slug.toLowerCase();
     // The freshest answer for a slug wins, so two tabs on the same channel
@@ -4228,7 +4245,7 @@ export function planMultistreamTiles(existing, wanted) {
 export function addMultistreamChannel(value, slug) {
   const state = normalizeMultistream(value);
   const cleaned = typeof slug === 'string' ? slug.trim() : '';
-  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(cleaned)) {
+  if (!KICK_SLUG_PATTERN.test(cleaned)) {
     return { ok: false, error: 'That is not a Kick channel name.', value: state };
   }
   if (state.streams.some((entry) => entry.toLowerCase() === cleaned.toLowerCase())) {

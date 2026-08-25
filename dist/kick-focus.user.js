@@ -161,6 +161,8 @@ scored.sort((a, b) => a.rank - b.rank
 || String(a.entry.title).localeCompare(String(b.entry.title)));
 return scored.slice(0, Math.max(0, Math.floor(Number(limit)) || 0)).map((row) => row.entry);
 }
+const KICK_SLUG_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
+const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
 const DEFAULT_SETTINGS = Object.freeze({
 schema: SETTINGS_SCHEMA,
 lastSeenVersion: '',
@@ -184,7 +186,7 @@ playerContainVideo: true,
 appearance: Object.freeze({
 theme: 'studio',
 accent: 'kick',
-customAccent: '#FF5CA8',
+customAccent: CUSTOM_ACCENT_FALLBACK,
 language: 'auto',
 radius: 'balanced',
 thumbnail: 55,
@@ -372,7 +374,6 @@ function clamp(value, minimum, maximum, fallback) {
 const number = Number(value);
 return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
 }
-const CUSTOM_ACCENT_FALLBACK = '#FF5CA8';
 const CUSTOM_ACCENT_SURFACES = Object.freeze([
 '#000000',
 '#18201b', '#171f1a',
@@ -1415,7 +1416,7 @@ return 'channel';
 }
 function streamerStatsProfileUrl(slug) {
 const channel = String(slug ?? '').trim();
-if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(channel)) return '';
+if (!KICK_SLUG_PATTERN.test(channel)) return '';
   return `https://streamerstats.com/kick/channels/${encodeURIComponent(channel)}`;
 }
 function matchesHost(hostname, domains) {
@@ -1697,7 +1698,7 @@ if (time > EARLIEST_CAPTURE_MS + 100 * 365 * 24 * 60 * 60 * 1000) return 0;
 return Math.floor(time);
 }
 const STICKER_KEY_MAX_LENGTH = 360;
-function cleanStickerKeys(input, limit = 2400) {
+function cleanStickerKeys(input, limit = STICKER_LIBRARY_LIMIT) {
 if (!Array.isArray(input)) return [];
 const values = [];
 const seen = new Set();
@@ -1763,7 +1764,7 @@ const groupId = cleanStickerText(raw.groupId, 64).replace(/[^a-zA-Z0-9_-]/g, '')
 if (!key || !groupIds.has(groupId) || keys.has(key)) continue;
 keys.add(key);
 assignments.push({ key, groupId });
-if (assignments.length >= 2400) break;
+if (assignments.length >= STICKER_LIBRARY_LIMIT) break;
 }
 return assignments;
 }
@@ -2447,7 +2448,7 @@ const seen = new Set();
 const slugs = [];
 for (const raw of input) {
 const slug = typeof raw === 'string' ? raw.trim() : '';
-if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
+if (!KICK_SLUG_PATTERN.test(slug)) continue;
 const key = slug.toLowerCase();
 if (seen.has(key)) continue;
 seen.add(key);
@@ -2489,7 +2490,7 @@ rest = absolute[2] || '';
 }
 const [first] = rest.split(/[?#]/)[0].split('/').filter(Boolean);
 if (!first || NON_CHANNEL_SEGMENTS.has(first.toLowerCase())) return '';
-return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(first) ? first : '';
+return KICK_SLUG_PATTERN.test(first) ? first : '';
 }
 function compactPresence(entries, now = 0) {
 const seen = new Map();
@@ -2497,7 +2498,7 @@ for (const entry of Array.isArray(entries) ? entries : []) {
 if (!isRecord(entry)) continue;
 const slug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
 const ts = Number(entry.ts);
-if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug)) continue;
+if (!KICK_SLUG_PATTERN.test(slug)) continue;
 if (!Number.isFinite(ts) || now - ts > PRESENCE_TTL_MS || ts > now + PRESENCE_TTL_MS) continue;
 const key = slug.toLowerCase();
 const prior = seen.get(key);
@@ -2621,7 +2622,7 @@ remove: [...present].filter((slug) => !seen.has(slug)),
 function addMultistreamChannel(value, slug) {
 const state = normalizeMultistream(value);
 const cleaned = typeof slug === 'string' ? slug.trim() : '';
-if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(cleaned)) {
+if (!KICK_SLUG_PATTERN.test(cleaned)) {
 return { ok: false, error: 'That is not a Kick channel name.', value: state };
 }
 if (state.streams.some((entry) => entry.toLowerCase() === cleaned.toLowerCase())) {
@@ -2796,7 +2797,7 @@ function chatEmbedUrl(slug) {
   return `${KICK_ORIGIN}/popout/${encodeURIComponent(slug)}/chat`;
 }
 function isValidSlug(value) {
-return typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value);
+return typeof value === 'string' && KICK_SLUG_PATTERN.test(value);
 }
 function parseChannelInput(raw) {
 const text = String(raw ?? '').trim();
@@ -3718,7 +3719,7 @@ sample: (owner) => findAllProbe(owner, 'card').elements.filter((card) => {
 try { return Boolean(card.matches?.('a[href]') || card.querySelector?.('a[href]')); }
 catch { return false; }
 }),
-judge: (value) => typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value),
+judge: (value) => isValidSlug(value),
 requireAll: false,
 }),
 Object.freeze({
@@ -4129,7 +4130,7 @@ signal?.removeEventListener?.('abort', forwardAbort);
 }
 }
 async function mutateKickChannelFollow(slug, method = 'POST') {
-if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug || '')) return { ok: false, status: 'invalid-channel' };
+if (!isValidSlug(slug || '')) return { ok: false, status: 'invalid-channel' };
 const controller = new AbortController();
 const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
 try {
@@ -6346,6 +6347,7 @@ const CHAT_KEYWORDS_KEY = 'kick-focus:chat-keywords';
 const CHANNEL_NOTES_KEY = 'kick-focus:channel-notes';
 const STICKER_PREFERENCES_KEY = 'kick-focus:sticker-preferences';
 const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
+const BLOCKLIST_MAX_TEXT = 512 * 1024;
 const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
@@ -7096,7 +7098,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              844981') || 0;
+const BUNDLE_BYTES = Number('              844914') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8742,7 +8744,7 @@ return unhookedFetch ? unhookedFetch(url, init) : window.fetch(url, init);
 function currentChannelSlug() {
 if (routeKind(location.href) !== 'channel') return '';
 const slug = location.pathname.split('/').filter(Boolean)[0] || '';
-return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(slug) ? slug : '';
+return isValidSlug(slug) ? slug : '';
 }
 function currentVodId() {
 if (routeKind(location.href) !== 'channel') return '';
@@ -11788,7 +11790,7 @@ state.remoteBlocklist.status = 'loading';
 updateRemoteBlocklistInPlace();
 fetchBlocklistText(url.href)
 .then(({ text, method }) => {
-if (text.length > 512 * 1024) throw new Error('blocklist too large');
+if (text.length > BLOCKLIST_MAX_TEXT) throw new Error('blocklist too large');
 const result = validateRemoteBlocklist(JSON.parse(text));
 if (!result.ok) throw new Error(result.error);
 const payload = result.value;

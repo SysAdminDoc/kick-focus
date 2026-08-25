@@ -15,6 +15,8 @@
  *     one thing certain about an internal API is that it will change.
  */
 
+import { KICK_SLUG_PATTERN } from './core.mjs';
+
 export const KICK_ORIGIN = 'https://kick.com';
 export const KICK_WEB_ORIGIN = 'https://web.kick.com';
 
@@ -90,7 +92,7 @@ export function chatEmbedUrl(slug) {
 
 /** Kick channel slugs: what the site itself accepts in a path segment. */
 export function isValidSlug(value) {
-  return typeof value === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(value);
+  return typeof value === 'string' && KICK_SLUG_PATTERN.test(value);
 }
 
 /**

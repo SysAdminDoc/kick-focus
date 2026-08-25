@@ -857,8 +857,8 @@ export function createSettings(host) {
    * so an index built from the markup alone would never match what a Spanish or
    * Portuguese user is actually reading.
    *
-   * Cached until something invalidates it, because rendering five pages on every
-   * keystroke would be the most expensive thing this panel does.
+   * Cached until something invalidates it, because rendering all seven pages on
+   * every keystroke would be the most expensive thing this panel does.
    */
 
   function settingsSearchIndex() {

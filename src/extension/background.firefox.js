@@ -9,6 +9,9 @@ const TELEMETRY_HOSTS = __TELEMETRY_HOSTS__;
 const BADGE_COLOR = '#53fc18';
 const BLOCKLIST_APPROVAL_KEY = 'blocklistApproval';
 const BLOCKLIST_MAX_BYTES = 512 * 1024;
+// Written from the constant, so raising the cap cannot leave the refusal
+// naming a limit that is no longer the limit.
+const BLOCKLIST_TOO_LARGE = `Blocklist exceeds ${Math.round(BLOCKLIST_MAX_BYTES / 1024)} KiB.`;
 const BLOCKLIST_TIMEOUT_MS = 8000;
 let telemetryEnabled = true;
 const blockedByTab = new Map();
@@ -186,7 +189,7 @@ async function readBoundedBody(response) {
   const decode = (bytes) => new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   if (!response.body || typeof response.body.getReader !== 'function') {
     const body = new Uint8Array(await response.arrayBuffer());
-    if (body.byteLength > BLOCKLIST_MAX_BYTES) throw new Error('Blocklist exceeds 512 KiB.');
+    if (body.byteLength > BLOCKLIST_MAX_BYTES) throw new Error(BLOCKLIST_TOO_LARGE);
     return decode(body);
   }
   const reader = response.body.getReader();
@@ -198,7 +201,7 @@ async function readBoundedBody(response) {
       if (done) break;
       if (!value || !value.byteLength) continue;
       total += value.byteLength;
-      if (total > BLOCKLIST_MAX_BYTES) throw new Error('Blocklist exceeds 512 KiB.');
+      if (total > BLOCKLIST_MAX_BYTES) throw new Error(BLOCKLIST_TOO_LARGE);
       chunks.push(value);
     }
   } finally {
@@ -238,7 +241,7 @@ async function fetchApprovedBlocklist(requestedUrl) {
     if (mime !== 'application/json' && !mime.endsWith('+json')) throw new Error('A JSON response is required.');
     const declaredLength = Number(response.headers.get('content-length'));
     if (Number.isFinite(declaredLength) && declaredLength > BLOCKLIST_MAX_BYTES) {
-      throw new Error('Blocklist exceeds 512 KiB.');
+      throw new Error(BLOCKLIST_TOO_LARGE);
     }
     return await readBoundedBody(response);
   } finally {

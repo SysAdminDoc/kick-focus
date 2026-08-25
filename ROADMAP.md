@@ -265,9 +265,4 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P3
 
-- [ ] P3 — R-139: Retire the remaining bare literals and stale counts
-  Why: The audit named a shared limit for the emote groups and left the same shape elsewhere. `512 KiB` is written into four error strings beside `BLOCKLIST_MAX_BYTES` plus a fifth raw `512 * 1024` in runtime, so changing the constant makes the message lie. `2400` is a bare literal twice beside `STICKER_LIBRARY_LIMIT`. `#FF5CA8` is written four times. The Kick slug regex is inlined nine times although `isValidSlug` exists in api.mjs with tests pinning its edge cases. Several comments carry counts the code has outgrown: two say the settings panel renders five pages and it renders seven, one says "the other five still render" seven lines above a comment saying "the seven cards", one in check.mjs says the dictionary holds 252 entries and it holds 825 per locale, and one in core.mjs names a field `resetAt` that no longer exists.
-  Where: src/extension/background.js and background.firefox.js size messages; src/runtime.js:6624; src/core.mjs:2688 and 2784; src/core.mjs:204 and 504, src/extension/bridge.js:65, bridge.firefox.js:77; the nine slug-regex sites; src/core.mjs:1030 and 1215; src/settings.mjs:839; src/runtime.js:11151; scripts/check.mjs:1212
-  Acceptance: Each literal has one named source, each comment's number matches the code beside it, and the slug regex sites that load after api.mjs call `isValidSlug`.
-  Complexity: S
 
