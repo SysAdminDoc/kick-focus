@@ -228,6 +228,9 @@ test('every settings control takes its accessible name from the row it sits in',
     // outside a `row` would otherwise announce itself as "__KF_ROW_LABEL__".
     assert.equal(markup.includes('__KF_ROW_LABEL__'), false,
       `the ${id} page shipped an unsubstituted row label`);
+    // A renderer that quietly produced nothing would satisfy every assertion
+    // below it, so each page has to have actually rendered something.
+    assert.ok(markup.length > 900, `the ${id} page rendered only ${markup.length} characters`);
 
     for (const row of settingRows(markup)) {
       if (!row.title) continue;
