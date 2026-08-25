@@ -335,7 +335,16 @@ function matchCompound(node, compound) {
     if (part.kind === 'has' && !part.value.some((steps) => runSteps([node], steps).length)) return false;
     // :not() is scoped to the node itself, not to its subtree, so it asks
     // whether this compound matches rather than whether anything below does.
-    if (part.kind === 'not' && part.value.some((steps) => steps.length === 1 && matchCompound(node, steps[0].compound))) return false;
+    if (part.kind === 'not') {
+      // A complex argument would silently match nothing and let the element
+      // through, which is the wrong way for a negation to fail. Refuse instead:
+      // the probes only use compound arguments, and a richer one arriving is
+      // something to notice rather than to quietly ignore.
+      for (const steps of part.value) {
+        if (steps.length !== 1) throw new Error(`:not() with a complex argument is not supported: ${JSON.stringify(steps)}`);
+        if (matchCompound(node, steps[0].compound)) return false;
+      }
+    }
   }
   return true;
 }

@@ -7096,7 +7096,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              843924') || 0;
+const BUNDLE_BYTES = Number('              843963') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8516,7 +8516,7 @@ separator.setAttribute('aria-valuetext', trf('Chat width {width} pixels', { widt
 }
 const SEPARATOR_ATTRIBUTES = ['role', 'tabindex', 'aria-orientation', 'aria-controls', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'];
 function decorateChatSeparator(separator, owner) {
-if (!state.chatSeparator || state.chatSeparator.element !== separator) {
+if (!state.chatSeparator || state.chatSeparator.element !== separator || state.chatSeparator.owner !== owner) {
 releaseChatSeparator();
 state.chatSeparator = {
 element: separator,

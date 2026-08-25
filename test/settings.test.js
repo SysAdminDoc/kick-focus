@@ -569,9 +569,18 @@ function installScratchDocument() {
     }
     return rows;
   };
+  const had = 'document' in globalThis;
   const previous = globalThis.document;
   globalThis.document = { createElement: () => scratch };
-  return { scratch, restore: () => { globalThis.document = previous; } };
+  // Restoring an absent global means deleting it, not assigning undefined:
+  // the second leaves an own property behind that `in` still finds.
+  return {
+    scratch,
+    restore: () => {
+      if (had) globalThis.document = previous;
+      else delete globalThis.document;
+    },
+  };
 }
 
 const NAV = [

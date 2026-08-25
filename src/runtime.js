@@ -2611,7 +2611,11 @@ function setChatSeparatorValue(separator, width) {
 const SEPARATOR_ATTRIBUTES = ['role', 'tabindex', 'aria-orientation', 'aria-controls', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'];
 
 function decorateChatSeparator(separator, owner) {
-  if (!state.chatSeparator || state.chatSeparator.element !== separator) {
+  // The owner is part of the identity, not just the separator. Kick can
+  // re-render the chat container while keeping the separator element, and a
+  // record that only matched on the separator would then restore attributes to
+  // the *old* owner and leave a synthetic id on the new one.
+  if (!state.chatSeparator || state.chatSeparator.element !== separator || state.chatSeparator.owner !== owner) {
     releaseChatSeparator();
     state.chatSeparator = {
       element: separator,

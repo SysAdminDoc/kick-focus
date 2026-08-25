@@ -263,6 +263,18 @@ Found during a full-repository audit. Everything the audit fixed is in
   Acceptance: Pressing a control on each of the seven pages runs the action it declares and, for a setting, the value is read back from storage afterwards. Either extract the click routing behind a host factory the way `createSettings` and `createMultistream` already are, so it can be driven offline, or add the coverage to the live gate where a real click exists. Whichever is chosen, a missing handler for a rendered `data-action` must fail rather than do nothing.
   Complexity: M
 
+- [ ] P2 — R-148: Make the reset Undo reachable for longer than seven seconds
+  Why: R-107's criterion says "a focused status toast with Undo". The toast is `role="status"` with `aria-live="polite"` and is never focused, and its Undo button is removed by a 7,000 ms timer. After a *page* reset the only other Undo is on the About page, so a keyboard or screen-reader user has seven seconds to reach a polite live region, or has to navigate to a different settings page to find the offer again. Moving focus to a toast unprompted is its own accessibility problem, so this is a design decision rather than a one-line fix.
+  Where: src/runtime.js `showToast` (the 7,000 ms action timeout) and `resetSettings`; src/settings.mjs About page undo button
+  Acceptance: After any reset, the Undo is reachable by keyboard without racing a timer — either the action toast persists until dismissed or acted on, or the offer appears on the page that was just reset rather than only on About. Whatever is chosen must not move focus without the user asking.
+  Complexity: S
+
+- [ ] P2 — R-149: Include the reward record in the reset snapshot, or stop clearing it
+  Why: `clearPrivateData` deletes `REWARD_STATE_KEY` (`lastClaimAt`, `claims`) on a full reset, and `currentExportPayload` does not carry it, so the Undo written beside that reset cannot put it back. R-107's criterion lists settings, notes, filters and channel lists rather than this, so it is outside the letter of it — but it is state a reset destroys with no way back, which is the thing the undo exists to prevent.
+  Where: src/runtime.js `clearPrivateData`, `currentExportPayload`, the store registry in src/core.mjs, and the import validation that has to accept a new section
+  Acceptance: Either the reward record travels with the export payload, so import, export and Undo all round-trip it, or the reset leaves it alone and says why. Adding it means the import validator and the About page's store list have to know about it too.
+  Complexity: S
+
 - [ ] P2 — R-137: Normalize the control geometry the panel renders
   Why: Controls that sit in the same `.kf-control` column are 32, 36, 38 and 40 pixels tall (`.kf-switch`, `.kf-select`, `.kf-icon-button`, `.kf-button`), which reads as jitter down the right edge of every settings page. Eight radius literals bypass the Corner radius setting: `.kf-toast` and `.kf-toast-action` at 4px, `.kf-icon-button` at 5px, the About panel at 4px, the emote completion list and rows at 9px and 6px, and the two injected header buttons at 5px and 8px. Those two buttons also disagree on height, weight and font size while sitting in the same Kick chrome. Two focus treatments coexist: `outline: var(--focus-ring)` on the nav search, and `outline: 0` plus a box-shadow ring on `.kf-text`, `.kf-textarea`, `.kf-select`, and both multi-stream inputs.
   Where: src/runtime.js UI_CSS around 7289-7500, 7769, 7819-7831, 11555-11573, 12598-12645
