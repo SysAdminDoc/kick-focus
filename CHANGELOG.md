@@ -9,7 +9,8 @@ All notable changes are documented here. Dates use ISO 8601.
 ### Security
 
 - A settings file can no longer switch on a blocklist subscription by itself. Importing one that carries an unfamiliar HTTPS feed keeps the address, leaves the subscription off, and names the host in an import note, so nothing starts calling out to a stranger's server on the strength of a file somebody shared. Re-importing into the profile the file came from is unchanged. Restoring into a fresh browser arrives with the subscription off, since nothing there has agreed to that host yet, and turning it back on is one click. Undo restores what you had.
-- All six copies of the blocklist URL rule now answer the same. Two of them used to accept a URL carrying a username and password, which on a userscript-only install meant those credentials went out to that host on every refresh. Credentials are refused everywhere and the fragment is dropped.
+- All six copies of the blocklist URL rule now answer the same. Two of them used to accept a URL carrying a username and password, which on a userscript-only install meant those credentials went out to that host on every refresh. Credentials are refused everywhere and the fragment is dropped. If you had such an address saved, the field clears and the subscription switches off rather than sitting on a permanent error.
+- A page on one Kick tab can no longer reset another Kick tab's blocked count or clear its badge in the companion.
 - Remote blocklist feeds in the companion require approval from its popup. The extension stores one exact HTTPS URL, asks for that origin only, and refuses redirects, non-JSON responses, bodies over 512 KiB, and requests that run longer than eight seconds.
 
 ### Fixed
@@ -24,6 +25,9 @@ All notable changes are documented here. Dates use ISO 8601.
 - The player overlay chips follow the theme instead of painting a green-black block over the Slate palette, and they respect the Corner radius setting.
 - The storage panel says how many emotes the first paint is holding when the library is larger than the synchronous seed. That number was measured and thrown away on every save.
 - Creating an emote group reports the same refusal on both surfaces. At the ceiling, one of them used to say the name was taken, which reads as "pick another name" for a state where no name would have worked.
+- An emote seen in chat is checked against the same URL rule the saved library already used, at the moment it is read rather than only when it is written. A crafted image address could otherwise sit in memory until the next reload with the library's Open artwork link pointing at it.
+- Watching muted keeps the watch clock and the player chips. Muting was treated as a sign that a video is decorative, which was one Kick markup change away from taking both away from every muted viewer at once.
+- The multi-stream live poll no longer walks every channel the tab has ever shown. Removing a channel from the grid now actually forgets it.
 - Smaller ones: the settings search box pointed at an element that did not exist, the save indicator was not announced, the pop-out chat failure announced politely instead of as an alert, and the companion popup's revoke button stayed dead after a failed revoke until the popup was reopened.
 
 ### Changed
