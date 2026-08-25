@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
+import { MANDATORY_CHROMIUM_CHECKS, MANDATORY_FIREFOX_CHECKS, mandatoryLiveFailures } from './live-contract.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Far enough left of every real display to be off all of them, and the same
@@ -46,12 +47,22 @@ if (offline !== 0) process.exit(offline || 1);
 const tests = await run(process.execPath, ['--test']);
 if (tests !== 0) process.exit(tests || 1);
 
-const summaryPath = join(screenshotRoot, 'live-summary.json');
+/**
+ * A skip is a legitimate answer to most of what the live gate covers, so the
+ * gate's own exit code tolerates them. The cost is that an assertion which
+ * stopped asserting for a bad reason looks exactly like one that skipped for a
+ * good one, which is how v1.38.0 shipped on a run of 90 of 96. The checks that
+ * cannot skip for an environmental reason are named in live-contract.mjs and
+ * are required to pass, at each viewport separately: a summary written to one
+ * shared path would only ever describe the last run.
+ */
+let summaryPath = '';
 for (const [label, size, file] of [
   ['primary', '1440,900', 'kick-focus-1440x900.png'],
   ['secondary', '1920,1080', 'kick-focus-1920x1080.png'],
 ]) {
   console.log(`\nRelease checklist: ${label} viewport ${size.replace(',', '×')}`);
+  summaryPath = join(screenshotRoot, `live-summary-${size.replace(',', 'x')}.json`);
   const code = await run(process.execPath, ['scripts/verify-extension.mjs'], {
     KF_WINDOW_SIZE: size,
     KF_SCREENSHOT_PATH: join(screenshotRoot, file),
@@ -60,6 +71,14 @@ for (const [label, size, file] of [
     KF_WINDOW_POSITION: WINDOW_POSITION,
   });
   if (code !== 0) process.exit(code || 1);
+  const viewportSummary = JSON.parse(await readFile(summaryPath, 'utf8'));
+  const problems = mandatoryLiveFailures(viewportSummary.results, MANDATORY_CHROMIUM_CHECKS);
+  if (problems.length) {
+    console.error(`\nThe ${label} viewport did not assert every check a release requires:`);
+    for (const problem of problems) console.error(`  ${problem}`);
+    console.error('A release may not be packaged on this run.');
+    process.exit(1);
+  }
 }
 
 /**
@@ -124,8 +143,27 @@ if (asserted.length < SIGNED_IN_JOURNEYS.length) {
 // had never been executed anywhere until this gate existed. Skipped rather than
 // failed when no Firefox is installed, matching the Chromium gate's contract.
 console.log('\nRelease checklist: Firefox companion');
-const firefox = await run(process.execPath, ['scripts/verify-firefox.mjs'], { KF_ALLOW_NO_FIREFOX: '1' });
+const firefoxSummaryPath = join(screenshotRoot, 'firefox-summary.json');
+const firefox = await run(process.execPath, ['scripts/verify-firefox.mjs'], {
+  KF_ALLOW_NO_FIREFOX: '1',
+  KF_SUMMARY_PATH: firefoxSummaryPath,
+});
 if (firefox !== 0) process.exit(firefox || 1);
+// A machine with no Firefox skips the whole gate, which is the documented
+// contract; anything else has to have asserted the package really loaded and
+// really kept its extension URL out of the page.
+const firefoxSummary = await readFile(firefoxSummaryPath, 'utf8').then(JSON.parse, () => null);
+if (firefoxSummary) {
+  const problems = mandatoryLiveFailures(firefoxSummary.results, MANDATORY_FIREFOX_CHECKS);
+  if (problems.length) {
+    console.error('\nThe Firefox run did not assert every check a release requires:');
+    for (const problem of problems) console.error(`  ${problem}`);
+    console.error('A release may not be packaged on this run.');
+    process.exit(1);
+  }
+} else {
+  console.log('  No Firefox summary was written, so this machine has no Firefox and the gate skipped.');
+}
 
 console.log(`\nRelease screenshots, when live Kick was reachable: ${screenshotRoot}`);
 console.log('Compare both captures with the current design references and inspect for overflow, clipped controls, and changed shell geometry before publishing.');

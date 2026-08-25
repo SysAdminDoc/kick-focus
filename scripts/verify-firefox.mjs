@@ -24,7 +24,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, access, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, access, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -283,6 +283,16 @@ try {
   const skipped = results.filter((r) => r.outcome === 'skip');
   const asserted = results.filter((r) => r.outcome !== 'skip');
   console.log(`\n${asserted.length - failures.length}/${asserted.length} checks passed${skipped.length ? `, ${skipped.length} skipped` : ''}.`);
+  // Labels and outcomes only, matching the Chromium gate, so the release
+  // command can insist the checks that must never skip did not.
+  if (process.env.KF_SUMMARY_PATH) {
+    await writeFile(process.env.KF_SUMMARY_PATH, JSON.stringify({
+      passed: asserted.length - failures.length,
+      asserted: asserted.length,
+      skipped: skipped.length,
+      results: results.map((entry) => ({ label: entry.label, outcome: entry.outcome })),
+    }), 'utf8');
+  }
   if (failures.length) {
     console.log(`Failed: ${failures.map((f) => f.label).join('; ')}`);
     process.exitCode = 1;

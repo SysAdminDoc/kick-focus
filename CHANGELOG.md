@@ -6,6 +6,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- `npm run release:check` will not package a release on a run where a check that cannot legitimately skip did not pass. Both viewports are judged separately rather than sharing one summary, Firefox is held to the same contract, and a check that never reported at all is treated as a refusal instead of silence.
+
 - The test suite can no longer report on a build that is older than the sources. `npm test` ran the tests and nothing else, so after any edit the third of the suite that reads the built bundle was judging the previous one. It builds first now, and the tests that read the bundle refuse to run against a stale one, naming the file that moved.
 
 ### Added

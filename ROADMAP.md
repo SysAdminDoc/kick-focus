@@ -94,13 +94,6 @@ None open.
 
 ### P1
 
-- [ ] P1 — R-103: Make one local release command refuse red or stale evidence
-  Why: v1.38.0 is published while current-head Chromium proof is 90 of 96 and README.md carries an older proof count.
-  Evidence: scripts/release-checklist.mjs; scripts/verify-extension.mjs; README.md; https://github.com/SysAdminDoc/kick-focus/releases/tag/v1.38.0
-  Touches: scripts/release-checklist.mjs, scripts/verify-extension.mjs, scripts/verify-firefox.mjs, scripts/build.mjs, README.md proof block, release artifacts
-  Acceptance: One local command cleans and rebuilds artifacts, requires every mandatory browser-neutral assertion at both desktop viewports, checks the Firefox contract, validates version and proof stamps, and exits nonzero before packaging when any evidence is skipped, failed, or older than the source; no remote CI is added.
-  Complexity: M
-
 - [ ] P1 — R-104: Cover all seven settings pages behaviorally and enforce coverage floors
   Why: test/settings.test.js has two direct tests and src/settings.mjs is only 36.36% line-covered and 11.63% function-covered despite owning the main control surface.
   Evidence: src/settings.mjs; test/settings.test.js; package.json coverage script; https://nodejs.org/api/cli.html
