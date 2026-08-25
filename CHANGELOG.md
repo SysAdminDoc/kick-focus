@@ -2,7 +2,7 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
-## Unreleased
+## 1.40.0, 2026-08-25
 
 ### Fixed
 

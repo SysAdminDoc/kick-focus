@@ -1,4 +1,4 @@
-export const VERSION = '1.39.0';
+export const VERSION = '1.40.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 5;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.40.0': Object.freeze({
+    summary: 'Kick keeps its own keyboard: the six configurable shortcuts are gone and every action they reached is on the command menu, which now has a button in the header and one in Settings. Resetting acts straight away and offers one step of Undo instead of asking first, the page behind a dialog is properly out of reach, and the chat separator can be moved with the arrow keys.',
+    defaults: Object.freeze([]),
+  }),
   '1.39.0': Object.freeze({
     summary: 'Reduce motion, Large touch targets, High-contrast controls and Always show focus outlines now work at any window width, every settings control answers to the label you can see, and the interface is translated where it had quietly stayed English.',
     defaults: Object.freeze([]),
