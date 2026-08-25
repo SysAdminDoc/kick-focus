@@ -5620,22 +5620,23 @@ function uiIcon(name) {
 function selected(value, expected) {
 return String(value) === String(expected);
 }
+const ROW_LABEL = '__KF_ROW_LABEL__';
 function segmented(path, current, choices) {
-const label = path.split('.').pop().replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
-    return `<div class="kf-segmented" role="group" aria-label="${escapeHtml(label)}">${choices.map(([value, choiceLabel]) => `<button type="button" data-set="${path}" data-value="${escapeHtml(value)}" aria-pressed="${selected(current, value)}">${escapeHtml(choiceLabel)}</button>`).join('')}</div>`;
+    return `<div class="kf-segmented" role="group" aria-label="${ROW_LABEL}">${choices.map(([value, choiceLabel]) => `<button type="button" data-set="${path}" data-value="${escapeHtml(value)}" aria-pressed="${selected(current, value)}">${escapeHtml(choiceLabel)}</button>`).join('')}</div>`;
 }
 function toggle(path, current, options = {}) {
 const disabled = options.locked ? ' disabled' : '';
 const title = options.locked ? ' title="Core protection always stays on"' : '';
-    return `<button type="button" class="kf-switch" role="switch" data-set="${path}" data-value="${!current}" aria-checked="${current}" aria-label="${escapeHtml(options.label || path)}"${title}${disabled}>${tr(current ? 'On' : 'Off')}</button>`;
+const label = options.label ? escapeHtml(options.label) : ROW_LABEL;
+    return `<button type="button" class="kf-switch" role="switch" data-set="${path}" data-value="${!current}" aria-checked="${current}" aria-label="${label}"${title}${disabled}>${tr(current ? 'On' : 'Off')}</button>`;
 }
 function row(title, description, control, options = {}) {
-    return `<div class="kf-row${options.wide ? ' kf-row-wide' : ''}"><div><h3>${title}${options.locked ? '<span class="kf-lock">Core protection</span>' : ''}</h3><p>${description}</p></div><div class="kf-control">${control}</div></div>`;
+const named = String(control).replaceAll(ROW_LABEL, escapeHtml(title));
+    return `<div class="kf-row${options.wide ? ' kf-row-wide' : ''}"><div><h3>${title}${options.locked ? '<span class="kf-lock">Core protection</span>' : ''}</h3><p>${description}</p></div><div class="kf-control">${named}</div></div>`;
 }
 function range(path, current, minimum, maximum, left, right, suffix = '') {
-const label = path.split('.').pop().replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
     const valueText = `${current}${suffix}`;
-    return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" data-kf-range-suffix="${escapeHtml(suffix)}" aria-label="${escapeHtml(label)}" aria-valuetext="${escapeHtml(valueText)}"></div><span>${escapeHtml(right)}</span></div>`;
+    return `<div class="kf-range"><span>${escapeHtml(left)}</span><div class="kf-range-wrap"><output data-output-for="${path}">${escapeHtml(current)}${escapeHtml(suffix)}</output><input type="range" min="${minimum}" max="${maximum}" value="${current}" data-set="${path}" data-kf-range-suffix="${escapeHtml(suffix)}" aria-label="${ROW_LABEL}" aria-valuetext="${escapeHtml(valueText)}"></div><span>${escapeHtml(right)}</span></div>`;
 }
 function selectControl(path, current, choices, label) {
     return `<select class="kf-select" data-set="${escapeHtml(path)}" aria-label="${escapeHtml(label)}">${choices.map(([value, optionLabel]) => `<option value="${escapeHtml(value)}"${selected(current, value) ? ' selected' : ''}>${escapeHtml(optionLabel)}</option>`).join('')}</select>`;
@@ -5769,8 +5770,8 @@ const value = state.settings.content;
     return `
       <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Optional data-only blocklist</h3><p>Fetch a user-supplied JSON list of channels, categories, and keywords. No code is accepted or executed.</p></div><button type="button" class="kf-button kf-button-small" data-action="clear-blocklist">Remove cached list</button></div>
         <div class="kf-panel">
-          ${row('Enable subscription', 'Off by default. When enabled, refreshes only over HTTPS with credentials omitted.', toggle('content.blocklistSubscription', value.blocklistSubscription, { label: 'Enable optional blocklist subscription' }))}
-          <div class="kf-row kf-row-wide"><div><h3>HTTPS JSON URL</h3><p>Expected fields: channels, categories, and keywords. Unknown fields are rejected.</p></div><input class="kf-text" type="url" data-set="content.blocklistUrl" value="${escapeHtml(value.blocklistUrl)}" placeholder="https://example.com/kick-focus-blocklist.json" aria-label="Optional blocklist URL"></div>
+          ${row('Enable subscription', 'Off by default. When enabled, refreshes only over HTTPS with credentials omitted.', toggle('content.blocklistSubscription', value.blocklistSubscription))}
+          ${row('HTTPS JSON URL', 'Expected fields: channels, categories, and keywords. Unknown fields are rejected.', `<input class="kf-text" type="url" data-set="content.blocklistUrl" value="${escapeHtml(value.blocklistUrl)}" placeholder="https://example.com/kick-focus-blocklist.json" aria-label="${ROW_LABEL}">`, { wide: true })}
           ${row('Refresh interval', 'Keep the last valid payload if a later request fails.', segmented('content.blocklistRefreshHours', value.blocklistRefreshHours, [[6,'6 h'],[12,'12 h'],[24,'24 h'],[72,'72 h']]))}
         </div>
         <div class="kf-status-note" data-kf-remote-blocklist data-status="${escapeHtml(state.remoteBlocklist.status)}">${escapeHtml(remoteBlocklistSummary())}</div>
@@ -5971,11 +5972,11 @@ const companion = companionInfo();
         ? `Filtering is suspended on this page. It would have hidden ${state.filter.wouldHide} of ${state.filter.total} cards, which usually means Kick changed its labels rather than that the page is really that promotional. Everything is shown.`
         : ''}</div>
       <section class="kf-subsection kf-content-section"><div class="kf-subsection-header"><div><h3>Filtering & ad defense</h3><p>Requests, promotional modules, and sensitive content.</p></div></div><div class="kf-panel">
-          ${row('Block separable ad requests', 'Intercept known ad hosts at the earliest userscript-supported page layer.', toggle('content.blockAds', true, { locked: true, label: 'Core ad protection is on' }), { locked: true })}
+          ${row('Block separable ad requests', 'Intercept known ad hosts at the earliest userscript-supported page layer.', toggle('content.blockAds', true, { locked: true }), { locked: true })}
           ${row('Remove ad containers', 'Remove empty ad containers and reinjected ad frames.', toggle('content.removeAdContainers', value.removeAdContainers, { label: 'Remove ad containers' }))}
-          ${row('Suppress sponsored and promoted cards', 'Hide clearly labeled promotional cards and modules.', toggle('content.suppressPromoted', value.suppressPromoted, { label: 'Suppress promoted cards' }))}
+          ${row('Suppress sponsored and promoted cards', 'Hide clearly labeled promotional cards and modules.', toggle('content.suppressPromoted', value.suppressPromoted))}
           ${row('Pause home-page autoplay', 'Keep background Home previews silent and paused; deliberate playback remains available.', toggle('content.pauseHomeAutoplay', value.pauseHomeAutoplay, { label: 'Pause home-page autoplay' }))}
-          ${row('Hide Slots & Casino content', 'Hide cards and sidebar entries clearly labeled as casino content.', toggle('content.hideCasino', value.hideCasino, { label: 'Hide Slots and Casino content' }))}
+          ${row('Hide Slots & Casino content', 'Hide cards and sidebar entries clearly labeled as casino content.', toggle('content.hideCasino', value.hideCasino))}
           ${row('Blur mature thumbnails', 'Blur marked mature cards until hover or keyboard focus.', toggle('content.blurMature', value.blurMature, { label: 'Blur mature thumbnails' }))}
           ${row('Hide Drops and gambling promotions', 'Hide clearly labeled Drops and gambling promotion modules.', toggle('content.hideDropsPromotions', value.hideDropsPromotions, { label: 'Hide Drops and gambling promotions' }))}
           ${row('Poor mode', 'Hide Subscribe, Gift Subs/Dubs, Get KICKs, gift-shop controls, and spend-based leaderboards. Follow, chat, and free daily rewards stay available.', toggle('content.hideMonetization', value.hideMonetization, { label: 'Poor mode' }))}
@@ -5998,8 +5999,8 @@ const companion = companionInfo();
           ${row('Remember quality locally', 'Restore a matching quality control when Kick exposes one.', toggle('content.rememberQuality', value.rememberQuality, { label: 'Remember quality locally' }))}
           ${row('Always start at the highest quality', 'Open every stream at the best rung Kick offers, taking precedence over remembered quality. The rungs are learned from Kick’s own quality menu, so this does nothing until that menu has been opened once. It will not open it for you.', toggle('content.preferBestQuality', value.preferBestQuality, { label: 'Always start at the highest quality' }))}
           ${row('Remember VOD position locally', 'Resume finite VODs from the last local playback position.', toggle('content.rememberVodPosition', value.rememberVodPosition, { label: 'Remember VOD position locally' }))}
-          ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner, with no extra request and no polling.', toggle('content.showUptime', value.showUptime, { label: 'Show stream uptime' }))}
-          ${row('Show how long Kick keeps this recording', 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established. A guess between 7 and 30 days would be a confident wrong date.', toggle('content.showVodExpiry', value.showVodExpiry, { label: 'Show VOD expiry' }))}
+          ${row('Show how long the stream has been live', 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner, with no extra request and no polling.', toggle('content.showUptime', value.showUptime))}
+          ${row('Show how long Kick keeps this recording', 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established. A guess between 7 and 30 days would be a confident wrong date.', toggle('content.showVodExpiry', value.showVodExpiry))}
           ${row('Pause chat updates', 'Scrolling the transcript up freezes it, as does the button. Resume is always one control away.', toggle('content.stickyChatPause', value.stickyChatPause, { label: 'Pause chat updates' }))}
           ${row('Show message times', 'Reveals the timestamp Kick already renders on every message and keeps hidden. It is Kick’s own value, so scrolling back shows when a message was sent rather than when this build first saw it.', toggle('content.chatTimestamps', value.chatTimestamps, { label: 'Show message times' }))}
           ${row('People worth noticing', 'Names you want to catch in a fast chat. Their messages get a marker of their own, separate from keyword highlights. Comma separated, and stored only in your settings.', `<input class="kf-text" type="text" data-set="content.chatPriorityPeople" value="${escapeHtml((value.chatPriorityPeople || []).join(', '))}" placeholder="name, name" aria-label="People worth noticing">`)}
@@ -7033,7 +7034,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              857470') || 0;
+const BUNDLE_BYTES = Number('              856563') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -13537,6 +13538,8 @@ es: {
 'Increase legibility on muted surfaces.': 'Aumenta la legibilidad en superficies atenuadas.',
 'Use the selected accent for live-state emphasis.': 'Usa el color de acento elegido para destacar el estado en directo.',
 'Enable subscription': 'Activar suscripción',
+'HTTPS JSON URL': 'URL JSON por HTTPS',
+'Expected fields: channels, categories, and keywords. Unknown fields are rejected.': 'Campos esperados: channels, categories y keywords. Los campos desconocidos se rechazan.',
 'Off by default. When enabled, refreshes only over HTTPS with credentials omitted.': 'Desactivado por defecto. Si se activa, solo se actualiza por HTTPS y sin enviar credenciales.',
 'Refresh interval': 'Intervalo de actualización',
 'Keep the last valid payload if a later request fails.': 'Conserva el último contenido válido si una petición posterior falla.',
@@ -13569,7 +13572,6 @@ es: {
 'Poor mode': 'Modo sin gastos',
 'Show how long the stream has been live': 'Mostrar cuánto tiempo lleva en directo',
 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner, with no extra request and no polling.': 'Kick envía la hora de inicio con cada canal y no la muestra en ninguna parte. Esto lee ese campo y cuenta desde él en la esquina del reproductor, sin peticiones extra ni sondeos.',
-'Show stream uptime': 'Mostrar tiempo en directo',
 'Pop out chat': 'Chat en ventana flotante',
 'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Puntos del canal: Kick indica que la imagen en imagen y la visualización reflejada no acumulan puntos. Mantén abierto un reproductor normal de Kick cuando el progreso importe.',
 'Merge all chats': 'Unir todos los chats',
@@ -13582,7 +13584,6 @@ es: {
 'Return chat': 'Devolver el chat',
 'Kick Focus could not open the pop-out chat window.': 'Kick Focus no ha podido abrir la ventana flotante del chat.',
 'Chat for {channel} opened in a floating window': 'El chat de {channel} se ha abierto en una ventana flotante',
-'Show VOD expiry': 'Mostrar caducidad del vídeo',
 'Show how long Kick keeps this recording': 'Mostrar cuánto tiempo conserva Kick esta grabación',
 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established. A guess between 7 and 30 days would be a confident wrong date.': 'Kick borra las grabaciones a los 7 días, o a los 30 si el canal está verificado, y no muestra ese plazo en ninguna parte. En la página de un vídeo, esto lee la fecha de grabación de la propia lista de vídeos de Kick y cuenta atrás hasta ella. No dice nada cuando la grabación es más antigua que la lista que devuelve Kick, o cuando no se puede establecer el nivel: adivinar entre 7 y 30 días sería dar una fecha equivocada con total seguridad.',
 '{time} before Kick deletes this recording': '{time} antes de que Kick borre esta grabación',
@@ -13739,7 +13740,6 @@ es: {
 'Chat keywords for this channel': 'Palabras clave del chat para este canal',
 'Why I follow this channel…': 'Por qué sigo este canal…',
 'Private channel note': 'Nota privada del canal',
-'Optional blocklist URL': 'URL de lista de bloqueo opcional',
 'Search emotes or Kick groups': 'Buscar emotes o grupos de Kick',
 'Search recorded emotes': 'Buscar emotes registrados',
 'Filter recorded emotes': 'Filtrar emotes registrados',
@@ -13763,10 +13763,6 @@ es: {
 'Add to multi-stream': 'Añadir a la multitransmisión',
 'Undo': 'Deshacer',
 'View': 'Ver',
-'Enable optional blocklist subscription': 'Activar la suscripción opcional a la lista de bloqueo',
-'Core ad protection is on': 'La protección principal contra anuncios está activada',
-'Suppress promoted cards': 'Ocultar las tarjetas promocionadas',
-'Hide Slots and Casino content': 'Ocultar el contenido de Slots y Casino',
 'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord}. That is {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Tu inventario tiene {copies} {copiesWord} repartidos en {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, es decir, el {rate}% de lo que has conseguido.',
 'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it. That number is unavailable rather than zero.': 'Tu inventario tiene {distinct} {distinctWord} distintos. La respuesta de Kick no incluye la cantidad por artículo, así que no se puede medir una tasa de duplicados a partir de ella: ese número no está disponible, no es cero.',
 'emote name shadowed.': 'nombre de emote duplicado.',
@@ -14272,6 +14268,8 @@ pt: {
 'Increase legibility on muted surfaces.': 'Aumente a legibilidade em superfícies atenuadas.',
 'Use the selected accent for live-state emphasis.': 'Use a cor de destaque escolhida para enfatizar o estado ao vivo.',
 'Enable subscription': 'Ativar assinatura',
+'HTTPS JSON URL': 'URL JSON via HTTPS',
+'Expected fields: channels, categories, and keywords. Unknown fields are rejected.': 'Campos esperados: channels, categories e keywords. Campos desconhecidos são rejeitados.',
 'Off by default. When enabled, refreshes only over HTTPS with credentials omitted.': 'Desativado por padrão. Quando ativado, atualiza apenas por HTTPS e sem enviar credenciais.',
 'Refresh interval': 'Intervalo de atualização',
 'Keep the last valid payload if a later request fails.': 'Mantenha o último conteúdo válido se uma requisição posterior falhar.',
@@ -14305,7 +14303,6 @@ pt: {
 'Poor mode': 'Modo sem gastos',
 'Show how long the stream has been live': 'Mostrar há quanto tempo a transmissão está ao vivo',
 'Kick sends the start time with every channel and shows it nowhere. This reads that field and counts from it in the player corner, with no extra request and no polling.': 'O Kick envia o horário de início com cada canal e não o mostra em lugar nenhum. Isto lê esse campo e conta a partir dele no canto do player, sem requisições extras e sem sondagem.',
-'Show stream uptime': 'Mostrar tempo ao vivo',
 'Pop out chat': 'Chat em janela flutuante',
 'Channel points: Kick says Picture-in-Picture and mirrored viewing do not accrue points. Keep a normal Kick player open when progress matters.': 'Pontos do canal: o Kick informa que Picture-in-Picture e visualização espelhada não acumulam pontos. Mantenha um player normal do Kick aberto quando o progresso for importante.',
 'Merge all chats': 'Juntar todos os chats',
@@ -14318,7 +14315,6 @@ pt: {
 'Return chat': 'Devolver o chat',
 'Kick Focus could not open the pop-out chat window.': 'A Kick Focus não conseguiu abrir a janela flutuante do chat.',
 'Chat for {channel} opened in a floating window': 'O chat de {channel} abriu numa janela flutuante',
-'Show VOD expiry': 'Mostrar validade do vídeo',
 'Show how long Kick keeps this recording': 'Mostrar por quanto tempo a Kick guarda esta gravação',
 'Kick deletes recordings after 7 days, or 30 for a verified channel, and shows that deadline nowhere. On a VOD page this reads the recording date from Kick’s own video list and counts down to it. It says nothing at all when the recording is older than the list Kick returns, or when the tier cannot be established. A guess between 7 and 30 days would be a confident wrong date.': 'A Kick apaga as gravações ao fim de 7 dias, ou 30 num canal verificado, e não mostra esse prazo em lado nenhum. Na página de um vídeo, isto lê a data da gravação da própria lista de vídeos da Kick e faz a contagem decrescente até lá. Não diz nada quando a gravação é mais antiga do que a lista que a Kick devolve, ou quando o nível não pode ser estabelecido. Adivinhar entre 7 e 30 dias seria dar uma data errada com toda a confiança.',
 '{time} before Kick deletes this recording': '{time} antes de a Kick apagar esta gravação',
@@ -14474,7 +14470,6 @@ pt: {
 'Chat keywords for this channel': 'Palavras-chave do chat para este canal',
 'Why I follow this channel…': 'Por que eu sigo este canal…',
 'Private channel note': 'Nota privada do canal',
-'Optional blocklist URL': 'URL de lista de bloqueio opcional',
 'Search emotes or Kick groups': 'Buscar emotes ou grupos do Kick',
 'Search recorded emotes': 'Buscar emotes registrados',
 'Filter recorded emotes': 'Filtrar emotes registrados',
@@ -14498,10 +14493,6 @@ pt: {
 'Add to multi-stream': 'Adicionar à multitransmissão',
 'Undo': 'Desfazer',
 'View': 'Ver',
-'Enable optional blocklist subscription': 'Ativar a assinatura opcional da lista de bloqueio',
-'Core ad protection is on': 'A proteção principal contra anúncios está ativada',
-'Suppress promoted cards': 'Ocultar os cards promovidos',
-'Hide Slots and Casino content': 'Ocultar o conteúdo de Slots e Cassino',
 'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord}. That is {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': 'Seu inventário tem {copies} {copiesWord} distribuídos em {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, ou seja, {rate}% do que você já obteve.',
 'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it. That number is unavailable rather than zero.': 'Seu inventário tem {distinct} {distinctWord} distintos. A resposta do Kick não traz a quantidade por item, então não é possível medir uma taxa de duplicatas a partir dela: esse número está indisponível, não é zero.',
 'emote name shadowed.': 'nome de emote duplicado.',
