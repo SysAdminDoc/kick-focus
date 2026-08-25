@@ -76,6 +76,7 @@ import {
   createPageInertManager,
   videoIsBackground,
   nextActiveIndex,
+  resettableSection,
   readUndoSlot,
   undoSlotLabel,
   CHAT_WIDTH_MIN,
@@ -1565,6 +1566,27 @@ test('a listbox moves its active option, wraps, and refuses to invent one', { ta
   // tells "did not move" from "not mine" and leaves the event alone.
   for (const key of ['a', 'Enter', 'Escape', 'Tab', ' ', 'PageDown', '']) {
     assert.equal(nextActiveIndex(2, 5, key), 2, key);
+  }
+});
+
+test('a page reset only offers itself where there is a section to reset', { tags: ['unit'] }, () => {
+  // Four pages own a settings section.
+  for (const page of ['layout', 'appearance', 'content', 'accessibility']) {
+    assert.equal(resettableSection(page), page);
+    assert.ok(page in DEFAULT_SETTINGS, `${page} names a section that does not exist`);
+  }
+
+  // Three do not. Viewer is the one that was missed: About and Emotes were
+  // disabled by name and Viewer was not, so Reset page was offered there,
+  // did nothing, announced that it had, and overwrote the undo slot with a
+  // snapshot of the unchanged state — throwing away a real import's undo.
+  for (const page of ['viewer', 'about', 'emotes']) {
+    assert.equal(resettableSection(page), '', `${page} claims a section it does not have`);
+  }
+
+  // And nothing outside the seven pages resolves to a section either.
+  for (const page of ['', 'layout.hidden', '__proto__', 'constructor', 'toString', undefined, null, 42]) {
+    assert.equal(resettableSection(page), '', String(page));
   }
 });
 

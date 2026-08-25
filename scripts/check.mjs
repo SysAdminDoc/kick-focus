@@ -963,6 +963,31 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['the command menu is reachable without Kick’s header', (() => {
+    // The five session toggles the removed chords reached live only on the
+    // command menu, so how that menu opens is the whole of their reachability.
+    // The header button is not enough on its own: it mounts beside Kick's
+    // "Get KICKs" nav, which only exists for a signed-in account, and it is
+    // also skipped when the floating button is switched off. Signed out on the
+    // companion extension there is no userscript-manager menu either, so those
+    // five actions were reachable by nothing at all.
+    //
+    // Settings is the surface that is always reachable — the floating button,
+    // the companion popup and the manager menu all open it — so the menu has
+    // to be openable from inside it.
+    // Anchored on the class attribute, not the class name: the first mention of
+    // kf-footer-left in the bundle is its CSS rule, and slicing from there
+    // reads a stylesheet rather than the markup.
+    const footerStart = source.indexOf('class="kf-footer-left"');
+    const footer = footerStart < 0 ? '' : source.slice(footerStart, source.indexOf('class="kf-footer-right"', footerStart));
+    return footer.includes('data-action="open-command"')
+      && source.includes("else if (action === 'open-command') openCommandMenu();")
+      // And the header button stays, for the signed-in case where it mounts.
+      && source.includes('data-kf-header-commands')
+      // Each former chord's action is still an entry on that menu.
+      && ["'focus'", "'theater'", "'chat'", "'sidebar'", "'mature'", "'panic'", "'settings'"]
+        .every((id) => source.includes(`{ id: ${id},`));
+  })()],
   ['the channel-slug rule is written once', (() => {
     // It was written out at nine sites across four files. A rule copied that
     // many times is one that drifts, and this one decides what counts as a

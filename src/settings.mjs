@@ -51,6 +51,7 @@ export function createSettings(host) {
     ownedEmoteGroups,
     plural,
     PRE_IMPORT_BACKUP_KEY,
+    resettableSection,
     undoSlotLabel,
     protectionRows,
     rankSettingsMatches,
@@ -680,7 +681,7 @@ export function createSettings(host) {
   function renderAccessibilityPage() {
     const value = state.settings.accessibility;
     return `
-      ${pageHeader('Accessibility', 'Improve comfort and keep core actions within reach.', 'Text scale', `${value.textSize}%`)}
+      ${pageHeader('Accessibility', 'Comfort, contrast, and readable text across the whole page.', 'Text scale', `${value.textSize}%`)}
       <section class="kf-panel">
         ${row('Reduce motion', 'Minimize non-essential animations and transitions.', toggle('accessibility.reduceMotion', value.reduceMotion, { label: 'Reduce motion' }))}
         ${row('High-contrast controls', 'Increase separation for controls, borders, and surfaces.', toggle('accessibility.highContrast', value.highContrast, { label: 'High-contrast controls' }))}
@@ -831,10 +832,10 @@ export function createSettings(host) {
           const label = undoSlotLabel(gmGet(PRE_IMPORT_BACKUP_KEY, null));
           return label ? `<button type="button" class="kf-button" data-action="undo-import">${label}</button>` : '';
         })()}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
-        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
+        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
-      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
+      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+Shift+F pauses · nothing else is bound</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
   }
 
   // A stable selector for the focused control, so focus can be restored to the
@@ -967,7 +968,10 @@ export function createSettings(host) {
     }
     state.shadow.querySelector(`[data-page="${state.currentPage}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const reset = state.shadow.querySelector('[data-action="reset-page"]');
-    reset.disabled = state.currentPage === 'about' || state.currentPage === 'emotes';
+    // Derived from the same table the reset itself reads, so a page can never
+    // offer a reset that would refuse. It used to name two pages by hand and
+    // missed Viewer, which has no section either.
+    reset.disabled = !resettableSection(state.currentPage);
     reset.title = tr(reset.disabled ? 'This page has its own reset control' : 'Restore page defaults');
     localizeInterface();
     if (state.currentPage === 'emotes') applyStickerLibrarySearch();

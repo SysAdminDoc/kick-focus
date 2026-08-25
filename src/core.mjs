@@ -2019,6 +2019,24 @@ export function videoIsBackground({
  * can tell "no movement" from "not mine" by comparing before deciding whether
  * to swallow the event.
  */
+/**
+ * The settings section a page reset would clear, or '' when that page has none.
+ *
+ * The Viewer page has no section of its own: it reports readings rather than
+ * holding preferences. Reset page was offered there anyway, did nothing, said
+ * it had, and — once reset started writing an undo slot — overwrote whatever
+ * undo was already in it. A stray click on a page with nothing to reset could
+ * throw away the snapshot from a real import.
+ */
+const RESETTABLE_SECTIONS = Object.freeze(['layout', 'appearance', 'content', 'accessibility']);
+
+export function resettableSection(page) {
+  // An array rather than an object lookup: `{...}['__proto__']` answers with
+  // Object.prototype, which is truthy, so the object form reported that a page
+  // named __proto__ or constructor had a section to reset.
+  return RESETTABLE_SECTIONS.includes(page) ? page : '';
+}
+
 export function nextActiveIndex(current, count, key) {
   if (!Number.isFinite(count) || count <= 0) return -1;
   const index = Number.isFinite(current) && current >= 0 && current < count ? Math.floor(current) : 0;

@@ -10,6 +10,23 @@
 
 import { isValidSlug } from './api.mjs';
 
+/**
+ * What Kick renders a channel player as, and what it renders any player as.
+ *
+ * Declared here rather than in runtime.js because the drift check below has to
+ * sample by them, and the fixture harness has to derive by them. They were
+ * written out in three places, which is how the rule they encode drifts apart
+ * from the check that is supposed to notice it drifting.
+ */
+export const VIDEO_CHANNEL_PLAYER_SELECTOR = [
+  '#injected-channel-player',
+  '#injected-embedded-channel-player-video',
+  '[data-testid*="channel-player" i]',
+  '[data-channel-player]',
+].join(', ');
+
+export const VIDEO_PLAYER_SELECTOR = '[data-testid*="player" i], [data-player], [id*="player" i]';
+
 export const LOCATOR_PROBES = Object.freeze({
   main: Object.freeze([
     Object.freeze({ id: 'main-id', selector: '#main-container' }),
@@ -422,23 +439,30 @@ export const DERIVED_EXPECTATIONS = Object.freeze([
     id: 'channelPlayer',
     probe: 'video',
     claim: 'a video inside a player container is claimed by the channel-player selectors',
-    // Every video on the page, bounded. A page usually has one or two; a
-    // discovery route can have a rail of previews, and those are supposed to
-    // answer 'none'.
+    // Only videos Kick renders inside something player-shaped. A rail of
+    // discovery previews is not in one, so a route with no player samples
+    // nothing and reports `absent` rather than a defect. This is also what
+    // keeps a muted clip elsewhere on the page from failing a page that has
+    // not drifted at all.
     sample: (owner) => {
       try {
-        return [...owner.querySelectorAll('video')].slice(0, 12);
+        return [...owner.querySelectorAll('video')]
+          .filter((video) => {
+            try { return Boolean(video.closest?.(VIDEO_PLAYER_SELECTOR)); }
+            catch { return false; }
+          })
+          .slice(0, 12);
       } catch {
         return [];
       }
     },
-    // Three answers, because two would make a preview look like a defect.
-    // 'none' is a video that is not in a player at all, which is most of them.
-    // 'generic' is the one that matters: something Kick renders as a player,
-    // that the channel-player selectors no longer claim. That is the drift, and
-    // it is silent everywhere else — the watch clock simply stops counting for
-    // anyone watching muted.
-    judge: (value) => value === 'channel' || value === 'none',
+    // At least one of them has to be claimed by the channel-player selectors.
+    // The first version accepted 'none' as well, which made the probe silent on
+    // the precise failure it exists for: rename the player to something neither
+    // selector matches and every video answers 'none', the probe reports
+    // healthy, and the muted viewer's watch clock stops with nothing said.
+    requireAll: false,
+    judge: (value) => value === 'channel',
   }),
   Object.freeze({
     id: 'qualityHeight',

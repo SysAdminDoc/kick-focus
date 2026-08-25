@@ -26,7 +26,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { compatibilitySnapshot, DERIVED_EXPECTATIONS, findAllProbe, LOCATOR_PROBES } from '../src/compatibility.mjs';
+import {
+  compatibilitySnapshot,
+  DERIVED_EXPECTATIONS,
+  findAllProbe,
+  LOCATOR_PROBES,
+  VIDEO_CHANNEL_PLAYER_SELECTOR,
+  VIDEO_PLAYER_SELECTOR,
+} from '../src/compatibility.mjs';
 import { cardSlugFromPath, qualitySessionValue } from '../src/core.mjs';
 import { FIXTURE_CONTRACT, requiredMarkers } from '../scripts/fixture-contract.mjs';
 
@@ -401,9 +408,11 @@ const DERIVERS = {
   // selectors claim the video, 'generic' when only the loose player container
   // does — which is the drift this exists to report — and 'none' for a video
   // that is not in a player at all, such as a discovery preview.
+  // The selectors come from compatibility.mjs rather than being copied here,
+  // so this harness cannot drift away from the probe it is standing in for.
   channelPlayer: (video) => {
-    if (video.closest('#injected-channel-player, #injected-embedded-channel-player-video, [data-testid*="channel-player" i], [data-channel-player]')) return 'channel';
-    return video.closest('[data-testid*="player" i], [data-player], [id*="player" i]') ? 'generic' : 'none';
+    if (video.closest(VIDEO_CHANNEL_PLAYER_SELECTOR)) return 'channel';
+    return video.closest(VIDEO_PLAYER_SELECTOR) ? 'generic' : 'none';
   },
   qualityHeight: (control) => (qualityOptionGated(control)
     ? 0

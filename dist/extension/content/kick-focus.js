@@ -1141,6 +1141,10 @@ if (markedBackground) return true;
 if (!muted || channelPlayer) return false;
 return !(channelPlayerMissing && genericPlayer);
 }
+const RESETTABLE_SECTIONS = Object.freeze(['layout', 'appearance', 'content', 'accessibility']);
+function resettableSection(page) {
+return RESETTABLE_SECTIONS.includes(page) ? page : '';
+}
 function nextActiveIndex(current, count, key) {
 if (!Number.isFinite(count) || count <= 0) return -1;
 const index = Number.isFinite(current) && current >= 0 && current < count ? Math.floor(current) : 0;
@@ -3429,6 +3433,13 @@ detail: 'Reported in July 2026 and answered by Kick support with “remastered�
 }),
 ]);
 
+const VIDEO_CHANNEL_PLAYER_SELECTOR = [
+'#injected-channel-player',
+'#injected-embedded-channel-player-video',
+'[data-testid*="channel-player" i]',
+'[data-channel-player]',
+].join(', ');
+const VIDEO_PLAYER_SELECTOR = '[data-testid*="player" i], [data-player], [id*="player" i]';
 const LOCATOR_PROBES = Object.freeze({
 main: Object.freeze([
 Object.freeze({ id: 'main-id', selector: '#main-container' }),
@@ -3724,12 +3735,18 @@ probe: 'video',
 claim: 'a video inside a player container is claimed by the channel-player selectors',
 sample: (owner) => {
 try {
-return [...owner.querySelectorAll('video')].slice(0, 12);
+return [...owner.querySelectorAll('video')]
+.filter((video) => {
+try { return Boolean(video.closest?.(VIDEO_PLAYER_SELECTOR)); }
+catch { return false; }
+})
+.slice(0, 12);
 } catch {
 return [];
 }
 },
-judge: (value) => value === 'channel' || value === 'none',
+requireAll: false,
+judge: (value) => value === 'channel',
 }),
 Object.freeze({
 id: 'qualityHeight',
@@ -5613,6 +5630,7 @@ MULTISTREAM_MAX,
 ownedEmoteGroups,
 plural,
 PRE_IMPORT_BACKUP_KEY,
+resettableSection,
 undoSlotLabel,
 protectionRows,
 rankSettingsMatches,
@@ -6097,7 +6115,7 @@ const companion = companionInfo();
 function renderAccessibilityPage() {
 const value = state.settings.accessibility;
     return `
-      ${pageHeader('Accessibility', 'Improve comfort and keep core actions within reach.', 'Text scale', `${value.textSize}%`)}
+      ${pageHeader('Accessibility', 'Comfort, contrast, and readable text across the whole page.', 'Text scale', `${value.textSize}%`)}
       <section class="kf-panel">
         ${row('Reduce motion', 'Minimize non-essential animations and transitions.', toggle('accessibility.reduceMotion', value.reduceMotion, { label: 'Reduce motion' }))}
         ${row('High-contrast controls', 'Increase separation for controls, borders, and surfaces.', toggle('accessibility.highContrast', value.highContrast, { label: 'High-contrast controls' }))}
@@ -6200,10 +6218,10 @@ function renderAboutPage() {
 const label = undoSlotLabel(gmGet(PRE_IMPORT_BACKUP_KEY, null));
           return label ? `<button type="button" class="kf-button" data-action="undo-import">${label}</button>` : '';
         })()}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
-        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
+        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
-      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
+      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+Shift+F pauses · nothing else is bound</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
 }
 function focusRestoreKey(element) {
 return settingsFocusSelector(element);
@@ -6301,7 +6319,7 @@ button.setAttribute('aria-current', !state.settingsQuery && button.dataset.page 
 }
     state.shadow.querySelector(`[data-page="${state.currentPage}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 const reset = state.shadow.querySelector('[data-action="reset-page"]');
-reset.disabled = state.currentPage === 'about' || state.currentPage === 'emotes';
+reset.disabled = !resettableSection(state.currentPage);
 reset.title = tr(reset.disabled ? 'This page has its own reset control' : 'Restore page defaults');
 localizeInterface();
 if (state.currentPage === 'emotes') applyStickerLibrarySearch();
@@ -7078,7 +7096,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              843119') || 0;
+const BUNDLE_BYTES = Number('              843924') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -11470,13 +11488,6 @@ return true;
 return false;
 }
 }
-const VIDEO_CHANNEL_PLAYER_SELECTOR = [
-'#injected-channel-player',
-'#injected-embedded-channel-player-video',
-'[data-testid*="channel-player" i]',
-'[data-channel-player]',
-].join(', ');
-const VIDEO_PLAYER_SELECTOR = '[data-testid*="player" i], [data-player], [id*="player" i]';
 const VIDEO_PREVIEW_SELECTOR = [
 '#kick-focus-following-preview',
 '[data-testid*="preview" i]',
@@ -13509,7 +13520,6 @@ const TRANSLATIONS = {
 'Status, privacy, and diagnostics': ['Estado, privacidad y diagnósticos', 'Status, privacidade e diagnósticos'],
 'Control how Kick is arranged across your desktop.': ['Controla cómo se organiza Kick en tu escritorio.', 'Controle como o Kick é organizado na sua área de trabalho.'],
 'Keep the page calm, private, and focused on streams.': ['Mantén la página tranquila, privada y centrada en los streams.', 'Mantenha a página calma, privada e focada nas transmissões.'],
-'Improve comfort and keep core actions within reach.': ['Mejora la comodidad y mantén las acciones principales al alcance.', 'Melhore o conforto e mantenha as ações principais ao alcance.'],
 'A desktop-first layout and control layer for Kick.': ['Una capa de diseño y control para Kick pensada para escritorio.', 'Uma camada de layout e controle para Kick pensada para desktop.'],
 'Language': ['Idioma', 'Idioma'],
 'Auto': ['Automático', 'Automático'],
@@ -13737,7 +13747,6 @@ const TRANSLATIONS = {
 'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': ['Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus o con Ctrl+Shift+F.', 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus ou com Ctrl+Shift+F.'],
 'Copy a sanitized summary or run a local self-check.': ['Copia un resumen depurado o ejecuta una comprobación local.', 'Copie um resumo limpo ou execute uma verificação local.'],
 'Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.': ['Mueve preferencias, metadatos de emotes registrados, favoritos, elementos quitados y grupos personalizados con un solo archivo JSON local.', 'Mova preferências, metadados de emotes registrados, favoritos, itens removidos e grupos personalizados com um único arquivo JSON local.'],
-'Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, atajos, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repoe todas as definições, atalhos, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
 'Changes are not being saved': ['Los cambios no se están guardando', 'As alterações não estão sendo salvas'],
 'No errors recorded this session.': ['No se registraron errores en esta sesión.', 'Nenhum erro registrado nesta sessão.'],
 'Read Kick’s own endpoints instead of scraping the page. Same-origin, read-only, using the session you are already signed into. Nothing is sent anywhere.': ['Lee los propios endpoints de Kick en lugar de raspar la página. Mismo origen, solo lectura y con la sesión que ya tienes iniciada. No se envía nada a ninguna parte.', 'Lê os próprios endpoints do Kick em vez de raspar a página. Mesma origem, somente leitura e com a sessão em que você já está conectado. Nada é enviado a lugar nenhum.'],
@@ -13993,6 +14002,11 @@ const TRANSLATIONS = {
 'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
 'Undo': ['Deshacer', 'Desfazer'],
 'Commands': ['Comandos', 'Comandos'],
+'Ctrl+Shift+F pauses · nothing else is bound': ['Ctrl+Shift+F pausa · no hay nada más asignado', 'Ctrl+Shift+F pausa · não há mais nada atribuído'],
+'Comfort, contrast, and readable text across the whole page.': ['Comodidad, contraste y texto legible en toda la página.', 'Conforto, contraste e texto legível em toda a página.'],
+'Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repõe todas as definições, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
+'This page has nothing to reset.': ['Esta página no tiene nada que restablecer.', 'Esta página não tem nada para repor.'],
+'Open the Kick Focus command menu': ['Abrir el menú de comandos de Kick Focus', 'Abrir o menu de comandos do Kick Focus'],
 'Accessibility': ['Accesibilidad', 'Acessibilidade'],
 'Comfort and readability': ['Comodidad y legibilidad', 'Conforto e legibilidade'],
 'Menu': ['Menú', 'Menu'],
@@ -14141,6 +14155,7 @@ const shadow = root.attachShadow({ mode: 'open' });
           <div class="kf-footer-left">
             <button type="button" class="kf-button" data-action="reset-page">${uiIcon('reset')}Reset page</button>
             <button type="button" class="kf-button" data-action="export">${uiIcon('export')}Export settings</button>
+            <button type="button" class="kf-button" data-action="open-command" aria-label="Open the Kick Focus command menu">${uiIcon('keyboard')}Commands</button>
             <button type="button" class="kf-button" data-action="help" aria-label="Open help and recovery">${uiIcon('info')}Help</button>
           </div>
           <div class="kf-footer-right"><button type="button" class="kf-button kf-button-primary" data-action="close-settings">${uiIcon('check')}Done</button></div>
@@ -15283,11 +15298,13 @@ resetStickerPreferences({ keepLibrary: true });
 clearPrivateData();
 saveSettings('All settings reset');
 } else {
-const section = { layout: 'layout', appearance: 'appearance', content: 'content', accessibility: 'accessibility' }[state.currentPage];
-if (section) {
+const section = resettableSection(state.currentPage);
+if (!section) {
+showToast('This page has nothing to reset.', true);
+return;
+}
 state.settings = normalizeSettings({ ...state.settings, [section]: DEFAULT_SETTINGS[section] });
 saveSettings('Page reset');
-}
 }
 gmSet(PRE_IMPORT_BACKUP_KEY, { action: scope === 'all' ? 'reset-all' : 'reset-page', payload: before });
 renderSettingsPage();

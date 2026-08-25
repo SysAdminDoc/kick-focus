@@ -6470,13 +6470,8 @@ function videoIsVisible(video) {
   }
 }
 
-const VIDEO_CHANNEL_PLAYER_SELECTOR = [
-  '#injected-channel-player',
-  '#injected-embedded-channel-player-video',
-  '[data-testid*="channel-player" i]',
-  '[data-channel-player]',
-].join(', ');
-const VIDEO_PLAYER_SELECTOR = '[data-testid*="player" i], [data-player], [id*="player" i]';
+// VIDEO_CHANNEL_PLAYER_SELECTOR and VIDEO_PLAYER_SELECTOR come from
+// compatibility.mjs, which is where the drift check that samples by them lives.
 const VIDEO_PREVIEW_SELECTOR = [
   '#kick-focus-following-preview',
   '[data-testid*="preview" i]',
@@ -8782,7 +8777,6 @@ const TRANSLATIONS = {
   'Status, privacy, and diagnostics': ['Estado, privacidad y diagnósticos', 'Status, privacidade e diagnósticos'],
   'Control how Kick is arranged across your desktop.': ['Controla cómo se organiza Kick en tu escritorio.', 'Controle como o Kick é organizado na sua área de trabalho.'],
   'Keep the page calm, private, and focused on streams.': ['Mantén la página tranquila, privada y centrada en los streams.', 'Mantenha a página calma, privada e focada nas transmissões.'],
-  'Improve comfort and keep core actions within reach.': ['Mejora la comodidad y mantén las acciones principales al alcance.', 'Melhore o conforto e mantenha as ações principais ao alcance.'],
   'A desktop-first layout and control layer for Kick.': ['Una capa de diseño y control para Kick pensada para escritorio.', 'Uma camada de layout e controle para Kick pensada para desktop.'],
   'Language': ['Idioma', 'Idioma'],
   'Auto': ['Automático', 'Automático'],
@@ -9010,7 +9004,6 @@ const TRANSLATIONS = {
   'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': ['Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus o con Ctrl+Shift+F.', 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus ou com Ctrl+Shift+F.'],
   'Copy a sanitized summary or run a local self-check.': ['Copia un resumen depurado o ejecuta una comprobación local.', 'Copie um resumo limpo ou execute uma verificação local.'],
   'Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.': ['Mueve preferencias, metadatos de emotes registrados, favoritos, elementos quitados y grupos personalizados con un solo archivo JSON local.', 'Mova preferências, metadados de emotes registrados, favoritos, itens removidos e grupos personalizados com um único arquivo JSON local.'],
-  'Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, atajos, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repoe todas as definições, atalhos, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
   'Changes are not being saved': ['Los cambios no se están guardando', 'As alterações não estão sendo salvas'],
   'No errors recorded this session.': ['No se registraron errores en esta sesión.', 'Nenhum erro registrado nesta sessão.'],
   'Read Kick’s own endpoints instead of scraping the page. Same-origin, read-only, using the session you are already signed into. Nothing is sent anywhere.': ['Lee los propios endpoints de Kick en lugar de raspar la página. Mismo origen, solo lectura y con la sesión que ya tienes iniciada. No se envía nada a ninguna parte.', 'Lê os próprios endpoints do Kick em vez de raspar a página. Mesma origem, somente leitura e com a sessão em que você já está conectado. Nada é enviado a lugar nenhum.'],
@@ -9266,6 +9259,11 @@ const TRANSLATIONS = {
   'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
   'Undo': ['Deshacer', 'Desfazer'],
   'Commands': ['Comandos', 'Comandos'],
+  'Ctrl+Shift+F pauses · nothing else is bound': ['Ctrl+Shift+F pausa · no hay nada más asignado', 'Ctrl+Shift+F pausa · não há mais nada atribuído'],
+  'Comfort, contrast, and readable text across the whole page.': ['Comodidad, contraste y texto legible en toda la página.', 'Conforto, contraste e texto legível em toda a página.'],
+  'Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repõe todas as definições, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
+  'This page has nothing to reset.': ['Esta página no tiene nada que restablecer.', 'Esta página não tem nada para repor.'],
+  'Open the Kick Focus command menu': ['Abrir el menú de comandos de Kick Focus', 'Abrir o menu de comandos do Kick Focus'],
   'Accessibility': ['Accesibilidad', 'Acessibilidade'],
   'Comfort and readability': ['Comodidad y legibilidad', 'Conforto e legibilidade'],
   'Menu': ['Menú', 'Menu'],
@@ -9475,6 +9473,7 @@ function buildInterface() {
           <div class="kf-footer-left">
             <button type="button" class="kf-button" data-action="reset-page">${uiIcon('reset')}Reset page</button>
             <button type="button" class="kf-button" data-action="export">${uiIcon('export')}Export settings</button>
+            <button type="button" class="kf-button" data-action="open-command" aria-label="Open the Kick Focus command menu">${uiIcon('keyboard')}Commands</button>
             <button type="button" class="kf-button" data-action="help" aria-label="Open help and recovery">${uiIcon('info')}Help</button>
           </div>
           <div class="kf-footer-right"><button type="button" class="kf-button kf-button-primary" data-action="close-settings">${uiIcon('check')}Done</button></div>
@@ -10843,11 +10842,17 @@ function resetSettings(scope) {
     clearPrivateData();
     saveSettings('All settings reset');
   } else {
-    const section = { layout: 'layout', appearance: 'appearance', content: 'content', accessibility: 'accessibility' }[state.currentPage];
-    if (section) {
-      state.settings = normalizeSettings({ ...state.settings, [section]: DEFAULT_SETTINGS[section] });
-      saveSettings('Page reset');
+    const section = resettableSection(state.currentPage);
+    // A page with no section of its own has nothing to reset. Saying so and
+    // stopping is the point: this used to fall through, announce a reset that
+    // had not happened, and overwrite the undo slot with a snapshot of the
+    // unchanged state — throwing away a real import's undo on a stray click.
+    if (!section) {
+      showToast('This page has nothing to reset.', true);
+      return;
     }
+    state.settings = normalizeSettings({ ...state.settings, [section]: DEFAULT_SETTINGS[section] });
+    saveSettings('Page reset');
   }
   gmSet(PRE_IMPORT_BACKUP_KEY, { action: scope === 'all' ? 'reset-all' : 'reset-page', payload: before });
   renderSettingsPage();

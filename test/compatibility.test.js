@@ -225,6 +225,9 @@ function derivedRoot() {
   const video = new FakeNode();
   const container = new FakeNode();
   video.parentElement = container;
+  // The channelPlayer expectation samples only videos Kick renders inside
+  // something player-shaped, so the fixture's video has to say it is in one.
+  video.closest = (selector) => (selector.includes('player') ? container : null);
   const rowA = new FakeNode();
   const rowB = new FakeNode();
   const root = new FakeNode({
@@ -277,15 +280,44 @@ test('a probe that resolves while its derived value does not is reported as brok
   assert.equal(player.outcome, 'broken');
   assert.equal(player.probe, 'video');
 
-  // A preview that is in no player at all is the ordinary state of a discovery
-  // route, not a defect.
-  const previews = derivedSnapshot(root, {
+  // 'none' used to be accepted, which made the probe silent on the exact
+  // failure it exists for: rename the player to something neither selector
+  // matches and every video answers 'none' while the page reports healthy.
+  const renamed = derivedSnapshot(root, {
     cardSlug: () => 'somestreamer',
     playerContainer: () => container,
     channelPlayer: () => 'none',
     qualityHeight: () => 720,
   });
-  assert.equal(previews.find((entry) => entry.id === 'channelPlayer').outcome, 'ok');
+  assert.equal(renamed.find((entry) => entry.id === 'channelPlayer').outcome, 'broken',
+    'a player neither selector claims was reported as healthy');
+
+  // A route that renders no player at all samples nothing, which is absent
+  // rather than broken — a discovery page is not a defect.
+  const noPlayer = new FakeNode({ query: { '#main-container': new FakeNode() }, all: { video: [] } });
+  const quiet = derivedSnapshot(noPlayer, {
+    cardSlug: () => 'somestreamer',
+    playerContainer: () => null,
+    channelPlayer: () => 'none',
+    qualityHeight: () => 720,
+  });
+  assert.equal(quiet.find((entry) => entry.id === 'channelPlayer').outcome, 'absent');
+
+  // And one claimed player is enough even when another video beside it is not,
+  // which is the ordinary shape of a channel page carrying a clip or a trailer.
+  const second = new FakeNode();
+  second.closest = (selector) => (selector.includes('player') ? container : null);
+  root.all.set('video', [video, second]);
+  let answers = 0;
+  const mixed = derivedSnapshot(root, {
+    cardSlug: () => 'somestreamer',
+    playerContainer: () => container,
+    channelPlayer: () => (answers++ === 0 ? 'channel' : 'generic'),
+    qualityHeight: () => 720,
+  });
+  assert.equal(mixed.find((entry) => entry.id === 'channelPlayer').outcome, 'ok',
+    'a second video beside the real player marked the page as drifted');
+  root.all.set('video', [video]);
 
   // R-38's exact shape: the card resolves, the slug does not.
   const brokenSlug = derivedSnapshot(root, {
