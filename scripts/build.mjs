@@ -122,7 +122,8 @@ function ruleset(hosts, startId) {
 
 const extensionRoot = resolve(root, 'dist/extension');
 await rm(extensionRoot, { recursive: true, force: true });
-for (const directory of ['content', 'rules', 'icons']) {
+const extensionLocales = ['en', 'es', 'pt_BR'];
+for (const directory of ['content', 'rules', 'icons', ...extensionLocales.map((locale) => `_locales/${locale}`)]) {
   await mkdir(resolve(extensionRoot, directory), { recursive: true });
 }
 
@@ -143,6 +144,9 @@ const files = [
   // litix.io is intentionally excluded from the network-layer cancel set: a
   // hard block there triggers a retry storm. The page realm answers it empty-200.
   ['rules/telemetry.json', `${JSON.stringify(ruleset(cancellableTelemetryHosts(), 1000), null, 2)}\n`],
+  ...await Promise.all(extensionLocales.map(async (locale) => (
+    [`_locales/${locale}/messages.json`, await read(`src/extension/_locales/${locale}/messages.json`)]
+  ))),
 ];
 
 for (const [name, contents] of files) {
@@ -189,7 +193,7 @@ console.log(`Built dist/kick-focus-extension-v${VERSION}.zip`);
 
 const firefoxRoot = resolve(root, 'dist/extension-firefox');
 await rm(firefoxRoot, { recursive: true, force: true });
-for (const directory of ['content', 'icons']) {
+for (const directory of ['content', 'icons', ...extensionLocales.map((locale) => `_locales/${locale}`)]) {
   await mkdir(resolve(firefoxRoot, directory), { recursive: true });
 }
 
@@ -235,6 +239,9 @@ const firefoxFiles = [
   ['popup.js', await read('src/extension/popup.js')],
   ['content/bridge.js', firefoxBridge],
   ['content/kick-focus.js', stampBytes(`/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`, userscript.length)],
+  ...await Promise.all(extensionLocales.map(async (locale) => (
+    [`_locales/${locale}/messages.json`, await read(`src/extension/_locales/${locale}/messages.json`)]
+  ))),
 ];
 
 for (const [name, contents] of firefoxFiles) {

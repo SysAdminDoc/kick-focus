@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en" data-theme="studio">
+<html lang="en" dir="ltr" data-theme="studio">
 <head>
 <meta charset="utf-8">
-<title>Kick Focus</title>
+<title data-i18n="extensionName">Kick Focus</title>
 <style>
   :root {
     color-scheme: dark;
@@ -115,49 +115,49 @@
 </head>
 <body aria-busy="true">
   <header>
-    <div class="brand"><img src="icons/icon-32.png" alt=""><div class="brand-copy"><span class="eyebrow">Companion</span><h1>Kick Focus</h1></div></div>
+    <div class="brand"><img src="icons/icon-32.png" alt=""><div class="brand-copy"><span class="eyebrow" data-i18n="companionLabel">Companion</span><h1 data-i18n="extensionName">Kick Focus</h1></div></div>
     <span class="version" id="version"></span>
   </header>
 
   <div class="card" role="status">
     <div class="status">
-      <span class="state" id="network-state" data-state="off">Checking</span>
+      <span class="state" id="network-state" data-state="off" data-i18n="checkingState">Checking</span>
       <span class="status-text">
-        <strong id="network-title">Checking companion</strong>
-        <span id="network-detail">Reading the network layer state.</span>
+        <strong id="network-title" data-i18n="checkingCompanion">Checking companion</strong>
+        <span id="network-detail" data-i18n="readingNetwork">Reading the network layer state.</span>
       </span>
     </div>
   </div>
 
   <div class="card stats" role="status">
-    <div class="stat"><span>Blocked</span><strong id="blocked">Not available</strong></div>
-    <div class="stat"><span>Rulesets</span><strong id="rulesets">Not available</strong></div>
+    <div class="stat"><span data-i18n="blockedLabel">Blocked</span><strong id="blocked" data-i18n="unavailableValue">Not available</strong></div>
+    <div class="stat"><span data-i18n="rulesetsLabel">Rulesets</span><strong id="rulesets" data-i18n="unavailableValue">Not available</strong></div>
   </div>
 
   <div class="card">
     <div class="row">
       <span>
-        <label for="telemetry">Reduce tracking telemetry</label>
-        <p>Also blocks video and error telemetry hosts.</p>
+        <label for="telemetry" data-i18n="reduceTelemetryLabel">Reduce tracking telemetry</label>
+        <p data-i18n="reduceTelemetryDescription">Also blocks video and error telemetry hosts.</p>
       </span>
-      <input type="checkbox" id="telemetry" disabled title="Checking the network layer">
+      <input type="checkbox" id="telemetry" disabled title="Checking the network layer" data-i18n-title="checkingNetworkTitle">
     </div>
   </div>
 
   <div class="card">
     <div class="feed-head">
-      <strong>Remote blocklist</strong>
-      <span id="blocklist-state">Checking</span>
+      <strong data-i18n="remoteBlocklistLabel">Remote blocklist</strong>
+      <span id="blocklist-state" data-i18n="checkingState">Checking</span>
     </div>
-    <p class="feed-url" id="blocklist-url">Reading the configured feed.</p>
+    <p class="feed-url" id="blocklist-url" data-i18n="readingConfiguredFeed">Reading the configured feed.</p>
     <div class="feed-actions">
-      <button id="approve-blocklist" disabled>Approve this feed</button>
-      <button class="quiet" id="revoke-blocklist" hidden>Remove</button>
+      <button id="approve-blocklist" disabled data-i18n="approveFeedButton">Approve this feed</button>
+      <button class="quiet" id="revoke-blocklist" hidden data-i18n="removeButton">Remove</button>
     </div>
   </div>
 
-  <button class="primary" id="open-settings" disabled title="Checking for an active Kick tab">Open Kick Focus settings</button>
-  <p class="note" id="note" aria-live="polite">Checking the current Kick tab…</p>
+  <button class="primary" id="open-settings" disabled title="Checking for an active Kick tab" data-i18n="openSettingsButton" data-i18n-title="checkingKickTitle">Open Kick Focus settings</button>
+  <p class="note" id="note" aria-live="polite" data-i18n="checkingCurrentTab">Checking the current Kick tab…</p>
 
   <script src="popup.js"></script>
 </body>

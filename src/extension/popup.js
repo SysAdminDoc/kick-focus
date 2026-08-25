@@ -36,6 +36,55 @@ const ACCENTS = Object.freeze({
 // queried tabs callback-style, got `undefined`, and rendered static defaults
 // forever.
 const api = globalThis.browser || globalThis.chrome;
+const POPUP_LOCALE_FILES = Object.freeze({ en: 'en', es: 'es', 'pt-BR': 'pt_BR' });
+let popupMessages = Object.create(null);
+let popupLocale = '';
+
+function normalizePopupLocale(value) {
+  const locale = String(value || '').trim().replaceAll('_', '-').toLowerCase();
+  if (locale === 'pt' || locale.startsWith('pt-')) return 'pt-BR';
+  if (locale === 'es' || locale.startsWith('es-')) return 'es';
+  return 'en';
+}
+
+function preferredPopupLocale(setting = 'auto') {
+  if (['en', 'es', 'pt'].includes(setting)) return normalizePopupLocale(setting);
+  const browserLocale = api?.i18n?.getMessage?.('@@ui_locale') || globalThis.navigator?.language || 'en';
+  return normalizePopupLocale(browserLocale);
+}
+
+function t(key, fallback = '') {
+  const local = popupMessages?.[key]?.message;
+  if (typeof local === 'string' && local) return local;
+  const native = api?.i18n?.getMessage?.(key);
+  return typeof native === 'string' && native ? native : fallback;
+}
+
+function localizePopupDocument() {
+  for (const node of document.querySelectorAll('[data-i18n]')) {
+    node.textContent = t(node.dataset.i18n, node.textContent);
+  }
+  for (const node of document.querySelectorAll('[data-i18n-title]')) {
+    node.title = t(node.dataset.i18nTitle, node.title);
+  }
+}
+
+async function applyPopupLocale(setting = 'auto') {
+  const locale = preferredPopupLocale(setting);
+  if (locale !== popupLocale || !Object.keys(popupMessages).length) {
+    const directory = POPUP_LOCALE_FILES[locale] || POPUP_LOCALE_FILES.en;
+    const relative = `_locales/${directory}/messages.json`;
+    const url = api?.runtime?.getURL ? api.runtime.getURL(relative) : new URL(relative, globalThis.location?.href).href;
+    popupMessages = await fetch(url).then((response) => {
+      if (!response.ok) throw new Error(`locale ${response.status}`);
+      return response.json();
+    }).catch(() => Object.create(null));
+    popupLocale = locale;
+  }
+  document.documentElement.lang = popupLocale;
+  document.documentElement.dir = api?.i18n?.getMessage?.('@@bidi_dir') || 'ltr';
+  localizePopupDocument();
+}
 
 function accentInk(hex) {
   const channels = String(hex).match(/[\da-f]{2}/gi)?.map((value) => Number.parseInt(value, 16) / 255);
@@ -72,22 +121,22 @@ function applyAppearance(settings) {
 
 function renderUnavailable() {
   els.version.textContent = '';
-  els.rulesets.textContent = 'Not available';
-  els.blocked.textContent = 'Not available';
+  els.rulesets.textContent = t('unavailableValue', 'Not available');
+  els.blocked.textContent = t('unavailableValue', 'Not available');
   els.networkState.dataset.state = 'off';
-  els.networkState.textContent = 'Offline';
-  els.title.textContent = 'Companion unavailable';
-  els.detail.textContent = 'Reload the extension, then reopen this panel.';
+  els.networkState.textContent = t('offlineState', 'Offline');
+  els.title.textContent = t('companionUnavailable', 'Companion unavailable');
+  els.detail.textContent = t('reloadExtension', 'Reload the extension, then reopen this panel.');
   els.telemetry.disabled = true;
   els.approveBlocklist.disabled = true;
   els.revokeBlocklist.hidden = true;
-  els.blocklistState.textContent = 'Unavailable';
-  els.blocklistUrl.textContent = 'The companion service could not be reached.';
+  els.blocklistState.textContent = t('unavailableState', 'Unavailable');
+  els.blocklistUrl.textContent = t('serviceUnreachable', 'The companion service could not be reached.');
   els.openSettings.disabled = true;
-  els.telemetry.title = 'Kick Focus could not reach the companion service';
-  els.approveBlocklist.title = 'Kick Focus could not reach the companion service';
-  els.openSettings.title = 'Kick Focus could not reach the companion service';
-  els.note.textContent = 'No settings were changed.';
+  els.telemetry.title = t('companionServiceUnavailableTitle', 'Kick Focus could not reach the companion service');
+  els.approveBlocklist.title = t('companionServiceUnavailableTitle', 'Kick Focus could not reach the companion service');
+  els.openSettings.title = t('companionServiceUnavailableTitle', 'Kick Focus could not reach the companion service');
+  els.note.textContent = t('noSettingsChanged', 'No settings were changed.');
   document.body.setAttribute('aria-busy', 'false');
 }
 
@@ -120,38 +169,41 @@ async function render() {
     return;
   }
 
+  await applyPopupLocale(status?.settings?.appearance?.locale);
   applyAppearance(status.settings);
 
   els.version.textContent = `v${status?.version ?? ''}`;
   els.rulesets.textContent = String(status?.rulesets?.length ?? 0);
-  els.blocked.textContent = status?.countsAvailable ? String(status.blocked ?? 0) : 'Not available';
+  els.blocked.textContent = status?.countsAvailable ? String(status.blocked ?? 0) : t('unavailableValue', 'Not available');
 
   const adsOn = status?.rulesets?.includes('ads');
   els.networkState.dataset.state = adsOn ? 'on' : 'off';
-  els.networkState.textContent = adsOn ? 'Active' : 'Off';
-  els.title.textContent = adsOn ? 'Network layer active' : 'Network layer off';
+  els.networkState.textContent = adsOn ? t('activeState', 'Active') : t('offState', 'Off');
+  els.title.textContent = adsOn ? t('networkActive', 'Network layer active') : t('networkOff', 'Network layer off');
   els.detail.textContent = adsOn
-    ? 'Ad requests are blocked before they are sent.'
-    : 'The ad blocking rules are not enabled.';
+    ? t('adRequestsBlocked', 'Ad requests are blocked before they are sent.')
+    : t('adRulesDisabled', 'The ad blocking rules are not enabled.');
 
   els.telemetry.checked = Boolean(status?.settings?.content?.reduceTelemetry);
   els.telemetry.disabled = !onKick;
   els.openSettings.disabled = !onKick;
-  els.telemetry.title = onKick ? '' : 'Open a Kick tab to change this setting';
-  els.openSettings.title = onKick ? '' : 'Open a Kick tab to open settings';
+  els.telemetry.title = onKick ? '' : t('openKickTabChangeTitle', 'Open a Kick tab to change this setting');
+  els.openSettings.title = onKick ? '' : t('openKickTabOpenSettingsTitle', 'Open a Kick tab to open settings');
 
   const candidateUrl = status?.blocklist?.candidateUrl || '';
   const approvedUrl = status?.blocklist?.approvedUrl || '';
   const approved = Boolean(status?.blocklist?.approved);
-  els.blocklistUrl.textContent = candidateUrl || 'Set an HTTPS feed in Kick Focus settings.';
+  els.blocklistUrl.textContent = candidateUrl || t('configureFeed', 'Set an HTTPS feed in Kick Focus settings.');
   els.blocklistUrl.title = candidateUrl;
-  els.blocklistState.textContent = approved ? 'Approved' : candidateUrl ? 'Approval needed' : 'Not configured';
+  els.blocklistState.textContent = approved
+    ? t('approvedState', 'Approved')
+    : candidateUrl ? t('approvalNeeded', 'Approval needed') : t('notConfigured', 'Not configured');
   els.approveBlocklist.dataset.url = candidateUrl;
   els.approveBlocklist.disabled = !candidateUrl || approved;
-  els.approveBlocklist.textContent = approved ? 'Feed approved' : 'Approve this feed';
+  els.approveBlocklist.textContent = approved ? t('feedApprovedButton', 'Feed approved') : t('approveFeedButton', 'Approve this feed');
   els.approveBlocklist.title = candidateUrl
-    ? approved ? 'This exact feed is approved' : 'Allow this exact origin and feed URL'
-    : 'Configure an HTTPS feed in settings first';
+    ? approved ? t('exactFeedApprovedTitle', 'This exact feed is approved') : t('allowOriginTitle', 'Allow this exact origin and feed URL')
+    : t('configureFeedTitle', 'Configure an HTTPS feed in settings first');
   els.revokeBlocklist.hidden = !approvedUrl;
   // Re-enabled here, like every other button this render owns. The click
   // handler disables it and only calls render(), so a failed revoke used to
@@ -160,9 +212,9 @@ async function render() {
   els.revokeBlocklist.disabled = false;
 
   if (!onKick) {
-    els.note.textContent = 'Open a Kick tab to change settings.';
+    els.note.textContent = t('openKickTabChange', 'Open a Kick tab to change settings.');
   } else if (!status?.countsAvailable) {
-    els.note.textContent = 'Blocked counts are only available when the extension is loaded unpacked.';
+    els.note.textContent = t('countsUnpacked', 'Blocked counts are only available when the extension is loaded unpacked.');
   } else {
     els.note.textContent = '';
   }
@@ -175,9 +227,9 @@ els.telemetry.addEventListener('change', async () => {
   const wanted = els.telemetry.checked;
   els.telemetry.disabled = true;
   els.telemetry.setAttribute('aria-busy', 'true');
-  els.note.textContent = 'Updating the network layer…';
+  els.note.textContent = t('updatingNetwork', 'Updating the network layer…');
   const result = await send(tab.id, { type: 'kick-focus:set-telemetry', enabled: wanted });
-  if (!result.ok) els.note.textContent = 'Could not reach this Kick tab. Reload it and try again.';
+  if (!result.ok) els.note.textContent = t('reachTabRetry', 'Could not reach this Kick tab. Reload it and try again.');
   // Re-read rather than assume: the page is the authority on whether it stuck.
   setTimeout(() => {
     els.telemetry.removeAttribute('aria-busy');
@@ -193,12 +245,12 @@ els.approveBlocklist.addEventListener('click', async () => {
 
   els.approveBlocklist.disabled = true;
   els.approveBlocklist.setAttribute('aria-busy', 'true');
-  els.note.textContent = 'Waiting for origin permission…';
+  els.note.textContent = t('waitingPermission', 'Waiting for origin permission…');
   const granted = await Promise.resolve(api.permissions.request({ origins: [origin] })).catch(() => false);
   if (!granted) {
     els.approveBlocklist.removeAttribute('aria-busy');
     els.approveBlocklist.disabled = false;
-    els.note.textContent = 'Feed permission was not granted.';
+    els.note.textContent = t('permissionNotGranted', 'Feed permission was not granted.');
     return;
   }
 
@@ -211,31 +263,35 @@ els.approveBlocklist.addEventListener('click', async () => {
   }
   els.approveBlocklist.removeAttribute('aria-busy');
   await render();
-  els.note.textContent = result?.ok ? 'Remote blocklist feed approved.' : 'The feed changed before approval. Reopen the popup.';
+  els.note.textContent = result?.ok
+    ? t('remoteApproved', 'Remote blocklist feed approved.')
+    : t('feedChanged', 'The feed changed before approval. Reopen the popup.');
 });
 
 els.revokeBlocklist.addEventListener('click', async () => {
   els.revokeBlocklist.disabled = true;
-  els.note.textContent = 'Removing feed permission…';
+  els.note.textContent = t('removingPermission', 'Removing feed permission…');
   const result = await Promise.resolve(api.runtime.sendMessage({
     type: 'kick-focus:revoke-blocklist',
   })).catch(() => ({ ok: false }));
   await render();
-  els.note.textContent = result?.ok ? 'Remote blocklist permission removed.' : 'Feed permission could not be removed.';
+  els.note.textContent = result?.ok
+    ? t('permissionRemoved', 'Remote blocklist permission removed.')
+    : t('permissionRemoveFailed', 'Feed permission could not be removed.');
 });
 
 els.openSettings.addEventListener('click', async () => {
   const tab = await activeTab();
   if (!tab?.id) return;
   els.openSettings.disabled = true;
-  els.openSettings.textContent = 'Opening settings…';
+  els.openSettings.textContent = t('openingSettings', 'Opening settings…');
   const result = await send(tab.id, { type: 'kick-focus:open-settings' });
   if (result.ok) window.close();
   else {
     els.openSettings.disabled = false;
-    els.openSettings.textContent = 'Open Kick Focus settings';
-    els.note.textContent = 'Could not reach this Kick tab. Reload it and try again.';
+    els.openSettings.textContent = t('openSettingsButton', 'Open Kick Focus settings');
+    els.note.textContent = t('reachTabRetry', 'Could not reach this Kick tab. Reload it and try again.');
   }
 });
 
-render().catch(renderUnavailable);
+applyPopupLocale().then(render).catch(renderUnavailable);

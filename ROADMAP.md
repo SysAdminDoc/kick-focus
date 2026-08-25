@@ -110,11 +110,12 @@ None open.
 
 ### P2
 
-- [ ] P2: R-112: Localize popup and extension metadata to the shipped languages
+- [x] P2: R-112: Localize popup and extension metadata to the shipped languages
   Why: The page UI supports English, Spanish, and Portuguese, but both manifests and the companion popup remain English-only.
   Evidence: src/runtime.js translations; src/extension/popup.html; src/extension/manifest.json; src/extension/manifest.firefox.json; https://developer.chrome.com/docs/extensions/reference/api/i18n
   Touches: src/extension/_locales/en, es, and pt_BR, both manifests, popup HTML and JS, scripts/check.mjs, companion tests
   Acceptance: Name, description, action title, popup controls, errors, and status text have key-parity in en, es, and pt_BR; the popup sets lang and dir; stored pt remains compatible while document metadata emits pt-BR; packaging fails on a missing or unused key.
+  Shipped: Both packages carry the same 55 keys in en, es, and pt_BR. Manifests localize their name, description, and action title. The popup localizes every control, title, status, and error, writes lang and dir, maps stored pt to pt-BR, and the artifact test rejects key drift or dead messages.
   Complexity: M
 
 - [ ] P2: R-114: Extract the emote workspace from runtime behind a host factory

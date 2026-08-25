@@ -79,6 +79,11 @@ The first implementation still read as a card-heavy preferences dialog. The shel
 - P2: text controls drew a shadow focus ring while buttons used an outline, and control heights stepped between 32 and 40 pixels. One outline, two height tokens, and a radius scale now govern the settings chrome.
 - P2: the compact emote organizer hid the names of its two top actions. Organize and Library stay labelled, then wrap as a full-width row on the narrowest chat rail.
 
+### Iteration 6, companion language parity
+
+- P2: the companion popup and both manifests remained English-only after the main settings surface gained Spanish and Portuguese. The packages now carry matching en, es, and pt_BR catalogs, while a stored pt setting renders with pt-BR document metadata.
+- P2: longer Spanish and Portuguese status copy could have crowded the 360-pixel popup. Offline, disabled, and recovery states were rendered at 420 by 620 pixels in both languages. Labels wrap inside their cards without clipping the checkbox, state badge, feed action, or primary button.
+
 ### Residual P3 differences
 
 - Layout uses a live textual Current setup summary instead of the mock's tiny schematic, improving legibility while preserving the same hierarchy.
@@ -97,7 +102,7 @@ No actionable P0, P1, or P2 visual differences remain.
 - Reset a page, waited past the old timeout, used Undo, dismissed the next recovery toast, closed Settings with Done, and reopened it from the Focus command menu.
 - Verified the settings shell and populated multi-stream board at 900 and 680 pixels without document-level horizontal overflow.
 - Exercised multi-stream empty, invalid-channel, disabled-control, populated-player, and read-only chat states.
-- Opened the companion popup without an extension service and verified its unavailable and disabled states remained legible.
+- Opened the packaged companion popup without an extension service in English, Spanish, and Portuguese. Its unavailable and disabled states remained legible with the same card geometry.
 - Browser console inspection after the final build returned no warnings or errors.
 
 ## Main Kick theme, v1.31.0

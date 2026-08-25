@@ -85,6 +85,8 @@ The companion is unsigned and installs unpacked. It is not published to any stor
 
 If you configure a remote blocklist feed, open the companion popup and choose **Approve this feed**. The browser asks for access to that feed's origin only. Approval is tied to the full HTTPS URL, so changing the path or host requires another click.
 
+The popup and browser metadata follow the selected Kick Focus language in English, Spanish, or Portuguese. A saved Portuguese setting is exposed to the browser as `pt-BR`.
+
 `dist/kick-focus-extension-v<version>.zip` is the same package for sharing or for browsers that accept a zip.
 
 ### Firefox companion

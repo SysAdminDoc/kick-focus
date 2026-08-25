@@ -23,6 +23,56 @@ test('the popup chooses the higher-contrast ink for a boundary custom accent', a
   }
 });
 
+test('popup and manifest localization has exact key parity in every package', { tags: ['artifact'] }, async () => {
+  const locales = ['en', 'es', 'pt_BR'];
+  const [popupHtml, popupSource, chromiumManifestSource, firefoxManifestSource] = await Promise.all([
+    readFile(resolve(root, 'src/extension/popup.html'), 'utf8'),
+    readFile(resolve(root, 'src/extension/popup.js'), 'utf8'),
+    readFile(resolve(root, 'src/extension/manifest.json'), 'utf8'),
+    readFile(resolve(root, 'src/extension/manifest.firefox.json'), 'utf8'),
+  ]);
+  const used = new Set([
+    ...[...popupHtml.matchAll(/data-i18n(?:-title)?="([A-Za-z0-9_]+)"/g)].map((match) => match[1]),
+    ...[...popupSource.matchAll(/\bt\('([A-Za-z0-9_]+)'/g)].map((match) => match[1]),
+    ...[...`${chromiumManifestSource}\n${firefoxManifestSource}`.matchAll(/__MSG_([A-Za-z0-9_]+)__/g)].map((match) => match[1]),
+  ]);
+  const sourceMessages = await Promise.all(locales.map(async (locale) => (
+    JSON.parse(await readFile(resolve(root, `src/extension/_locales/${locale}/messages.json`), 'utf8'))
+  )));
+  const expected = Object.keys(sourceMessages[0]).sort();
+  assert.ok(expected.length >= 50, 'popup locale catalog is unexpectedly small');
+  for (const [index, messages] of sourceMessages.entries()) {
+    assert.deepEqual(Object.keys(messages).sort(), expected, `${locales[index]} locale keys drifted`);
+    assert.ok(Object.values(messages).every((entry) => typeof entry?.message === 'string' && entry.message.trim()),
+      `${locales[index]} has an empty message`);
+  }
+  assert.deepEqual([...used].sort(), expected, 'a popup locale key is missing or unused');
+
+  for (const directory of ['dist/extension', 'dist/extension-firefox']) {
+    const manifest = JSON.parse(await readArtifact(`${directory}/manifest.json`));
+    assert.equal(manifest.default_locale, 'en');
+    assert.equal(manifest.name, '__MSG_extensionName__');
+    for (const locale of locales) {
+      const packaged = JSON.parse(await readArtifact(`${directory}/_locales/${locale}/messages.json`));
+      assert.deepEqual(Object.keys(packaged).sort(), expected, `${directory} omitted ${locale} messages`);
+    }
+  }
+});
+
+test('popup locale normalization keeps stored pt compatible with pt-BR metadata', async () => {
+  const source = await readFile(resolve(root, 'src/extension/popup.js'), 'utf8');
+  const start = source.indexOf('function normalizePopupLocale');
+  const end = source.indexOf('function preferredPopupLocale', start);
+  assert.ok(start >= 0 && end > start, 'popup locale normalizer not found');
+  const context = { result: null };
+  for (const [input, expected] of [['pt', 'pt-BR'], ['pt_PT', 'pt-BR'], ['es-MX', 'es'], ['fr', 'en']]) {
+    vm.runInNewContext(`${source.slice(start, end)}\nresult = normalizePopupLocale('${input}');`, context);
+    assert.equal(context.result, expected);
+  }
+  assert.match(source, /document\.documentElement\.lang = popupLocale/);
+  assert.match(source, /document\.documentElement\.dir = api\?\.i18n\?\.getMessage\?\.\('@@bidi_dir'\) \|\| 'ltr'/);
+});
+
 class EventTargetStub {
   constructor() {
     this.listeners = new Map();
