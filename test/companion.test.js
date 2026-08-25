@@ -73,6 +73,18 @@ test('popup locale normalization keeps stored pt compatible with pt-BR metadata'
   assert.match(source, /document\.documentElement\.dir = api\?\.i18n\?\.getMessage\?\.\('@@bidi_dir'\) \|\| 'ltr'/);
 });
 
+test('popup distinguishes unavailable, disabled, and active network states', async () => {
+  const [html, source] = await Promise.all([
+    readFile(resolve(root, 'src/extension/popup.html'), 'utf8'),
+    readFile(resolve(root, 'src/extension/popup.js'), 'utf8'),
+  ]);
+  assert.match(html, /id="network-card" data-state="checking"/);
+  assert.match(html, /\.card\[data-state="unavailable"\]::before \{ background: var\(--danger\); \}/);
+  assert.match(html, /\.state\[data-state="unavailable"\]/);
+  assert.match(source, /els\.networkCard\.dataset\.state = 'unavailable'/);
+  assert.match(source, /els\.networkCard\.dataset\.state = adsOn \? 'on' : 'off'/);
+});
+
 class EventTargetStub {
   constructor() {
     this.listeners = new Map();

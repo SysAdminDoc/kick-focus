@@ -512,6 +512,13 @@ test('settings controls share one geometry scale and injected header actions sha
     .filter(([, line]) => !/border-radius:\s*(?:var\(--radius|inherit)/.test(line));
   assert.deepEqual(fixedRadii, [],
     `settings chrome still bypasses the shared radius scale: ${fixedRadii.map(([n, line]) => `${n}: ${line.trim()}`).join(' | ')}`);
+  assert.doesNotMatch(source, /border-radius:\s*(?:50%|999(?:9)?px)/,
+    'enhanced UI still ships a fully rounded backdrop');
+  assert.doesNotMatch(ui, /--radius-(?:circle|pill):/,
+    'settings chrome still defines a circle or pill radius token');
+  for (const value of ['--radius-xxs: 4px', '--radius-xs: 4px', '--radius-sm: 6px', '--radius-lg: 12px']) {
+    assert.ok(ui.includes(value), `${value} left the approved radius scale`);
+  }
 
   const phoneRules = ui.slice(ui.lastIndexOf('@media (max-width: 430px)'));
   assert.match(phoneRules, /\.kf-appearance-controls \.kf-row:has\(\.kf-control\) \{ grid-template-columns: minmax\(0, 1fr\); \}/,

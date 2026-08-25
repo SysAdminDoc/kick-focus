@@ -6202,12 +6202,16 @@ if (summary.fromLocal.length) parts.push(trf('{items} kept in this browser sessi
     return `${parts.join('; ')}.${stale}${errors}`;
 }
 function renderAboutPage() {
+const compatibilityStatus = !state.compatibility
+? 'checking'
+: state.compatibility.healthy ? 'good' : 'warning';
+const protectionActive = companionInfo().active;
     return `
       ${pageHeader('About', 'A desktop-first layout and control layer for Kick.', 'Version', VERSION)}
-      <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong data-kf-compatibility data-error="${String(Boolean(state.compatibility && !state.compatibility.healthy))}">${state.compatibility ? (state.compatibility.healthy ? 'Healthy' : 'Needs attention') : 'Checking…'}</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
+      <div class="kf-about-status"><div class="kf-mini-card" data-status="good"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card" data-status="${compatibilityStatus}"><span>Site compatibility</span><strong data-kf-compatibility data-error="${String(Boolean(state.compatibility && !state.compatibility.healthy))}">${state.compatibility ? (state.compatibility.healthy ? 'Healthy' : 'Needs attention') : 'Checking…'}</strong></div><div class="kf-mini-card" data-status="${protectionActive ? 'good' : 'neutral'}"><span>Protection layer</span><strong>${protectionActive ? 'Network + page' : 'Page only'}</strong></div></div>
       <section class="kf-panel">
         <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
-        ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>${trf('This started {timing}. On Chromium 138 and later a userscript manager needs its own {toggle} toggle enabled on the browser’s extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.', { timing: escapeHtml(INJECTION.summary), toggle: `<strong>${escapeHtml(tr('Allow user scripts'))}</strong>` })}</p></div></div>`}
+        ${protectionActive || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row kf-action-warning"><div><h3>Not running as early as it could</h3><p>${trf('This started {timing}. On Chromium 138 and later a userscript manager needs its own {toggle} toggle enabled on the browser’s extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.', { timing: escapeHtml(INJECTION.summary), toggle: `<strong>${escapeHtml(tr('Allow user scripts'))}</strong>` })}</p></div></div>`}
         <div class="kf-action-row"><div><h3>Multi-stream</h3><p>Watch up to ${MULTISTREAM_MAX} Kick channels in one grid, with audio and chat following whichever you focus. Uses Kick’s own embedded player, so subscriptions and entitlements are unchanged.${state.multistream.streams.length ? ` Currently holding ${state.multistream.streams.length}.` : ''}</p></div><button type="button" class="kf-button" data-action="open-multistream">Open multi-stream</button></div>
         <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
         <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>${trf('Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks {hosts} third-party ad and telemetry hosts and {none}, so pausing Kick Focus will not change that behavior. Check your ad blocker’s filters for kick.com before blaming an extension.', { hosts: AD_HOSTS.length + TELEMETRY_HOSTS.length, none: `<strong>${escapeHtml(tr('no kick.com host at all'))}</strong>` })}</p></div></div>
@@ -7111,7 +7115,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              853507') || 0;
+const BUNDLE_BYTES = Number('              854071') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -7137,7 +7141,7 @@ const SITE_CSS = `
     --kf-on-accent: #071004;
     --kf-danger: #ff6258;
     --kf-warning: #f6b943;
-    --kf-radius: 7px;
+    --kf-radius: 8px;
     --kf-chat-width: 410px;
     --kf-thumb-saturation: 1.03;
     --kf-caption-opacity: .72;
@@ -7936,7 +7940,7 @@ const SITE_CSS = `
     [data-kf-drops-steps] { display: grid !important; grid-column: 1 / -1 !important; grid-template-columns: repeat(3, minmax(0,1fr)) !important; gap: 0 !important; margin: 0 !important; padding: 24px 0 0 !important; border-top: 1px solid var(--kf-border) !important; list-style: none !important; }
     [data-kf-drops-steps] li { display: flex !important; align-items: flex-start !important; gap: 12px !important; min-height: 72px !important; padding: 4px 24px !important; border-right: 1px solid var(--kf-border) !important; }
     [data-kf-drops-steps] li:last-child { border-right: 0 !important; }
-    [data-kf-drops-steps] li > span { display: grid !important; width: 25px !important; height: 25px !important; flex: 0 0 25px !important; place-items: center !important; border-radius: 50% !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; font-size: 12px !important; font-weight: 900 !important; }
+    [data-kf-drops-steps] li > span { display: grid !important; width: 25px !important; height: 25px !important; flex: 0 0 25px !important; place-items: center !important; border-radius: 6px !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; font-size: 12px !important; font-weight: 900 !important; }
     [data-kf-drops-steps] strong, [data-kf-drops-steps] small { display: block !important; }
     [data-kf-drops-steps] strong { color: var(--kf-text) !important; font-size: 14px !important; }
     [data-kf-drops-steps] small { margin-top: 4px !important; color: var(--kf-text-muted) !important; font-size: 13px !important; line-height: 1.4 !important; }
@@ -8079,7 +8083,7 @@ const SITE_CSS = `
       flex: 0 0 auto !important;
       padding: 0 9px !important;
       border: 1px solid transparent !important;
-      border-radius: 999px !important;
+      border-radius: 6px !important;
       background: rgba(255,255,255,.05) !important;
       color: var(--kf-text-muted) !important;
       cursor: pointer !important;
@@ -8153,7 +8157,7 @@ const SITE_CSS = `
     [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy] { position: relative !important; box-shadow: inset 0 0 0 1px rgba(var(--kf-accent-rgb), .5) !important; }
     [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy]::after { content: "" !important; position: absolute !important; right: 0 !important; bottom: 0 !important; border-left: 7px solid transparent !important; border-bottom: 7px solid var(--kf-accent) !important; }
     [data-kf-sticker-proxy] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
-    [data-kf-sticker-check] { display: none !important; position: absolute !important; top: 3px !important; left: 3px !important; z-index: 3 !important; width: 20px !important; height: 20px !important; place-items: center !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 50% !important; background: var(--kf-panel-raised) !important; color: transparent !important; pointer-events: none !important; }
+    [data-kf-sticker-check] { display: none !important; position: absolute !important; top: 3px !important; left: 3px !important; z-index: 3 !important; width: 20px !important; height: 20px !important; place-items: center !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 4px !important; background: var(--kf-panel-raised) !important; color: transparent !important; pointer-events: none !important; }
     [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-check] { display: grid !important; }
     [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-check] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; }
     [data-kf-sticker-tools] { display: flex !important; position: absolute !important; top: 3px !important; right: 3px !important; bottom: 3px !important; z-index: 3 !important; flex-direction: column !important; justify-content: space-between !important; pointer-events: none !important; }
@@ -12260,14 +12264,12 @@ const UI_CSS = `
 
 
     --radius-none: 0;
-    --radius-xxs: max(1px, calc(var(--kf-radius, 7px) - 5px));
-    --radius-xs: max(2px, calc(var(--kf-radius, 7px) - 4px));
-    --radius-sm: calc(var(--kf-radius, 7px) - 3px);
-    --radius-md: calc(var(--kf-radius, 7px) - 1px);
-    --radius-lg: calc(var(--kf-radius, 7px) + 3px);
-    --radius: var(--kf-radius, 7px);
-    --radius-circle: 50%;
-    --radius-pill: 999px;
+    --radius-xxs: 4px;
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: var(--kf-radius, 8px);
+    --radius-lg: 12px;
+    --radius: var(--kf-radius, 8px);
     --control-height: 40px;
     --control-height-small: 32px;
     --focus-ring: var(--kf-focus-ring, 3px solid var(--accent));
@@ -12568,14 +12570,14 @@ const UI_CSS = `
 
   .kf-theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .kf-swatch-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
-  .kf-preset-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
-  .kf-preset-card { position: relative; display: grid; align-content: start; gap: 4px; min-height: 82px; padding: 11px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text); text-align: left; cursor: pointer; }
+  .kf-preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kf-preset-card { position: relative; display: grid; align-content: start; gap: 4px; min-height: 76px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text); text-align: left; cursor: pointer; }
   .kf-preset-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: rgba(var(--accent-rgb), .5); opacity: .55; }
   .kf-preset-card:hover { border-color: var(--border-strong); background-color: var(--surface-hover); transform: translateY(-1px); box-shadow: var(--shadow-control); }
   .kf-preset-card:active { transform: translateY(0); box-shadow: none; }
   .kf-preset-card span { color: var(--accent); font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
   .kf-preset-card strong { font-size: 12px; }
-  .kf-preset-card small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+  .kf-preset-card small { color: var(--muted); font-size: 10px; line-height: 1.4; }
   .kf-theme-board {
     position: relative;
     min-height: 126px;
@@ -12773,6 +12775,10 @@ const UI_CSS = `
   .kf-mini-card { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
   .kf-mini-card span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
   .kf-mini-card strong { display: block; margin-top: 4px; color: var(--accent); }
+  .kf-about-status .kf-mini-card[data-status="warning"] { border-color: color-mix(in srgb, var(--warning) 52%, var(--border)); }
+  .kf-about-status .kf-mini-card[data-status="warning"] strong { color: var(--warning); }
+  .kf-about-status .kf-mini-card[data-status="neutral"] strong,
+  .kf-about-status .kf-mini-card[data-status="checking"] strong { color: var(--text-secondary); }
 
 
   .kf-nav-earned:empty { display: none; }
@@ -12781,7 +12787,7 @@ const UI_CSS = `
   [data-kf-earned="reward-ready"] { position: relative; }
   [data-kf-earned="reward-ready"]::after {
     content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
-    border: 1px solid var(--surface-2); border-radius: var(--radius-circle); background: var(--accent);
+    border: 1px solid var(--surface-2); border-radius: var(--radius-xs); background: var(--accent);
     animation: kf-earned-pulse 2.4s ease-in-out infinite;
   }
   @keyframes kf-earned-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -12793,7 +12799,7 @@ const UI_CSS = `
 
   .kf-layout-save { display: grid; gap: 8px; justify-items: stretch; min-width: 240px; }
   .kf-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .kf-chip { padding: 5px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-pill); background: transparent; font-size: 11px; cursor: pointer; }
+  .kf-chip { padding: 5px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; font-size: 11px; cursor: pointer; }
   .kf-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 
 
@@ -12823,6 +12829,7 @@ const UI_CSS = `
   .kf-action-row { min-height: 78px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
   .kf-action-row h3 { margin: 0 0 4px; font-size: 13px; }
   .kf-action-row p { max-width: 560px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .kf-action-warning { margin-inline: -16px; padding-inline: 14px; border-left: 2px solid var(--warning); background: color-mix(in srgb, var(--warning) 5%, transparent); }
   .kf-danger { border-color: rgba(255,98,88,.65) !important; color: var(--danger-text) !important; }
 
   [data-kf-current-page="accessibility"] { padding-top: 14px; }
@@ -15618,7 +15625,7 @@ const EMOTE_COMPLETION_CSS = `
     gap: 2px;
     padding: 4px;
     border: 1px solid var(--kf-border-strong, #38463d);
-    border-radius: calc(var(--kf-radius, 7px) + 2px);
+    border-radius: 12px;
     background: var(--kf-panel, #0b100d);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
     font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -15636,7 +15643,7 @@ const EMOTE_COMPLETION_CSS = `
     min-height: 28px;
     padding: 3px 6px;
     border: 0;
-    border-radius: calc(var(--kf-radius, 7px) - 1px);
+    border-radius: 6px;
     background: transparent;
     color: inherit;
     font: inherit;
@@ -16477,7 +16484,7 @@ const HEADER_BUTTON_BASE_CSS = `
     gap: 7px;
     padding: 0 11px;
     border: 1px solid rgba(var(--kf-accent-rgb, 124,255,43), var(--kf-header-edge-alpha, .38));
-    border-radius: var(--kf-radius, 7px);
+    border-radius: var(--kf-radius, 8px);
     background: linear-gradient(180deg, rgba(var(--kf-accent-rgb, 124,255,43), .12), rgba(var(--kf-accent-rgb, 124,255,43), .055));
     color: var(--kf-text, #f5f8f6);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
@@ -16508,7 +16515,7 @@ const HEADER_CONTROL_CSS = `
   [data-kf-earned="reward-ready"] { position: relative; }
   [data-kf-earned="reward-ready"]::after {
     content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px;
-    border-radius: 50%; background: var(--kf-accent, #7cff2b);
+    border-radius: 4px; background: var(--kf-accent, #7cff2b);
     animation: kf-earned-pulse 2.4s ease-in-out infinite;
   }
   @keyframes kf-earned-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }

@@ -97,6 +97,20 @@ test('the extracted surface still composes navigation, icons, summaries, and vie
   assert.match(surface.renderViewerHubCards(), /Sign in to read this\./);
 });
 
+test('About status cards carry success, warning, and neutral semantics', { tags: ['unit'] }, () => {
+  const healthy = makeRenderHost().rendered.get('about');
+  assert.match(healthy, /Script health<\/span><strong>Active<\/strong>/);
+  assert.match(healthy, /data-status="good"><span>Site compatibility<\/span><strong[^>]*>Healthy<\/strong>/);
+  assert.match(healthy, /data-status="neutral"><span>Protection layer<\/span><strong>Page only<\/strong>/);
+
+  const degraded = makeRenderHost({
+    state: { compatibility: { healthy: false, missing: ['chat'] } },
+    values: { INJECTION: { summary: 'after the page began rendering', grade: 'late' } },
+  }).rendered.get('about');
+  assert.match(degraded, /data-status="warning"><span>Site compatibility<\/span><strong[^>]*>Needs attention<\/strong>/);
+  assert.match(degraded, /class="kf-action-row kf-action-warning"/);
+});
+
 /**
  * A host complete enough to render all seven pages and hand back their markup.
  *

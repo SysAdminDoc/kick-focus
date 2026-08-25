@@ -9,6 +9,7 @@
 
 const els = {
   version: document.getElementById('version'),
+  networkCard: document.getElementById('network-card'),
   networkState: document.getElementById('network-state'),
   title: document.getElementById('network-title'),
   detail: document.getElementById('network-detail'),
@@ -123,7 +124,8 @@ function renderUnavailable() {
   els.version.textContent = '';
   els.rulesets.textContent = t('unavailableValue', 'Not available');
   els.blocked.textContent = t('unavailableValue', 'Not available');
-  els.networkState.dataset.state = 'off';
+  els.networkCard.dataset.state = 'unavailable';
+  els.networkState.dataset.state = 'unavailable';
   els.networkState.textContent = t('offlineState', 'Offline');
   els.title.textContent = t('companionUnavailable', 'Companion unavailable');
   els.detail.textContent = t('reloadExtension', 'Reload the extension, then reopen this panel.');
@@ -177,6 +179,7 @@ async function render() {
   els.blocked.textContent = status?.countsAvailable ? String(status.blocked ?? 0) : t('unavailableValue', 'Not available');
 
   const adsOn = status?.rulesets?.includes('ads');
+  els.networkCard.dataset.state = adsOn ? 'on' : 'off';
   els.networkState.dataset.state = adsOn ? 'on' : 'off';
   els.networkState.textContent = adsOn ? t('activeState', 'Active') : t('offState', 'Off');
   els.title.textContent = adsOn ? t('networkActive', 'Network layer active') : t('networkOff', 'Network layer off');
