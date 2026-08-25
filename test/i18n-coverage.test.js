@@ -117,6 +117,10 @@ async function collect(override = null) {
     ...Object.values(IMPORT_NOTE_MESSAGES),
     ...STORAGE_STORES.map((store) => store.label),
     'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.',
+    // The seed note is composed in storage.mjs and rendered through
+    // `trf(seed.messageKey, …)`, so no literal of it exists in either file
+    // the scanners read.
+    'The first paint reads {held} of your {total} emotes. The rest load from the database a moment later.',
     // The earned marker's status, which reaches the accessible name through a
     // lookup and never appears as a literal in runtime.js.
     'Daily reward ready',

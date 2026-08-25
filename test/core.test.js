@@ -1030,6 +1030,43 @@ test('import drops prototype-pollution keys in every store and never touches Obj
   assert.equal(result.mediaPreferences['volume:/xqc'], 0.5);
 });
 
+test('an imported file cannot switch on a subscription to a host the user has not seen', { tag: 'unit' }, () => {
+  // Every other field in a settings file is local. This one becomes a repeating
+  // outbound request under the userscript's @connect * grant, so a shared
+  // "settings pack" was a way to point somebody's browser at your server and
+  // have the UI say only "Settings imported."
+  const hostile = JSON.stringify({
+    schema: SETTINGS_SCHEMA,
+    content: { blocklistSubscription: true, blocklistUrl: 'https://attacker.example/list.json' },
+  });
+
+  const guarded = validateImportedSettings(hostile, { currentBlocklistUrl: '' });
+  assert.ok(guarded.ok);
+  assert.equal(guarded.value.content.blocklistSubscription, false, 'the file armed a fetch to an unknown host');
+  // The URL still lands, so the user can read it and turn it on deliberately.
+  assert.equal(guarded.value.content.blocklistUrl, 'https://attacker.example/list.json');
+  assert.ok(guarded.notes.some((note) => note.includes('attacker.example')),
+    `no note named the host: ${JSON.stringify(guarded.notes)}`);
+
+  // The same file, when that host is already what the user subscribes to,
+  // changes nothing — an export/import round trip has to stay lossless.
+  const sameHost = validateImportedSettings(hostile, { currentBlocklistUrl: 'https://attacker.example/list.json' });
+  assert.equal(sameHost.value.content.blocklistSubscription, true);
+  assert.ok(!sameHost.notes.some((note) => note.includes('switched off')));
+
+  // And the undo path restores a state the user was already in.
+  const restored = validateImportedSettings(hostile, { currentBlocklistUrl: '', trusted: true });
+  assert.equal(restored.value.content.blocklistSubscription, true);
+
+  // A file that leaves the subscription off is not a beacon and needs no note.
+  const off = validateImportedSettings(JSON.stringify({
+    schema: SETTINGS_SCHEMA,
+    content: { blocklistSubscription: false, blocklistUrl: 'https://attacker.example/list.json' },
+  }), { currentBlocklistUrl: '' });
+  assert.equal(off.value.content.blocklistSubscription, false);
+  assert.ok(!off.notes.some((note) => note.includes('switched off')));
+});
+
 test('import round-trips the previously omitted stores with their bounds enforced', { tag: 'unit' }, () => {
   const payload = buildSettingsExport({
     settings: { schema: 1 },

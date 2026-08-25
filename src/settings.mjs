@@ -25,6 +25,7 @@ export function createSettings(host) {
     compatibilitySummary,
     countChangedStickers,
     describeStickerChange,
+    describeLibrarySeed,
     describeStorageFailures,
     DISCOVERY_LAYOUT_ROUTES,
     DISCOVERY_ROUTE_LABELS,
@@ -690,14 +691,20 @@ export function createSettings(host) {
     const failureMessage = failures ? localizedStorageFailure(failures) : '';
     const rows = report.breakdown
       .filter((entry) => entry.bytes > 0)
-      .map((entry) => `<tr><th>${escapeHtml(entry.label)}</th><td>${escapeHtml(formatBytes(entry.bytes))}</td><td>${storageHealth.failures[entry.key] ? '<strong data-error="true">Not saving</strong>' : 'Saved'}</td></tr>`)
+      .map((entry) => `<tr><th>${escapeHtml(entry.label)}</th><td data-kf-no-translate>${escapeHtml(formatBytes(entry.bytes))}</td><td>${storageHealth.failures[entry.key] ? '<strong data-error="true">Not saving</strong>' : 'Saved'}</td></tr>`)
       .join('');
+    // The seed note is not a failure: the database still holds the whole
+    // library. It is here because a first paint missing the oldest emotes has
+    // no other explanation a user could find.
+    const seed = describeLibrarySeed(storageHealth.librarySeed);
     return `
       <section class="kf-subsection">
         <div class="kf-panel">
           <div class="kf-action-row"><div><h3>Local storage</h3><p>${failures
             ? `${escapeHtml(failureMessage)}${storageHealth.lastError ? ` ${escapeHtml(tr('The browser reported'))} <strong>${escapeHtml(storageHealth.lastError)}</strong>.` : ''} ${escapeHtml(tr('Exporting now is the only way to keep these changes.'))}`
-            : `Kick Focus is using about ${escapeHtml(formatBytes(report.total))} of browser storage. Nothing has failed to save this session.`}</p></div>${failures ? '<button type="button" class="kf-button kf-button-primary" data-action="export">Export now</button>' : ''}</div>
+            : escapeHtml(trf('Kick Focus is using about {size} of browser storage. Nothing has failed to save this session.', { size: formatBytes(report.total) }))}</p>${seed
+              ? `<p class="kf-meta">${escapeHtml(trf(seed.messageKey, seed.values))}</p>`
+              : ''}</div>${failures ? '<button type="button" class="kf-button kf-button-primary" data-action="export">Export now</button>' : ''}</div>
           ${rows ? `<table class="kf-table"><tbody>${rows}</tbody></table>` : ''}
         </div>
       </section>`;

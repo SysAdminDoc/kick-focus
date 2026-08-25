@@ -6,7 +6,7 @@ const EXPECTED_HOST_KEYS = [
   'activeLocale', 'AD_HOSTS', 'applyCostSummary', 'applyStickerLibrarySearch', 'assessAdStack', 'assessApiDrift',
   'BUNDLE_BYTE_CEILING', 'BUNDLE_BYTES', 'INJECTION_BYTE_BUDGET', 'LIBRARY_SEED_BYTES', 'channelPath', 'chatKeywordsForChannel', 'COLLECTIBLE_FACTS',
   'collectViewerFacts', 'companionInfo', 'compatibilitySummary', 'countChangedStickers', 'describeStickerChange',
-  'describeStorageFailures', 'DISCOVERY_LAYOUT_ROUTES', 'DISCOVERY_ROUTE_LABELS', 'emoteAccessLabel',
+  'describeLibrarySeed', 'describeStorageFailures', 'DISCOVERY_LAYOUT_ROUTES', 'DISCOVERY_ROUTE_LABELS', 'emoteAccessLabel',
   'emoteLockState', 'emoteReach', 'errorLogRows', 'escapeHtml', 'favoriteCount', 'formatBytes', 'formatSessionWatchTime', 'gmGet',
   'HIDEABLE_ELEMENTS', 'HIDEABLE_GROUPS', 'INJECTION', 'isFavorited', 'lastCrashSummary', 'layoutMatchesSettings',
   'liveStatusSummary', 'localizedStorageFailure', 'localizeInterface', 'MULTISTREAM_MAX', 'ownedEmoteGroups',

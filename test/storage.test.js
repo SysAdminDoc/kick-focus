@@ -7,6 +7,7 @@ import {
   LIBRARY_STORE,
   PROVIDER_SCORES,
   createLibraryStore,
+  describeLibrarySeed,
   isSeedPartial,
   mergeHydratedLibrary,
   planLibraryPersist,
@@ -137,11 +138,63 @@ test('an oversized library is trimmed by bytes, not only by entry count', { tag:
   assert.equal(huge.full.library.length, 1);
 });
 
-test('a normal library never reaches the byte budget', { tag: 'unit' }, () => {
-  const plan = planLibraryPersist(preferences(libraryOf(LIBRARY_SEED_LIMIT)));
-  assert.equal(plan.seed.library.length, LIBRARY_SEED_LIMIT);
-  assert.ok(utf8ByteLength(JSON.stringify(plan.seed)) < LIBRARY_SEED_BYTES,
-    'a realistic library should sit well under the budget, or the budget is mis-sized');
+/**
+ * A record shaped like the ones Kick actually returns, not like the short
+ * synthetic keys the rest of this file uses.
+ *
+ * This matters because the previous version of the test below measured a
+ * ~107 B entry, called it realistic, and concluded the byte budget was never
+ * reached. A real record is roughly twice that, so the budget binds long before
+ * the 400-entry count does — and when the budget dropped to 50 KB the only
+ * thing that changed was the assertion.
+ */
+const realisticEntry = (index) => ({
+  key: `kick:${1730000 + index}`,
+  id: String(1730000 + index),
+  name: `channelEmote${index}`,
+  src: `https://files.kick.com/emotes/${1730000 + index}/fullsize`,
+  nativeGroups: ['SomeChannelName'],
+  access: 'available',
+  channel: 'somechannelname',
+  lastSeen: index,
+});
+
+test('the byte budget, not the entry count, is what bounds a realistic library', { tag: 'unit' }, () => {
+  const one = utf8ByteLength(JSON.stringify(realisticEntry(0)));
+  assert.ok(one > 150 && one < 400, `a realistic record measured ${one} B, so this test is no longer modelling one`);
+
+  const plan = planLibraryPersist(preferences(Array.from({ length: LIBRARY_SEED_LIMIT }, (_v, i) => realisticEntry(i))));
+  const bytes = utf8ByteLength(JSON.stringify(plan.seed));
+  assert.ok(bytes <= LIBRARY_SEED_BYTES, `seed is ${bytes} B, over the ${LIBRARY_SEED_BYTES} B budget`);
+
+  // The count limit is unreachable at this budget, and saying so out loud is
+  // the point: LIBRARY_SEED_LIMIT is documentation, LIBRARY_SEED_BYTES is the
+  // limit. If a future budget makes both reachable, this assertion is the one
+  // that should be revisited deliberately rather than relaxed.
+  assert.ok(plan.seed.library.length < LIBRARY_SEED_LIMIT,
+    `the budget stopped binding: ${plan.seed.library.length} of ${LIBRARY_SEED_LIMIT} entries fit`);
+  // Enough of the library survives to be worth painting. Well under this and
+  // the seed stops being a useful first paint at all.
+  assert.ok(plan.seed.library.length >= 150,
+    `only ${plan.seed.library.length} realistic emotes fit in ${LIBRARY_SEED_BYTES} B`);
+  assert.equal(plan.truncated, LIBRARY_SEED_LIMIT - plan.seed.library.length);
+  assert.equal(isSeedPartial(plan.seed), true);
+  assert.equal(plan.full.library.length, LIBRARY_SEED_LIMIT, 'the database still holds every entry');
+});
+
+test('a trimmed seed says so, and a complete one stays silent', { tag: 'unit' }, () => {
+  assert.equal(describeLibrarySeed({ truncated: 0, total: 400 }), null);
+  assert.equal(describeLibrarySeed(), null);
+  assert.equal(describeLibrarySeed({ truncated: -5, total: 10 }), null, 'a negative count is not a trim');
+
+  const note = describeLibrarySeed({ truncated: 156, total: 400 });
+  assert.equal(note.truncated, 156);
+  assert.equal(note.held, 244);
+  assert.deepEqual(note.values, { held: 244, total: 400 });
+  // Translated as a template and filled afterwards: a sentence carrying two
+  // counts can never match a dictionary key.
+  assert.match(note.messageKey, /\{held\}/);
+  assert.match(note.messageKey, /\{total\}/);
 });
 
 test('browser storage budgets count UTF-8 bytes instead of UTF-16 code units', { tag: 'unit' }, () => {

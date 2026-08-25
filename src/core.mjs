@@ -3263,6 +3263,7 @@ export const IMPORT_NOTE_MESSAGES = Object.freeze({
   adjustedUsage: 'Adjusted emote usage counts to {count} supported entries.',
   adjustedGrid: 'Adjusted the multi-stream grid to {count} supported channels.',
   adjustedLayouts: 'Adjusted saved boards to {count} supported entries.',
+  disarmedBlocklist: 'Left the blocklist subscription to {host} switched off. Turn it on yourself if you trust that host.',
 });
 
 /**
@@ -3286,7 +3287,27 @@ function numericSchema(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-export function validateImportedSettings(jsonText) {
+/**
+ * Read a settings file, and refuse to let it arm an outbound request on its own.
+ *
+ * Everything else in a settings file is local: a colour, a filter, a list of
+ * channel names. `content.blocklistUrl` is the one field that turns into a
+ * recurring HTTPS request to a host of the file's choosing, on the userscript
+ * build through `GM_xmlhttpRequest` under `@connect *`. Both fields normalise
+ * to "valid", so importing a shared settings pack used to enable a subscription
+ * to an unfamiliar host and report nothing but "Settings imported."
+ *
+ * `currentBlocklistUrl` is what the user already trusts. A file carrying that
+ * same URL changes nothing and is left alone, which keeps a plain export/import
+ * round trip lossless. A file carrying a different one still imports the URL,
+ * so it is visible and one click from working, but arrives switched off with a
+ * note naming the host.
+ *
+ * `trusted` is for this build's own pre-import snapshot: the undo path restores
+ * a state the user was already in, and re-disarming it there would make undo
+ * lossy in exactly the case it exists to cover.
+ */
+export function validateImportedSettings(jsonText, { currentBlocklistUrl = '', trusted = false } = {}) {
   let parsed;
   try {
     parsed = JSON.parse(String(jsonText));
@@ -3360,6 +3381,22 @@ export function validateImportedSettings(jsonText) {
         const path = `${section}.${key}`;
         addNote(`Adjusted "${path}" to a supported value.`, IMPORT_NOTE_MESSAGES.adjustedSetting, { path });
       }
+    }
+  }
+
+  // Disarmed before the schema notes so it reads first in the list: it is the
+  // only note that describes something the file tried to switch on.
+  if (!trusted && value.content.blocklistSubscription) {
+    const incoming = value.content.blocklistUrl;
+    if (incoming && incoming !== String(currentBlocklistUrl || '')) {
+      value.content.blocklistSubscription = false;
+      let host = incoming;
+      try { host = new URL(incoming).host; } catch { host = incoming; }
+      addNote(
+        `Left the blocklist subscription to ${host} switched off. Turn it on yourself if you trust that host.`,
+        IMPORT_NOTE_MESSAGES.disarmedBlocklist,
+        { host },
+      );
     }
   }
 

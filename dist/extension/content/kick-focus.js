@@ -2056,13 +2056,14 @@ upgradedEmotes: 'Upgraded emotes to schema {schema}.',
 adjustedUsage: 'Adjusted emote usage counts to {count} supported entries.',
 adjustedGrid: 'Adjusted the multi-stream grid to {count} supported channels.',
 adjustedLayouts: 'Adjusted saved boards to {count} supported entries.',
+disarmedBlocklist: 'Left the blocklist subscription to {host} switched off. Turn it on yourself if you trust that host.',
 });
 function numericSchema(value) {
 if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === '')) return null;
 const parsed = Number(value);
 return Number.isNaN(parsed) ? null : parsed;
 }
-function validateImportedSettings(jsonText) {
+function validateImportedSettings(jsonText, { currentBlocklistUrl = '', trusted = false } = {}) {
 let parsed;
 try {
 parsed = JSON.parse(String(jsonText));
@@ -2126,6 +2127,19 @@ if (!Object.hasOwn(value[section], key)) {
         const path = `${section}.${key}`;
         addNote(`Adjusted "${path}" to a supported value.`, IMPORT_NOTE_MESSAGES.adjustedSetting, { path });
 }
+}
+}
+if (!trusted && value.content.blocklistSubscription) {
+const incoming = value.content.blocklistUrl;
+if (incoming && incoming !== String(currentBlocklistUrl || '')) {
+value.content.blocklistSubscription = false;
+let host = incoming;
+try { host = new URL(incoming).host; } catch { host = incoming; }
+addNote(
+        `Left the blocklist subscription to ${host} switched off. Turn it on yourself if you trust that host.`,
+IMPORT_NOTE_MESSAGES.disarmedBlocklist,
+{ host },
+);
 }
 }
 if (fileSchema == null || fileSchema < SETTINGS_SCHEMA) {
@@ -3771,6 +3785,17 @@ return {
 full: { ...source, library },
 seed: build(count),
 truncated: Math.max(0, library.length - count),
+};
+}
+function describeLibrarySeed({ truncated = 0, total = 0 } = {}) {
+const dropped = Math.max(0, Math.floor(Number(truncated)) || 0);
+const held = Math.max(0, (Math.floor(Number(total)) || 0) - dropped);
+if (!dropped) return null;
+return {
+truncated: dropped,
+held,
+messageKey: 'The first paint reads {held} of your {total} emotes. The rest load from the database a moment later.',
+values: { held, total: held + dropped },
 };
 }
 function isSeedPartial(value) {
@@ -5474,6 +5499,7 @@ companionInfo,
 compatibilitySummary,
 countChangedStickers,
 describeStickerChange,
+describeLibrarySeed,
 describeStorageFailures,
 DISCOVERY_LAYOUT_ROUTES,
 DISCOVERY_ROUTE_LABELS,
@@ -6009,14 +6035,17 @@ const failures = describeStorageFailures(storageHealth.failures);
 const failureMessage = failures ? localizedStorageFailure(failures) : '';
 const rows = report.breakdown
 .filter((entry) => entry.bytes > 0)
-      .map((entry) => `<tr><th>${escapeHtml(entry.label)}</th><td>${escapeHtml(formatBytes(entry.bytes))}</td><td>${storageHealth.failures[entry.key] ? '<strong data-error="true">Not saving</strong>' : 'Saved'}</td></tr>`)
+      .map((entry) => `<tr><th>${escapeHtml(entry.label)}</th><td data-kf-no-translate>${escapeHtml(formatBytes(entry.bytes))}</td><td>${storageHealth.failures[entry.key] ? '<strong data-error="true">Not saving</strong>' : 'Saved'}</td></tr>`)
 .join('');
+const seed = describeLibrarySeed(storageHealth.librarySeed);
     return `
       <section class="kf-subsection">
         <div class="kf-panel">
           <div class="kf-action-row"><div><h3>Local storage</h3><p>${failures
             ? `${escapeHtml(failureMessage)}${storageHealth.lastError ? ` ${escapeHtml(tr('The browser reported'))} <strong>${escapeHtml(storageHealth.lastError)}</strong>.` : ''} ${escapeHtml(tr('Exporting now is the only way to keep these changes.'))}`
-            : `Kick Focus is using about ${escapeHtml(formatBytes(report.total))} of browser storage. Nothing has failed to save this session.`}</p></div>${failures ? '<button type="button" class="kf-button kf-button-primary" data-action="export">Export now</button>' : ''}</div>
+            : escapeHtml(trf('Kick Focus is using about {size} of browser storage. Nothing has failed to save this session.', { size: formatBytes(report.total) }))}</p>${seed
+              ? `<p class="kf-meta">${escapeHtml(trf(seed.messageKey, seed.values))}</p>`
+              : ''}</div>${failures ? '<button type="button" class="kf-button kf-button-primary" data-action="export">Export now</button>' : ''}</div>
           ${rows ? `<table class="kf-table"><tbody>${rows}</tbody></table>` : ''}
         </div>
       </section>`;
@@ -6221,7 +6250,7 @@ const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
 const LAST_CRASH_KEY = 'kick-focus:last-crash';
 const REWARD_STATE_KEY = 'kick-focus:reward-claims';
 const PAGE_BLOCK_EVENT = 'kick-focus:request-blocked';
-const storageHealth = { failures: {}, lastError: '' };
+const storageHealth = { failures: {}, lastError: '', librarySeed: { truncated: 0, total: 0 } };
 const libraryStore = createLibraryStore({
 readFallback: () => normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {})),
 writeFallback: (seed) => gmSet(STICKER_PREFERENCES_KEY, seed),
@@ -6967,7 +6996,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              852134') || 0;
+const BUNDLE_BYTES = Number('              855312') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8494,8 +8523,14 @@ return stickerPreferencesFromValue(libraryStore.readSync());
 function persistStickerPreferences() {
 const value = stickerPreferencesValue();
 state.stickerPreferences = stickerPreferencesFromValue(value);
-libraryStore.write(value);
+noteLibrarySeed(libraryStore.write(value), value);
 return value;
+}
+function noteLibrarySeed(result, value) {
+storageHealth.librarySeed = {
+truncated: Number(result?.truncated) || 0,
+total: Array.isArray(value?.library) ? value.library.length : 0,
+};
 }
 async function hydrateLibrary() {
 const merged = await libraryStore.hydrate();
@@ -11466,18 +11501,21 @@ scheduleApply(0);
 function fetchBlocklistText(href) {
 if (companionInfo().active) {
 return new Promise((resolve, reject) => {
-const timer = window.setTimeout(() => reject(new Error('companion timeout')), 10000);
-const handler = (event) => {
+const done = (settle, value) => {
 window.clearTimeout(timer);
 document.removeEventListener('kick-focus:blocklist-result', handler);
+settle(value);
+};
+const handler = (event) => {
 try {
 const result = typeof event.detail === 'string' ? JSON.parse(event.detail) : event.detail;
 if (!result?.ok) throw new Error(result?.error || 'companion fetch failed');
-resolve({ text: result.text, method: 'companion' });
+done(resolve, { text: result.text, method: 'companion' });
 } catch (error) {
-reject(error);
+done(reject, error);
 }
 };
+const timer = window.setTimeout(() => done(reject, new Error('companion timeout')), 10000);
 document.addEventListener('kick-focus:blocklist-result', handler);
 document.dispatchEvent(new CustomEvent('kick-focus:fetch-blocklist', { detail: { url: href } }));
 });
@@ -13234,6 +13272,8 @@ es: {
 'blocklist cache': 'caché de la lista de bloqueo',
 'watched this session': 'vistos en esta sesión',
 'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.': 'Kick Focus no pudo guardar {list}. El almacenamiento del navegador está lleno o bloqueado, por lo que esos cambios solo existirán hasta que recargues.',
+'Kick Focus is using about {size} of browser storage. Nothing has failed to save this session.': 'Kick Focus usa unos {size} del almacenamiento del navegador. Nada ha fallado al guardarse en esta sesión.',
+'The first paint reads {held} of your {total} emotes. The rest load from the database a moment later.': 'El primer dibujado lee {held} de tus {total} emotes. El resto se carga desde la base de datos un momento después.',
 'The browser reported': 'El navegador informó',
 'Exporting now is the only way to keep these changes.': 'Exportar ahora es la única forma de conservar estos cambios.',
 '{items} read from the page': '{items}, leídos de la página',
@@ -13622,6 +13662,7 @@ es: {
 'Adjusted emote usage counts to {count} supported entries.': 'Se ajustaron los recuentos de uso de emotes a {count} entradas compatibles.',
 'Adjusted the multi-stream grid to {count} supported channels.': 'Se ajustó la cuadrícula multitransmisión a {count} canales compatibles.',
 'Adjusted saved boards to {count} supported entries.': 'Se ajustaron los diseños guardados a {count} entradas compatibles.',
+'Left the blocklist subscription to {host} switched off. Turn it on yourself if you trust that host.': 'La suscripción a la lista de bloqueo de {host} se dejó desactivada. Actívala tú si confías en ese servidor.',
 'Density saved': 'Densidad guardada',
 'Content filter saved': 'Filtro de contenido guardado',
 'Poor mode saved': 'Modo sin gastos guardado',
@@ -13966,6 +14007,8 @@ pt: {
 'blocklist cache': 'cache da lista de bloqueio',
 'watched this session': 'assistidos nesta sessão',
 'Kick Focus could not save your {list}. Browser storage is full or blocked, so those changes exist only until you reload.': 'O Kick Focus não conseguiu salvar {list}. O armazenamento do navegador está cheio ou bloqueado, então essas alterações existirão apenas até você recarregar.',
+'Kick Focus is using about {size} of browser storage. Nothing has failed to save this session.': 'O Kick Focus usa cerca de {size} do armazenamento do navegador. Nada falhou ao salvar nesta sessão.',
+'The first paint reads {held} of your {total} emotes. The rest load from the database a moment later.': 'A primeira pintura lê {held} dos seus {total} emotes. O restante carrega do banco de dados um instante depois.',
 'The browser reported': 'O navegador informou',
 'Exporting now is the only way to keep these changes.': 'Exportar agora é a única forma de manter essas alterações.',
 '{items} read from the page': '{items}, lidos da página',
@@ -14354,6 +14397,7 @@ pt: {
 'Adjusted emote usage counts to {count} supported entries.': 'As contagens de uso de emotes foram ajustadas para {count} entradas compatíveis.',
 'Adjusted the multi-stream grid to {count} supported channels.': 'A grade multistream foi ajustada para {count} canais compatíveis.',
 'Adjusted saved boards to {count} supported entries.': 'Os layouts salvos foram ajustados para {count} entradas compatíveis.',
+'Left the blocklist subscription to {host} switched off. Turn it on yourself if you trust that host.': 'A assinatura da lista de bloqueio de {host} ficou desativada. Ative você mesmo se confiar nesse servidor.',
 'Density saved': 'Densidade salva',
 'Content filter saved': 'Filtro de conteúdo salvo',
 'Poor mode saved': 'Modo sem gastos salvo',
@@ -14716,6 +14760,7 @@ companionInfo,
 compatibilitySummary,
 countChangedStickers,
 describeStickerChange,
+describeLibrarySeed,
 describeStorageFailures,
 DISCOVERY_LAYOUT_ROUTES,
 DISCOVERY_ROUTE_LABELS,
@@ -15813,7 +15858,7 @@ if (!commit.ok) return commit;
 if (result.settings) state.settings = result.settings;
 state.settingsIndex = null;
 if (result.stickers) {
-libraryStore.write(result.stickers);
+noteLibrarySeed(libraryStore.write(result.stickers), result.stickers);
 state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
 state.runtime.stickerCatalogDirty = true;
 state.runtime.stickerLibraryFilter = 'all';
@@ -15840,7 +15885,7 @@ const file = event.target.files?.[0];
 event.target.value = '';
 if (!file) return;
 try {
-const result = validateImportedSettings(await file.text());
+const result = validateImportedSettings(await file.text(), { currentBlocklistUrl: state.settings.content.blocklistUrl });
 if (!result.ok) {
 showToast(result.errorKey ? trf(result.errorKey, result.errorValues || {}) : result.error, true);
 return;
@@ -15883,7 +15928,7 @@ if (!backup) {
 showToast('No import to undo.', true);
 return;
 }
-const result = validateImportedSettings(JSON.stringify(backup));
+const result = validateImportedSettings(JSON.stringify(backup), { trusted: true });
 if (!result.ok) {
 showToast('The backup could not be restored. Your current settings are unchanged.', true);
 return;
@@ -16441,8 +16486,8 @@ if (key.startsWith('kf')) delete root.dataset[key];
 for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
 root.style.removeProperty(property);
 }
-for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization], [data-kf-following-preview]')) {
-if (node.matches?.('[data-kf-card-actions], [data-kf-card-uptime], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
+for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization], [data-kf-following-preview]')) {
+if (node.matches?.('[data-kf-card-actions], [data-kf-card-uptime], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty]')) node.remove();
 else {
 for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
 }
@@ -16453,6 +16498,8 @@ clearTimeout(state.applyTimer);
 state.applyTimer = 0;
 clearInterval(state.playbackDiagnosticsTimer);
 state.playbackDiagnosticsTimer = 0;
+clearInterval(state.uptimeTimer);
+state.uptimeTimer = 0;
 clearInterval(state.discoveryUptimeTimer);
 state.discoveryUptimeTimer = 0;
 state.observers.document?.disconnect?.();

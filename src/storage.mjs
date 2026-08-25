@@ -40,8 +40,17 @@ export const LIBRARY_SEED_LIMIT = 400;
  * mode advisory is injected script *plus* storage. The count stays as the
  * ordinary cap; this is the one that holds under a crafted or pathological
  * library, and it is what `scripts/check.mjs` adds to the userscript's own
- * length. Sized against a realistic Kick record (~290 B), so a normal library
- * of several hundred emotes never reaches it.
+ * length.
+ *
+ * This is the *binding* limit, not a safety net. A real Kick record serialises
+ * to roughly 210 B, so 50 KB is about 240 entries and `LIBRARY_SEED_LIMIT`'s
+ * 400 is only reachable for unusually short records. That is deliberate: the
+ * reserve below the injection ceiling is worth more than the tail of the seed,
+ * because the tail is exactly what IndexedDB restores a frame or two later.
+ * What is *not* acceptable is trimming silently, so `planLibraryPersist` marks
+ * the seed partial and `describeLibrarySeed` puts the number on the storage
+ * panel. Change this constant and `test/storage.test.js` will tell you what it
+ * costs a realistic library.
  */
 export const LIBRARY_SEED_BYTES = 50_000;
 
@@ -107,6 +116,35 @@ export function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT, seed
     full: { ...source, library },
     seed: build(count),
     truncated: Math.max(0, library.length - count),
+  };
+}
+
+/**
+ * Say, in one sentence, that the synchronous seed is holding less than the
+ * library.
+ *
+ * `planLibraryPersist` has always reported `truncated`, and every caller threw
+ * it away — so a library trimmed by the byte budget looked exactly like one
+ * that fit. It is not a failure and it is not a warning: IndexedDB still has
+ * the whole record and `hydrateLibrary` folds it back in a frame or two later.
+ * It is worth saying only because it is the one storage fact a user cannot
+ * observe any other way, and because it is what explains a first paint that is
+ * missing the oldest emotes.
+ *
+ * Returns null when nothing was trimmed, so the panel renders no row at all
+ * rather than a reassuring one.
+ */
+export function describeLibrarySeed({ truncated = 0, total = 0 } = {}) {
+  const dropped = Math.max(0, Math.floor(Number(truncated)) || 0);
+  const held = Math.max(0, (Math.floor(Number(total)) || 0) - dropped);
+  if (!dropped) return null;
+  return {
+    truncated: dropped,
+    held,
+    // Translated as a template, then filled: a finished sentence carrying two
+    // counts can never match a dictionary key. Same rule as `trf` in runtime.
+    messageKey: 'The first paint reads {held} of your {total} emotes. The rest load from the database a moment later.',
+    values: { held, total: held + dropped },
   };
 }
 
