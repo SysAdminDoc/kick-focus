@@ -205,29 +205,24 @@ const firefoxBackground = (await read('src/extension/background.firefox.js'))
   .replace('__AD_HOSTS__', JSON.stringify(AD_HOSTS))
   .replace('__TELEMETRY_HOSTS__', JSON.stringify(cancellableTelemetryHosts()));
 /**
- * The Firefox bridge carries the page bundle as a string rather than fetching it.
+ * The Firefox page bundle is its own file, declared with `world: "MAIN"`.
  *
- * MV2 content scripts are isolated, so the page bundle has to be injected — and
- * the obvious way, a `<script src=runtime.getURL(...)>`, puts
- * `moz-extension://<uuid>/…` into the page. Firefox's extension UUID is
- * randomised per install and stable for its life, so any script on kick.com
- * could read it as a tracking identifier that survives clearing cookies. That is
- * a supercookie shipped by a build whose whole posture is privacy.
+ * It used to be carried inside the bridge as a JSON string and assigned to a
+ * `<script>`'s textContent. That was to avoid the obvious approach,
+ * `<script src=runtime.getURL(...)>`, which puts `moz-extension://<uuid>/…`
+ * into the page: Firefox's extension UUID is randomised per install and stable
+ * for its life, so any script on kick.com could read it as a tracking
+ * identifier that survives clearing cookies.
  *
- * Embedding the source and assigning it to `textContent` means the extension's
- * URL never enters the page, and it lets `web_accessible_resources` be dropped
- * altogether. `JSON.stringify` does the escaping, so nothing in the bundle —
- * backslashes, backticks, `${`, or a literal `</script>` — can break out.
- * Assigning to `textContent` rather than `innerHTML` also means the browser
- * never re-parses the text as markup.
+ * A manifest-declared MAIN-world content script avoids both. The browser
+ * injects it into the page's realm, so no extension URL enters the page, no
+ * `web_accessible_resources` entry is needed, and the page's own CSP does not
+ * apply to it — which the inline version did depend on, since kick.com shipping
+ * a `script-src` without 'unsafe-inline' would have stopped it loading.
  */
-const firefoxBridge = (await read('src/extension/bridge.firefox.js'))
-  // A replacer *function*, not a string: the bundle contains `$&`, `` $` `` and
-  // `$'` sequences, and String.replace would interpret those in a replacement
-  // string and splice pieces of the file into itself.
-  .replace('"__PAGE_BUNDLE__"', () => JSON.stringify(stampBytes(`/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`, userscript.length)));
+const firefoxBridge = await read('src/extension/bridge.firefox.js');
 if (firefoxBridge.includes('__PAGE_BUNDLE__')) {
-  throw new Error('Firefox bridge still carries the __PAGE_BUNDLE__ placeholder — the page script would be empty.');
+  throw new Error('The Firefox bridge still carries a __PAGE_BUNDLE__ placeholder; the page bundle is its own file now.');
 }
 
 const firefoxFiles = [
@@ -236,6 +231,7 @@ const firefoxFiles = [
   ['popup.html', await read('src/extension/popup.html')],
   ['popup.js', await read('src/extension/popup.js')],
   ['content/bridge.js', firefoxBridge],
+  ['content/kick-focus.js', stampBytes(`/* Kick Focus ${VERSION} — generated from src/. Edit the source, not this file. */\n${body}`, userscript.length)],
 ];
 
 for (const [name, contents] of firefoxFiles) {

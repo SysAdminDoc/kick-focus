@@ -37,6 +37,13 @@
   "content_scripts": [
     {
       "matches": ["https://kick.com/*", "https://www.kick.com/*"],
+      "js": ["content/kick-focus.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://kick.com/*", "https://www.kick.com/*"],
       "js": ["content/bridge.js"],
       "run_at": "document_start",
       "all_frames": false
@@ -45,7 +52,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "kick-focus@sysadmindoc",
-      "strict_min_version": "120.0",
+      "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": ["none"]
       }

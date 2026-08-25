@@ -7060,7 +7060,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              841807') || 0;
+const BUNDLE_BYTES = Number('              841827') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -16421,9 +16421,9 @@ const shadow = host.attachShadow({ mode: 'open' });
         <span data-kf-header-add-icon aria-hidden="true">+</span>
         <span data-kf-header-add-label>Multi</span>
       </button>
-      <button type="button" data-kf-header-cmds class="kf-header-multi" aria-label="Open Kick Focus command menu" title="Commands">
+      <button type="button" data-kf-header-commands class="kf-header-multi" aria-label="Open Kick Focus command menu" title="Commands">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="2.4" rx="1.2"/><rect x="3" y="10.8" width="18" height="2.4" rx="1.2"/><rect x="3" y="16.6" width="12" height="2.4" rx="1.2"/></svg>
-        <span data-kf-header-cmds-label>Menu</span>
+        <span data-kf-header-commands-label>Menu</span>
       </button>`);
 adoptStyles(shadow, HEADER_CONTROL_CSS);
 const button = shadow.querySelector('[data-kf-header-focus]');
@@ -16439,7 +16439,7 @@ event.stopPropagation();
 if (multistreamOpen()) closeMultistream();
 else openMultistream();
 });
-shadow.querySelector('[data-kf-header-cmds]').addEventListener('click', (event) => {
+shadow.querySelector('[data-kf-header-commands]').addEventListener('click', (event) => {
 event.preventDefault();
 event.stopPropagation();
 if (state.command && !state.command.hidden) closeCommandMenu();
@@ -16454,8 +16454,8 @@ state.headerControlHost = host;
 state.headerControlButton = button;
 state.headerAddMultiButton = shadow.querySelector('[data-kf-header-add-multi]');
 state.headerMultiLabel = shadow.querySelector('[data-kf-header-multi-label]');
-state.headerCommandsButton = shadow.querySelector('[data-kf-header-cmds]');
-state.headerCommandsLabel = shadow.querySelector('[data-kf-header-cmds-label]');
+state.headerCommandsButton = shadow.querySelector('[data-kf-header-commands]');
+state.headerCommandsLabel = shadow.querySelector('[data-kf-header-commands-label]');
 }
 if (state.headerControlHost.parentElement !== owner || state.headerControlHost.nextElementSibling !== target) {
 owner.insertBefore(state.headerControlHost, target);

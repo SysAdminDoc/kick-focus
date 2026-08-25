@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readArtifact } from '../scripts/artifact-freshness.mjs';
+import { stripComments } from '../scripts/strip-comments.mjs';
 import { directiveAllowsInline, inlineScriptVerdict, scriptDirective, splitPolicies } from '../scripts/csp.mjs';
 
 /**
@@ -69,4 +71,40 @@ test('policies are split the same way however they were joined', { tag: 'unit' }
   assert.deepEqual(splitPolicies(["a 'b'", "c 'd'"]), ["a 'b'", "c 'd'"]);
   assert.deepEqual(splitPolicies([null, '', '  ']), []);
   assert.deepEqual(splitPolicies(undefined), []);
+});
+
+test('a policy that blocks inline scripts no longer stops the Firefox companion', { tag: 'artifact' }, async () => {
+  // The Firefox package used to inject its page bundle as an inline script, so
+  // the day kick.com shipped a script-src without 'unsafe-inline' its whole page
+  // layer would have stopped loading, silently. The bundle is a declared
+  // MAIN-world content script now: Firefox injects it into the page's realm and
+  // the page's policy does not apply to it.
+  //
+  // What can be checked here is that the dependency is gone rather than merely
+  // unlikely to bite. Under a policy this build would once have died on, there
+  // is nothing left for it to block.
+  const hostile = 'script-src \'self\'; object-src \'none\'';
+  assert.equal(inlineScriptVerdict(hostile).allowed, false, 'the fixture policy does not actually block inline scripts');
+
+  const manifest = JSON.parse(await readArtifact('dist/extension-firefox/manifest.json'));
+  const bridge = await readArtifact('dist/extension-firefox/content/bridge.js');
+  const bundle = await readArtifact('dist/extension-firefox/content/kick-focus.js');
+
+  const main = manifest.content_scripts.find((entry) => entry.world === 'MAIN');
+  assert.ok(main, 'the page bundle is not declared as a MAIN-world content script');
+  assert.deepEqual(main.js, ['content/kick-focus.js']);
+  assert.equal(main.run_at, 'document_start');
+  assert.ok(bundle.includes('data-kf-settings-shell'), 'the declared file is not the page bundle');
+
+  // Nothing the policy could refuse: no inline script is created, and no
+  // extension URL is handed to the page either, which is the other half of why
+  // this package does not simply use a script src.
+  // Comments stripped first: this file explains at length why a script src and
+  // an inline script are both wrong, and those words are not code.
+  const code = stripComments(bridge);
+  assert.ok(!/createElement\(\s*['"]script['"]\s*\)/.test(code), 'the bridge still builds a script element');
+  assert.ok(!/\.textContent\s*=/.test(code), 'the bridge still writes script text');
+  assert.ok(!/\.src\s*=/.test(code), 'the bridge still sets a script src');
+  assert.ok(!/getURL\s*\(/.test(code), 'the bridge still hands the page an extension URL');
+  assert.equal('web_accessible_resources' in manifest, false);
 });

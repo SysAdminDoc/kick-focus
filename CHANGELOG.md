@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Changed
+
+- The Firefox companion no longer depends on Kick allowing inline scripts. It carried its whole page bundle inside the content bridge and injected it as an inline script, which would have stopped working the day Kick shipped a `script-src`. Firefox injects it directly into the page now, from a declared `world: "MAIN"` content script, so nothing about the extension reaches the page and the page's policy has nothing to refuse. This needs Firefox 128 or newer.
+
 ### Removed
 
 - Custom keyboard shortcuts. Kick Focus used to capture six configurable chords, four of them bare letters, on a site that has its own keyboard behaviour. Every action they reached is on the command menu, and the command menu now has a **Menu** button in Kick's header beside **Focus**. `Ctrl+Shift+F` still pauses and resumes, because that one is worth having when the interface itself is in the way. A profile that stored custom shortcuts loses them on the next load without error, and the Accessibility page is just Accessibility now.

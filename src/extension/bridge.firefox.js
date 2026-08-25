@@ -1,10 +1,19 @@
 /**
- * Firefox MV2 bridge. MV2 content scripts are isolated, so the page bundle has
- * to be injected — and it is carried here as source rather than loaded from a
- * `moz-extension://` URL. That URL contains a per-install UUID which is stable
- * for the life of the install, so putting it in the page hands kick.com a
- * tracking identifier that survives clearing cookies. The build replaces the
- * placeholder below and refuses to emit a bridge that still contains it.
+ * Firefox bridge, in the isolated world.
+ *
+ * The page bundle is no longer injected from here. It is a second content
+ * script declared in the manifest with `world: "MAIN"`, which Firefox runs in
+ * the page's own realm at document_start, so this file no longer carries a copy
+ * of the whole bundle as a string.
+ *
+ * Two things that must stay true either way, and are why the obvious approach
+ * was never used: a `<script src=runtime.getURL(...)>` puts
+ * `moz-extension://<uuid>/…` into the page, and Firefox's extension UUID is
+ * randomised per install and stable for its life, so any script on kick.com
+ * could read it as a tracking identifier that survives clearing cookies. And an
+ * inline `textContent` script depends on kick.com continuing to ship no CSP. A
+ * declared MAIN-world script needs neither: the browser injects it, so no URL
+ * enters the page and the page's CSP does not apply to it.
  */
 
 const api = globalThis.browser || globalThis.chrome;
@@ -18,31 +27,12 @@ function markCompanion() {
   return true;
 }
 
-/** Replaced at build time with the page bundle, as a JSON string literal. */
-const PAGE_BUNDLE = "__PAGE_BUNDLE__";
-
-function injectPageScript() {
-  const script = document.createElement('script');
-  // textContent, never src: no extension URL reaches the page, and the browser
-  // does not re-parse the text as markup on the way in.
-  script.textContent = PAGE_BUNDLE;
-  script.dataset.kickFocusFirefox = 'true';
-  (document.head || document.documentElement).append(script);
-  // An inline script has already run by the time append() returns, so the
-  // element can go immediately rather than waiting for a load event that will
-  // never fire.
-  script.remove();
-}
-
+// The companion marker still has to land, and at document_start there may be
+// no documentElement yet to put it on.
 if (!markCompanion()) {
   new MutationObserver((_records, observer) => {
-    if (markCompanion()) {
-      observer.disconnect();
-      injectPageScript();
-    }
+    if (markCompanion()) observer.disconnect();
   }).observe(document, { childList: true, subtree: true });
-} else {
-  injectPageScript();
 }
 
 function readSettings() {

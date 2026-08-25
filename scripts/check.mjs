@@ -32,9 +32,7 @@ const firefoxBridge = await read('dist/extension-firefox/content/bridge.js');
  * proves the embedded copy is a complete, valid bundle rather than a truncated
  * or mis-escaped one.
  */
-const firefoxBundleLiteral = firefoxBridge.match(/^const PAGE_BUNDLE = (".*");$/m)?.[1] || '';
-const firefoxContent = firefoxBundleLiteral ? JSON.parse(firefoxBundleLiteral) : '';
-const firefoxHasSeparateBundle = await stat(resolve('dist/extension-firefox/content/kick-focus.js')).then(() => true, () => false);
+const firefoxContent = await read('dist/extension-firefox/content/kick-focus.js');
 const firefoxBackground = await read('dist/extension-firefox/background.js');
 const background = await read('dist/extension/background.js');
 const popup = await read('dist/extension/popup.js');
@@ -1717,11 +1715,34 @@ const checks = [
   // now carried inside the bridge, so these three assert the leak stays closed.
   ['Firefox manifest exposes no web-accessible resource',
     !('web_accessible_resources' in firefoxManifest)],
-  ['Firefox bridge carries the page bundle rather than fetching it',
-    firefoxBridge.includes('data-kf-settings-shell') && firefoxBridge.includes('script.textContent = PAGE_BUNDLE')],
+  // The page bundle is a manifest-declared MAIN-world content script. The
+  // browser injects it into the page's realm, so the extension's URL never
+  // enters the page and the page's own CSP does not apply to it. Both of the
+  // alternatives fail one of those: a `<script src=runtime.getURL(...)>` puts a
+  // per-install `moz-extension://<uuid>/…` into the page, which is a tracking
+  // identifier that survives clearing cookies, and an inline textContent script
+  // depends on kick.com continuing to ship no script-src.
+  ['Firefox runs the page bundle as a declared MAIN-world content script', (() => {
+    const entry = firefoxManifest.content_scripts?.find((item) => item.world === 'MAIN');
+    return Boolean(entry)
+      && entry.js?.length === 1
+      && entry.js[0] === 'content/kick-focus.js'
+      && entry.run_at === 'document_start'
+      && entry.all_frames === false
+      && entry.matches.every((match) => match.startsWith('https://'))
+      && firefoxContent.includes('data-kf-settings-shell');
+  })()],
+  ['the Firefox bridge is the isolated half only, with no bundle and no injection',
+    !firefoxBridge.includes('PAGE_BUNDLE')
+    && !firefoxBridge.includes('data-kf-settings-shell')
+    && !/script\.textContent\s*=/.test(firefoxBridge)
+    && !/createElement\(\s*['"]script['"]\s*\)/.test(firefoxBridge)],
   ['Firefox bridge never puts an extension URL in the page',
     !/getURL\(\s*['"]content\//.test(firefoxBridge) && !/script\.src\s*=/.test(firefoxBridge)],
-  ['Firefox package ships no separate page bundle to leak', !firefoxHasSeparateBundle],
+  // Declared injection is what makes the page's CSP irrelevant, so the version
+  // that first supported it is the floor.
+  ['Firefox requires the version that runs declared MAIN-world scripts',
+    firefoxManifest.browser_specific_settings?.gecko?.strict_min_version === '128.0'],
   ['Firefox network layer uses blocking listeners', firefoxBackground.includes('onBeforeRequest')
     && firefoxBackground.includes("['blocking']")
     && firefoxBackground.includes('return { cancel: true }')],

@@ -108,13 +108,6 @@ None open.
   Acceptance: A dependency-free local command captures Home, channel, settings, emote picker, and multistream in Studio, OLED, and Slate at both supported widths; volatile media and text regions are masked; a browser-canvas pixel comparison emits an inspectable diff and fails above documented per-pixel and changed-area thresholds.
   Complexity: L
 
-- [ ] P1 — R-110: Use Firefox MAIN-world injection without inline source
-  Why: Firefox 128 supports manifest-declared MAIN-world scripts, removing the current dependence on Kick allowing inline scripts and the build’s duplicated embedded bundle.
-  Evidence: src/extension/bridge.firefox.js; src/extension/manifest.firefox.json; scripts/build.mjs; https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/
-  Touches: src/extension/manifest.firefox.json, src/extension/bridge.firefox.js, scripts/build.mjs, scripts/check.mjs, test/companion.test.js, scripts/verify-firefox.mjs, README.md
-  Acceptance: Firefox strict_min_version is 128.0; the page bundle is emitted once as content/kick-focus.js with world MAIN at document_start; the isolated bridge stays separate; no inline source or stable moz-extension URL enters the page; a fixture CSP that blocks inline scripts still boots the companion.
-  Complexity: M
-
 - [ ] P1 — R-111: Run browser-neutral journey contracts in Chromium and Firefox
   Why: Chromium currently exercises 96 assertions while Firefox runs eight narrower checks, leaving theme, modal, preview, settings, and multistream behavior free to diverge.
   Evidence: scripts/verify-extension.mjs; scripts/verify-firefox.mjs; https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Chrome_incompatibilities
