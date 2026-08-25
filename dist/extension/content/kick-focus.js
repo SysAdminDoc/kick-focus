@@ -7119,7 +7119,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              855621') || 0;
+const BUNDLE_BYTES = Number('              855635') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -14592,7 +14592,7 @@ if (!errors.length) return '<tr><td colspan="3" class="kf-muted">No errors recor
 }
 function protectionRows() {
 const entries = state.diagnostics.entries.length ? state.diagnostics.entries.slice(0, 5) : [
-{ time: '—', layer: 'Waiting', match: 'No ad request matched yet', action: 'Ready' },
+{ time: 'Not yet', layer: 'Waiting', match: 'No ad request matched yet', action: 'Ready' },
 ];
   return entries.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.layer)}</td><td>${escapeHtml(entry.match)}</td><td>${escapeHtml(entry.action)}</td></tr>`).join('');
 }
@@ -16334,7 +16334,6 @@ localizeInterface();
 function openCommandMenu() {
 if (!state.command) return;
 const opener = deepActiveElement();
-closeSettings();
 state.commandOpener = opener;
 state.command.hidden = false;
 syncPageInert();
@@ -16407,6 +16406,7 @@ state.commandInput.setAttribute('aria-expanded', String(options.length > 0));
 function onCommandKeydown(event) {
 if (event.key === 'Escape') {
 event.preventDefault();
+event.stopPropagation();
 closeCommandMenu();
 return;
 }

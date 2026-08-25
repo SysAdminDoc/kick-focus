@@ -543,6 +543,16 @@ test('reset recovery persists without a timer and the page keyboard stays with K
   const handler = source.slice(source.indexOf('function onGlobalKeydown'), source.indexOf('\n}\n\nconst HEADER_BUTTON_BASE_CSS'));
   assert.doesNotMatch(handler, /ctrlKey|shiftKey|toLowerCase\(\) === 'f'/,
     'the global key handler still claims a page-wide shortcut');
+  const commandStart = source.indexOf('function onCommandKeydown');
+  const commandHandler = source.slice(commandStart, source.indexOf('\n}\n\n/**', commandStart));
+  assert.match(commandHandler, /event\.key === 'Escape'[\s\S]*event\.stopPropagation\(\);[\s\S]*closeCommandMenu\(\);/,
+    'Escape from the command menu can still bubble through and close Settings too');
+  const commandOpenStart = source.indexOf('function openCommandMenu');
+  const commandOpenHandler = source.slice(commandOpenStart, source.indexOf('\n}\n\nfunction closeCommandMenu', commandOpenStart));
+  assert.doesNotMatch(commandOpenHandler, /closeSettings\(\)/,
+    'opening Commands from Settings must preserve the page underneath it');
+  assert.doesNotMatch(source, /\{ time: '[—–]'/,
+    'the empty protection-log timestamp still uses dash-only placeholder copy');
   const composerHandler = source.slice(source.indexOf('function onComposerSendKeydown'), source.indexOf('\n}\n\nfunction onComposerRecallClick'));
   assert.doesNotMatch(composerHandler, /ArrowUp|preventDefault|stopPropagation|isComposerRecallGesture/,
     'composer recall still takes a keyboard gesture instead of using its visible control');

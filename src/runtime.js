@@ -9935,7 +9935,7 @@ function errorLogRows() {
 
 function protectionRows() {
   const entries = state.diagnostics.entries.length ? state.diagnostics.entries.slice(0, 5) : [
-    { time: '—', layer: 'Waiting', match: 'No ad request matched yet', action: 'Ready' },
+    { time: 'Not yet', layer: 'Waiting', match: 'No ad request matched yet', action: 'Ready' },
   ];
   return entries.map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.layer)}</td><td>${escapeHtml(entry.match)}</td><td>${escapeHtml(entry.action)}</td></tr>`).join('');
 }
@@ -12119,10 +12119,10 @@ function renderCommands() {
 
 function openCommandMenu() {
   if (!state.command) return;
-  // Recorded before closeSettings runs, so the opener is the control the reader
-  // actually pressed rather than whatever that close leaves focused.
+  // Settings stays mounted beneath the command menu when it was the opener.
+  // That keeps the user's place intact and gives Escape a real layer to return
+  // to instead of restoring focus into a hidden panel.
   const opener = deepActiveElement();
-  closeSettings();
   state.commandOpener = opener;
   state.command.hidden = false;
   syncPageInert();
@@ -12209,6 +12209,7 @@ function syncCommandActiveDescendant() {
 function onCommandKeydown(event) {
   if (event.key === 'Escape') {
     event.preventDefault();
+    event.stopPropagation();
     closeCommandMenu();
     return;
   }
