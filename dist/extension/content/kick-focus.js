@@ -1155,7 +1155,6 @@ const fmt = (value) => (value >= 10 ? Math.round(value) : Math.round(value * 10)
 const OVERLAY_LAYERS = [
 ['multistream', '.kf-ms-shell'],
 ['command', '.kf-command-shell'],
-['resetConfirm', '.kf-confirm-card'],
 ['settings', '[data-kf-settings-shell]'],
 ];
 function createPageInertManager(getBody, isOwn) {
@@ -6210,7 +6209,7 @@ function renderAboutPage() {
 const label = undoSlotLabel(gmGet(PRE_IMPORT_BACKUP_KEY, null));
           return label ? `<button type="button" class="kf-button" data-action="undo-import">${label}</button>` : '';
         })()}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
-        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
+        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
       <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
@@ -6478,8 +6477,6 @@ apply: {},
 },
 shortcutCapture: null,
 shortcutError: '',
-resetPending: false,
-resetOpener: null,
 chatEmoteTooltip: null,
 companion: { active: false, version: '' },
 watched: new Set(normalizeChannelList(readSessionArray(WATCHED_KEY))),
@@ -7089,7 +7086,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              848359') || 0;
+const BUNDLE_BYTES = Number('              844554') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -12744,17 +12741,6 @@ const UI_CSS = `
   .kf-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; border-top: 1px solid var(--border); background: var(--surface-2); }
   .kf-footer-left, .kf-footer-right { display: flex; align-items: center; gap: 10px; }
 
-  .kf-confirm {
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    display: grid;
-    place-items: center;
-    background: rgba(2,3,4,.76);
-  }
-  .kf-confirm-card { width: min(430px, calc(100vw - 32px)); padding: 24px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-2); box-shadow: var(--shadow-dialog); }
-  .kf-confirm-card h2 { margin: 0 0 8px; font-size: 19px; }
-  .kf-confirm-card p { margin: 0 0 18px; color: var(--muted); }
 
   .kf-toast {
     position: fixed;
@@ -13455,11 +13441,6 @@ const TRANSLATIONS = {
 'Reset page': ['Restablecer página', 'Redefinir página'],
 'Export settings': ['Exportar configuración', 'Exportar configurações'],
 'Done': ['Listo', 'Concluído'],
-'Reset settings?': ['¿Restablecer configuración?', 'Redefinir configurações?'],
-'Reset all Kick Focus settings?': ['¿Restablecer toda la configuración de Kick Focus?', 'Redefinir todas as configurações do Kick Focus?'],
-'This restores the defaults for this page.': ['Esto restaura los valores predeterminados de esta página.', 'Isso restaura os padrões desta página.'],
-'Every preference, shortcut, note, filter, and channel list returns to its factory default. Your recorded emote library is kept.': ['Todas las preferencias, atajos, notas, filtros y listas de canales volverán a sus valores de fábrica. Tu biblioteca de emotes registrada se conserva.', 'Todas as preferências, atalhos, notas, filtros e listas de canais voltam ao padrão de fábrica. Sua biblioteca de emotes registrada é mantida.'],
-'Only the settings on this page will return to their defaults.': ['Solo la configuración de esta página volverá a sus valores predeterminados.', 'Somente as configurações desta página voltarão aos padrões.'],
 'Cancel': ['Cancelar', 'Cancelar'],
 'Reset': ['Restablecer', 'Redefinir'],
 'On': ['Activado', 'Ativado'],
@@ -13727,7 +13708,7 @@ const TRANSLATIONS = {
 'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': ['Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus o con Ctrl+Shift+F.', 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus ou com Ctrl+Shift+F.'],
 'Copy a sanitized summary or run a local self-check.': ['Copia un resumen depurado o ejecuta una comprobación local.', 'Copie um resumo limpo ou execute uma verificação local.'],
 'Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.': ['Mueve preferencias, metadatos de emotes registrados, favoritos, elementos quitados y grupos personalizados con un solo archivo JSON local.', 'Mova preferências, metadados de emotes registrados, favoritos, itens removidos e grupos personalizados com um único arquivo JSON local.'],
-'Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.': ['Restaura todos los ajustes, atajos, notas, filtros y listas de canales a los valores de fábrica. Tu biblioteca de emotes registrada se conserva.', 'Restaura todas as configurações, atalhos, notas, filtros e listas de canais para os valores de fábrica. Sua biblioteca de emotes registrada é mantida.'],
+'Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, atajos, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repoe todas as definições, atalhos, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
 'Changes are not being saved': ['Los cambios no se están guardando', 'As alterações não estão sendo salvas'],
 'No errors recorded this session.': ['No se registraron errores en esta sesión.', 'Nenhum erro registrado nesta sessão.'],
 'Read Kick’s own endpoints instead of scraping the page. Same-origin, read-only, using the session you are already signed into. Nothing is sent anywhere.': ['Lee los propios endpoints de Kick en lugar de raspar la página. Mismo origen, solo lectura y con la sesión que ya tienes iniciada. No se envía nada a ninguna parte.', 'Lê os próprios endpoints do Kick em vez de raspar a página. Mesma origem, somente leitura e com a sessão em que você já está conectado. Nada é enviado a lugar nenhum.'],
@@ -14130,16 +14111,6 @@ const shadow = root.attachShadow({ mode: 'open' });
           </div>
           <div class="kf-footer-right"><button type="button" class="kf-button kf-button-primary" data-action="close-settings">${uiIcon('check')}Done</button></div>
         </footer>
-        <div class="kf-confirm" data-kf-confirm hidden>
-          <div class="kf-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="kf-confirm-title" aria-describedby="kf-confirm-copy">
-            <h2 id="kf-confirm-title" data-kf-confirm-title>Reset settings?</h2>
-            <p id="kf-confirm-copy" data-kf-confirm-copy>This restores the defaults for this page.</p>
-            <div class="kf-button-group">
-              <button type="button" class="kf-button" data-action="cancel-reset">Cancel</button>
-              <button type="button" class="kf-button kf-danger" data-action="confirm-reset">Reset</button>
-            </div>
-          </div>
-        </div>
       </section>
     </div>
     <div class="kf-backdrop" data-kf-command-backdrop hidden>
@@ -14954,10 +14925,8 @@ else if (action === 'open-emotes') openSettings('emotes');
 else if (action === 'open-command') openCommandMenu();
 else if (action === 'toggle-panic') togglePanicSwitch();
 else if (action === 'close-settings') closeSettings();
-else if (action === 'reset-page') openResetConfirmation('page');
-else if (action === 'reset-all') openResetConfirmation('all');
-else if (action === 'cancel-reset') closeResetConfirmation();
-else if (action === 'confirm-reset') confirmReset();
+else if (action === 'reset-page') resetSettings('page');
+else if (action === 'reset-all') resetSettings('all');
 else if (action === 'export') exportSettings();
 else if (action === 'help') {
 state.settingsQuery = '';
@@ -15262,38 +15231,11 @@ requestAnimationFrame(() => state.shadow.querySelector('[data-action="close-sett
 function closeSettings() {
 if (!state.modal || state.modal.hidden) return;
 state.modal.hidden = true;
-closeResetConfirmation();
 syncPageInert();
 state.shortcutCapture = null;
 state.shortcutError = '';
 if (!restoreFocus(state.lastFocused)) {
 restoreFocus(state.headerControlHost?.shadowRoot?.querySelector('[data-kf-header-focus]'));
-}
-}
-function openResetConfirmation(scope) {
-state.resetPending = scope;
-state.resetOpener = state.shadow.activeElement || null;
-const container = state.shadow.querySelector('[data-kf-confirm]');
-const title = state.shadow.querySelector('[data-kf-confirm-title]');
-const copy = state.shadow.querySelector('[data-kf-confirm-copy]');
-  title.textContent = scope === 'all' ? tr('Reset all Kick Focus settings?') : `${tr('Reset')} ${tr(NAV_ITEMS.find(([id]) => id === state.currentPage)?.[1] || 'this page')}?`;
-copy.textContent = scope === 'all' ? tr('Every preference, shortcut, note, filter, and channel list returns to its factory default. Your recorded emote library is kept.') : tr('Only the settings on this page will return to their defaults.');
-localizeInterface();
-container.hidden = false;
-syncPageInert();
-container.querySelector('[data-action="cancel-reset"]')?.focus();
-}
-function closeResetConfirmation() {
-const container = state.shadow?.querySelector('[data-kf-confirm]');
-if (container) container.hidden = true;
-state.resetPending = false;
-syncPageInert();
-const opener = state.resetOpener;
-state.resetOpener = null;
-if (opener?.isConnected) {
-try { opener.focus(); } catch {   }
-} else {
-try { state.shadow?.querySelector('[data-kf-page]')?.focus?.(); } catch {   }
 }
 }
 function clearPrivateData() {
@@ -15317,8 +15259,7 @@ state.reward = { ...state.reward, lastClaimAt: 0, claims: 0, minutesRemaining: n
 gmDelete(REWARD_STATE_KEY);
 gmDelete(PRE_IMPORT_BACKUP_KEY);
 }
-function confirmReset() {
-const scope = state.resetPending;
+function resetSettings(scope) {
 const before = currentExportPayload();
 if (scope === 'all') {
 state.settings = normalizeSettings(DEFAULT_SETTINGS);
@@ -15335,7 +15276,6 @@ saveSettings('Page reset');
 }
 }
 gmSet(PRE_IMPORT_BACKUP_KEY, { action: scope === 'all' ? 'reset-all' : 'reset-page', payload: before });
-closeResetConfirmation();
 renderSettingsPage();
 scheduleApply(0);
 announce('Settings reset');
@@ -16255,10 +16195,6 @@ return parts.join('+');
 function isTypingTarget(target) {
 return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
 }
-function resetConfirmationOpen() {
-const container = state.shadow?.querySelector('[data-kf-confirm]');
-return Boolean(container && !container.hidden);
-}
 let pageInertManager = null;
 function pageInert() {
 pageInertManager ||= createPageInertManager(
@@ -16277,7 +16213,6 @@ function overlayOpenState() {
 return {
 multistream: multistreamOpen(),
 command: Boolean(state.command && !state.command.hidden),
-resetConfirm: resetConfirmationOpen(),
 settings: Boolean(state.modal && !state.modal.hidden),
 };
 }
@@ -16353,7 +16288,6 @@ event.preventDefault();
 event.stopPropagation();
 if (top === 'multistream') closeMultistream();
 else if (top === 'command') closeCommandMenu();
-else if (top === 'resetConfirm') closeResetConfirmation();
 else closeSettings();
 return;
 }

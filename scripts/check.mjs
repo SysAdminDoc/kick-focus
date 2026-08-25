@@ -955,7 +955,6 @@ const checks = [
     const owners = [
       'openSettings', 'closeSettings',
       'openCommandMenu', 'closeCommandMenu',
-      'openResetConfirmation', 'closeResetConfirmation',
       'openMultistream', 'closeMultistream',
     ];
     const missing = owners.filter((name) => !extractFunction(source, name).includes('syncPageInert()'));
@@ -1248,14 +1247,20 @@ const checks = [
     // there. Both writers do it the same way.
     && source.includes("gmSet(PRE_IMPORT_BACKUP_KEY, { action: 'import', payload: snapshot })")],
   ['a reset is reversible from a snapshot taken before it', (() => {
-    const region = extractFunction(source, 'confirmReset');
+    const region = extractFunction(source, 'resetSettings');
     const snapshot = region.indexOf('const before = currentExportPayload();');
     const write = region.indexOf('gmSet(PRE_IMPORT_BACKUP_KEY');
     return snapshot >= 0
       && write > snapshot
       // Written after clearPrivateData, which deletes the very key it goes in.
       && write > region.indexOf('clearPrivateData()')
-      && region.includes("label: 'Undo'");
+      && region.includes("label: 'Undo'")
+      // And the confirmation it replaced is gone rather than orphaned: no
+      // markup, no lifecycle, no layer in the focus ladder.
+      && !source.includes('data-kf-confirm')
+      && !source.includes('kf-confirm-card')
+      && !source.includes('openResetConfirmation')
+      && !source.includes("'resetConfirm'");
   })()],
   ['reset keeps the emote library and clears every private store', source.includes('resetStickerPreferences({ keepLibrary: true })')
     && source.includes('function clearPrivateData')

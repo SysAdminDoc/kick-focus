@@ -115,13 +115,6 @@ None open.
   Acceptance: No Kick Focus action captures a custom page-wide chord or letter; old stored shortcut values migrate away without error; every former action remains available from a visible button, settings, command surface, or userscript-manager menu; Tab, Enter, Space, Escape, arrows, Home, and End remain available where standard widgets require them.
   Complexity: M
 
-- [ ] P1 — R-107: Replace reset confirmations with immediate reset and one-step Undo
-  Why: Page and full reset still open an alertdialog, while the product rule requires immediate action with recoverable feedback.
-  Evidence: src/runtime.js openResetConfirmation and confirmReset; src/settings.mjs reset actions; src/core.mjs import backup and normalization
-  Touches: src/runtime.js reset flow and toast, src/core.mjs snapshot validation, local backup key, translations, settings tests
-  Acceptance: Reset page and Reset all act immediately, preserve the emote library, and show a focused status toast with Undo; Undo restores every setting, note, filter, and channel list changed by that reset until the next destructive action or tab close; no reset confirmation dialog remains.
-  Complexity: M
-
 - [ ] P1 — R-110: Use Firefox MAIN-world injection without inline source
   Why: Firefox 128 supports manifest-declared MAIN-world scripts, removing the current dependence on Kick allowing inline scripts and the build’s duplicated embedded bundle.
   Evidence: src/extension/bridge.firefox.js; src/extension/manifest.firefox.json; scripts/build.mjs; https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/

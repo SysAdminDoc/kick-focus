@@ -1956,10 +1956,12 @@ export function applyCostSummary(stats) {
  * (they already had — the trap ranked the command menu above settings and
  * Escape ranked settings above the command menu).
  */
+// The reset confirmation used to sit between the command menu and Settings.
+// Reset acts immediately now and offers an undo instead, so there is no fourth
+// layer to rank.
 export const OVERLAY_LAYERS = [
   ['multistream', '.kf-ms-shell'],
   ['command', '.kf-command-shell'],
-  ['resetConfirm', '.kf-confirm-card'],
   ['settings', '[data-kf-settings-shell]'],
 ];
 

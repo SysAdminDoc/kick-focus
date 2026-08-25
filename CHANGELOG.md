@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Changed
+
+- Resetting a page or every setting happens straight away instead of opening a confirmation. A confirmation is dismissed by reflex and cannot be taken back once accepted, so what you get now is the action plus one step of undo, offered in the toast and kept on the About page until the next import or reset. Your recorded emote library is still kept either way.
+
 ### Fixed
 
 - `npm run release:check` will not package a release on a run where a check that cannot legitimately skip did not pass. Both viewports are judged separately rather than sharing one summary, Firefox is held to the same contract, and a check that never reported at all is treated as a refusal instead of silence.
