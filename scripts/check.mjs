@@ -950,6 +950,45 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['the security rules both companions share are one rule, not two copies', (() => {
+    // Each of these carries a decision that keeps the companion safe: the
+    // redirect refusal and the post-fetch URL recheck, the JSON MIME gate, the
+    // abort timeout, the bounded read, and the shape a page is allowed to
+    // announce. They are duplicated across the two engine builds because these
+    // files are loaded by a browser rather than bundled, and a presence check
+    // on the function name is what let the blocklist URL rule drift between
+    // six copies and ship that way.
+    //
+    // So the copies are required to agree character for character, and the
+    // check names the first line where they stop. Anything genuinely
+    // engine-specific belongs in a different function, not in a fork of one of
+    // these.
+    // readBlocklistState is deliberately absent: each engine reads its own
+    // storage API there, which is the kind of difference that belongs in a
+    // separate function rather than a fork of a shared one.
+    const pairs = [
+      ['background', background, firefoxBackground, ['fetchApprovedBlocklist', 'readBoundedBody']],
+      ['bridge', bridge, firefoxBridge, ['sanitizeSettings', 'normalizeBlocklistUrl', 'readSettings']],
+    ];
+    const problems = [];
+    for (const [label, chromium, firefox, names] of pairs) {
+      for (const name of names) {
+        const left = extractFunction(chromium, name);
+        const right = extractFunction(firefox, name);
+        if (!left || !right) {
+          problems.push(`${label}: ${name} is missing from one of the two builds`);
+          continue;
+        }
+        if (left === right) continue;
+        const leftLines = left.split('\n');
+        const rightLines = right.split('\n');
+        const at = leftLines.findIndex((line, index) => line !== rightLines[index]);
+        problems.push(`${label}: ${name} differs at line ${at + 1}: ${JSON.stringify(leftLines[at])} vs ${JSON.stringify(rightLines[at])}`);
+      }
+    }
+    if (problems.length) console.error(problems.map((problem) => `  ${problem}`).join('\n'));
+    return problems.length === 0;
+  })()],
   ['every modal open and close re-decides what the page behind it can reach', (() => {
     // The manager is unit-tested in core against a fake body. What only the
     // artifact can show is that every surface which declares aria-modal is

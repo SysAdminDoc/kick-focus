@@ -257,12 +257,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P2
 
-- [ ] P2 — R-134: Extract one shared companion module for the duplicated policy
-  Why: `fetchApprovedBlocklist` is about 33 byte-identical lines in src/extension/background.js and src/extension/background.firefox.js, and `sanitizeSettings` is byte-identical in src/extension/bridge.js and bridge.firefox.js. Both carry security decisions: the redirect refusal, the post-fetch URL recheck, the JSON MIME gate, the size checks, the abort timeout, and the forged-event trust boundary. The blocklist URL rule in the same files had already drifted from core and shipped that way, which is what this audit fixed and gated. The remaining pairs have the same exposure and only a presence check protecting them.
-  Where: src/extension/background.js:121-152, background.firefox.js:151-182, bridge.js:44-74, bridge.firefox.js:57-86; scripts/check.mjs, which asserts only that each file contains the function name
-  Acceptance: One source of record per rule, copied into both engine bundles by the build rather than by hand, or a behavioural parity gate of the shape added for normalizeBlocklistUrl on 2026-08-25.
-  Complexity: M
-
 - [ ] P2 — R-135: Give the command palette and the emote autocomplete honest ARIA
   Why: The palette input has no `role="combobox"`, no `aria-expanded`, and no `aria-activedescendant`; its options hard-code `aria-selected="${index === 0}"`, so assistive technology always reports the first item as selected no matter where the user has tabbed, and Enter always runs the first match. The emote autocomplete declares `role="listbox"` with `role="option"` children while `acceptEmoteCompletion` has exactly one caller, a click handler. Mouse-only acceptance there is deliberate and documented, so the fix is the ARIA, not the behaviour: advertising a listbox a keyboard user can never operate is worse than exposing a plain list.
   Where: src/runtime.js command palette markup and onCommandKeydown; src/runtime.js emote completion markup around the `role="listbox"` host
