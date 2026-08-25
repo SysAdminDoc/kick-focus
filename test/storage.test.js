@@ -182,6 +182,26 @@ test('the byte budget, not the entry count, is what bounds a realistic library',
   assert.equal(plan.full.library.length, LIBRARY_SEED_LIMIT, 'the database still holds every entry');
 });
 
+test('a stored seed carries the number the panel needs, with no write to learn it', { tag: 'unit' }, () => {
+  // The runtime learns the trim from a write. A user who opens settings without
+  // touching an emote never triggers one, so the number has to be readable from
+  // what is already on disk. This is the contract readStoredLibrarySeed uses.
+  const plan = planLibraryPersist(preferences(libraryOf(400)), { seedLimit: 100 });
+  assert.equal(isSeedPartial(plan.seed), true);
+  const total = Number(plan.seed.librarySeedTotal);
+  assert.equal(total, 400);
+  assert.equal(total - plan.seed.library.length, plan.truncated);
+  assert.deepEqual(
+    describeLibrarySeed({ truncated: total - plan.seed.library.length, total }).values,
+    { held: 100, total: 400 },
+  );
+
+  // And a complete seed carries the marker without claiming a trim.
+  const whole = planLibraryPersist(preferences(libraryOf(12)));
+  assert.equal(isSeedPartial(whole.seed), false);
+  assert.equal(Number(whole.seed.librarySeedTotal), 12);
+});
+
 test('a trimmed seed says so, and a complete one stays silent', { tag: 'unit' }, () => {
   assert.equal(describeLibrarySeed({ truncated: 0, total: 400 }), null);
   assert.equal(describeLibrarySeed(), null);

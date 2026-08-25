@@ -7028,7 +7028,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              843963') || 0;
+const BUNDLE_BYTES = Number('              844313') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8580,7 +8580,15 @@ truncated: Number(result?.truncated) || 0,
 total: Array.isArray(value?.library) ? value.library.length : 0,
 };
 }
+function readStoredLibrarySeed() {
+const stored = gmGet(STICKER_PREFERENCES_KEY, {});
+if (!isSeedPartial(stored)) return;
+const total = Number(stored.librarySeedTotal) || 0;
+const held = Array.isArray(stored.library) ? stored.library.length : 0;
+storageHealth.librarySeed = { truncated: Math.max(0, total - held), total };
+}
 async function hydrateLibrary() {
+readStoredLibrarySeed();
 const merged = await libraryStore.hydrate();
 if (!merged) return;
 const value = normalizeStickerPreferences(merged);

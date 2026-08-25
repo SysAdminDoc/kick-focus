@@ -322,10 +322,10 @@ Found during a full-repository audit. Everything the audit fixed is in
   Acceptance: One map keyed by the English string, valued by a per-locale array or record; `tr()` and `trf()` behave identically; both i18n parsers read the new shape; the artifact drops by at least 25,000 bytes; the reserve below the 1,000,000 byte ceiling exceeds 100,000 bytes.
   Complexity: M
 
-- [ ] P1 — R-133: Re-run the live gate and put a current number in README
-  Why: README.md:197 advertises "95/95 live checks pass at 1440x900 (2026-08-21)". scripts/verify-extension.mjs has changed repeatedly since, and this audit changed the settings markup, the accessible names, the motion rules and the blocklist URL rule, all of which that gate reads. A published proof that no longer corresponds to a build is worse than no proof.
-  Where: scripts/verify-extension.mjs; README.md:197; scripts/release-checklist.mjs, which refuses to ship on a partial claim
-  Acceptance: A fresh off-screen Chromium run at 1440x900 and 1920x1080 against the current head, its real pass/skip counts written into README, and the date updated.
+- [ ] P1 — R-133: Prove the second viewport and the Firefox package on v1.39.0
+  Why: the 1440x900 Chromium run was re-done on 2026-08-25 against the shipped build and passes 96/96 with 15 skips, and README now says so. The 1920x1080 run and `npm run verify:firefox` were not repeated, so the README line about the 92-check predecessor at 1920x1080 is still dated 2026-08-19 and the Firefox result is still the v1.34.0 one.
+  Where: scripts/verify-extension.mjs (accepts a viewport), scripts/verify-firefox.mjs, scripts/release-checklist.mjs, README.md:197
+  Acceptance: Both viewports and both engines run against v1.39.0, their real pass and skip counts are in README, and `npm run release:check` is green.
   Complexity: S
 
 ### P2

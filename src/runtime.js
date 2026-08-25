@@ -2760,7 +2760,25 @@ function noteLibrarySeed(result, value) {
  * browsing, a blocked upgrade — this returns nothing and the seed remains the
  * store, which is exactly the behaviour every build had before.
  */
+/**
+ * How much of the library the seed on disk is holding, before anything is
+ * written.
+ *
+ * `noteLibrarySeed` only learns the number from a write, so a user who opens
+ * settings without touching an emote saw nothing at all even with a seed that
+ * had been trimmed on a previous visit. The stored value carries its own total,
+ * which is exactly what `isSeedPartial` reads, so the answer is already on disk.
+ */
+function readStoredLibrarySeed() {
+  const stored = gmGet(STICKER_PREFERENCES_KEY, {});
+  if (!isSeedPartial(stored)) return;
+  const total = Number(stored.librarySeedTotal) || 0;
+  const held = Array.isArray(stored.library) ? stored.library.length : 0;
+  storageHealth.librarySeed = { truncated: Math.max(0, total - held), total };
+}
+
 async function hydrateLibrary() {
+  readStoredLibrarySeed();
   const merged = await libraryStore.hydrate();
   if (!merged) return;
   const value = normalizeStickerPreferences(merged);
