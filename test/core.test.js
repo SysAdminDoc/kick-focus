@@ -1340,17 +1340,26 @@ test('a modal makes the page behind it inert, and gives it back exactly as it wa
   manager.sync(true);
   assert.equal(late.isInert, true, 'a sibling added while the modal was open stayed reachable');
 
-  // Nesting: the reset dialog opens over Settings and closes under it. Only the
-  // last close may release the page.
+  // A node Kick detached while a modal was open is cleared too, not skipped.
+  // One that comes back still carrying `inert` has no owner, and the next open
+  // records that as its prior state, so every close from then on restores it to
+  // inert: a permanently unreachable region that only a reload heals.
+  const detached = node('portal');
+  body.children.push(detached);
   manager.sync(true);
-  manager.sync(true);
-  assert.equal(kickShell.isInert, true);
+  assert.equal(detached.isInert, true);
+  detached.isConnected = false;
 
-  // A node Kick removed mid-modal must not throw on the way out.
-  const removed = node('gone');
-  body.children.push(removed);
+  manager.sync(false);
+  assert.equal(detached.isInert, false, 'a node detached mid-modal was left inert with nobody owning it');
+
+  // And re-attaching it does not poison the next modal: it is recorded as the
+  // ordinary, reachable node it is.
+  detached.isConnected = true;
+  body.children.push(detached);
   manager.sync(true);
-  removed.isConnected = false;
+  manager.sync(false);
+  assert.equal(detached.isInert, false);
 
   manager.sync(false);
   assert.equal(kickShell.isInert, false, 'the page was left inert after the modal closed');
@@ -1393,6 +1402,35 @@ test('one undo slot, and it says which destructive action it holds', { tag: 'uni
   // restores nothing is worse than offering none.
   assert.equal(readUndoSlot({ action: 'reset-all', payload: null }).action, 'import',
     'a slot with no payload was read as a reset with nothing in it');
+});
+
+test('an inner overlay closing does not uncover the page under the outer one', { tag: 'unit' }, () => {
+  // The inert manager takes "is anything open" as an argument; the answer comes
+  // from the same ladder the focus trap ranks. That is what stands in for a
+  // reference count, so it is what has to be tested: a counter is the thing
+  // that leaves a page permanently inert the day one close path stops running.
+  const anyOpen = (open) => Boolean(topmostOverlayLayer(open));
+
+  // Grid opens over Settings, then closes. Settings is still up, so the page
+  // behind it must stay out of reach.
+  assert.equal(anyOpen({ settings: true }), true);
+  assert.equal(anyOpen({ settings: true, multistream: true }), true);
+  assert.equal(anyOpen({ settings: true, multistream: false }), true, 'closing the grid uncovered the page under Settings');
+  assert.equal(anyOpen({ settings: false, multistream: false }), false);
+
+  // Every combination that has anything open reads as open, in either order,
+  // so no close path can release the page early by being taken first.
+  for (const outer of ['settings', 'command', 'multistream']) {
+    for (const inner of ['settings', 'command', 'multistream']) {
+      if (outer === inner) continue;
+      assert.equal(anyOpen({ [outer]: true, [inner]: true }), true);
+      assert.equal(anyOpen({ [outer]: true, [inner]: false }), true, `${inner} closing released the page under ${outer}`);
+    }
+  }
+
+  // And a name the ladder does not carry cannot hold the page inert on its own.
+  assert.equal(anyOpen({ resetConfirm: true }), false);
+  assert.equal(anyOpen({}), false);
 });
 
 test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {

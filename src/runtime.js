@@ -128,6 +128,7 @@ const state = {
   followingPreview: null,
   followingPreviewRow: null,
   chatResizeCleanup: null,
+  chatSeparator: null,
   lastFocused: null,
   commandOpener: null,
   multistreamOpener: null,
@@ -2592,9 +2593,69 @@ function setChatSeparatorValue(separator, width) {
   separator.setAttribute('aria-valuetext', trf('Chat width {width} pixels', { width }));
 }
 
+/**
+ * Decorate Kick's separator, remembering what it looked like first.
+ *
+ * Kick owns this element. Everything written here is written back on the way
+ * out, which the panic switch depends on: it used to leave a focusable tab stop
+ * announcing "separator, Chat width 410 pixels" on a page where Kick Focus was
+ * supposed to be gone, with arrow keys still swallowed by a suspended mod.
+ *
+ * The values are overwritten rather than only filled in. A `tabindex="-1"` from
+ * Kick would otherwise silently make the whole keyboard feature unreachable,
+ * with nothing to show for it.
+ */
+const SEPARATOR_ATTRIBUTES = ['role', 'tabindex', 'aria-orientation', 'aria-controls', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'];
+
+function decorateChatSeparator(separator, owner) {
+  if (!state.chatSeparator || state.chatSeparator.element !== separator) {
+    releaseChatSeparator();
+    state.chatSeparator = {
+      element: separator,
+      owner,
+      // null means "there was no attribute", which is not the same as an empty
+      // one, so restoring can tell remove from set-to-nothing.
+      attributes: Object.fromEntries(SEPARATOR_ATTRIBUTES.map((name) => [name, separator.getAttribute(name)])),
+      addedId: owner.id ? '' : 'kf-chat-panel',
+    };
+  }
+  const record = state.chatSeparator;
+  if (record.addedId) owner.id = record.addedId;
+  separator.setAttribute('role', 'separator');
+  separator.setAttribute('tabindex', '0');
+  // A separator's implicit orientation is horizontal, whose expected keys are
+  // Up and Down. This one is vertical and answers Left and Right.
+  separator.setAttribute('aria-orientation', 'vertical');
+  separator.setAttribute('aria-controls', owner.id);
+  separator.setAttribute('aria-valuemin', String(CHAT_WIDTH_MIN));
+  separator.setAttribute('aria-valuemax', String(CHAT_WIDTH_MAX));
+  setChatSeparatorValue(separator, state.settings.layout.chatWidth);
+  bindChatResizer(separator);
+}
+
+function releaseChatSeparator() {
+  const record = state.chatSeparator;
+  state.chatSeparator = null;
+  if (!record) return;
+  record.controller?.abort();
+  const { element, owner, attributes, addedId } = record;
+  for (const [name, value] of Object.entries(attributes)) {
+    if (value === null) element.removeAttribute(name);
+    else element.setAttribute(name, value);
+  }
+  if (addedId && owner?.id === addedId) owner.removeAttribute('id');
+}
+
 function bindChatResizer(separator) {
-  if (separator.dataset.kfChatResizeBound === 'true') return;
-  separator.dataset.kfChatResizeBound = 'true';
+  // Bound through a controller rather than a dataset flag. The panic switch
+  // strips every kf* dataset key from this element, which used to take the
+  // idempotence flag with it: resuming bound a second set of listeners, so one
+  // arrow press moved the separator twice and saved twice, once more for every
+  // pause and resume.
+  if (state.chatSeparator?.controller) return;
+  const controller = new AbortController();
+  const { signal } = controller;
+  if (state.chatSeparator) state.chatSeparator.controller = controller;
   separator.addEventListener('pointerdown', guard('chat resize', (event) => {
     if (event.button !== 0 || event.isPrimary === false || !['right', 'left'].includes(state.settings.layout.chat)) return;
     const panel = separator.nextElementSibling || findProbe(document, 'chatPanel').element;
@@ -2634,7 +2695,7 @@ function bindChatResizer(separator) {
     window.addEventListener('pointermove', move, true);
     window.addEventListener('pointerup', finish, true);
     window.addEventListener('pointercancel', finish, true);
-  }), true);
+  }), { capture: true, signal });
 
   // The keyboard half. Held arrows repeat keydown and fire one keyup, so the
   // width follows every press and the save happens once at the end of the run,
@@ -2665,11 +2726,11 @@ function bindChatResizer(separator) {
     state.settings.layout.chatWidth = next;
     document.documentElement.style.setProperty('--kf-chat-width', `${next}px`);
     setChatSeparatorValue(separator, next);
-  }));
-  separator.addEventListener('keyup', guard('chat resize keys', commitKeyResize));
+  }), { signal });
+  separator.addEventListener('keyup', guard('chat resize keys', commitKeyResize), { signal });
   // Tabbing away mid-hold would otherwise leave the new width applied but never
   // written, so it would come back on the next load.
-  separator.addEventListener('blur', guard('chat resize keys', commitKeyResize));
+  separator.addEventListener('blur', guard('chat resize keys', commitKeyResize), { signal });
 }
 
 function tagChatPanel() {
@@ -2693,17 +2754,7 @@ function tagChatPanel() {
       if (previous !== row) delete previous.dataset.kfChannelRow;
     }
     if (row && row !== document.body) row.dataset.kfChannelRow = 'true';
-    // Kick's own resizer answers the first probe by test id, which carries no
-    // role at all, so the range values below would describe nothing. A role it
-    // already has is left alone rather than overwritten.
-    if (!separator.getAttribute('role')) separator.setAttribute('role', 'separator');
-    if (!separator.hasAttribute('tabindex')) separator.setAttribute('tabindex', '0');
-    if (!owner.id) owner.id = 'kf-chat-panel';
-    separator.setAttribute('aria-controls', owner.id);
-    separator.setAttribute('aria-valuemin', String(CHAT_WIDTH_MIN));
-    separator.setAttribute('aria-valuemax', String(CHAT_WIDTH_MAX));
-    setChatSeparatorValue(separator, state.settings.layout.chatWidth);
-    bindChatResizer(separator);
+    decorateChatSeparator(separator, owner);
   }
 }
 
@@ -11570,6 +11621,12 @@ function insertStickerName(target) {
     showToast('That emote has no plain name to type.', true);
     return;
   }
+  // The only button that reaches here lives on the Settings emotes page, and
+  // the page behind an open modal is inert, so Kick's composer was not
+  // focusable and every press fell through to the clipboard fallback. Typing
+  // into chat is also a request to be looking at chat, so Settings closes
+  // first rather than the page being made reachable underneath it.
+  closeSettings();
   const input = chatMessageInput();
   if (!input) {
     showToast('Open a channel chat first.', true);
@@ -11668,7 +11725,6 @@ function restoreShortcuts() {
 
 function clearEnhancedPage() {
   const root = document.documentElement;
-  releasePageInert();
   state.chatResizeCleanup?.();
   state.chatResizeCleanup = null;
   clearStickerUI();
@@ -11729,6 +11785,18 @@ function clearEnhancedPage() {
   state.runtime.chatScrollTop = null;
   if (state.modal) state.modal.hidden = true;
   if (state.command) state.command.hidden = true;
+  // The grid was left open on top of a page this had just made reachable
+  // again, so it kept saying aria-modal while everything behind it answered
+  // the pointer and the accessibility tree. Pausing means every surface goes.
+  if (multistreamOpen()) {
+    closeChatWindow();
+    closeMergedChat();
+    closeMultistream();
+  }
+  // Kick's separator gets its own attributes back, and the keyboard with them.
+  releaseChatSeparator();
+  // Last, once nothing is open to keep it inert.
+  releasePageInert();
   state.profileStatsHost?.remove?.();
   state.runtime.suspended = true;
   syncQuickButton();
@@ -11736,6 +11804,9 @@ function clearEnhancedPage() {
 
 function restoreEnhancedPage() {
   state.runtime.suspended = false;
+  // Nothing should be open across a pause, but resuming must not be the one
+  // path that leaves the page's reachability out of step with what is on top.
+  syncPageInert();
   addStyle(SITE_CSS);
   applySettingsAttributes();
   installDocumentObserver();

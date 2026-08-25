@@ -54,8 +54,13 @@ export const LOCATOR_PROBES = Object.freeze({
   ]),
   chatSeparator: Object.freeze([
     Object.freeze({ id: 'chat-resizer-testid', selector: '[data-testid="chat-resizer"], [data-kf-chat-resizer]' }),
-    Object.freeze({ id: 'chat-resizer-values', selector: '[role="separator"][aria-valuemin][aria-valuemax]' }),
-    Object.freeze({ id: 'chat-resizer-label', selector: '[role="separator"][aria-label*="chat" i]' }),
+    // Excluding this build's own decoration on purpose. tagChatPanel writes
+    // role="separator" plus the range values onto whatever won, so without the
+    // :not() a mid-session disappearance of Kick's test id would fall through
+    // to a probe matching Kick Focus's own attributes and report healthy,
+    // which is the opposite of what a drift detector is for.
+    Object.freeze({ id: 'chat-resizer-values', selector: '[role="separator"][aria-valuemin][aria-valuemax]:not([data-kf-chat-separator])' }),
+    Object.freeze({ id: 'chat-resizer-label', selector: '[role="separator"][aria-label*="chat" i]:not([data-kf-chat-separator])' }),
   ]),
   chatPanel: Object.freeze([
     Object.freeze({ id: 'chat-panel-id', selector: '#channel-chatroom' }),

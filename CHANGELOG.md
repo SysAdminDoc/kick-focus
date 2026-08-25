@@ -6,6 +6,9 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Changed
 
+- Pausing Kick Focus now closes the multi-stream grid with everything else and hands Kick's chat separator back exactly as it was found, including its keyboard. Pausing used to leave the grid on screen over a page that had already been made reachable again, and left a focusable separator behind that a paused mod was still steering.
+- "Type in chat" works from the emote page again. The page behind an open dialog is out of reach by design, which is where Kick's message box lives, so every press fell through to the clipboard. It closes the panel first now, which is where you wanted to be looking anyway.
+
 - Resetting a page or every setting happens straight away instead of opening a confirmation. A confirmation is dismissed by reflex and cannot be taken back once accepted, so what you get now is the action plus one step of undo, offered in the toast and kept on the About page until the next import or reset. Your recorded emote library is still kept either way.
 
 ### Fixed

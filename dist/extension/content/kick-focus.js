@@ -1162,7 +1162,6 @@ let snapshot = null;
 function release() {
 if (!snapshot) return;
 for (const [node, wasInert] of snapshot) {
-if (node.isConnected === false) continue;
 if (wasInert) node.setAttribute('inert', '');
 else node.removeAttribute('inert');
 }
@@ -3483,8 +3482,8 @@ Object.freeze({ id: 'sidebar-expand-label', selector: '[aria-label="Expand sideb
 ]),
 chatSeparator: Object.freeze([
 Object.freeze({ id: 'chat-resizer-testid', selector: '[data-testid="chat-resizer"], [data-kf-chat-resizer]' }),
-Object.freeze({ id: 'chat-resizer-values', selector: '[role="separator"][aria-valuemin][aria-valuemax]' }),
-Object.freeze({ id: 'chat-resizer-label', selector: '[role="separator"][aria-label*="chat" i]' }),
+Object.freeze({ id: 'chat-resizer-values', selector: '[role="separator"][aria-valuemin][aria-valuemax]:not([data-kf-chat-separator])' }),
+Object.freeze({ id: 'chat-resizer-label', selector: '[role="separator"][aria-label*="chat" i]:not([data-kf-chat-separator])' }),
 ]),
 chatPanel: Object.freeze([
 Object.freeze({ id: 'chat-panel-id', selector: '#channel-chatroom' }),
@@ -6413,6 +6412,7 @@ profileStatsButton: null,
 followingPreview: null,
 followingPreviewRow: null,
 chatResizeCleanup: null,
+chatSeparator: null,
 lastFocused: null,
 commandOpener: null,
 multistreamOpener: null,
@@ -7086,7 +7086,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              844554') || 0;
+const BUNDLE_BYTES = Number('              845868') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8504,9 +8504,45 @@ function setChatSeparatorValue(separator, width) {
 separator.setAttribute('aria-valuenow', String(width));
 separator.setAttribute('aria-valuetext', trf('Chat width {width} pixels', { width }));
 }
+const SEPARATOR_ATTRIBUTES = ['role', 'tabindex', 'aria-orientation', 'aria-controls', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'];
+function decorateChatSeparator(separator, owner) {
+if (!state.chatSeparator || state.chatSeparator.element !== separator) {
+releaseChatSeparator();
+state.chatSeparator = {
+element: separator,
+owner,
+attributes: Object.fromEntries(SEPARATOR_ATTRIBUTES.map((name) => [name, separator.getAttribute(name)])),
+addedId: owner.id ? '' : 'kf-chat-panel',
+};
+}
+const record = state.chatSeparator;
+if (record.addedId) owner.id = record.addedId;
+separator.setAttribute('role', 'separator');
+separator.setAttribute('tabindex', '0');
+separator.setAttribute('aria-orientation', 'vertical');
+separator.setAttribute('aria-controls', owner.id);
+separator.setAttribute('aria-valuemin', String(CHAT_WIDTH_MIN));
+separator.setAttribute('aria-valuemax', String(CHAT_WIDTH_MAX));
+setChatSeparatorValue(separator, state.settings.layout.chatWidth);
+bindChatResizer(separator);
+}
+function releaseChatSeparator() {
+const record = state.chatSeparator;
+state.chatSeparator = null;
+if (!record) return;
+record.controller?.abort();
+const { element, owner, attributes, addedId } = record;
+for (const [name, value] of Object.entries(attributes)) {
+if (value === null) element.removeAttribute(name);
+else element.setAttribute(name, value);
+}
+if (addedId && owner?.id === addedId) owner.removeAttribute('id');
+}
 function bindChatResizer(separator) {
-if (separator.dataset.kfChatResizeBound === 'true') return;
-separator.dataset.kfChatResizeBound = 'true';
+if (state.chatSeparator?.controller) return;
+const controller = new AbortController();
+const { signal } = controller;
+if (state.chatSeparator) state.chatSeparator.controller = controller;
 separator.addEventListener('pointerdown', guard('chat resize', (event) => {
 if (event.button !== 0 || event.isPrimary === false || !['right', 'left'].includes(state.settings.layout.chat)) return;
 const panel = separator.nextElementSibling || findProbe(document, 'chatPanel').element;
@@ -8544,7 +8580,7 @@ state.chatResizeCleanup = cleanup;
 window.addEventListener('pointermove', move, true);
 window.addEventListener('pointerup', finish, true);
 window.addEventListener('pointercancel', finish, true);
-}), true);
+}), { capture: true, signal });
 let keyStartWidth = null;
 const commitKeyResize = () => {
 if (keyStartWidth === null) return;
@@ -8566,9 +8602,9 @@ if (next === state.settings.layout.chatWidth) return;
 state.settings.layout.chatWidth = next;
     document.documentElement.style.setProperty('--kf-chat-width', `${next}px`);
 setChatSeparatorValue(separator, next);
-}));
-separator.addEventListener('keyup', guard('chat resize keys', commitKeyResize));
-separator.addEventListener('blur', guard('chat resize keys', commitKeyResize));
+}), { signal });
+separator.addEventListener('keyup', guard('chat resize keys', commitKeyResize), { signal });
+separator.addEventListener('blur', guard('chat resize keys', commitKeyResize), { signal });
 }
 function tagChatPanel() {
 const separator = findProbe(document, 'chatSeparator').element;
@@ -8591,14 +8627,7 @@ for (const previous of document.querySelectorAll('[data-kf-channel-row]')) {
 if (previous !== row) delete previous.dataset.kfChannelRow;
 }
 if (row && row !== document.body) row.dataset.kfChannelRow = 'true';
-if (!separator.getAttribute('role')) separator.setAttribute('role', 'separator');
-if (!separator.hasAttribute('tabindex')) separator.setAttribute('tabindex', '0');
-if (!owner.id) owner.id = 'kf-chat-panel';
-separator.setAttribute('aria-controls', owner.id);
-separator.setAttribute('aria-valuemin', String(CHAT_WIDTH_MIN));
-separator.setAttribute('aria-valuemax', String(CHAT_WIDTH_MAX));
-setChatSeparatorValue(separator, state.settings.layout.chatWidth);
-bindChatResizer(separator);
+decorateChatSeparator(separator, owner);
 }
 }
 function readPersistentArray(key) {
@@ -15857,6 +15886,7 @@ if (!plan.ok) {
 showToast('That emote has no plain name to type.', true);
 return;
 }
+closeSettings();
 const input = chatMessageInput();
 if (!input) {
 showToast('Open a channel chat first.', true);
@@ -15948,7 +15978,6 @@ renderSettingsPage();
 }
 function clearEnhancedPage() {
 const root = document.documentElement;
-releasePageInert();
 state.chatResizeCleanup?.();
 state.chatResizeCleanup = null;
 clearStickerUI();
@@ -16004,12 +16033,20 @@ state.runtime.chatScrollAnchor = null;
 state.runtime.chatScrollTop = null;
 if (state.modal) state.modal.hidden = true;
 if (state.command) state.command.hidden = true;
+if (multistreamOpen()) {
+closeChatWindow();
+closeMergedChat();
+closeMultistream();
+}
+releaseChatSeparator();
+releasePageInert();
 state.profileStatsHost?.remove?.();
 state.runtime.suspended = true;
 syncQuickButton();
 }
 function restoreEnhancedPage() {
 state.runtime.suspended = false;
+syncPageInert();
 addStyle(SITE_CSS);
 applySettingsAttributes();
 installDocumentObserver();

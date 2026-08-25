@@ -1997,7 +1997,12 @@ export function createPageInertManager(getBody, isOwn) {
   function release() {
     if (!snapshot) return;
     for (const [node, wasInert] of snapshot) {
-      if (node.isConnected === false) continue;
+      // Detached nodes are cleared too, not skipped. Kick moves body-level
+      // containers around, and one that was detached mid-modal used to come
+      // back still carrying `inert` with nobody owning it. The next modal then
+      // recorded that as its prior state, so every close from then on restored
+      // it to inert: a permanently unreachable region of the page that only a
+      // reload healed.
       if (wasInert) node.setAttribute('inert', '');
       else node.removeAttribute('inert');
     }

@@ -18,7 +18,7 @@
  * The parser below is deliberately small and deliberately not a browser. It
  * covers what `LOCATOR_PROBES` actually uses: type, id, class, attribute
  * presence and `=`/`^=`/`*=` with the `i` flag, descendant and child
- * combinators, selector lists, and `:has()`. Anything richer than that belongs
+ * combinators, selector lists, `:has()` and `:not()`. Anything richer belongs
  * in the live gate, which has a real engine. Zero dependencies is a project
  * rule, so no jsdom.
  */
@@ -263,7 +263,9 @@ function parseCompound(source) {
   const parts = [];
   let rest = source;
   while (rest) {
-    if (rest.startsWith(':has(')) {
+    // :not() and :has() are parsed the same way; only the verdict differs.
+    const functional = rest.startsWith(':has(') ? 'has' : rest.startsWith(':not(') ? 'not' : '';
+    if (functional) {
       let depth = 0;
       let end = -1;
       for (let i = 4; i < rest.length; i += 1) {
@@ -276,8 +278,8 @@ function parseCompound(source) {
           }
         }
       }
-      if (end === -1) throw new Error(`unbalanced :has() in ${source}`);
-      parts.push({ kind: 'has', value: parseSelectorList(rest.slice(5, end)) });
+      if (end === -1) throw new Error(`unbalanced :${functional}() in ${source}`);
+      parts.push({ kind: functional, value: parseSelectorList(rest.slice(5, end)) });
       rest = rest.slice(end + 1);
       continue;
     }
@@ -324,6 +326,9 @@ function matchCompound(node, compound) {
     if (part.kind === 'class' && !node.className.split(/\s+/).includes(part.value)) return false;
     if (part.kind === 'attribute' && !attributeMatches(node, part)) return false;
     if (part.kind === 'has' && !part.value.some((steps) => runSteps([node], steps).length)) return false;
+    // :not() is scoped to the node itself, not to its subtree, so it asks
+    // whether this compound matches rather than whether anything below does.
+    if (part.kind === 'not' && part.value.some((steps) => steps.length === 1 && matchCompound(node, steps[0].compound))) return false;
   }
   return true;
 }
@@ -509,6 +514,20 @@ test('the fixture parser resolves the selector shapes the probes actually use', 
   // element must not swallow the rest of the document.
   assert.equal(document.querySelectorAll('#not-real').length, 0);
   assert.equal(document.querySelectorAll('img[alt]').length, 1);
+
+  // :not(), which the chat separator probes use to refuse a match held up only
+  // by this build's own decoration. Both an element Kick shipped and one Kick
+  // Focus decorated are present, and only Kick's may resolve.
+  const separators = parseFixture(`<!doctype html><html lang="en"><body>
+    <div role="separator" aria-valuemin="320" aria-valuemax="520"></div>
+    <div role="separator" aria-valuemin="320" aria-valuemax="520" data-kf-chat-separator="true"></div>
+  </body></html>`);
+  assert.equal(separators.querySelectorAll('[role="separator"][aria-valuemin][aria-valuemax]').length, 2);
+  assert.equal(
+    separators.querySelectorAll('[role="separator"][aria-valuemin][aria-valuemax]:not([data-kf-chat-separator])').length,
+    1,
+    'the parser ignored :not(), so the drift probes are not being tested at all',
+  );
 
   const link = document.querySelector('a[href]');
   assert.equal(link.href, 'https://kick.com/');

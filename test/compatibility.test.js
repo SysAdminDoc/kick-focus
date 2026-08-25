@@ -40,7 +40,7 @@ test('ordered compatibility probes match current and localized shell shapes', { 
     query: {
       '#main-container': main,
       '[data-kf-sidebar], [data-kick-sidebar]': sidebar,
-      '[role="separator"][aria-valuemin][aria-valuemax]': separator,
+      '[role="separator"][aria-valuemin][aria-valuemax]:not([data-kf-chat-separator])': separator,
       '[data-testid="chatroom"], [data-kf-chat-panel]': panel,
     },
   });
@@ -56,6 +56,29 @@ test('ordered compatibility probes match current and localized shell shapes', { 
     chatPanel: 'chat-panel-testid',
     card: 'card-testid',
   });
+});
+
+test('the separator probes ignore this build own decoration', { tag: 'unit' }, () => {
+  // tagChatPanel writes role="separator" plus the range values onto whichever
+  // element won. Without the :not(), the day Kick's test id disappears the
+  // fallback probes would match Kick Focus's own attributes and report a
+  // healthy shell, which is the opposite of what a drift detector is for.
+  const decoratedOnly = new FakeNode();
+  const root = new FakeNode({
+    query: {
+      '#main-container': new FakeNode(),
+      '[data-kf-sidebar], [data-kick-sidebar]': new FakeNode(),
+      // Kick's own test id is gone; only what this build wrote is left, and it
+      // carries the marker tagChatPanel stamps beside the range values.
+      '[role="separator"][aria-valuemin][aria-valuemax][data-kf-chat-separator]': decoratedOnly,
+      '[data-testid="chatroom"], [data-kf-chat-panel]': new FakeNode(),
+    },
+  });
+
+  const snapshot = compatibilitySnapshot(root, { expectedChat: true });
+  assert.equal(snapshot.healthy, false, 'a shell held up only by this build own attributes reported healthy');
+  assert.ok(snapshot.missing.includes('chat'), 'the missing hook was not named');
+  assert.equal(snapshot.probes.chatSeparator, null);
 });
 
 test('compatibility self-test is route-aware and names missing hooks', { tag: 'unit' }, () => {

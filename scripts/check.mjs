@@ -979,8 +979,45 @@ const checks = [
       && region.includes('chatWidthAfterKey(state.settings.layout.chat')
       // Held arrows repeat keydown and fire one keyup, so the write belongs to
       // the end of the run. A commit inside keydown would save on every repeat.
-      && /addEventListener\('keyup'[\s\S]{0,80}commitKeyResize/.test(region)
-      && !/addEventListener\('keydown'[\s\S]*?updateSetting\('layout\.chatWidth'[\s\S]*?addEventListener\('keyup'/.test(region);
+      && /addEventListener\('keyup'[\s\S]{0,90}commitKeyResize/.test(region)
+      // The keydown handler applies; it does not save. Matching only the literal
+      // updateSetting call missed the obvious regression, which is to move the
+      // commit itself into keydown, so the handler body is extracted and checked
+      // for either spelling.
+      && (() => {
+        const head = region.indexOf("addEventListener('keydown'");
+        const tail = region.indexOf("addEventListener('keyup'", head);
+        const keydown = head >= 0 && tail > head ? region.slice(head, tail) : '';
+        return Boolean(keydown)
+          && !keydown.includes('updateSetting(')
+          && !keydown.includes('commitKeyResize');
+      })()
+      // Every attribute the decoration writes is one the release puts back, or
+      // the panic switch hands Kick a separator this build is still steering.
+      && (() => {
+        const decorate = extractFunction(source, 'decorateChatSeparator');
+        const listed = source.slice(source.indexOf('const SEPARATOR_ATTRIBUTES'), source.indexOf('function decorateChatSeparator'));
+        const written = [...decorate.matchAll(/setAttribute\('([a-z-]+)'/g)].map((match) => match[1]);
+        return written.length >= 6
+          && written.every((name) => listed.includes(`'${name}'`))
+          && extractFunction(source, 'releaseChatSeparator').includes('removeAttribute(name)');
+      })()
+      // Listeners come off with it. A dataset flag did not survive the panic
+      // switch's own attribute sweep, so resuming bound a second set.
+      && region.includes('new AbortController()')
+      && !region.includes('kfChatResizeBound');
+  })()],
+  ['pausing hands Kick back every surface, in an order that can release the page', (() => {
+    const region = extractFunction(source, 'clearEnhancedPage');
+    const grid = region.indexOf('closeMultistream()');
+    const separator = region.indexOf('releaseChatSeparator()');
+    const release = region.indexOf('releasePageInert()');
+    // The grid used to be left open over a page this had just made reachable
+    // again, so it kept claiming aria-modal while everything behind it answered
+    // the pointer. Releasing before the surfaces close is the same defect in
+    // the other order.
+    return grid >= 0 && separator >= 0 && release > grid && release > separator
+      && extractFunction(source, 'restoreEnhancedPage').includes('syncPageInert()');
   })()],
   ['composer recall is opt-in, session-only, and leaves plain ArrowUp to Kick', (() => {
     const start = source.indexOf('function rememberComposerMessage');
