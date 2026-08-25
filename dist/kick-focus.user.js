@@ -1295,7 +1295,9 @@ favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.
 playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
 hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
 blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription)
-&& Boolean(normalizeBlocklistUrl(content.blocklistUrl)),
+&& !(typeof content.blocklistUrl === 'string'
+&& content.blocklistUrl.trim() !== ''
+&& !normalizeBlocklistUrl(content.blocklistUrl)),
 blocklistUrl: normalizeBlocklistUrl(content.blocklistUrl),
 blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
 liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
@@ -7040,7 +7042,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              845397') || 0;
+const BUNDLE_BYTES = Number('              845474') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `

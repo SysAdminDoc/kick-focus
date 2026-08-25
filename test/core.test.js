@@ -1156,8 +1156,33 @@ test('a subscription cannot outlive the URL it points at', { tag: 'unit' }, () =
   assert.equal(kept.content.blocklistUrl, 'https://feeds.example/list.json');
   assert.equal(kept.content.blocklistSubscription, true);
 
-  // And an empty URL was never a working subscription to begin with.
-  assert.equal(normalizeSettings({ content: { blocklistSubscription: true } }).content.blocklistSubscription, false);
+  // Anything the rule refuses takes the switch with it, not just credentials.
+  assert.equal(
+    normalizeSettings({ content: { blocklistSubscription: true, blocklistUrl: 'not a url' } })
+      .content.blocklistSubscription,
+    false,
+  );
+
+  // But an *absent* URL is not a rejected one. `updateSetting` sends the whole
+  // settings object back through normalizeSettings on every change, and the
+  // panel lists the switch above the URL field, so a rule that cleared the flag
+  // whenever the URL was empty made the ordinary top-to-bottom sequence
+  // impossible: the switch snapped back to Off under the pointer and the feed
+  // could never be turned on at all. This walks that sequence.
+  let live = normalizeSettings({});
+  assert.equal(live.content.blocklistSubscription, false, 'a fresh profile is not subscribed');
+  live = normalizeSettings({ ...live, content: { ...live.content, blocklistSubscription: true } });
+  assert.equal(live.content.blocklistSubscription, true, 'the switch would not stay on with the field still empty');
+  live = normalizeSettings({ ...live, content: { ...live.content, blocklistUrl: 'https://feeds.example/l.json' } });
+  assert.equal(live.content.blocklistSubscription, true, 'pasting the URL turned the switch back off');
+  assert.equal(live.content.blocklistUrl, 'https://feeds.example/l.json');
+
+  // Whitespace is still a user part-way through typing, not a rejection.
+  assert.equal(
+    normalizeSettings({ content: { blocklistSubscription: true, blocklistUrl: '   ' } })
+      .content.blocklistSubscription,
+    true,
+  );
 });
 
 test('import round-trips the previously omitted stores with their bounds enforced', { tag: 'unit' }, () => {

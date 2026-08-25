@@ -2136,13 +2136,21 @@ export function normalizeSettings(input) {
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
-      // A subscription cannot survive its own URL being rejected. Tightening the
-      // rule to refuse credentials blanks a URL somebody already had saved, and
-      // leaving the switch on next to an empty field pins the sync in a
-      // permanent error state with nothing on screen explaining it. Off with an
-      // empty field is at least a state the user can read and act on.
+      // A subscription cannot survive its own URL being *rejected*. Tightening
+      // the rule to refuse credentials blanks a URL somebody already had saved,
+      // and leaving the switch on next to an empty field pins the sync in a
+      // permanent error state with nothing on screen explaining it.
+      //
+      // Rejected, not merely absent. `updateSetting` sends the whole settings
+      // object back through here on every change, and the panel lists the
+      // switch above the URL field, so clearing the flag whenever the URL is
+      // empty made the ordinary top-to-bottom sequence impossible: the switch
+      // snapped back to Off under the pointer and the feed could never be
+      // turned on at all.
       blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription)
-        && Boolean(normalizeBlocklistUrl(content.blocklistUrl)),
+        && !(typeof content.blocklistUrl === 'string'
+          && content.blocklistUrl.trim() !== ''
+          && !normalizeBlocklistUrl(content.blocklistUrl)),
       blocklistUrl: normalizeBlocklistUrl(content.blocklistUrl),
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
       liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),

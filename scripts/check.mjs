@@ -611,6 +611,15 @@ for (const [name, text, budget] of SIZE_BUDGETS) {
  */
 const INJECTION_CEILING = 1_000_000;
 const INJECTION_BUDGET = 925_000;
+// The About panel prints this number, from its own copy in runtime.js. They were
+// hand-copied with nothing comparing them, so moving one would have left the
+// panel advertising a budget the build no longer enforced.
+const runtimeInjectionBudget = Number(
+  (runtimeModuleSource.match(/const INJECTION_BYTE_BUDGET = (\d+);/) || [])[1],
+);
+const runtimeBundleCeiling = Number(
+  (runtimeModuleSource.match(/const BUNDLE_BYTE_CEILING = (\d+);/) || [])[1],
+);
 /**
  * Bytes, not characters.
  *
@@ -877,6 +886,8 @@ const syntaxFailures = (await Promise.all(
 )).filter(Boolean);
 
 const checks = [
+  [`the About panel advertises the budget the build enforces (${runtimeInjectionBudget} vs ${INJECTION_BUDGET}, ceiling ${runtimeBundleCeiling} vs ${INJECTION_CEILING})`,
+    runtimeInjectionBudget === INJECTION_BUDGET && runtimeBundleCeiling === INJECTION_CEILING],
   [`every source file is valid JavaScript before the build touches it${syntaxFailures.length ? `: ${syntaxFailures[0]}` : ''}`,
     syntaxFailures.length === 0],
   [`every stylesheet that animates guards motion, after the rules it overrides${unguardedMotion.length ? `: ${unguardedMotion.join('; ')}` : ''}`,
@@ -970,17 +981,29 @@ const checks = [
     const start = source.indexOf('const SESSION_WATCH_MEDIA_EVENTS');
     const end = source.indexOf('function readNumber', start);
     const region = start >= 0 && end > start ? source.slice(start, end) : '';
+    // The candidate is measured in its own function now, so the two facts that
+    // used to sit in this region live in a second one. Scoped to that function
+    // rather than to the whole artifact: `source.includes` over 845 KB proves
+    // only that a string exists somewhere, which is not what this check is for.
+    const measureStart = source.indexOf('function sessionWatchVideoCandidate');
+    const measureEnd = source.indexOf('function sessionWatchOwnerCandidate', measureStart);
+    const measure = measureStart >= 0 && measureEnd > measureStart
+      ? source.slice(measureStart, measureEnd)
+      : '';
     return source.includes("Object.freeze({ id: 'watch', source: 'local' })")
       && source.includes("watch: { elapsedMs: 0, activeSince: 0 }")
       && source.includes("'Session watch time'")
       && source.includes("'This browser session only'")
       && region.includes("state.route === 'channel'")
-      && source.includes("documentVisible: document.visibilityState !== 'hidden'")
-      && source.includes('visible: videoIsVisible(video)')
+      && measure.includes("documentVisible: document.visibilityState !== 'hidden'")
+      && measure.includes('visible: videoIsVisible(video)')
+      && measure.includes('route: state.route')
       && source.includes('function sessionWatchOwnerCandidate()')
       && region.includes('sessionWatchCandidateState({')
       && region.includes('state.viewerHub.watchPlayback')
-      && !/gm(?:Set|Delete)|localStorage|sessionStorage|\bfetch\s*\(/.test(region);
+      && !/gm(?:Set|Delete)|localStorage|sessionStorage|\bfetch\s*\(/.test(region)
+      // The measurement reads the page; it must never write anything either.
+      && !/gm(?:Set|Delete)|localStorage|sessionStorage|\bfetch\s*\(/.test(measure);
   })()],
   ['settings page composition lives behind an explicit factory instead of runtime wrappers',
     settingsModuleSource.includes('export function createSettings(host)')
