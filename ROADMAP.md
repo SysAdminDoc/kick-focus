@@ -257,6 +257,12 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P2
 
+- [ ] P2 — R-147: Give the settings panel action and persistence contracts
+  Why: R-104 asked for render, action, empty/error, persistence and localization contracts per page and delivered render, empty/error and localization. The two missing ones cannot be written against `createSettings`, which is a pure renderer: the click path is `onInterfaceClick` in src/runtime.js, which has no imports and is only ever concatenated, so no test can call it. An adversarial review named this on 2026-08-25 and it is a fair reading of the criterion.
+  Where: src/runtime.js `onInterfaceClick` and `updateSetting`; test/settings.test.js; scripts/verify-extension.mjs
+  Acceptance: Pressing a control on each of the seven pages runs the action it declares and, for a setting, the value is read back from storage afterwards. Either extract the click routing behind a host factory the way `createSettings` and `createMultistream` already are, so it can be driven offline, or add the coverage to the live gate where a real click exists. Whichever is chosen, a missing handler for a rendered `data-action` must fail rather than do nothing.
+  Complexity: M
+
 - [ ] P2 — R-137: Normalize the control geometry the panel renders
   Why: Controls that sit in the same `.kf-control` column are 32, 36, 38 and 40 pixels tall (`.kf-switch`, `.kf-select`, `.kf-icon-button`, `.kf-button`), which reads as jitter down the right edge of every settings page. Eight radius literals bypass the Corner radius setting: `.kf-toast` and `.kf-toast-action` at 4px, `.kf-icon-button` at 5px, the About panel at 4px, the emote completion list and rows at 9px and 6px, and the two injected header buttons at 5px and 8px. Those two buttons also disagree on height, weight and font size while sitting in the same Kick chrome. Two focus treatments coexist: `outline: var(--focus-ring)` on the nav search, and `outline: 0` plus a box-shadow ring on `.kf-text`, `.kf-textarea`, `.kf-select`, and both multi-stream inputs.
   Where: src/runtime.js UI_CSS around 7289-7500, 7769, 7819-7831, 11555-11573, 12598-12645

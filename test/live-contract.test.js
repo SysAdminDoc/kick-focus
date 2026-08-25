@@ -98,3 +98,22 @@ test('the release command applies the contract to both engines and refuses to pa
   assert.match(firefoxGate, /process\.env\.KF_SUMMARY_PATH/);
   assert.match(firefoxGate, /results: results\.map\(\(entry\) => \(\{ label: entry\.label, outcome: entry\.outcome \}\)\)/);
 });
+
+test('the release command cannot package without having run Firefox', { tags: ['unit'] }, async () => {
+  // It used to spawn the Firefox gate with KF_ALLOW_NO_FIREFOX always set and
+  // treat a missing summary as a pass, so a machine with no Firefox packaged a
+  // release having never executed that package — while the same command refuses
+  // a Chromium run that merely skipped a check. That gate is also the only
+  // thing that proves the page bundle runs in the page world at all.
+  const checklist = await readFile(resolve(root, 'scripts/release-checklist.mjs'), 'utf8');
+
+  assert.ok(!/KF_ALLOW_NO_FIREFOX: '1',/.test(checklist),
+    'the Firefox gate is still told unconditionally that a missing Firefox is fine');
+  assert.match(checklist, /firefoxOptional \? '1' : ''/);
+  // Absent and not asked for is a refusal, with an exit code.
+  const tail = checklist.slice(checklist.indexOf('firefoxSummary'));
+  assert.match(tail, /never exercised/);
+  assert.match(tail, /process\.exit\(1\)/);
+  // Asked for, it says what it did not prove rather than going quiet.
+  assert.match(tail, /NOT exercised by this run/);
+});

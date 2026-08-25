@@ -145,10 +145,24 @@ if (asserted.length < SIGNED_IN_JOURNEYS.length) {
 // The Firefox package is a separate engine with its own network layer, and it
 // had never been executed anywhere until this gate existed. Skipped rather than
 // failed when no Firefox is installed, matching the Chromium gate's contract.
+/**
+ * The Firefox run is not optional here.
+ *
+ * This used to spawn the gate with KF_ALLOW_NO_FIREFOX and treat a missing
+ * summary as a pass, so on any machine without Firefox a release could be
+ * packaged having never executed the Firefox package at all — while the same
+ * command refuses a Chromium run that merely skipped a check. It is also the
+ * only thing that proves the page bundle runs in the page world at all, which
+ * is the whole of the MAIN-world injection change.
+ *
+ * KF_ALLOW_NO_FIREFOX is still honoured, but it has to be asked for
+ * deliberately, and the run says loudly what it did not prove.
+ */
 console.log('\nRelease checklist: Firefox companion');
+const firefoxOptional = process.env.KF_ALLOW_NO_FIREFOX === '1';
 const firefoxSummaryPath = join(screenshotRoot, 'firefox-summary.json');
 const firefox = await run(process.execPath, ['scripts/verify-firefox.mjs'], {
-  KF_ALLOW_NO_FIREFOX: '1',
+  KF_ALLOW_NO_FIREFOX: firefoxOptional ? '1' : '',
   KF_SUMMARY_PATH: firefoxSummaryPath,
 });
 if (firefox !== 0) process.exit(firefox || 1);
@@ -164,8 +178,13 @@ if (firefoxSummary) {
     console.error('A release may not be packaged on this run.');
     process.exit(1);
   }
+} else if (firefoxOptional) {
+  console.log('  KF_ALLOW_NO_FIREFOX was set, so the Firefox package was NOT exercised by this run.');
+  console.log('  The page bundle running in the page world is unproven; say so wherever this release is described.');
 } else {
-  console.log('  No Firefox summary was written, so this machine has no Firefox and the gate skipped.');
+  console.error('\nThe Firefox gate produced no summary, so the Firefox package was never exercised.');
+  console.error('Install Firefox, or re-run with KF_ALLOW_NO_FIREFOX=1 and state that the package is unproven.');
+  process.exit(1);
 }
 
 console.log(`\nRelease screenshots, when live Kick was reachable: ${screenshotRoot}`);

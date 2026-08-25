@@ -660,3 +660,35 @@ test('every setting that exists has a control that reaches it', { tags: ['unit']
 
   assert.deepEqual(unreachable, [], 'these settings normalize and persist but no control can change them');
 });
+
+test('every page renders through the translator, on every page', { tags: ['unit'] }, () => {
+  // The harness stubs `tr` as the identity, so nothing here had ever been
+  // rendered in a locale other than English and a page that bypassed the
+  // translator entirely would have looked identical.
+  //
+  // The panel is translated by a DOM walker after render, not by tr() at
+  // render time, so this cannot assert that headings come out translated. What
+  // it can assert is the property the walker depends on: the strings a walker
+  // can never reach — the ones written into attributes and into markup by
+  // script — do go through tr/trf, and a page rendered with a marking
+  // translator shows it.
+  const marked = makeRenderHost({ values: { tr: (value) => `«${String(value)}»`, trf: (value, fields = {}) => `«${String(value).replace(/\{(\w+)\}/g, (_m, key) => String(fields[key] ?? ''))}»` } });
+  const plain = makeRenderHost();
+
+  let translatedPages = 0;
+  for (const id of marked.pages) {
+    const localized = marked.rendered.get(id);
+    const english = plain.rendered.get(id);
+    assert.notEqual(localized, english, `the ${id} page renders identically in every language`);
+    assert.ok(localized.includes('«'), `the ${id} page passes nothing through the translator`);
+    translatedPages += 1;
+
+    // And the marker must not leak into an attribute value that is a machine
+    // token rather than prose: a translated data-set path would stop matching
+    // a setting.
+    for (const match of localized.matchAll(/data-(set|action|page)="([^"]*)"/g)) {
+      assert.ok(!match[2].includes('«'), `the ${id} page translated a machine token: ${match[0]}`);
+    }
+  }
+  assert.equal(translatedPages, 7);
+});
