@@ -92,6 +92,19 @@ const bundleTargets = [['dist/kick-focus.user.js', source], ['dist/extension/con
 const moduleFiles = (await readdir(resolve('src')))
   .filter((name) => name.endsWith('.mjs'))
   .map((name) => `src/${name}`);
+/**
+ * Every file that could read an export: the modules themselves, the page
+ * runtime they are concatenated with, the extension entry points, and the
+ * scripts that drive the build and the gates. Tests are deliberately absent —
+ * a test is not a caller, and an export only its own test reads still ships.
+ */
+const sourceTexts = await Promise.all([
+  ...moduleFiles,
+  'src/runtime.js',
+  ...(await readdir(resolve('src/extension'))).filter((name) => name.endsWith('.js')).map((name) => `src/extension/${name}`),
+  ...(await readdir(resolve('scripts'))).filter((name) => name.endsWith('.mjs')).map((name) => `scripts/${name}`),
+].map(async (name) => [name, await read(name)]));
+
 const settingsModuleSource = await read('src/settings.mjs');
 const runtimeModuleSource = await read('src/runtime.js');
 const bundleGaps = [];
@@ -950,6 +963,37 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['no export ships that only its own tests read', (() => {
+    // The coverage gate is file-granular: it knows whether a file is imported
+    // at all, not whether a symbol inside it has a caller. Three exports with
+    // no reader outside their own tests shipped in the artifact for months and
+    // nothing could see them, because every one of their files was imported.
+    //
+    // A symbol used only by a test still costs bytes in the bundle and reads
+    // like production code to whoever finds it next. Tests are excluded from
+    // the search on purpose: a test is not a caller.
+    const readers = sourceTexts;
+    const dead = [];
+    // Only what ships is judged. A helper in scripts/ that exists for the gates
+    // or for a test costs nothing in the artifact, which is what this is about.
+    for (const [file, text] of readers.filter(([name]) => name.startsWith('src/'))) {
+      for (const match of text.matchAll(/^export (?:async function|function|const|let|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+        const symbol = match[1];
+        const usedElsewhere = readers.some(([other, body]) => {
+          const search = other === file
+            // Its own file: the declaration itself is not a use, so it is cut
+            // out before looking. A helper used only inside the file that
+            // defines it should not be exported at all.
+            ? body.replace(new RegExp(`^export (?:async function|function|const|let|class)\\s+${symbol}\\b`, 'm'), '')
+            : body;
+          return new RegExp(`\\b${symbol}\\b`).test(search);
+        });
+        if (!usedElsewhere) dead.push(`${file} exports ${symbol}, which nothing outside its tests reads`);
+      }
+    }
+    if (dead.length) console.error(dead.map((entry) => `  ${entry}`).join('\n'));
+    return dead.length === 0;
+  })()],
   ['every literal colour fallback is the value its token actually has', (() => {
     // `var(--kf-panel, #0b100d)` carries a copy of the palette in its second
     // argument, and thirteen of sixteen of them were from a palette that had

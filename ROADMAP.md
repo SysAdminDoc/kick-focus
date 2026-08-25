@@ -271,8 +271,3 @@ Found during a full-repository audit. Everything the audit fixed is in
   Acceptance: Each literal has one named source, each comment's number matches the code beside it, and the slug regex sites that load after api.mjs call `isValidSlug`.
   Complexity: S
 
-- [ ] P3 — R-143: Close the two remaining settings-coverage gaps
-  Why: test/core.test.js catches a settings key that `normalizeSettings` forgets, and nothing catches a key that normalizes correctly and has no control, which is a setting a user can never reach. Three exports with no caller outside their own tests shipped in the artifact until this audit removed them, and the coverage gate is file-granular so it could not see any of them.
-  Where: test/core.test.js settings schema tests; src/settings.mjs `data-set` attributes; scripts/check.mjs
-  Acceptance: A test extracts every `data-set` path from settings.mjs and diffs it against DEFAULT_SETTINGS, allowlisting `schema` and `lastSeenVersion`; a symbol-level export-reachability check in scripts/check.mjs names any export nothing outside tests reads.
-  Complexity: S

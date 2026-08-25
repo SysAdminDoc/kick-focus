@@ -304,7 +304,8 @@ const SCENARIOS = [
       multistream: { streams: ['alpha', 'beta'], focus: 'alpha' },
       settings: {
         ...structuredClone(DEFAULT_SETTINGS),
-        content: { ...DEFAULT_SETTINGS.content, blocklistSubscription: true, blocklistUrl: 'https://feeds.example/l.json' },
+        layout: { ...DEFAULT_SETTINGS.layout, hidden: [HIDEABLE_ELEMENTS[0].id] },
+        content: { ...DEFAULT_SETTINGS.content, blocklistSubscription: true, blocklistUrl: 'https://feeds.example/l.json', hiddenChannels: ['/spamchannel'] },
       },
       remoteBlocklist: { status: 'ok', source: 'https://feeds.example/l.json', fetchedAt: 1, channels: new Set(['spam']) },
       stickerPreferences: {
@@ -613,4 +614,49 @@ test('the settings search indexes every page and ranks what it finds', { tag: 'u
   } finally {
     restore();
   }
+});
+
+test('every setting that exists has a control that reaches it', { tag: 'unit' }, () => {
+  // The other direction from the test above. That one catches a control
+  // writing to a setting that is not there; this catches a setting that
+  // normalizes correctly, round-trips through export and import, and has no
+  // control anywhere — a preference a user can never actually change.
+  const reachable = new Set();
+  for (const [, { rendered }] of renderAllScenarios()) {
+    for (const [, markup] of rendered) {
+      for (const match of markup.matchAll(/data-set="([^"]+)"/g)) reachable.add(match[1]);
+    }
+  }
+
+  // Two are bookkeeping rather than preferences: the schema stamp an import
+  // reads, and the version this profile last saw an update note for. Neither
+  // is something to offer a control for.
+  const NOT_A_PREFERENCE = new Set(['schema', 'lastSeenVersion']);
+
+  // Two more are lists rather than switches, so their controls are not
+  // data-set attributes. Each is named with the control that writes it, and
+  // asserted to still be there, so an allowlist entry cannot outlive the
+  // control it excuses.
+  const LIST_CONTROLS = new Map([
+    ['layout.hidden', 'data-action="toggle-hidden-element"'],
+    ['content.hiddenChannels', 'data-action="remove-hidden-channel"'],
+  ]);
+  const everyPage = [...renderAllScenarios().flatMap(([, { rendered }]) => [...rendered.values()])].join('');
+  for (const [path, marker] of LIST_CONTROLS) {
+    assert.ok(everyPage.includes(marker),
+      `${path} is allowlisted because ${marker} writes it, and that control is no longer rendered`);
+  }
+
+  const unreachable = [];
+  for (const [section, values] of Object.entries(DEFAULT_SETTINGS)) {
+    if (NOT_A_PREFERENCE.has(section)) continue;
+    if (!values || typeof values !== 'object') continue;
+    for (const key of Object.keys(values)) {
+      const path = `${section}.${key}`;
+      if (NOT_A_PREFERENCE.has(key) || reachable.has(path) || LIST_CONTROLS.has(path)) continue;
+      unreachable.push(path);
+    }
+  }
+
+  assert.deepEqual(unreachable, [], 'these settings normalize and persist but no control can change them');
 });
