@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Fixed
+
+- The test suite can no longer report on a build that is older than the sources. `npm test` ran the tests and nothing else, so after any edit the third of the suite that reads the built bundle was judging the previous one. It builds first now, and the tests that read the bundle refuse to run against a stale one, naming the file that moved.
+
 ### Added
 
 - The chat separator can be used from the keyboard. Tab to it and the arrow keys move it sixteen pixels at a time, Home takes the chat to its narrowest and End to its widest, and it now says what it controls and how wide it is instead of exposing numbers with nothing attached to them. Dragging it works exactly as before.
