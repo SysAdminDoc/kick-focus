@@ -792,13 +792,13 @@ export function createMultistream(host) {
     const pauseToggle = backdrop.querySelector('[data-kf-multistream-pause]');
     if (pauseToggle) {
       pauseToggle.setAttribute('aria-pressed', String(state.multistream.paused));
-      pauseToggle.textContent = state.multistream.paused ? 'Play all' : 'Pause all';
+      pauseToggle.textContent = tr(state.multistream.paused ? 'Play all' : 'Pause all');
       pauseToggle.disabled = !streams.length;
     }
     const muteToggle = backdrop.querySelector('[data-kf-multistream-mute]');
     if (muteToggle) {
       muteToggle.setAttribute('aria-pressed', String(state.multistream.muted));
-      muteToggle.textContent = state.multistream.muted ? 'Unmute' : 'Mute all';
+      muteToggle.textContent = tr(state.multistream.muted ? 'Unmute' : 'Mute all');
       muteToggle.disabled = !streams.length || state.multistream.paused;
     }
     const merged = backdrop.querySelector('[data-action="multistream-toggle-merged"]');

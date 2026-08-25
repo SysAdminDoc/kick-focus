@@ -45,6 +45,14 @@ const SCANNERS = [
   ['tr ternary', new RegExp(`\\btrf?\\([^;'"\`]{0,200}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   // The nested form, for a control with three states rather than two.
   ['tr nested ternary', new RegExp(`\\btrf?\\([^;'"\`]{0,120}\\?\\s*\\([^;'"\`]{0,120}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
+  // A ternary handed straight to `announce`, and one assigned to a
+  // `textContent` or a `setAttribute` that runs after `localizeInterface` has
+  // already walked the tree. Sixteen screen-reader announcements for the
+  // product's headline toggles, and ten in-place control labels, sat outside
+  // the gate and stayed English in es and pt while it reported full coverage.
+  ['announce ternary', new RegExp(`\\bannounce\\([^;]{0,200}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
+  ['textContent ternary', new RegExp(`textContent = tr\\([^;]{0,160}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
+  ['setAttribute ternary', new RegExp(`setAttribute\\('(?:aria-label|title|placeholder)', tr\\([^;]{0,160}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['showToast', new RegExp(`\\bshowToast\\(${STR}`, 'g')],
   ['showToast ternary', new RegExp(`\\bshowToast\\([^;?]{0,300}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['save status', new RegExp(`\\b(?:saveSettings|setSaveStatus)\\(${STR}`, 'g')],

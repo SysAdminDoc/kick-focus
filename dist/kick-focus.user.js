@@ -5382,13 +5382,13 @@ chatSelect.disabled = !streams.length;
 const pauseToggle = backdrop.querySelector('[data-kf-multistream-pause]');
 if (pauseToggle) {
 pauseToggle.setAttribute('aria-pressed', String(state.multistream.paused));
-pauseToggle.textContent = state.multistream.paused ? 'Play all' : 'Pause all';
+pauseToggle.textContent = tr(state.multistream.paused ? 'Play all' : 'Pause all');
 pauseToggle.disabled = !streams.length;
 }
 const muteToggle = backdrop.querySelector('[data-kf-multistream-mute]');
 if (muteToggle) {
 muteToggle.setAttribute('aria-pressed', String(state.multistream.muted));
-muteToggle.textContent = state.multistream.muted ? 'Unmute' : 'Mute all';
+muteToggle.textContent = tr(state.multistream.muted ? 'Unmute' : 'Mute all');
 muteToggle.disabled = !streams.length || state.multistream.paused;
 }
 const merged = backdrop.querySelector('[data-action="multistream-toggle-merged"]');
@@ -7038,7 +7038,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              856921') || 0;
+const BUNDLE_BYTES = Number('              859573') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -9632,9 +9632,9 @@ delete messages.dataset.kfChatPaused;
 return;
 }
 armChatScrollPause(messages);
-button.textContent = state.runtime.chatPaused ? 'Resume chat' : 'Pause chat';
+button.textContent = tr(state.runtime.chatPaused ? 'Resume chat' : 'Pause chat');
 button.setAttribute('aria-pressed', String(state.runtime.chatPaused));
-button.setAttribute('aria-label', state.runtime.chatPaused ? 'Resume chat updates' : 'Pause chat updates');
+button.setAttribute('aria-label', tr(state.runtime.chatPaused ? 'Resume chat updates' : 'Pause chat updates'));
 let status = owner.querySelector?.('[data-kf-chat-status]');
 if (!status) {
 status = document.createElement('div');
@@ -9642,7 +9642,7 @@ status.dataset.kfChatStatus = 'true';
 status.setAttribute('role', 'status');
 owner.append(status);
 }
-status.textContent = state.runtime.chatPaused ? 'Chat updates paused' : '';
+status.textContent = state.runtime.chatPaused ? tr('Chat updates paused') : '';
 if (state.runtime.chatPaused) {
 if (!Object.prototype.hasOwnProperty.call(messages.dataset, 'kfPreviousAriaLive')) {
 messages.dataset.kfPreviousAriaLive = messages.getAttribute('aria-live') || '__none__';
@@ -11714,7 +11714,7 @@ function updateCompatibilityInPlace() {
 const status = state.shadow?.querySelector('[data-kf-compatibility]');
 const detail = state.shadow?.querySelector('[data-kf-compatibility-detail]');
 if (!status || !detail || !state.compatibility) return;
-status.textContent = state.compatibility.healthy ? 'Healthy' : 'Needs attention';
+status.textContent = tr(state.compatibility.healthy ? 'Healthy' : 'Needs attention');
 status.dataset.error = String(!state.compatibility.healthy);
   detail.textContent = `${compatibilitySummary(state.compatibility)} Probes: ${Object.entries(state.compatibility.probes).filter(([, probe]) => probe).map(([name, probe]) => `${name}=${probe}`).join(', ') || 'none'}.`;
 }
@@ -13540,6 +13540,34 @@ es: {
 'Increase legibility on muted surfaces.': 'Aumenta la legibilidad en superficies atenuadas.',
 'Use the selected accent for live-state emphasis.': 'Usa el color de acento elegido para destacar el estado en directo.',
 'Enable subscription': 'Activar suscripción',
+'Emote already saved': 'El emote ya estaba guardado',
+'Emote saved': 'Emote guardado',
+'All streams paused': 'Todas las transmisiónes en pausa',
+'All streams playing': 'Todas las transmisiónes en reproducción',
+'All streams muted': 'Todas las transmisiónes silenciadas',
+'Audio restored to the focused stream': 'Audio restaurado en la transmisión enfocada',
+'Focus mode on': 'Modo enfoque activado',
+'Focus mode off': 'Modo enfoque desactivado',
+'Theater mode on': 'Modo cine activado',
+'Theater mode off': 'Modo cine desactivado',
+'Chat hidden': 'Chat oculto',
+'Chat shown': 'Chat visible',
+'Sidebar hidden': 'Barra lateral oculta',
+'Sidebar shown': 'Barra lateral visible',
+'Mature thumbnails revealed': 'Miniaturas sensibles visibles',
+'Mature thumbnails blurred': 'Miniaturas sensibles difuminadas',
+'Resume chat': 'Reanudar chat',
+'Pause chat': 'Pausar chat',
+'Resume chat updates': 'Reanudar las actualizaciones del chat',
+'Healthy': 'Correcto',
+'Needs attention': 'Necesita atención',
+'Multi': 'Multi',
+'Play all': 'Reproducir todo',
+'Pause all': 'Pausar todo',
+'Unmute': 'Activar sonido',
+'Mute all': 'Silenciar todo',
+'Remove {name} from Kick Focus multi-stream': 'Quitar {name} del multi-stream de Kick Focus',
+'Add {name} to Kick Focus multi-stream': 'Añadir {name} al multi-stream de Kick Focus',
 'HTTPS JSON URL': 'URL JSON por HTTPS',
 'Expected fields: channels, categories, and keywords. Unknown fields are rejected.': 'Campos esperados: channels, categories y keywords. Los campos desconocidos se rechazan.',
 'Off by default. When enabled, refreshes only over HTTPS with credentials omitted.': 'Desactivado por defecto. Si se activa, solo se actualiza por HTTPS y sin enviar credenciales.',
@@ -14270,6 +14298,34 @@ pt: {
 'Increase legibility on muted surfaces.': 'Aumente a legibilidade em superfícies atenuadas.',
 'Use the selected accent for live-state emphasis.': 'Use a cor de destaque escolhida para enfatizar o estado ao vivo.',
 'Enable subscription': 'Ativar assinatura',
+'Emote already saved': 'O emote já estava salvo',
+'Emote saved': 'Emote salvo',
+'All streams paused': 'Todas as transmissões pausadas',
+'All streams playing': 'Todas as transmissões em reprodução',
+'All streams muted': 'Todas as transmissões sem som',
+'Audio restored to the focused stream': 'Áudio restaurado na transmissão em foco',
+'Focus mode on': 'Modo foco ativado',
+'Focus mode off': 'Modo foco desativado',
+'Theater mode on': 'Modo cinema ativado',
+'Theater mode off': 'Modo cinema desativado',
+'Chat hidden': 'Chat ocultado',
+'Chat shown': 'Chat visível',
+'Sidebar hidden': 'Barra lateral ocultada',
+'Sidebar shown': 'Barra lateral visível',
+'Mature thumbnails revealed': 'Miniaturas sensíveis visíveis',
+'Mature thumbnails blurred': 'Miniaturas sensíveis desfocadas',
+'Resume chat': 'Retomar chat',
+'Pause chat': 'Pausar o chat',
+'Resume chat updates': 'Retomar as atualizações do chat',
+'Healthy': 'Tudo certo',
+'Needs attention': 'Precisa de atenção',
+'Multi': 'Multi',
+'Play all': 'Reproduzir tudo',
+'Pause all': 'Pausar tudo',
+'Unmute': 'Ativar som',
+'Mute all': 'Silenciar tudo',
+'Remove {name} from Kick Focus multi-stream': 'Remover {name} do multi-stream do Kick Focus',
+'Add {name} to Kick Focus multi-stream': 'Adicionar {name} ao multi-stream do Kick Focus',
 'HTTPS JSON URL': 'URL JSON via HTTPS',
 'Expected fields: channels, categories, and keywords. Unknown fields are rejected.': 'Campos esperados: channels, categories e keywords. Campos desconhecidos são rejeitados.',
 'Off by default. When enabled, refreshes only over HTTPS with credentials omitted.': 'Desativado por padrão. Quando ativado, atualiza apenas por HTTPS e sem enviar credenciais.',
@@ -17088,10 +17144,10 @@ button.dataset.inMulti = String(inGrid);
 const icon = button.querySelector('[data-kf-header-add-icon]');
 const label = button.querySelector('[data-kf-header-add-label]');
 if (icon) icon.textContent = inGrid ? '✓' : '+';
-if (label) label.textContent = inGrid ? 'In Multi' : 'Multi';
-button.setAttribute('aria-label', inGrid
-    ? `Remove ${slug} from Kick Focus multi-stream`
-    : `Add ${slug} to Kick Focus multi-stream`);
+if (label) label.textContent = tr(inGrid ? 'In Multi' : 'Multi');
+button.setAttribute('aria-label', trf(inGrid
+? 'Remove {name} from Kick Focus multi-stream'
+: 'Add {name} to Kick Focus multi-stream', { name: slug }));
 }
 function syncQuickButton() {
 if (!state.root?.isConnected && document.body) document.body.append(state.root);
