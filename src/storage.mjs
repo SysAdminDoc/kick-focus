@@ -43,7 +43,14 @@ export const LIBRARY_SEED_LIMIT = 400;
  * length. Sized against a realistic Kick record (~290 B), so a normal library
  * of several hundred emotes never reaches it.
  */
-export const LIBRARY_SEED_BYTES = 150_000;
+export const LIBRARY_SEED_BYTES = 50_000;
+
+const libraryUtf8Encoder = new TextEncoder();
+
+/** Browser-native UTF-8 size for values written beside the injected script. */
+export function utf8ByteLength(value) {
+  return libraryUtf8Encoder.encode(String(value ?? '')).byteLength;
+}
 
 /**
  * Providers are scored, and the highest available one wins. `localStorage`
@@ -86,12 +93,12 @@ export function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT, seed
   // then walked back up — the result is the same count a linear scan would
   // reach, without the linear scan.
   let count = Math.min(limit, ordered.length);
-  if (budget && JSON.stringify(build(count)).length > budget) {
+  if (budget && utf8ByteLength(JSON.stringify(build(count))) > budget) {
     let low = 0;
     let high = count;
     while (low < high) {
       const middle = Math.ceil((low + high) / 2);
-      if (JSON.stringify(build(middle)).length > budget) high = middle - 1;
+      if (utf8ByteLength(JSON.stringify(build(middle))) > budget) high = middle - 1;
       else low = middle;
     }
     count = low;

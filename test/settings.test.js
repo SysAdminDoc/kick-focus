@@ -4,7 +4,7 @@ import { createSettings } from '../src/settings.mjs';
 
 const EXPECTED_HOST_KEYS = [
   'activeLocale', 'AD_HOSTS', 'applyCostSummary', 'applyStickerLibrarySearch', 'assessAdStack', 'assessApiDrift',
-  'BUNDLE_BYTE_CEILING', 'BUNDLE_BYTES', 'channelPath', 'chatKeywordsForChannel', 'COLLECTIBLE_FACTS',
+  'BUNDLE_BYTE_CEILING', 'BUNDLE_BYTES', 'INJECTION_BYTE_BUDGET', 'LIBRARY_SEED_BYTES', 'channelPath', 'chatKeywordsForChannel', 'COLLECTIBLE_FACTS',
   'collectViewerFacts', 'companionInfo', 'compatibilitySummary', 'countChangedStickers', 'describeStickerChange',
   'describeStorageFailures', 'DISCOVERY_LAYOUT_ROUTES', 'DISCOVERY_ROUTE_LABELS', 'emoteAccessLabel',
   'emoteLockState', 'emoteReach', 'errorLogRows', 'escapeHtml', 'favoriteCount', 'formatBytes', 'formatSessionWatchTime', 'gmGet',
@@ -24,6 +24,10 @@ function makeHost() {
   };
   const values = {
     state,
+    BUNDLE_BYTE_CEILING: 1_000_000,
+    BUNDLE_BYTES: 850_000,
+    INJECTION_BYTE_BUDGET: 925_000,
+    LIBRARY_SEED_BYTES: 50_000,
     STICKER_LIBRARY_LIMIT: 2400,
     countChangedStickers: () => 0,
     favoriteCount: () => 0,

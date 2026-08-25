@@ -18,6 +18,8 @@ import {
   formatChatTime,
   floatingPreviewPosition,
   advanceSessionWatchTime,
+  sessionWatchCandidateState,
+  selectSessionWatchOwner,
   sessionWatchElapsed,
   formatSessionWatchTime,
   isPriorityPerson,
@@ -2902,6 +2904,69 @@ test('session watch time advances only across active playback and formats as a c
   assert.equal(formatSessionWatchTime(0), '0:00');
   assert.equal(formatSessionWatchTime(60_500), '1:00');
   assert.equal(formatSessionWatchTime(3_720_500), '1:02:00');
+});
+
+test('session watch playback requires one visible channel-player owner', { tag: 'unit' }, () => {
+  const base = {
+    route: 'channel',
+    documentVisible: true,
+    connected: true,
+    visible: true,
+    intersectsViewport: true,
+    playerSurface: true,
+    width: 1280,
+    height: 720,
+    playing: true,
+  };
+  assert.deepEqual(sessionWatchCandidateState(base), {
+    owner: true,
+    active: true,
+    score: 1_000_921_600,
+  });
+  for (const [label, change] of [
+    ['paused', { playing: false }],
+    ['hidden document', { documentVisible: false }],
+  ]) {
+    const state = sessionWatchCandidateState({ ...base, ...change });
+    assert.equal(state.owner, true, `${label} should keep player ownership`);
+    assert.equal(state.active, false, `${label} should add no watch time`);
+  }
+  for (const [label, change] of [
+    ['hidden', { visible: false }],
+    ['preload', { preload: true }],
+    ['preview', { preview: true }],
+    ['muted background', { background: true, muted: true }],
+    ['detached', { connected: false }],
+    ['off-channel', { route: 'discovery' }],
+  ]) {
+    assert.deepEqual(sessionWatchCandidateState({ ...base, ...change }), {
+      owner: false,
+      active: false,
+      score: -1,
+    }, `${label} media should be ineligible`);
+  }
+});
+
+test('session watch owner ranking ignores autoplay and changes ownership without double-counting', { tag: 'unit' }, () => {
+  const owner = selectSessionWatchOwner([
+    {
+      id: 'preview', route: 'channel', documentVisible: true, connected: true,
+      visible: true, intersectsViewport: true, playerSurface: false,
+      preview: true, muted: true, playing: true, width: 960, height: 540,
+    },
+    {
+      id: 'main', route: 'channel', documentVisible: true, connected: true,
+      visible: true, intersectsViewport: true, playerSurface: true,
+      muted: false, playing: false, width: 640, height: 360,
+    },
+  ]);
+  assert.equal(owner?.id, 'main', 'a paused main player keeps ownership over an autoplay preview');
+
+  let record = advanceSessionWatchTime({}, 1_000, true);
+  record = advanceSessionWatchTime(record, 2_000, true);
+  record = advanceSessionWatchTime(record, 3_000, false);
+  assert.deepEqual(record, { elapsedMs: 2_000, activeSince: 0 },
+    'an active owner swap stays continuous and an inactive owner banks the interval once');
 });
 
 test('level and streak are only read while Kick has the reward dialog open', { tag: 'unit' }, () => {

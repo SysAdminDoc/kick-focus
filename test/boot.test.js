@@ -188,10 +188,11 @@ test('the bundle knows its own size, and the number is the file', { tag: 'artifa
   assert.equal(bundle.includes('__KICK_FOCUS_BYTES__'), false, 'byte placeholder survived the build');
   const stamped = bundle.match(/Number\('(\s*\d+)'\)/);
   assert.ok(stamped, 'the bundle carries no byte stamp at all');
-  assert.equal(Number(stamped[1]), bundle.length,
-    `the bundle says it is ${Number(stamped[1])} bytes and it is ${bundle.length}`);
+  const bytes = Buffer.byteLength(bundle, 'utf8');
+  assert.equal(Number(stamped[1]), bytes,
+    `the bundle says it is ${Number(stamped[1])} bytes and it is ${bytes}`);
   // And it is still inside the ceiling it is displayed against.
-  assert.ok(bundle.length < 1000000, `the userscript is ${bundle.length} B, past its injection ceiling`);
+  assert.ok(bytes < 1000000, `the userscript is ${bytes} B, past its injection ceiling`);
 });
 
 test('with the Navigation API, route changes come from the browser and history is left untouched', { tag: 'artifact' }, async () => {

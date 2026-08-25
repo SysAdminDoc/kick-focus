@@ -639,11 +639,11 @@ try {
       ? `${discoveryUptime.slug} reads ${discoveryUptime.text}, ${Math.abs(discoveryUptime.shownSeconds - discoveryUptime.expectedSeconds)}s from its observed start; ${discoveryUptime.width}x${discoveryUptime.height}px at ${discoveryUptime.fontSize}px; ${discoveryUptime.feedReads} feed read(s), ${discoveryUptime.eligible} eligible card(s), contained=${discoveryUptime.contained}, page fits=${discoveryUptime.pageFits}`
       : discoveryUptime.why);
 
-  // R-88: stand up a visible media element on a channel-shaped route, let the
-  // session clock cross a second, then stop playback and prove the card stops
-  // with it. A hidden playing preload is left behind as an adversarial second
-  // phase. The storage assertion is the reload contract: there is no record
-  // that a fresh page could restore.
+  // R-88/R-101: stand up a visible owner on a channel-shaped route and drive
+  // every playback boundary. Larger preview and muted-background videos must
+  // not steal ownership, a replacement owner must accrue once, and hidden or
+  // detached media must leave the clock parked. The storage assertion is the
+  // reload contract: there is no record a fresh page could restore.
   const sessionWatchProbe = await evaluate(pageClient, `(async () => {
     const host = document.getElementById('kick-focus-root');
     const shadow = await __kfWait(() => host && host.shadowRoot);
@@ -658,12 +658,36 @@ try {
     Object.defineProperty(video, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(video, 'readyState', { configurable: true, get: () => 4 });
     document.body.prepend(video);
+    const preview = document.createElement('video');
+    preview.className = 'player-preview';
+    preview.style.cssText = 'position:fixed;inset:40px auto auto 120px;width:960px;height:540px;visibility:visible';
+    Object.defineProperty(preview, 'paused', { configurable: true, get: () => false });
+    Object.defineProperty(preview, 'ended', { configurable: true, get: () => false });
+    Object.defineProperty(preview, 'readyState', { configurable: true, get: () => 4 });
+    const background = document.createElement('video');
+    background.className = 'background-video';
+    background.muted = true;
+    background.style.cssText = 'position:fixed;inset:20px auto auto 80px;width:1080px;height:608px;visibility:visible';
+    Object.defineProperty(background, 'paused', { configurable: true, get: () => false });
+    Object.defineProperty(background, 'ended', { configurable: true, get: () => false });
+    Object.defineProperty(background, 'readyState', { configurable: true, get: () => 4 });
+    const replacement = document.createElement('video');
+    replacement.style.cssText = 'position:fixed;inset:100px auto auto 280px;width:720px;height:405px;visibility:visible';
+    let replacementPlaying = true;
+    Object.defineProperty(replacement, 'paused', { configurable: true, get: () => !replacementPlaying });
+    Object.defineProperty(replacement, 'ended', { configurable: true, get: () => false });
+    Object.defineProperty(replacement, 'readyState', { configurable: true, get: () => 4 });
     const preload = document.createElement('video');
-    preload.dataset.kfSessionWatchPreloadProbe = 'true';
+    preload.className = 'preload-video';
     preload.style.cssText = 'display:none;width:640px;height:360px';
     Object.defineProperty(preload, 'paused', { configurable: true, get: () => false });
     Object.defineProperty(preload, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(preload, 'readyState', { configurable: true, get: () => 4 });
+    const detached = document.createElement('video');
+    Object.defineProperty(detached, 'paused', { configurable: true, get: () => false });
+    Object.defineProperty(detached, 'ended', { configurable: true, get: () => false });
+    Object.defineProperty(detached, 'readyState', { configurable: true, get: () => 4 });
+    const clockSeconds = (value) => String(value || '').split(':').reduce((total, part) => total * 60 + Number(part), 0);
     try {
       history.pushState({}, '', '/xqc');
       const route = await __kfWait(() => document.documentElement.dataset.kfRoute === 'channel');
@@ -681,31 +705,70 @@ try {
       playing = false;
       video.dispatchEvent(new Event('waiting'));
       await settle(1250);
-      const second = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      const paused = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      document.body.prepend(preview, background);
+      preview.dispatchEvent(new Event('playing'));
+      background.dispatchEvent(new Event('playing'));
+      await settle(1250);
+      const nonOwner = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
       video.remove();
+      document.body.prepend(replacement);
+      replacement.dispatchEvent(new Event('playing'));
+      await settle(1350);
+      const swapped = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      replacementPlaying = false;
+      replacement.dispatchEvent(new Event('waiting'));
+      await settle(100);
+      const swapBoundary = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      await settle(1250);
+      const swappedPaused = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      replacement.remove();
       document.body.prepend(preload);
       preload.dispatchEvent(new Event('playing'));
+      detached.dispatchEvent(new Event('playing'));
       await settle(1250);
       const hiddenPreload = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
       const storageKeys = [...Object.keys(localStorage), ...Object.keys(sessionStorage)]
         .filter((key) => key.startsWith('kick-focus:') && /watch|session/i.test(key));
       shadow.querySelector('[data-action="close-settings"]')?.click();
-      return { ok: true, first, second, hiddenPreload, source, localSource, storageKeys };
+      return {
+        ok: true,
+        first,
+        paused,
+        nonOwner,
+        swapped,
+        swapBoundary,
+        swapSeconds: clockSeconds(swapBoundary) - clockSeconds(nonOwner),
+        boundarySeconds: clockSeconds(swapBoundary) - clockSeconds(swapped),
+        swappedPaused,
+        hiddenPreload,
+        source,
+        localSource,
+        storageKeys,
+      };
     } finally {
       video.remove();
+      preview.remove();
+      background.remove();
+      replacement.remove();
       preload.remove();
+      detached.remove();
       history.pushState({}, '', beforePath || '/');
     }
   })()`);
   const sessionWatch = sessionWatchProbe.value || {};
   record('Viewer labels a playback-gated watch clock as browser-session-only and stores nothing',
     sessionWatch.ok === true && /^\d+:\d{2}(?::\d{2})?$/.test(sessionWatch.first || '')
-      && sessionWatch.first !== '0:00' && sessionWatch.second === sessionWatch.first
-      && sessionWatch.hiddenPreload === sessionWatch.second
+      && sessionWatch.first !== '0:00' && sessionWatch.paused === sessionWatch.first
+      && sessionWatch.nonOwner === sessionWatch.paused
+      && sessionWatch.swapSeconds >= 1 && sessionWatch.swapSeconds <= 2
+      && sessionWatch.boundarySeconds >= 0 && sessionWatch.boundarySeconds <= 1
+      && sessionWatch.swappedPaused === sessionWatch.swapBoundary
+      && sessionWatch.hiddenPreload === sessionWatch.swappedPaused
       && sessionWatch.localSource === true && /session|sesión|sessão/i.test(sessionWatch.source || '')
       && Array.isArray(sessionWatch.storageKeys) && sessionWatch.storageKeys.length === 0,
     sessionWatch.ok
-      ? `playing=${sessionWatch.first}, paused=${sessionWatch.second}, hidden preload=${sessionWatch.hiddenPreload}, source="${sessionWatch.source}", storage=${JSON.stringify(sessionWatch.storageKeys)}`
+      ? `playing=${sessionWatch.first}, paused=${sessionWatch.paused}, preview/background=${sessionWatch.nonOwner}, owner swap=+${sessionWatch.swapSeconds}s (boundary +${sessionWatch.boundarySeconds}s), swap paused=${sessionWatch.swappedPaused}, hidden/detached=${sessionWatch.hiddenPreload}, source="${sessionWatch.source}", storage=${JSON.stringify(sessionWatch.storageKeys)}`
       : sessionWatch.why);
 
   // The accessibility settings and the modal focus ladder are about this mod's

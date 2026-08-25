@@ -641,6 +641,41 @@ waiting: 'Not ready yet',
 available: 'Ready to claim',
 });
 const VIEWER_HUB_STALE_MS = 60_000;
+function sessionWatchCandidateState(candidate = {}) {
+const width = Math.max(0, Number.isFinite(Number(candidate.width)) ? Number(candidate.width) : 0);
+const height = Math.max(0, Number.isFinite(Number(candidate.height)) ? Number(candidate.height) : 0);
+const area = Math.round(width * height);
+const priority = Math.max(1, Math.min(9,
+Number.isFinite(Number(candidate.playerPriority)) ? Math.floor(Number(candidate.playerPriority)) : 1));
+const owner = candidate.route === 'channel'
+&& candidate.connected === true
+&& candidate.visible === true
+&& candidate.intersectsViewport === true
+&& candidate.playerSurface === true
+&& candidate.preload !== true
+&& candidate.preview !== true
+&& candidate.background !== true;
+return Object.freeze({
+owner,
+active: owner && candidate.documentVisible === true && candidate.playing === true,
+score: owner ? priority * 1_000_000_000 + area : -1,
+});
+}
+function selectSessionWatchOwner(candidates = []) {
+let selected = null;
+let selectedState = null;
+for (const candidate of Array.isArray(candidates) ? candidates : []) {
+const nextState = sessionWatchCandidateState(candidate);
+if (!nextState.owner) continue;
+if (!selectedState
+|| nextState.score > selectedState.score
+|| (nextState.score === selectedState.score && candidate.current === true && selected.current !== true)) {
+selected = candidate;
+selectedState = nextState;
+}
+}
+return selected;
+}
 function advanceSessionWatchTime(record = {}, now = 0, active = false) {
 const at = Math.max(0, Number.isFinite(Number(now)) ? Number(now) : 0);
 let elapsedMs = Math.max(0, Number.isFinite(Number(record.elapsedMs)) ? Number(record.elapsedMs) : 0);
@@ -3700,7 +3735,11 @@ const LIBRARY_DB_VERSION = 1;
 const LIBRARY_STORE = 'library';
 const BLOB_STORE = 'blobs';
 const LIBRARY_SEED_LIMIT = 400;
-const LIBRARY_SEED_BYTES = 150_000;
+const LIBRARY_SEED_BYTES = 50_000;
+const libraryUtf8Encoder = new TextEncoder();
+function utf8ByteLength(value) {
+return libraryUtf8Encoder.encode(String(value ?? '')).byteLength;
+}
 const PROVIDER_SCORES = Object.freeze({ indexeddb: 100, localstorage: -1000 });
 const isStoredRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const SEED_MARKER = 'librarySeedTotal';
@@ -3718,12 +3757,12 @@ const ordered = [...library].sort((a, b) => (Number(b?.lastSeen) || 0) - (Number
 const budget = Math.max(0, Math.floor(Number(seedBytes)) || 0);
 const build = (count) => ({ ...source, library: ordered.slice(0, count), [SEED_MARKER]: library.length });
 let count = Math.min(limit, ordered.length);
-if (budget && JSON.stringify(build(count)).length > budget) {
+if (budget && utf8ByteLength(JSON.stringify(build(count))) > budget) {
 let low = 0;
 let high = count;
 while (low < high) {
 const middle = Math.ceil((low + high) / 2);
-if (JSON.stringify(build(middle)).length > budget) high = middle - 1;
+if (utf8ByteLength(JSON.stringify(build(middle))) > budget) high = middle - 1;
 else low = middle;
 }
 count = low;
@@ -5425,6 +5464,8 @@ assessAdStack,
 assessApiDrift,
 BUNDLE_BYTE_CEILING,
 BUNDLE_BYTES,
+INJECTION_BYTE_BUDGET,
+LIBRARY_SEED_BYTES,
 channelPath,
 chatKeywordsForChannel,
 COLLECTIBLE_FACTS,
@@ -6050,7 +6091,7 @@ function renderAboutPage() {
         <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
-      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${Math.round((BUNDLE_BYTES / BUNDLE_BYTE_CEILING) * 100)}%` : '—'}</td></tr></tbody></table></div></section>`;
+      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} byte gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} byte reserve` : '—'}</td></tr></tbody></table></div></section>`;
 }
 function focusRestoreKey(element) {
 return settingsFocusSelector(element);
@@ -6926,8 +6967,9 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              847441') || 0;
+const BUNDLE_BYTES = Number('              852134') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
+const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
   :root {
 
@@ -11205,15 +11247,90 @@ function videoIsVisible(video) {
 if (!video?.isConnected) return false;
 try {
 const box = video.getBoundingClientRect();
-const style = getComputedStyle(video);
-return box.width > 0 && box.height > 0
-&& style.display !== 'none' && style.visibility !== 'hidden';
+if (box.width <= 0 || box.height <= 0) return false;
+if (box.right <= 0 || box.bottom <= 0
+|| box.left >= window.innerWidth || box.top >= window.innerHeight) return false;
+if (video.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+for (let node = video; node && node !== document.documentElement; node = node.parentElement) {
+const style = getComputedStyle(node);
+if (style.display === 'none' || style.visibility === 'hidden'
+|| style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
+}
+return true;
 } catch {
 return false;
 }
 }
+const VIDEO_CHANNEL_PLAYER_SELECTOR = [
+'#injected-channel-player',
+'#injected-embedded-channel-player-video',
+'[data-testid*="channel-player" i]',
+'[data-channel-player]',
+].join(', ');
+const VIDEO_PLAYER_SELECTOR = '[data-testid*="player" i], [data-player], [id*="player" i]';
+const VIDEO_PREVIEW_SELECTOR = [
+'#kick-focus-following-preview',
+'[data-testid*="preview" i]',
+'[data-preview]',
+'[class*="player-preview" i]',
+'[class*="video-preview" i]',
+'[id*="player-preview" i]',
+'[id*="video-preview" i]',
+].join(', ');
+const VIDEO_PRELOAD_SELECTOR = [
+'[data-testid*="preload" i]',
+'[data-preload]',
+'[class*="preload" i]',
+'[id*="preload" i]',
+].join(', ');
+const VIDEO_BACKGROUND_SELECTOR = [
+'[data-testid*="background" i]',
+'[data-background-video]',
+'[class*="background-video" i]',
+'[id*="background-video" i]',
+].join(', ');
+function videoClosest(video, selector) {
+try { return video?.closest?.(selector) || null; }
+catch { return null; }
+}
+function sessionWatchVideoCandidate(video) {
+let box;
+try { box = video?.getBoundingClientRect?.(); }
+catch { box = null; }
+const width = Math.max(0, Math.min(box?.right || 0, window.innerWidth)
+- Math.max(box?.left || 0, 0));
+const height = Math.max(0, Math.min(box?.bottom || 0, window.innerHeight)
+- Math.max(box?.top || 0, 0));
+const channelPlayer = Boolean(videoClosest(video, VIDEO_CHANNEL_PLAYER_SELECTOR));
+const genericPlayer = Boolean(videoClosest(video, VIDEO_PLAYER_SELECTOR));
+const muted = Boolean(video?.muted || Number(video?.volume) === 0);
+const preview = Boolean(videoClosest(video, VIDEO_PREVIEW_SELECTOR));
+const preload = Boolean(videoClosest(video, VIDEO_PRELOAD_SELECTOR));
+const markedBackground = Boolean(videoClosest(video, VIDEO_BACKGROUND_SELECTOR));
+return {
+video,
+route: state.route,
+documentVisible: document.visibilityState !== 'hidden',
+connected: Boolean(video?.isConnected),
+visible: videoIsVisible(video),
+intersectsViewport: width > 0 && height > 0,
+playerSurface: channelPlayer || genericPlayer || (width >= 480 && height >= 270),
+playerPriority: channelPlayer ? 2 : 1,
+preview,
+preload,
+background: markedBackground || (muted && !channelPlayer),
+muted,
+playing: Boolean(video && !video.paused && !video.ended && video.readyState >= 3),
+width,
+height,
+current: state.viewerHub.watchVideo === video,
+};
+}
+function sessionWatchOwnerCandidate() {
+return selectSessionWatchOwner([...document.querySelectorAll('video')].map(sessionWatchVideoCandidate));
+}
 function primaryVideo() {
-return [...document.querySelectorAll('video')].find(videoIsVisible) || null;
+return sessionWatchOwnerCandidate()?.video || null;
 }
 function applyStreamUptime() {
 const existing = document.querySelector('[data-kf-uptime]');
@@ -14589,6 +14706,8 @@ assessAdStack,
 assessApiDrift,
 BUNDLE_BYTE_CEILING,
 BUNDLE_BYTES,
+INJECTION_BYTE_BUDGET,
+LIBRARY_SEED_BYTES,
 channelPath,
 chatKeywordsForChannel,
 COLLECTIBLE_FACTS,
@@ -14896,17 +15015,18 @@ if (video) {
 for (const type of SESSION_WATCH_MEDIA_EVENTS) video.addEventListener(type, onSessionWatchMedia);
 }
 }
-function sessionWatchIsActive(video) {
+function sessionWatchIsActive(candidate) {
 return !state.runtime.suspended
-&& state.route === 'channel'
-&& document.visibilityState !== 'hidden'
-&& videoIsVisible(video)
-&& state.viewerHub.watchPlayback;
+&& sessionWatchCandidateState({
+...candidate,
+playing: state.viewerHub.watchPlayback,
+}).active;
 }
 function syncSessionWatchTime(now = Date.now()) {
-const video = state.route === 'channel' ? primaryVideo() : null;
+const candidate = state.route === 'channel' ? sessionWatchOwnerCandidate() : null;
+const video = candidate?.video || null;
 bindSessionWatchVideo(video);
-const active = sessionWatchIsActive(video);
+const active = sessionWatchIsActive(candidate);
 state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, now, active);
 if (active && !state.viewerHub.watchTimer) {
 state.viewerHub.watchTimer = window.setInterval(() => {

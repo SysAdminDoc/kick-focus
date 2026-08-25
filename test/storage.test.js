@@ -10,6 +10,7 @@ import {
   isSeedPartial,
   mergeHydratedLibrary,
   planLibraryPersist,
+  utf8ByteLength,
 } from '../src/storage.mjs';
 
 const entry = (key, lastSeen, extra = {}) => ({ key, name: key, src: `https://files.kick.com/emotes/${key}`, lastSeen, ...extra });
@@ -108,7 +109,7 @@ test('an oversized library is trimmed by bytes, not only by entry count', { tag:
   const fat = Array.from({ length: 400 }, (_v, index) => ({
     key: `kick:name:${'k'.repeat(340)}${index}`,
     id: 'i'.repeat(120),
-    name: 'n'.repeat(80),
+    name: '表'.repeat(80),
     src: `https://files.kick.com/emotes/${'s'.repeat(440)}${index}`,
     nativeGroups: Array.from({ length: 20 }, (_g, group) => `${group}`.padEnd(80, 'g')),
     access: 'available',
@@ -117,7 +118,7 @@ test('an oversized library is trimmed by bytes, not only by entry count', { tag:
     lastSeen: index,
   }));
   const plan = planLibraryPersist(preferences(fat));
-  const bytes = JSON.stringify(plan.seed).length;
+  const bytes = new TextEncoder().encode(JSON.stringify(plan.seed)).byteLength;
   assert.ok(bytes <= LIBRARY_SEED_BYTES, `seed is ${bytes} B, over the ${LIBRARY_SEED_BYTES} B budget`);
   assert.ok(plan.seed.library.length > 0, 'the budget trimmed the seed to nothing');
   assert.ok(plan.seed.library.length < 400, 'the byte budget did not trim anything');
@@ -139,8 +140,14 @@ test('an oversized library is trimmed by bytes, not only by entry count', { tag:
 test('a normal library never reaches the byte budget', { tag: 'unit' }, () => {
   const plan = planLibraryPersist(preferences(libraryOf(LIBRARY_SEED_LIMIT)));
   assert.equal(plan.seed.library.length, LIBRARY_SEED_LIMIT);
-  assert.ok(JSON.stringify(plan.seed).length < LIBRARY_SEED_BYTES / 2,
+  assert.ok(utf8ByteLength(JSON.stringify(plan.seed)) < LIBRARY_SEED_BYTES,
     'a realistic library should sit well under the budget, or the budget is mis-sized');
+});
+
+test('browser storage budgets count UTF-8 bytes instead of UTF-16 code units', { tag: 'unit' }, () => {
+  const value = 'plain é 🧪 表';
+  assert.equal(utf8ByteLength(value), Buffer.byteLength(value, 'utf8'));
+  assert.ok(utf8ByteLength(value) > value.length, 'the probe must distinguish bytes from characters');
 });
 
 test('a library that fits leaves nothing behind and is not marked partial', { tag: 'unit' }, () => {

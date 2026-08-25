@@ -583,12 +583,15 @@ const SIZE_BUDGETS = [
   ['dist/extension/content/kick-focus.js', content, 1_500_000, 'no injection ceiling; tracked so growth stays visible'],
   ['dist/extension-firefox/content/bridge.js', firefoxBridge, 1_500_000, 'carries the page bundle inline; no injection ceiling'],
 ];
+const byteLength = (value) => (typeof value === 'string'
+  ? Buffer.byteLength(value, 'utf8')
+  : value.length);
 const overBudgetIn = (budgets) => budgets
-  .filter(([, text, budget]) => text.length > budget)
-  .map(([name, text, budget, why]) => `${name} is ${text.length} B, over its ${budget} B budget (${why})`);
+  .filter(([, text, budget]) => byteLength(text) > budget)
+  .map(([name, text, budget, why]) => `${name} is ${byteLength(text)} B, over its ${budget} B budget (${why})`);
 const overBudget = overBudgetIn(SIZE_BUDGETS);
 for (const [name, text, budget] of SIZE_BUDGETS) {
-  const used = text.length / budget;
+  const used = byteLength(text) / budget;
   if (used > 0.85 && used <= 1) {
     console.log(`WARN ${name} is at ${Math.round(used * 100)}% of its ${budget} B budget`);
   }
@@ -606,6 +609,7 @@ for (const [name, text, budget] of SIZE_BUDGETS) {
  * big a library gets.
  */
 const INJECTION_CEILING = 1_000_000;
+const INJECTION_BUDGET = 925_000;
 /**
  * Bytes, not characters.
  *
@@ -617,13 +621,11 @@ const INJECTION_CEILING = 1_000_000;
  * reached 1.7 KB, which is the difference between reporting room to spare and
  * being over the line. A userscript manager injects bytes.
  */
-const byteLength = (value) => (typeof value === 'string'
-  ? Buffer.byteLength(value, 'utf8')
-  : value.length);
 const injectionFootprint = (userscript, seedBudget) => byteLength(userscript) + seedBudget;
-const overInjectionCeiling = (userscript, seedBudget) => injectionFootprint(userscript, seedBudget) > INJECTION_CEILING;
+const overInjectionBudget = (userscript, seedBudget) => injectionFootprint(userscript, seedBudget) > INJECTION_BUDGET;
 const footprint = injectionFootprint(source, LIBRARY_SEED_BYTES);
-console.log(`INFO userscript ${byteLength(source).toLocaleString('en-US')} B + library seed budget ${LIBRARY_SEED_BYTES.toLocaleString('en-US')} B = ${footprint.toLocaleString('en-US')} B of the ${INJECTION_CEILING.toLocaleString('en-US')} B injection ceiling`);
+const injectionReserve = INJECTION_CEILING - footprint;
+console.log(`INFO userscript ${byteLength(source).toLocaleString('en-US')} B + library seed budget ${LIBRARY_SEED_BYTES.toLocaleString('en-US')} B = ${footprint.toLocaleString('en-US')} B; ${injectionReserve.toLocaleString('en-US')} B reserved below the ${INJECTION_CEILING.toLocaleString('en-US')} B injection ceiling`);
 
 const sourceFiles = await Promise.all(
   [...moduleFiles, 'src/runtime.js', 'scripts/check.mjs', 'scripts/build.mjs', 'scripts/verify-extension.mjs', 'scripts/verify-firefox.mjs']
@@ -764,8 +766,10 @@ const checks = [
       && source.includes("'Session watch time'")
       && source.includes("'This browser session only'")
       && region.includes("state.route === 'channel'")
-      && region.includes("document.visibilityState !== 'hidden'")
-      && region.includes('videoIsVisible(video)')
+      && source.includes("documentVisible: document.visibilityState !== 'hidden'")
+      && source.includes('visible: videoIsVisible(video)')
+      && source.includes('function sessionWatchOwnerCandidate()')
+      && region.includes('sessionWatchCandidateState({')
       && region.includes('state.viewerHub.watchPlayback')
       && !/gm(?:Set|Delete)|localStorage|sessionStorage|\bfetch\s*\(/.test(region);
   })()],
@@ -1413,18 +1417,18 @@ const redProbes = [
   // gate exists to close: a file that fits until its storage is counted, and a
   // seed budget nobody would notice growing beside a small file.
   ['injection ceiling would catch a userscript that only fits without its storage',
-    overInjectionCeiling({ length: 900_000 }, 150_000)],
+    overInjectionBudget({ length: 900_000 }, 50_000)],
   ['injection ceiling would catch an oversized seed beside a tiny userscript',
-    overInjectionCeiling({ length: 2_000 }, 1_200_000)],
+    overInjectionBudget({ length: 2_000 }, 1_200_000)],
   // A multi-byte string is the case the old measurement got wrong: 400,000
   // three-byte characters are 1.2 MB on the wire and 400,000 code units in
   // memory, so counting characters called this comfortably inside the ceiling.
   ['injection ceiling would catch a bundle that only fits when counted as characters',
-    overInjectionCeiling('あ'.repeat(400_000), 0)],
+    overInjectionBudget('あ'.repeat(400_000), 0)],
   ['injection ceiling accepts a userscript and seed that fit together',
-    !overInjectionCeiling({ length: 800_000 }, 150_000)],
+    !overInjectionBudget({ length: 875_000 }, 50_000)],
   ['injection ceiling accepts the userscript plus its library seed budget',
-    !overInjectionCeiling(source, LIBRARY_SEED_BYTES)],
+    !overInjectionBudget(source, LIBRARY_SEED_BYTES)],
   ['sender gate would catch a handler that acts before checking',
     !everyMessageChecksSender([
       "if (message?.type === 'a') {", '    if (!fromKickPage(sender)) { return; }',

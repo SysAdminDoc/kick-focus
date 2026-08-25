@@ -1093,6 +1093,51 @@ export const VIEWER_HUB_REWARD_WORDS = Object.freeze({
 export const VIEWER_HUB_STALE_MS = 60_000;
 
 /**
+ * Classify one measured video without touching the DOM.
+ *
+ * Ownership deliberately ignores pause and document visibility. A paused main
+ * player must remain the owner instead of yielding to an autoplay preview.
+ * Those playback facts affect only `active`, which is the clock gate.
+ */
+export function sessionWatchCandidateState(candidate = {}) {
+  const width = Math.max(0, Number.isFinite(Number(candidate.width)) ? Number(candidate.width) : 0);
+  const height = Math.max(0, Number.isFinite(Number(candidate.height)) ? Number(candidate.height) : 0);
+  const area = Math.round(width * height);
+  const priority = Math.max(1, Math.min(9,
+    Number.isFinite(Number(candidate.playerPriority)) ? Math.floor(Number(candidate.playerPriority)) : 1));
+  const owner = candidate.route === 'channel'
+    && candidate.connected === true
+    && candidate.visible === true
+    && candidate.intersectsViewport === true
+    && candidate.playerSurface === true
+    && candidate.preload !== true
+    && candidate.preview !== true
+    && candidate.background !== true;
+  return Object.freeze({
+    owner,
+    active: owner && candidate.documentVisible === true && candidate.playing === true,
+    score: owner ? priority * 1_000_000_000 + area : -1,
+  });
+}
+
+/** Pick one dominant player, preserving the current owner only across a tie. */
+export function selectSessionWatchOwner(candidates = []) {
+  let selected = null;
+  let selectedState = null;
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const nextState = sessionWatchCandidateState(candidate);
+    if (!nextState.owner) continue;
+    if (!selectedState
+      || nextState.score > selectedState.score
+      || (nextState.score === selectedState.score && candidate.current === true && selected.current !== true)) {
+      selected = candidate;
+      selectedState = nextState;
+    }
+  }
+  return selected;
+}
+
+/**
  * Advance the in-memory watch clock at one playback boundary.
  *
  * The record deliberately contains no wall-clock start for the browser

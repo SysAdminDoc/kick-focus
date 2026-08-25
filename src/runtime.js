@@ -1053,6 +1053,7 @@ function hiddenElementCss() {
  */
 const BUNDLE_BYTES = Number('__KICK_FOCUS_BYTES__') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
+const INJECTION_BYTE_BUDGET = 925000;
 
 const SITE_CSS = `
   :root {
@@ -6259,17 +6260,97 @@ function videoIsVisible(video) {
   if (!video?.isConnected) return false;
   try {
     const box = video.getBoundingClientRect();
-    const style = getComputedStyle(video);
-    return box.width > 0 && box.height > 0
-      && style.display !== 'none' && style.visibility !== 'hidden';
+    if (box.width <= 0 || box.height <= 0) return false;
+    if (box.right <= 0 || box.bottom <= 0
+      || box.left >= window.innerWidth || box.top >= window.innerHeight) return false;
+    if (video.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+    for (let node = video; node && node !== document.documentElement; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden'
+        || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
+    }
+    return true;
   } catch {
     return false;
   }
 }
 
-/** Return only the player Kick is actually painting, never hidden preload media. */
+const VIDEO_CHANNEL_PLAYER_SELECTOR = [
+  '#injected-channel-player',
+  '#injected-embedded-channel-player-video',
+  '[data-testid*="channel-player" i]',
+  '[data-channel-player]',
+].join(', ');
+const VIDEO_PLAYER_SELECTOR = '[data-testid*="player" i], [data-player], [id*="player" i]';
+const VIDEO_PREVIEW_SELECTOR = [
+  '#kick-focus-following-preview',
+  '[data-testid*="preview" i]',
+  '[data-preview]',
+  '[class*="player-preview" i]',
+  '[class*="video-preview" i]',
+  '[id*="player-preview" i]',
+  '[id*="video-preview" i]',
+].join(', ');
+const VIDEO_PRELOAD_SELECTOR = [
+  '[data-testid*="preload" i]',
+  '[data-preload]',
+  '[class*="preload" i]',
+  '[id*="preload" i]',
+].join(', ');
+const VIDEO_BACKGROUND_SELECTOR = [
+  '[data-testid*="background" i]',
+  '[data-background-video]',
+  '[class*="background-video" i]',
+  '[id*="background-video" i]',
+].join(', ');
+
+function videoClosest(video, selector) {
+  try { return video?.closest?.(selector) || null; }
+  catch { return null; }
+}
+
+/** Measure the facts used by the pure watch-owner gate. */
+function sessionWatchVideoCandidate(video) {
+  let box;
+  try { box = video?.getBoundingClientRect?.(); }
+  catch { box = null; }
+  const width = Math.max(0, Math.min(box?.right || 0, window.innerWidth)
+    - Math.max(box?.left || 0, 0));
+  const height = Math.max(0, Math.min(box?.bottom || 0, window.innerHeight)
+    - Math.max(box?.top || 0, 0));
+  const channelPlayer = Boolean(videoClosest(video, VIDEO_CHANNEL_PLAYER_SELECTOR));
+  const genericPlayer = Boolean(videoClosest(video, VIDEO_PLAYER_SELECTOR));
+  const muted = Boolean(video?.muted || Number(video?.volume) === 0);
+  const preview = Boolean(videoClosest(video, VIDEO_PREVIEW_SELECTOR));
+  const preload = Boolean(videoClosest(video, VIDEO_PRELOAD_SELECTOR));
+  const markedBackground = Boolean(videoClosest(video, VIDEO_BACKGROUND_SELECTOR));
+  return {
+    video,
+    route: state.route,
+    documentVisible: document.visibilityState !== 'hidden',
+    connected: Boolean(video?.isConnected),
+    visible: videoIsVisible(video),
+    intersectsViewport: width > 0 && height > 0,
+    playerSurface: channelPlayer || genericPlayer || (width >= 480 && height >= 270),
+    playerPriority: channelPlayer ? 2 : 1,
+    preview,
+    preload,
+    background: markedBackground || (muted && !channelPlayer),
+    muted,
+    playing: Boolean(video && !video.paused && !video.ended && video.readyState >= 3),
+    width,
+    height,
+    current: state.viewerHub.watchVideo === video,
+  };
+}
+
+function sessionWatchOwnerCandidate() {
+  return selectSessionWatchOwner([...document.querySelectorAll('video')].map(sessionWatchVideoCandidate));
+}
+
+/** Return only the player Kick is actually painting, never preview or preload media. */
 function primaryVideo() {
-  return [...document.querySelectorAll('video')].find(videoIsVisible) || null;
+  return sessionWatchOwnerCandidate()?.video || null;
 }
 
 function applyStreamUptime() {
@@ -9949,6 +10030,8 @@ const settingsSurface = createSettings({
   assessApiDrift,
   BUNDLE_BYTE_CEILING,
   BUNDLE_BYTES,
+  INJECTION_BYTE_BUDGET,
+  LIBRARY_SEED_BYTES,
   channelPath,
   chatKeywordsForChannel,
   COLLECTIBLE_FACTS,
@@ -10307,18 +10390,19 @@ function bindSessionWatchVideo(video) {
   }
 }
 
-function sessionWatchIsActive(video) {
+function sessionWatchIsActive(candidate) {
   return !state.runtime.suspended
-    && state.route === 'channel'
-    && document.visibilityState !== 'hidden'
-    && videoIsVisible(video)
-    && state.viewerHub.watchPlayback;
+    && sessionWatchCandidateState({
+      ...candidate,
+      playing: state.viewerHub.watchPlayback,
+    }).active;
 }
 
 function syncSessionWatchTime(now = Date.now()) {
-  const video = state.route === 'channel' ? primaryVideo() : null;
+  const candidate = state.route === 'channel' ? sessionWatchOwnerCandidate() : null;
+  const video = candidate?.video || null;
   bindSessionWatchVideo(video);
-  const active = sessionWatchIsActive(video);
+  const active = sessionWatchIsActive(candidate);
   state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, now, active);
   if (active && !state.viewerHub.watchTimer) {
     state.viewerHub.watchTimer = window.setInterval(() => {

@@ -76,15 +76,19 @@ await mkdir(resolve(root, 'dist'), { recursive: true });
  */
 const BYTES_PLACEHOLDER = '__KICK_FOCUS_BYTES__';
 const stampBytes = (text, bytes) => text.replaceAll(BYTES_PLACEHOLDER, String(bytes).padStart(BYTES_PLACEHOLDER.length));
-const userscript = stampBytes(`${metadata.replaceAll('__VERSION__', VERSION)}${body}`, `${metadata.replaceAll('__VERSION__', VERSION)}${body}`.length);
-if (userscript.includes(BYTES_PLACEHOLDER) || userscript.length !== `${metadata.replaceAll('__VERSION__', VERSION)}${body}`.length) {
+const unstampedUserscript = `${metadata.replaceAll('__VERSION__', VERSION)}${body}`;
+const userscriptBytes = Buffer.byteLength(unstampedUserscript, 'utf8');
+const userscript = stampBytes(unstampedUserscript, userscriptBytes);
+if (userscript.includes(BYTES_PLACEHOLDER)
+  || userscript.length !== unstampedUserscript.length
+  || Buffer.byteLength(userscript, 'utf8') !== userscriptBytes) {
   throw new Error('the byte stamp changed the artifact length, so the number it carries is wrong');
 }
 await writeFile(resolve(root, 'dist/kick-focus.user.js'), userscript, 'utf8');
 // Printed every build so the growth trend is visible in the log rather than
 // only when the budget gate in check.mjs finally trips. The userscript is the
 // one with a real ceiling — see SIZE_BUDGETS there for the number and why.
-console.log(`Built dist/kick-focus.user.js (${userscript.length.toLocaleString('en-US')} bytes)`);
+console.log(`Built dist/kick-focus.user.js (${userscriptBytes.toLocaleString('en-US')} bytes)`);
 
 // ---------------------------------------------------------------------------
 // Companion extension
