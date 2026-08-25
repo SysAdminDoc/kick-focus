@@ -5,13 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { HIDEABLE_ELEMENTS, STICKER_GROUP_LIMIT, colorContrastRatio } from '../src/core.mjs';
-import { assertArtifactFresh } from '../scripts/artifact-freshness.mjs';
+import { readArtifact } from '../scripts/artifact-freshness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-// These tests read dist/. Refuse to judge a build older than the sources it
-// came from, rather than report on the previous one.
-await assertArtifactFresh();
 
 /**
  * A stub DOM node that answers every method the boot path calls. It never
@@ -172,14 +168,14 @@ function makeBootEnvironment(extras = {}) {
 }
 
 test('the built bundle boots in a stubbed environment without a TDZ or bad const order', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   vm.runInNewContext(bundle, context);
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
 test('the built bundle resolves every embedded visual asset', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   assert.equal(bundle.includes('__KICK_FOCUS_ICON__'), false, 'icon placeholder survived the build');
   assert.equal(bundle.includes('__KICK_FOCUS_PREVIEW__'), false, 'preview placeholder survived the build');
 });
@@ -189,7 +185,7 @@ test('the bundle knows its own size, and the number is the file', { tag: 'artifa
   // approximate number is worse than none: it would read as a measurement.
   // The build pads the stamp to the placeholder's exact width for this reason —
   // stamping a number changes the file, unless it cannot.
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   assert.equal(bundle.includes('__KICK_FOCUS_BYTES__'), false, 'byte placeholder survived the build');
   const stamped = bundle.match(/Number\('(\s*\d+)'\)/);
   assert.ok(stamped, 'the bundle carries no byte stamp at all');
@@ -201,7 +197,7 @@ test('the bundle knows its own size, and the number is the file', { tag: 'artifa
 });
 
 test('with the Navigation API, route changes come from the browser and history is left untouched', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const listeners = {};
   const navigation = { addEventListener(type, handler) { listeners[type] = handler; } };
   const context = makeBootEnvironment({ navigation });
@@ -221,7 +217,7 @@ test('with the Navigation API, route changes come from the browser and history i
 });
 
 test('without the Navigation API the history wrapper is the fallback and still fires', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   assert.equal(context.navigation, undefined);
   const originalPush = context.history.pushState;
@@ -232,7 +228,7 @@ test('without the Navigation API the history wrapper is the fallback and still f
 });
 
 test('with constructable stylesheets the site CSS is adopted once and no <style> element is made', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const constructed = [];
   class FakeSheet {
     replaceSync(text) { this.text = String(text); constructed.push(this); }
@@ -252,7 +248,7 @@ test('with constructable stylesheets the site CSS is adopted once and no <style>
 });
 
 test('without constructable stylesheets the site CSS falls back to a <style> element', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   assert.equal(context.CSSStyleSheet, undefined);
   vm.runInNewContext(bundle, context);
@@ -262,7 +258,7 @@ test('without constructable stylesheets the site CSS falls back to a <style> ele
 });
 
 test('under enforced Trusted Types the bundle takes its own policy, never the default', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const created = [];
   // A strict environment: policies are handed out by name, and creating one
   // called 'default' would vouch for every other script on the page — Kick's
@@ -284,7 +280,7 @@ test('under enforced Trusted Types the bundle takes its own policy, never the de
 test('a page without Trusted Types boots without reaching for the API', { tag: 'artifact' }, async () => {
   // Feature-detected, never version-sniffed: today kick.com ships no CSP at
   // all, so the absent case is the one that actually runs.
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   assert.equal(context.trustedTypes, undefined);
   vm.runInNewContext(bundle, context);
@@ -296,7 +292,7 @@ test('the adopted sheet carries one hide rule per catalog entry', { tag: 'artifa
   // source only holds the generator — grepping it proves nothing. This runs it
   // and reads the stylesheet that actually reached the document, which is the
   // only place a catalog entry with a switch and no CSS behind it shows up.
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   const constructed = [];
   class FakeSheet {
     replaceSync(text) { this.text = String(text); constructed.push(this); }
@@ -325,7 +321,7 @@ test('the adopted sheet carries one hide rule per catalog entry', { tag: 'artifa
 });
 
 test('a mis-ordered const in the bundle is caught by the boot gate (red test)', { tag: 'artifact' }, async () => {
-  const bundle = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const bundle = await readArtifact('dist/kick-focus.user.js');
   // Inject a temporal-dead-zone read right after the boot guard: a const is read
   // before its declaration. A correct bundle never does this; this proves the
   // boot gate above would fail loudly if a future edit introduced one.
@@ -560,7 +556,7 @@ test('emote organization has a direct route, visible search, and batch controls'
 });
 
 test('an emote observed in the page is cleaned before it can become an href', { tag: 'artifact' }, async () => {
-  const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const runtime = await readArtifact('dist/kick-focus.user.js');
   // The library card renders sticker.src as an href and escapeHtml does not stop
   // a scheme, so the persist-time cleaner has to run at the moment the value is
   // read out of Kick's DOM, not only on the way to storage.
@@ -572,7 +568,7 @@ test('an emote observed in the page is cleaned before it can become an href', { 
 });
 
 test('the chat emote harvest queue is capped at its only push site', { tag: 'artifact' }, async () => {
-  const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const runtime = await readArtifact('dist/kick-focus.user.js');
   // A stalled key never reaches the negative set, so every later sighting
   // re-queues it. The cap is the backstop, and it lives inside a closure with
   // no seam a unit test can reach, so this pins the push site instead: one
@@ -586,7 +582,7 @@ test('the chat emote harvest queue is capped at its only push site', { tag: 'art
 });
 
 test('the memoised playback owner is invalidated everywhere it can go stale', { tag: 'artifact' }, async () => {
-  const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const runtime = await readArtifact('dist/kick-focus.user.js');
   // Measuring the owner walks every video ancestor through getComputedStyle, and
   // four callers ask for it inside one apply cycle, so the answer is cached for
   // the length of a cycle. Every path that can outlive that cycle has to clear

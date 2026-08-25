@@ -5,13 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { colorContrastRatio } from '../src/core.mjs';
-import { assertArtifactFresh } from '../scripts/artifact-freshness.mjs';
+import { readArtifact } from '../scripts/artifact-freshness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-// These tests read dist/. Refuse to judge a build older than the sources it
-// came from, rather than report on the previous one.
-await assertArtifactFresh();
 
 test('the popup chooses the higher-contrast ink for a boundary custom accent', async () => {
   const source = await readFile(resolve(root, 'src/extension/popup.js'), 'utf8');
@@ -132,7 +128,10 @@ async function runBridge(file, pageFirst) {
  * arrays are injected at build time.
  */
 async function loadBackground(file, options = {}) {
-  const source = await readFile(resolve(root, file), 'utf8');
+  // Guarded rather than a plain read: these judge the built companion bundles,
+  // and the build writes them after the userscript, so a build that died in
+  // between would leave them stale while the userscript looked current.
+  const source = await readArtifact(file);
   const isFirefox = file.includes('firefox');
   let listener = null;
   let messageListener = null;

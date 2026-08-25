@@ -3,13 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertArtifactFresh } from '../scripts/artifact-freshness.mjs';
+import { readArtifact } from '../scripts/artifact-freshness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-// These tests read dist/. Refuse to judge a build older than the sources it
-// came from, rather than report on the previous one.
-await assertArtifactFresh();
 
 /**
  * Read the TRANSLATIONS literal out of the source and count *authored* keys.
@@ -172,7 +168,7 @@ test('the shipped dictionary resolves, in the shape the translator reads', { tag
   // per-locale maps were collapsed into one row per string, a parser that only
   // read the source would have gone on passing over an artifact that resolved
   // nothing.
-  const src = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const src = await readArtifact('dist/kick-focus.user.js');
   const localesAt = src.indexOf('const LOCALES = [');
   const dictAt = src.indexOf('const TRANSLATIONS = {');
   assert.ok(localesAt > 0 && dictAt > localesAt, 'the dictionary literal is not in the artifact');
