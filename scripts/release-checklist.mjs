@@ -4,6 +4,12 @@
  * The offline artifact/tests run first. If Chromium is available, the live
  * extension proof is then repeated at 1440x900 and 1920x1080 and captures a
  * screenshot for the visual comparison step in the release checklist.
+ *
+ * The live runs are headed on purpose: several checks measure real layout and
+ * real paint. Headed used to mean *on top of whatever the operator was doing*,
+ * for the length of two full runs, with no way to stop it but killing the
+ * process. So the window is parked off-screen by default. Set
+ * KF_WINDOW_POSITION yourself to watch a run.
  */
 
 import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
@@ -14,6 +20,9 @@ import { fileURLToPath } from 'node:url';
 import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// Far enough left of every real display to be off all of them, and the same
+// coordinates the repo's own docs use for an unattended run.
+const WINDOW_POSITION = process.env.KF_WINDOW_POSITION || '-32000,-32000';
 const screenshotRoot = resolve(process.env.KF_RELEASE_SCREENSHOT_DIR || await mkdtemp(join(tmpdir(), 'kick-focus-release-')));
 await mkdir(screenshotRoot, { recursive: true });
 
@@ -48,6 +57,7 @@ for (const [label, size, file] of [
     KF_SCREENSHOT_PATH: join(screenshotRoot, file),
     KF_SUMMARY_PATH: summaryPath,
     KF_HEADLESS: '',
+    KF_WINDOW_POSITION: WINDOW_POSITION,
   });
   if (code !== 0) process.exit(code || 1);
 }

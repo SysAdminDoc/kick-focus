@@ -316,12 +316,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P1
 
-- [ ] P1 — R-133: Prove the Firefox package on v1.39.0
-  Why: both Chromium viewports were re-run on 2026-08-25 against the shipped build and pass 96/96 with 15 skips at 1440x900 and at 1920x1080, and README says so. `npm run verify:firefox` was not repeated, so the Firefox result on record is still the v1.34.0 one (8/8 with one documented popup skip), and `npm run release:check` runs both engines so it cannot be green until that half is.
-  Where: scripts/verify-firefox.mjs; scripts/release-checklist.mjs; README.md
-  Acceptance: The MV2 package runs in real Firefox over WebDriver BiDi against v1.39.0, its real pass and skip counts go into README, and `npm run release:check` is green.
-  Complexity: S
-
 - [ ] P1 — R-144: Stop muting a video from demoting the player it belongs to
   Why: `sessionWatchVideoCandidate` treats `muted` as evidence a video is decorative, and rescues only what Kick's four channel-player selectors claim. Browsers autoplay muted and plenty of people watch that way, so the day `#injected-channel-player` is renamed, every muted viewer loses the session watch clock, the uptime chip and the recording countdown together, silently.
   Where: src/runtime.js `sessionWatchVideoCandidate` (the `background` field) and `VIDEO_CHANNEL_PLAYER_SELECTOR`; scripts/verify-extension.mjs session-watch probe; src/compatibility.mjs, which is where Kick's selector drift is already tracked

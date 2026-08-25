@@ -28,6 +28,7 @@ All notable changes are documented here. Dates use ISO 8601.
 - An emote seen in chat is checked against the same URL rule the saved library already used, at the moment it is read rather than only when it is written. A crafted image address could otherwise sit in memory until the next reload with the library's Open artwork link pointing at it.
 - The multi-stream live poll no longer walks every channel the tab has ever shown. Removing a channel from the grid now actually forgets it.
 - Smaller ones: the settings search box pointed at an element that did not exist, the save indicator was not announced, the pop-out chat failure announced politely instead of as an alert, and the companion popup's revoke button stayed dead after a failed revoke until the popup was reopened.
+- `npm run release:check` no longer takes over the screen. Its two live runs are headed on purpose, because several checks measure real layout and real paint, but the window opened on top of whatever you were doing and stayed there for both runs. It now parks off-screen unless you set `KF_WINDOW_POSITION` to watch it.
 
 ### Changed
 
