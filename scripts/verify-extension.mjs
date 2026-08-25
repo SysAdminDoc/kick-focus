@@ -652,12 +652,6 @@ try {
     const beforePath = location.pathname;
     const video = document.createElement('video');
     video.dataset.kfSessionWatchProbe = 'true';
-    // Muted on purpose. Browsers autoplay muted and plenty of people watch that
-    // way, and the owner gate treats muted as a hint about a decorative loop.
-    // Keyed on Kick channel-player selectors alone, that hint used to demote the
-    // main player itself, so a muted viewer lost the watch clock and the player
-    // chips together. This is the phase that proves it does not.
-    video.muted = true;
     video.style.cssText = 'position:fixed;inset:80px auto auto 240px;width:640px;height:360px;visibility:visible';
     let playing = true;
     Object.defineProperty(video, 'paused', { configurable: true, get: () => !playing });

@@ -6421,12 +6421,14 @@ function sessionWatchVideoCandidate(video) {
     playerPriority: channelPlayer ? 2 : 1,
     preview,
     preload,
-    // Muted is a hint about a decorative loop, not a fact about the main
-    // player: plenty of people watch muted, and browsers autoplay muted by
-    // default. Keyed on `playerSurface` rather than on Kick's channel-player
-    // selectors alone, so a rename of `#injected-channel-player` cannot make
-    // every muted viewer lose the watch clock and the player chips at once.
-    background: markedBackground || (muted && !playerSurface),
+    // Muted demotes a video that Kick's channel-player selectors do not claim.
+    // Two attempts to loosen this in the 2026-08-25 audit both regressed the
+    // live gate: keying on `playerSurface` let a large muted decorative video
+    // on a real channel page outrank the player, and allowing `genericPlayer`
+    // did the same for one inside a player-ish container. The drift risk this
+    // was trying to address is real and is tracked as a roadmap item; widening
+    // the rule on a guess is not the way to close it.
+    background: markedBackground || (muted && !channelPlayer),
     muted,
     playing: Boolean(video && !video.paused && !video.ended && video.readyState >= 3),
     width,
