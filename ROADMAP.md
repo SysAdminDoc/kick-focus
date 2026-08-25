@@ -246,12 +246,6 @@ None open.
 
 ### P2, companion response hardening
 
-- [ ] P2: R-131 - Stop blocklist downloads at 512 KiB while reading
-  Why: Commit 29f7584 rejects a declared oversized response and checks the final ArrayBuffer, but a feed with no reliable Content-Length can still allocate the complete body before the limit is enforced.
-  Evidence: src/extension/background.js fetchApprovedBlocklist; src/extension/background.firefox.js fetchApprovedBlocklist; test/companion.test.js streamed-body cases; https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultReader/read
-  Touches: both companion background fetchers, shared transport tests, built extension artifacts
-  Acceptance: Both backgrounds read response chunks, cancel the reader as soon as cumulative bytes exceed 512 KiB, and decode valid UTF-8 only after the bounded read succeeds; the existing Content-Length precheck remains; a test with an endless or oversized chunk source proves consumption stops no later than the first chunk beyond the limit; timeout, MIME, redirect, and exact-URL behavior stay unchanged.
-  Complexity: S
 
 ## Audit, 2026-08-25
 

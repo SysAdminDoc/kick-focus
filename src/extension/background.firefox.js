@@ -165,6 +165,56 @@ async function revokeBlocklist() {
   if (origin) await api.permissions.remove({ origins: [origin] });
 }
 
+/**
+ * Read a response, and stop reading at the limit rather than after it.
+ *
+ * The Content-Length precheck above is an optimisation, not a guarantee: a feed
+ * can answer with chunked encoding and declare no length at all, and
+ * `response.arrayBuffer()` then allocates the whole thing before anything gets
+ * to object to its size. A hostile or broken feed could hand a service worker
+ * an arbitrarily large buffer and be refused only afterwards.
+ *
+ * So the body is read chunk by chunk and the reader is cancelled as soon as the
+ * running total passes the limit — no later than the first chunk that crosses
+ * it. Decoding happens only once the bounded read has finished, and stays
+ * fatal, so invalid UTF-8 is still an error rather than replacement characters.
+ *
+ * Falls back to the whole-body read when a response has no stream, which is the
+ * case in some test doubles and older embeddings; the size check still applies.
+ */
+async function readBoundedBody(response) {
+  const decode = (bytes) => new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const body = new Uint8Array(await response.arrayBuffer());
+    if (body.byteLength > BLOCKLIST_MAX_BYTES) throw new Error('Blocklist exceeds 512 KiB.');
+    return decode(body);
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || !value.byteLength) continue;
+      total += value.byteLength;
+      if (total > BLOCKLIST_MAX_BYTES) throw new Error('Blocklist exceeds 512 KiB.');
+      chunks.push(value);
+    }
+  } finally {
+    // Releases the connection on the refusal path as well as the success path,
+    // so an endless feed is not left streaming into a cancelled request.
+    try { await reader.cancel(); } catch { /* already closed */ }
+  }
+  const body = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return decode(body);
+}
+
 async function fetchApprovedBlocklist(requestedUrl) {
   const state = await readBlocklistState();
   const requestUrl = normalizeBlocklistUrl(requestedUrl);
@@ -190,9 +240,7 @@ async function fetchApprovedBlocklist(requestedUrl) {
     if (Number.isFinite(declaredLength) && declaredLength > BLOCKLIST_MAX_BYTES) {
       throw new Error('Blocklist exceeds 512 KiB.');
     }
-    const body = await response.arrayBuffer();
-    if (body.byteLength > BLOCKLIST_MAX_BYTES) throw new Error('Blocklist exceeds 512 KiB.');
-    return new TextDecoder('utf-8', { fatal: true }).decode(body);
+    return await readBoundedBody(response);
   } finally {
     clearTimeout(timeout);
   }

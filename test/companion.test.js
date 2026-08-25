@@ -221,6 +221,43 @@ async function askBackground(background, message, sender) {
   });
 }
 
+/**
+ * A response whose body is a stream that never ends.
+ *
+ * The double above answers `arrayBuffer()` and has no `body`, which is exactly
+ * the shape that let a body-size check pass while the whole body was still
+ * being allocated first. This one hands out chunks forever and records how many
+ * were taken, so "it stopped reading" is measurable rather than assumed.
+ */
+function endlessResponse(url, { chunkBytes = 64 * 1024 } = {}) {
+  const taken = { chunks: 0, cancelled: false };
+  const chunk = new TextEncoder().encode('x'.repeat(chunkBytes));
+  const headers = new Map([['content-type', 'application/json']]);
+  return {
+    taken,
+    response: {
+      ok: true,
+      status: 200,
+      url,
+      redirected: false,
+      headers: { get: (name) => headers.get(String(name).toLowerCase()) || null },
+      arrayBuffer: async () => { throw new Error('the whole body was read after all'); },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            taken.chunks += 1;
+            // A guard on the test itself: an unbounded reader would spin here
+            // forever and the run would look like a hang rather than a failure.
+            if (taken.chunks > 200) throw new Error('the reader never stopped');
+            return { done: false, value: chunk };
+          },
+          cancel: async () => { taken.cancelled = true; },
+        }),
+      },
+    },
+  };
+}
+
 function jsonResponse(url, text = '{"blocked":[]}', overrides = {}) {
   const bytes = new TextEncoder().encode(text);
   const { headers: headerOverrides = {}, ...responseOverrides } = overrides;
@@ -457,6 +494,58 @@ for (const browserCase of [
       assert.match(answer?.error || '', invalid.error);
     });
   }
+
+  test(`${browserCase.name} stops reading a blocklist at the limit, not after it`, { tag: 'artifact' }, async () => {
+    // A feed can answer with chunked encoding and declare no length at all, and
+    // reading the whole body first means an arbitrarily large allocation that
+    // is only refused afterwards. 512 KiB in 64 KiB chunks is nine reads: eight
+    // to reach the limit and one to cross it.
+    const endless = endlessResponse(approvedUrl, { chunkBytes: 64 * 1024 });
+    const background = await loadBackground(browserCase.file, {
+      stored: approvedStore,
+      granted: [origin],
+      fetch: async () => endless.response,
+    });
+
+    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    assert.equal(answer?.ok, false);
+    assert.match(answer?.error || '', /512 KiB/i);
+    assert.equal(endless.taken.chunks, 9,
+      `consumption stopped after ${endless.taken.chunks} chunks, not at the first one past the limit`);
+    assert.equal(endless.taken.cancelled, true,
+      'the reader was left open, so a refused feed keeps streaming');
+  });
+
+  test(`${browserCase.name} reads a streamed blocklist that fits`, { tag: 'artifact' }, async () => {
+    // The bound must not cost the ordinary case: a body that arrives in several
+    // chunks has to come back whole, and still decode as strict UTF-8.
+    const text = '{"blocked":["one","two"]}';
+    const bytes = new TextEncoder().encode(text);
+    const halves = [bytes.slice(0, 10), bytes.slice(10)];
+    let index = 0;
+    const background = await loadBackground(browserCase.file, {
+      stored: approvedStore,
+      granted: [origin],
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        url: approvedUrl,
+        redirected: false,
+        headers: { get: (name) => (String(name).toLowerCase() === 'content-type' ? 'application/json' : null) },
+        arrayBuffer: async () => { throw new Error('the stream should have been used'); },
+        body: {
+          getReader: () => ({
+            read: async () => (index < halves.length ? { done: false, value: halves[index++] } : { done: true }),
+            cancel: async () => {},
+          }),
+        },
+      }),
+    });
+
+    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    assert.equal(answer?.ok, true, answer?.error);
+    assert.equal(answer.text, text, 'a chunked body came back joined wrongly');
+  });
 
   test(`${browserCase.name} aborts blocklist fetches at eight seconds`, { tag: 'artifact' }, async () => {
     const background = await loadBackground(browserCase.file, {

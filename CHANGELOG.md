@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- A blocklist feed can no longer make the companion allocate more than 512 KiB. The size limit was checked after the whole body had already been read, so a feed that declares no length could hand over an arbitrarily large response and be refused only afterwards. It is read in chunks now and the read stops at the first chunk past the limit.
 - Watching muted keeps the watch clock the day Kick renames its player. Muting was treated as a sign a video is decorative, and only Kick's channel-player selectors rescued it, so a single markup change would have taken the session clock, the uptime chip and the recording countdown away from every muted viewer at once, silently. If those selectors ever stop matching anything at all, the player container rescues it instead, and the compatibility report says the selectors have drifted rather than letting it pass unnoticed.
 
 ### Changed
