@@ -6418,8 +6418,32 @@ function sessionWatchVideoCandidate(video) {
   };
 }
 
+/**
+ * The owner, computed once per apply cycle.
+ *
+ * `sessionWatchVideoCandidate` measures a box and walks the ancestor chain
+ * calling `getComputedStyle` at every step, for every `<video>` on the page.
+ * Four callers ask for the owner inside one cycle — the uptime chip, the
+ * recording countdown, the playback readout and the session clock — so the
+ * unmemoised version forced the same style recalculation four times over,
+ * roughly a hundred `getComputedStyle` calls per cycle on an ordinary channel
+ * page, for an answer that cannot change while the cycle is running.
+ *
+ * Invalidated by `runApplyCycle` rather than by a timestamp: the cycle is the
+ * unit of work that must see one consistent DOM, and it already yields to input
+ * and re-reads `suspended` afterwards.
+ */
+let sessionWatchOwnerMemo = null;
+
+function invalidateSessionWatchOwner() {
+  sessionWatchOwnerMemo = null;
+}
+
 function sessionWatchOwnerCandidate() {
-  return selectSessionWatchOwner([...document.querySelectorAll('video')].map(sessionWatchVideoCandidate));
+  if (sessionWatchOwnerMemo) return sessionWatchOwnerMemo.value;
+  const value = selectSessionWatchOwner([...document.querySelectorAll('video')].map(sessionWatchVideoCandidate));
+  sessionWatchOwnerMemo = { value };
+  return value;
 }
 
 /** Return only the player Kick is actually painting, never preview or preload media. */
@@ -6872,6 +6896,7 @@ async function runApplyCycle() {
     return;
   }
   state.runtime.applyRunning = true;
+  invalidateSessionWatchOwner();
   let elapsed = 0;
   let started = performance.now();
   try {
@@ -6924,6 +6949,9 @@ async function runApplyCycle() {
       // The panic switch, a route change, or a teardown can all land during the
       // yield. Re-read rather than trusting what was true a task ago.
       if (state.runtime.suspended) return;
+      // The DOM can change across the yield, so the owner measured before it is
+      // no longer an answer about the page the second half is writing to.
+      invalidateSessionWatchOwner();
       started = performance.now();
     }
 
@@ -9862,6 +9890,10 @@ function syncSessionWatchTime(now = Date.now()) {
   state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, now, active);
   if (active && !state.viewerHub.watchTimer) {
     state.viewerHub.watchTimer = window.setInterval(() => {
+      // This tick is not an apply cycle, so nothing has invalidated the memo.
+      // Without this the clock would keep running against an owner that had
+      // since been removed or scrolled out of the viewport.
+      invalidateSessionWatchOwner();
       syncSessionWatchTime();
       repaintViewerWatchCard();
     }, 1000);

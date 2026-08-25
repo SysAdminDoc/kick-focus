@@ -554,6 +554,20 @@ test('emote organization has a direct route, visible search, and batch controls'
     'Enter must commit a group rename directly');
 });
 
+test('the memoised playback owner is invalidated everywhere it can go stale', { tag: 'artifact' }, async () => {
+  const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  // Measuring the owner walks every video ancestor through getComputedStyle, and
+  // four callers ask for it inside one apply cycle, so the answer is cached for
+  // the length of a cycle. Every path that can outlive that cycle has to clear
+  // it, or the watch clock keeps counting against a video that is gone.
+  const invalidations = [...runtime.matchAll(/invalidateSessionWatchOwner\(\)/g)].length;
+  assert.ok(invalidations >= 4,
+    `only ${invalidations} references to invalidateSessionWatchOwner; the cycle start, the yield, the timer tick and the declaration are all required`);
+  // The one-second watch tick is not an apply cycle and must clear it itself.
+  assert.match(runtime, /invalidateSessionWatchOwner\(\);\s*syncSessionWatchTime\(\);/,
+    'the watch timer tick does not invalidate the owner before reading it');
+});
+
 test('the emote hover card is described to a screen reader, not hidden from one', { tag: 'artifact' }, async () => {
   // The host carried aria-hidden="true" and nothing referenced it, so the
   // access, reach, ownership and shadowing lines were sighted-only. It opens on

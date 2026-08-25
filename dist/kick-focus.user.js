@@ -7028,7 +7028,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              844371') || 0;
+const BUNDLE_BYTES = Number('              844690') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -11417,8 +11417,15 @@ height,
 current: state.viewerHub.watchVideo === video,
 };
 }
+let sessionWatchOwnerMemo = null;
+function invalidateSessionWatchOwner() {
+sessionWatchOwnerMemo = null;
+}
 function sessionWatchOwnerCandidate() {
-return selectSessionWatchOwner([...document.querySelectorAll('video')].map(sessionWatchVideoCandidate));
+if (sessionWatchOwnerMemo) return sessionWatchOwnerMemo.value;
+const value = selectSessionWatchOwner([...document.querySelectorAll('video')].map(sessionWatchVideoCandidate));
+sessionWatchOwnerMemo = { value };
+return value;
 }
 function primaryVideo() {
 return sessionWatchOwnerCandidate()?.video || null;
@@ -11769,6 +11776,7 @@ state.runtime.applyQueued = true;
 return;
 }
 state.runtime.applyRunning = true;
+invalidateSessionWatchOwner();
 let elapsed = 0;
 let started = performance.now();
 try {
@@ -11816,6 +11824,7 @@ if (resume) {
 elapsed += performance.now() - started;
 await resume;
 if (state.runtime.suspended) return;
+invalidateSessionWatchOwner();
 started = performance.now();
 }
 replayPendingDeletions();
@@ -14489,6 +14498,7 @@ const active = sessionWatchIsActive(candidate);
 state.viewerHub.watch = advanceSessionWatchTime(state.viewerHub.watch, now, active);
 if (active && !state.viewerHub.watchTimer) {
 state.viewerHub.watchTimer = window.setInterval(() => {
+invalidateSessionWatchOwner();
 syncSessionWatchTime();
 repaintViewerWatchCard();
 }, 1000);
