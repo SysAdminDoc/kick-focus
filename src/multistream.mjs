@@ -774,6 +774,7 @@ export function createMultistream(host) {
 
   function renderMultistreamControls(backdrop) {
     const { streams, chat, showChat, layouts } = state.multistream;
+    backdrop.dataset.kfMultistreamEmpty = String(!streams.length);
     const count = backdrop.querySelector('[data-kf-multistream-count]');
     if (count) {
       // Same rule as the command count: composed text on a node that outlives the
@@ -787,6 +788,9 @@ export function createMultistream(host) {
       error.textContent = state.multistreamError;
       error.hidden = !state.multistreamError;
     }
+    const layoutName = backdrop.querySelector('[data-kf-multistream-layout-name]');
+    const layoutSave = backdrop.querySelector('[data-action="multistream-save"]');
+    if (layoutSave) layoutSave.disabled = !streams.length || !String(layoutName?.value || '').trim();
     const chatSelect = backdrop.querySelector('[data-kf-multistream-chat-select]');
     if (chatSelect) {
       setMarkup(chatSelect, streams.map((slug) => `<option value="${escapeHtml(slug)}"${slug === chat ? ' selected' : ''}>${escapeHtml(slug)}</option>`).join(''));

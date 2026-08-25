@@ -527,6 +527,13 @@ test('settings controls share one geometry scale and injected header actions sha
     'the phone-width protection log must fit its settings page');
   assert.match(phoneRules, /\[data-kf-current-page="content"\] \.kf-table td \{ min-width: 0; overflow-wrap: anywhere; \}/,
     'long protection-log matches must wrap rather than widening the table');
+  const narrowRules = ui.slice(ui.indexOf('@media (max-width: 700px)'));
+  assert.match(narrowRules, /\.kf-nav::-webkit-scrollbar \{ height: 4px; \}/,
+    'narrow settings navigation must expose a visible scroll affordance');
+  assert.doesNotMatch(narrowRules, /\.kf-nav\s*\{[^}]*scrollbar-width:\s*none/,
+    'narrow settings navigation must not hide its only overflow cue');
+  assert.match(ui, /@media \(max-width: 1360px\)[\s\S]*?\.kf-ms-controls \{ grid-column: 1 \/ -1; justify-content: flex-end; \}/,
+    'multi-stream controls must wrap before the Close action leaves a 1280px viewport');
 });
 
 test('reset recovery persists without a timer and the page keyboard stays with Kick', { tags: ['artifact'] }, async () => {
@@ -543,6 +550,10 @@ test('reset recovery persists without a timer and the page keyboard stays with K
     'the visible Recall control needs a normal desktop target');
   assert.match(source, /data-kf-large-targets="true"\]\s+\[data-kf-composer-recall\][^}]*min-height:\s*40px !important/,
     'Larger targets must grow the visible Recall control to 40px');
+  assert.match(source, /state\.root\.dataset\.kfQuickAvoidComposer = String\(narrowChatComposer\)/,
+    'the floating Focus fallback must clear a narrow chat composer');
+  assert.match(source, /state\.quickButton\.hidden = !shouldShow \|\| headerMounted \|\| pickerVisible/,
+    'the floating Focus fallback must leave a narrow open emote picker unobstructed');
   const privateReset = source.slice(source.indexOf('function clearPrivateData'), source.indexOf('\n}\n\n/**', source.indexOf('function clearPrivateData')));
   assert.doesNotMatch(privateReset, /REWARD_STATE_KEY|state\.reward/,
     'full reset still deletes reward history that its undo snapshot cannot restore');

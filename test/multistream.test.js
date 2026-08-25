@@ -111,6 +111,8 @@ function makeShadow() {
     chatSelect: withAttribute('data-kf-multistream-chat-select', 'select'),
     pause: withAttribute('data-kf-multistream-pause', 'button'),
     mute: withAttribute('data-kf-multistream-mute', 'button'),
+    layoutName: withAttribute('data-kf-multistream-layout-name', 'input'),
+    layoutSave: withAttribute('data-action', 'button'),
     layouts: withAttribute('data-kf-multistream-layouts'),
     input: withAttribute('data-kf-multistream-input', 'input'),
     presence: withAttribute('data-kf-presence-add', 'button'),
@@ -119,6 +121,7 @@ function makeShadow() {
     mergedStatus: withAttribute('data-kf-multistream-merged-status'),
     mergedList: withAttribute('data-kf-multistream-merged-list', 'ul'),
   };
+  parts.layoutSave.setAttribute('data-action', 'multistream-save');
   const chatToggle = element('button');
   chatToggle.setAttribute('data-action', 'multistream-toggle-chat');
   const mergedToggle = element('button');
@@ -245,6 +248,21 @@ test('every function the surface hands back can be called against a stub host', 
     assert.equal(typeof fn, 'function', `${name} is callable`);
     await fn(name === 'addMultistream' ? 'beta' : undefined);
   }
+});
+
+test('an empty board simplifies its chrome and cannot be saved', { tags: ['unit'] }, () => {
+  const { host, state, dom } = makeHost();
+  const surface = createMultistream(host);
+  dom.backdrop.hidden = false;
+  surface.renderMultistream();
+  assert.equal(dom.backdrop.dataset.kfMultistreamEmpty, 'true');
+  assert.equal(dom.layoutSave.disabled, true);
+
+  dom.layoutName.value = 'Evening board';
+  state.multistream = normalizeMultistream({ ...state.multistream, streams: ['alpha'], focus: 'alpha' });
+  surface.renderMultistream();
+  assert.equal(dom.backdrop.dataset.kfMultistreamEmpty, 'false');
+  assert.equal(dom.layoutSave.disabled, false);
 });
 
 test('a tile that is still wanted keeps the exact iframe it already had', { tags: ['unit'] }, () => {

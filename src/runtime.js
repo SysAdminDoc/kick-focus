@@ -7509,6 +7509,7 @@ const UI_CSS = `
   }
   .kf-quick:hover { border-color: var(--accent); background: var(--surface-hover); color: var(--accent); transform: translateY(-1px); }
   .kf-quick:active { transform: translateY(0); }
+  :host([data-kf-quick-avoid-composer="true"]) .kf-quick { bottom: 126px; }
 
   .kf-backdrop {
     position: fixed;
@@ -8308,6 +8309,7 @@ const UI_CSS = `
   .kf-ms-add { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; }
   .kf-ms-add input { width: min(420px, 100%); }
   .kf-ms-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+  .kf-ms-backdrop[data-kf-multistream-empty="true"] .kf-ms-controls > :not([data-action="close-multistream"]) { display: none; }
   .kf-ms-save-layout { display: flex; align-items: center; gap: 7px; }
   .kf-ms-points-note { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
   .kf-ms-points-note svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--warning); }
@@ -8456,9 +8458,9 @@ const UI_CSS = `
   .kf-ms-layout small.kf-ms-live[data-live="true"] { color: var(--accent); font-weight: 700; }
   .kf-ms-empty { color: var(--muted); font-size: 11px; }
 
-  @media (max-width: 1180px) {
+  @media (max-width: 1360px) {
     .kf-ms-head { grid-template-columns: auto minmax(280px, 1fr); }
-    .kf-ms-controls { grid-column: 1 / -1; justify-content: flex-start; }
+    .kf-ms-controls { grid-column: 1 / -1; justify-content: flex-end; }
   }
   @media (max-width: 760px) {
     .kf-ms-head, .kf-ms-foot { grid-template-columns: 1fr; }
@@ -8511,10 +8513,12 @@ const UI_CSS = `
     .kf-settings { width: calc(100vw / var(--kf-interface-scale, 1)); height: calc(100vh / var(--kf-interface-scale, 1)); min-height: 0; grid-template-rows: 66px minmax(0, 1fr) 68px; border: 0; border-radius: var(--radius-none); }
     .kf-header { grid-template-columns: minmax(0, 1fr) auto auto; padding-inline: 14px; }
     .kf-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-    .kf-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; overscroll-behavior-inline: contain; }
-    .kf-nav::-webkit-scrollbar { display: none; }
+    .kf-nav { display: flex; overflow-x: auto; padding: 0 0 4px; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-color: var(--border-control) var(--surface-0); scrollbar-width: thin; scroll-snap-type: x proximity; overscroll-behavior-inline: contain; }
+    .kf-nav::-webkit-scrollbar { height: 4px; }
+    .kf-nav::-webkit-scrollbar-track { background: var(--surface-0); }
+    .kf-nav::-webkit-scrollbar-thumb { border-radius: var(--radius-xs); background: var(--border-control); }
     .kf-nav-search { display: none; }
-    .kf-nav button { flex: 0 0 auto; width: auto; min-width: 0; min-height: 54px; padding-inline: 16px; }
+    .kf-nav button { flex: 0 0 auto; width: auto; min-width: 0; min-height: 54px; padding-inline: 16px; scroll-snap-align: start; }
     .kf-nav-copy, .kf-nav-copy > strong { white-space: nowrap; }
     .kf-nav button::before { inset: auto 14px 0; width: auto; height: 3px; }
     .kf-page { padding: 18px 18px 32px; }
@@ -10805,6 +10809,12 @@ function onInterfaceInput(event) {
       // focus and caret survive without the restore dance the page body needs.
     }, 160);
   }
+
+  const boardName = event.target.closest('input[data-kf-multistream-layout-name]');
+  if (boardName) {
+    const save = state.shadow?.querySelector('[data-action="multistream-save"]');
+    if (save) save.disabled = !state.multistream.streams.length || !boardName.value.trim();
+  }
 }
 
 function onInterfaceKeydown(event) {
@@ -12583,6 +12593,13 @@ function syncQuickButton() {
   if (!state.quickButton) return;
   const shouldShow = state.runtime.suspended || state.settings.layout.quickButton;
   const headerMounted = shouldShow ? ensureHeaderQuickControl() : false;
+  const narrowChatComposer = window.innerWidth <= 700
+    && Boolean(document.querySelector('#chat-input-wrapper, [data-testid="chat-input"]'));
+  const picker = narrowChatComposer
+    ? document.querySelector('#chat-emotes-picker-panel, [data-testid="chat-emotes-picker"]')
+    : null;
+  const pickerVisible = Boolean(picker && !picker.hidden && getComputedStyle(picker).display !== 'none');
+  state.root.dataset.kfQuickAvoidComposer = String(narrowChatComposer);
   if (!shouldShow) state.headerControlHost?.remove?.();
   const label = tr(state.runtime.suspended ? 'Resume' : 'Focus');
   // The accessible name has to contain the visible word, or voice control
@@ -12616,7 +12633,7 @@ function syncQuickButton() {
   state.quickButton.dataset.action = 'open-settings';
   state.quickButton.textContent = label;
   state.quickButton.setAttribute('aria-label', accessibleLabel);
-  state.quickButton.hidden = !shouldShow || headerMounted;
+  state.quickButton.hidden = !shouldShow || headerMounted || pickerVisible;
   syncEarnedState(accessibleLabel);
 }
 
