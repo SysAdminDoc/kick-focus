@@ -1516,7 +1516,9 @@ const checks = [
   ['reset keeps the emote library and clears every private store', source.includes('resetStickerPreferences({ keepLibrary: true })')
     && source.includes('function clearPrivateData')
     && source.includes('gmDelete(CHANNEL_NOTES_KEY)')
-    && source.includes('gmDelete(EMOTE_USAGE_KEY)')],
+    && source.includes('gmDelete(EMOTE_USAGE_KEY)')
+    && !extractFunction(source, 'clearPrivateData').includes('REWARD_STATE_KEY')
+    && source.includes('Local reward check history is also kept so reset cannot make a handled reward look due again.')],
   // R-97: privileged transport hardening. The page may trigger a refresh, but
   // it never supplies the background request target.
   ['blocklist fetch target is owned by extension approval, not the page event', bridge.includes("sendMessage({ type: 'kick-focus:fetch-blocklist' }")

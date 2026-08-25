@@ -528,6 +528,11 @@ test('reset recovery persists without a timer and the page keyboard stays with K
     'the visible Recall control needs a normal desktop target');
   assert.match(source, /data-kf-large-targets="true"\]\s+\[data-kf-composer-recall\][^}]*min-height:\s*40px !important/,
     'Larger targets must grow the visible Recall control to 40px');
+  const privateReset = source.slice(source.indexOf('function clearPrivateData'), source.indexOf('\n}\n\n/**', source.indexOf('function clearPrivateData')));
+  assert.doesNotMatch(privateReset, /REWARD_STATE_KEY|state\.reward/,
+    'full reset still deletes reward history that its undo snapshot cannot restore');
+  assert.match(source, /Local reward check history is also kept so reset cannot make a handled reward look due again\./,
+    'the reset copy must explain why reward history stays');
 });
 
 test('the emote shelf is styled by the sheet that can actually reach it', { tags: ['artifact'] }, async () => {

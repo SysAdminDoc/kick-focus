@@ -96,6 +96,11 @@ The first implementation still read as a card-heavy preferences dialog. The shel
 - P2: adding another composer action could have squeezed the message field or covered Chat. Enabled and focused states were compared with the previous 1440-pixel reference, then checked at 680 pixels. The input, Recall, Emotes, counter, and Chat action remain separate and readable.
 - P2: recall still refuses whispers and unrelated editors, clears on reload, and never writes messages to storage. Arrow Up and every modified form now remain untouched.
 
+### Iteration 9, reset recovery boundary
+
+- P2: full reset deleted the local reward-check record even though its Undo snapshot did not carry that record. Reset now leaves the operational cooldown untouched, so a handled reward cannot look due again after settings are cleared.
+- P2: the About page now states what reset clears, what it keeps, and why. The longer copy fits beside the destructive action without crowding the local-storage section below it.
+
 ### Residual P3 differences
 
 - Layout uses a live textual Current setup summary instead of the mock's tiny schematic, improving legibility while preserving the same hierarchy.
@@ -117,6 +122,7 @@ No actionable P0, P1, or P2 visual differences remain.
 - Opened the packaged companion popup without an extension service in English, Spanish, and Portuguese. Its unavailable and disabled states remained legible with the same card geometry.
 - Verified emote Favorite visibility, Remove reachability, 24-pixel normal controls, and 40-pixel Larger pointer targets. Compared Studio, OLED, and Slate at 1440, 900, and 680 pixels.
 - Enabled composer recall, verified its disabled empty state, recorded two public sends, cycled both from the visible control, and checked the focused control at 1440 and 680 pixels.
+- Scrolled the About page to the destructive section and verified the reset explanation, action alignment, wrapping, and separation from the storage table.
 - Browser console inspection after the final build returned no warnings or errors.
 
 ## Main Kick theme, v1.31.0

@@ -272,11 +272,12 @@ Found during a full-repository audit. Everything the audit fixed is in
   Shipped: The action toast persists until Undo or Dismiss is pressed, sits above the settings footer, and leaves focus where the reset began.
   Complexity: S
 
-- [ ] P2: R-149: Include the reward record in the reset snapshot, or stop clearing it
+- [x] P2: R-149: Include the reward record in the reset snapshot, or stop clearing it
   Why: `clearPrivateData` deletes `REWARD_STATE_KEY` (`lastClaimAt`, `claims`) on a full reset, and `currentExportPayload` does not carry it, so the Undo written beside that reset cannot put it back. R-107's criterion lists settings, notes, filters and channel lists rather than this. It is still state a reset destroys with no way back, which is the thing the undo exists to prevent.
   Where: src/runtime.js `clearPrivateData`, `currentExportPayload`, the store registry in src/core.mjs, and the import validation that has to accept a new section
-  Acceptance: Either the reward record travels with the export payload, so import, export and Undo all round-trip it, or the reset leaves it alone and says why. Adding it means the import validator and the About page's store list have to know about it too.
-  Complexity: S
+Acceptance: Either the reward record travels with the export payload, so import, export and Undo all round-trip it, or the reset leaves it alone and says why. Adding it means the import validator and the About page's store list have to know about it too.
+Shipped 2026-08-25: Full reset now leaves the local reward-check record untouched. The About page explains that the record prevents reset from making a handled reward appear due again, while settings, notes, filters, channel lists, usage, layouts, and boards still reset and remain covered by Undo.
+Complexity: S
 
 - [x] P2: R-137: Normalize the control geometry the panel renders
   Why: Controls that sit in the same `.kf-control` column are 32, 36, 38 and 40 pixels tall (`.kf-switch`, `.kf-select`, `.kf-icon-button`, `.kf-button`), which reads as jitter down the right edge of every settings page. Eight radius literals bypass the Corner radius setting: `.kf-toast` and `.kf-toast-action` at 4px, `.kf-icon-button` at 5px, the About panel at 4px, the emote completion list and rows at 9px and 6px, and the two injected header buttons at 5px and 8px. Those two buttons also disagree on height, weight and font size while sitting in the same Kick chrome. Two focus treatments coexist: `outline: var(--focus-ring)` on the nav search, and `outline: 0` plus a box-shadow ring on `.kf-text`, `.kf-textarea`, `.kf-select`, and both multi-stream inputs.

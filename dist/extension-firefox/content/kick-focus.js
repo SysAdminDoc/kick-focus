@@ -6216,7 +6216,7 @@ function renderAboutPage() {
 const label = undoSlotLabel(gmGet(PRE_IMPORT_BACKUP_KEY, null));
           return label ? `<button type="button" class="kf-button" data-action="undo-import">${label}</button>` : '';
         })()}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
-        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
+        <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library stays in place. Local reward check history is also kept so reset cannot make a handled reward look due again. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
       <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>No page-wide shortcuts</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : 'Not measured'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : 'Not measured'}</td></tr></tbody></table></div></section>`;
@@ -7107,7 +7107,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              852136') || 0;
+const BUNDLE_BYTES = Number('              852529') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -14091,7 +14091,7 @@ const TRANSLATIONS = {
 'No page-wide shortcuts': ['Sin atajos globales de página', 'Sem atalhos globais de página'],
 'Not measured': ['Sin medir', 'Não medido'],
 'Comfort, contrast, and readable text across the whole page.': ['Comodidad, contraste y texto legible en toda la página.', 'Conforto, contraste e texto legível em toda a página.'],
-'Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repõe todas as definições, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
+'Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library stays in place. Local reward check history is also kept so reset cannot make a handled reward look due again. This happens straight away and can be undone once.': ['Restablece todos los ajustes, notas, filtros y listas de canales a los valores de fábrica. Tu biblioteca de emotes registrada permanece intacta. También se conserva el historial local de comprobación de recompensas para que el reinicio no haga que una recompensa ya gestionada parezca pendiente de nuevo. Ocurre de inmediato y se puede deshacer una vez.', 'Repõe todas as definições, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada permanece intacta. O histórico local de verificação de recompensas também é mantido para que a reposição não faça uma recompensa já tratada parecer novamente pendente. Acontece de imediato e pode ser desfeito uma vez.'],
 'This page has nothing to reset.': ['Esta página no tiene nada que restablecer.', 'Esta página não tem nada para repor.'],
 'Open the Kick Focus command menu': ['Abrir el menú de comandos de Kick Focus', 'Abrir o menu de comandos do Kick Focus'],
 'Accessibility': ['Accesibilidad', 'Acessibilidade'],
@@ -15392,8 +15392,6 @@ gmDelete(CHAT_KEYWORDS_KEY);
 gmDelete(CHANNEL_NOTES_KEY);
 state.mediaPreferences = {};
 gmDelete(MEDIA_PREFERENCES_KEY);
-state.reward = { ...state.reward, lastClaimAt: 0, claims: 0, minutesRemaining: null, lastMessage: '' };
-gmDelete(REWARD_STATE_KEY);
 gmDelete(PRE_IMPORT_BACKUP_KEY);
 }
 function resetSettings(scope) {

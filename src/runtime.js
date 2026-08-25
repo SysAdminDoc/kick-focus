@@ -2411,7 +2411,7 @@ const SITE_CSS = `
      build's own controls still slid and lifted under it.
 
      No backtick anywhere in this comment: it lives inside a template literal,
-     and one would end the string. See the 2026-08-21 note in CLAUDE.md.
+     and one would end the string. See the 2026-08-21 working note.
 
      Two copies on purpose. The first is the setting. The second is the
      operating system's preference on its own, which the panel's own sheet has
@@ -9339,7 +9339,7 @@ const TRANSLATIONS = {
   'No page-wide shortcuts': ['Sin atajos globales de página', 'Sem atalhos globais de página'],
   'Not measured': ['Sin medir', 'Não medido'],
   'Comfort, contrast, and readable text across the whole page.': ['Comodidad, contraste y texto legible en toda la página.', 'Conforto, contraste e texto legível em toda a página.'],
-  'Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repõe todas as definições, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
+  'Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library stays in place. Local reward check history is also kept so reset cannot make a handled reward look due again. This happens straight away and can be undone once.': ['Restablece todos los ajustes, notas, filtros y listas de canales a los valores de fábrica. Tu biblioteca de emotes registrada permanece intacta. También se conserva el historial local de comprobación de recompensas para que el reinicio no haga que una recompensa ya gestionada parezca pendiente de nuevo. Ocurre de inmediato y se puede deshacer una vez.', 'Repõe todas as definições, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada permanece intacta. O histórico local de verificação de recompensas também é mantido para que a reposição não faça uma recompensa já tratada parecer novamente pendente. Acontece de imediato e pode ser desfeito uma vez.'],
   'This page has nothing to reset.': ['Esta página no tiene nada que restablecer.', 'Esta página não tem nada para repor.'],
   'Open the Kick Focus command menu': ['Abrir el menú de comandos de Kick Focus', 'Abrir o menu de comandos do Kick Focus'],
   'Accessibility': ['Accesibilidad', 'Acessibilidade'],
@@ -10896,9 +10896,10 @@ function closeSettings() {
 }
 
 // A factory reset clears every private store the registry marks reset:true, but
-// keeps the emote library: its first-seen/wasName/wasSrc provenance is the one
-// thing here that cannot be regenerated, so it is preserved rather than
-// destroyed. Settings and the library are handled by their own resets above.
+// keeps two records that are not preferences: the emote library carries
+// irreplaceable provenance, and the reward record prevents a reset from
+// reopening a claim this browser already handled. Settings and the library are
+// handled by their own resets above.
 function clearPrivateData() {
   state.emoteUsage = { global: {}, channels: {} };
   gmDelete(EMOTE_USAGE_KEY);
@@ -10916,8 +10917,6 @@ function clearPrivateData() {
   gmDelete(CHANNEL_NOTES_KEY);
   state.mediaPreferences = {};
   gmDelete(MEDIA_PREFERENCES_KEY);
-  state.reward = { ...state.reward, lastClaimAt: 0, claims: 0, minutesRemaining: null, lastMessage: '' };
-  gmDelete(REWARD_STATE_KEY);
   gmDelete(PRE_IMPORT_BACKUP_KEY);
 }
 
