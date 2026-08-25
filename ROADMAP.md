@@ -298,12 +298,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P2
 
-- [ ] P2 — R-146: Settle whether a scripted click still activates a target inside an inert subtree
-  Why: the apply cycle keeps running while a modal is open, and it calls `.click()` on Kick's own controls, the daily-reward button most importantly. `writeRewardRecord` is written *before* that click on purpose, so a claim is not repeated; if `inert` swallows a scripted activation, the reward is recorded as claimed and never retried that day. The specification says inert blocks user interaction and focus, which a synthetic activation is not, but this build should not rest a silent daily failure on a reading of the spec.
-  Where: src/runtime.js reward auto-claim (`action.click()`), sidebar expand and collapse; the inert manager in src/core.mjs; scripts/verify-extension.mjs
-  Acceptance: A live probe opens a modal, calls `.click()` on a control inside the inerted page, and asserts whether the activation ran. Whatever the answer, the reward path is made to match it: either the click is proven to work, or the claim is not recorded until it does, or the auto-claim does not fire while a modal is open.
-  Complexity: S
-
 - [ ] P2 — R-134: Extract one shared companion module for the duplicated policy
   Why: `fetchApprovedBlocklist` is about 33 byte-identical lines in src/extension/background.js and src/extension/background.firefox.js, and `sanitizeSettings` is byte-identical in src/extension/bridge.js and bridge.firefox.js. Both carry security decisions: the redirect refusal, the post-fetch URL recheck, the JSON MIME gate, the size checks, the abort timeout, and the forged-event trust boundary. The blocklist URL rule in the same files had already drifted from core and shipped that way, which is what this audit fixed and gated. The remaining pairs have the same exposure and only a presence check protecting them.
   Where: src/extension/background.js:121-152, background.firefox.js:151-182, bridge.js:44-74, bridge.firefox.js:57-86; scripts/check.mjs, which asserts only that each file contains the function name

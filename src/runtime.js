@@ -11451,6 +11451,13 @@ function runRewardClaim() {
   // button again. The stored schedule cannot stop that on its own, because an
   // open dialog is exactly the state that is allowed to skip it.
   delete open.dataset.kfRewardDialog;
+  // Safe while a Kick Focus modal is open, even though the page behind one is
+  // inert. Measured in headless Chromium 1234 on 2026-08-25: with the container
+  // inert, a scripted .click() still ran the handler and an anchor still
+  // navigated, while focus() was refused. inert blocks user interaction and
+  // focus, not synthetic activation. This matters because the claim is recorded
+  // before the click, so a swallowed one would mark the reward taken and never
+  // retry it that day.
   action.click();
   state.reward.lastMessage = `Daily reward claimed at ${new Date(now).toLocaleTimeString()}.`;
   showToast('Daily reward claimed. It is in your collectibles.', false, [
