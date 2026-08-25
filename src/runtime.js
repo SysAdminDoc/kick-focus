@@ -1824,9 +1824,9 @@ const SITE_CSS = `
       position: absolute !important;
       z-index: 7 !important;
       border: 0 !important;
-      border-radius: 4px !important;
-      background: #0d100e !important;
-      color: #f7f9fa !important;
+      border-radius: var(--kf-radius) !important;
+      background: var(--kf-panel) !important;
+      color: var(--kf-text) !important;
       font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace !important;
     }
 
@@ -2214,15 +2214,6 @@ const SITE_CSS = `
   script[src*="googlesyndication.com"],
   script[src*="googleadservices.com"] { display: none !important; }
 
-  html[data-kf-reduce-motion="true"] *,
-  html[data-kf-reduce-motion="true"] *::before,
-  html[data-kf-reduce-motion="true"] *::after {
-    scroll-behavior: auto !important;
-    animation-duration: .001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .001ms !important;
-  }
-
   video::cue { background: rgba(0, 0, 0, var(--kf-caption-opacity)); }
 
   /* Sidebar "dropdown" mode: the discovery rail collapses to a labelled tab and
@@ -2371,6 +2362,42 @@ const SITE_CSS = `
   }
   [data-kf-chat-emote-save]:active { transform: translateY(0) scale(1); }
   [data-kf-chat-emote-save][aria-busy="true"] { cursor: progress !important; opacity: .62; }
+
+  /* ---------------------------------------------------------------------
+     Motion, last in the sheet.
+
+     This used to sit near the top. `transition-duration: .001ms !important`
+     is a longhand, and the later `transition: … !important` shorthands on the
+     card actions, the chat pause button, the sticker actions and the injected
+     header control resolve to the same specificity — so source order decided,
+     and the rules that animate came second. Reduce motion read as on and four
+     of this build's own controls still slid and lifted under it.
+
+     Two copies on purpose. The first is the setting. The second is the
+     operating system's preference on its own, which the panel's own sheet has
+     always honoured unconditionally; without it the page and the panel
+     disagreed about the same user's stated preference.
+     --------------------------------------------------------------------- */
+  html[data-kf-reduce-motion="true"] *,
+  html[data-kf-reduce-motion="true"] *::before,
+  html[data-kf-reduce-motion="true"] *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html[data-kf-route] *,
+    html[data-kf-route] *::before,
+    html[data-kf-route] *::after {
+      scroll-behavior: auto !important;
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+    }
+  }
+
 `;
 
 function applySettingsAttributes() {
@@ -7660,7 +7687,7 @@ const UI_CSS = `
   .kf-sticker-library-copy { min-width: 0; }
   .kf-sticker-library-copy strong { display: block; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
   .kf-sticker-library-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-  .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid #4b534e; border-radius: 3px; color: #b8c0bb; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .kf-sticker-access { display: inline-flex; margin-top: 5px; padding: 2px 5px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   /* Fixed, not the accent. A status that follows the branding colour collided
      with its neighbours on gold and on cyan; these three hues stay 58deg and
      77deg apart whatever the accent is. */
@@ -7691,11 +7718,11 @@ const UI_CSS = `
   .kf-table .kf-muted { color: var(--muted); }
   .kf-table tr:last-child td { border-bottom: 0; }
   .kf-table .kf-table-actions { text-align: right; }
-  .kf-shortcut { display: inline-flex; min-width: 62px; justify-content: center; padding: 4px 8px; border: 1px solid #434a45; border-radius: 3px; background: #171b18; font-weight: 700; }
+  .kf-shortcut { display: inline-flex; min-width: 62px; justify-content: center; padding: 4px 8px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-2); font-weight: 700; }
   .kf-conflict td { background: rgba(255,98,88,.055); border-top: 1px solid var(--danger); border-bottom: 1px solid var(--danger); }
   .kf-conflict-message { color: var(--danger); font-size: 11px; }
 
-  .kf-status-note { margin-top: 12px; padding: 10px 12px; border-left: 2px solid #4b534e; background: rgba(255,255,255,.018); color: var(--muted); font-size: 11px; }
+  .kf-status-note { margin-top: 12px; padding: 10px 12px; border-left: 2px solid var(--border-strong); background: rgba(255,255,255,.018); color: var(--muted); font-size: 11px; }
   .kf-status-note[data-drifted="true"] { border-color: #7b5d20; background: rgba(246,185,67,.065); color: #e7c77e; }
   .kf-notice { margin-top: 12px; padding: 11px 13px; border-left: 2px solid #997326; background: rgba(246,185,67,.055); color: #e7c77e; font-size: 11px; }
   .kf-subsection { margin-top: 26px; }
@@ -12682,6 +12709,16 @@ const HEADER_CONTROL_CSS = `
   @media (max-width: 960px) {
     button { width: 36px; padding: 0; }
     span { display: none; }
+  }
+  /* Last in the sheet on purpose. The pulse above was guarded and the button's
+     own transition and :active scale were not, which made this the only
+     injected control in the build that moved for a user who asked nothing to.
+     It has to come after `button { transition: … }`, because the shorthand
+     there would otherwise reset the duration this sets. Matches the guard at
+     the end of PROFILE_STATS_CSS. */
+  @media (prefers-reduced-motion: reduce) {
+    button { transition-duration: .001ms; }
+    button:active { transform: none; }
   }
 `;
 

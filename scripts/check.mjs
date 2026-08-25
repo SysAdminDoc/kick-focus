@@ -799,7 +799,35 @@ const blocklistUrlDisagreements = blocklistUrlCopies.flatMap(([name, fn]) => {
 // A rule that accepts everything would make the comparison above vacuous.
 const blocklistUrlRefusals = BLOCKLIST_URL_CORPUS.filter((input) => normalizeBlocklistUrl(input) === '').length;
 
+/**
+ * A reduced-motion guard has to come after the rules it overrides.
+ *
+ * `transition-duration: .001ms` inside a media query loses to a later
+ * `transition:` shorthand at the same specificity, because the shorthand resets
+ * the longhand. A guard written above the button rule reads as present and does
+ * nothing, which is worse than a missing one: it looks handled.
+ *
+ * Each injected shadow stylesheet is taken as a whole and asked two things:
+ * does it guard motion at all, and does its last guard come after its last
+ * transition.
+ */
+const motionSheets = [...source.matchAll(/const (\w*_CSS) = `([\s\S]*?)`;/g)]
+  .map((match) => [match[1], match[2]]);
+
+const unguardedMotion = motionSheets.flatMap(([name, css]) => {
+  const transitions = [...css.matchAll(/\btransition:/g)].map((match) => match.index);
+  if (!transitions.length) return [];
+  const guards = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\)/g)].map((match) => match.index);
+  if (!guards.length) return [`${name} animates and never mentions prefers-reduced-motion`];
+  if (Math.max(...guards) < Math.max(...transitions)) {
+    return [`${name} guards motion before its last transition, so the shorthand wins`];
+  }
+  return [];
+});
+
 const checks = [
+  [`every stylesheet that animates guards motion, after the rules it overrides${unguardedMotion.length ? `: ${unguardedMotion.join('; ')}` : ''}`,
+    unguardedMotion.length === 0 && motionSheets.length >= 4],
   [`every copy of the blocklist URL rule answers the same${blocklistUrlDisagreements.length ? `: ${blocklistUrlDisagreements[0]}` : ''}`,
     blocklistUrlDisagreements.length === 0 && blocklistUrlRefusals >= 9],
   ['the shared blocklist URL rule refuses credentials and drops the fragment',
@@ -1536,6 +1564,7 @@ const checks = [
 // ever becomes vacuous (passes on empty/hostile input), its probe returns true
 // and this fails — the gate's proof that it can actually fire.
 const redProbes = [
+  ['the motion gate finds the stylesheets it is supposed to read', motionSheets.length >= 4],
   ['the width-gate probe would catch a focus outline moved back inside the desktop block',
     widthGatedAccessibility('a{b:c}@media (min-width: 1024px){ html[data-kf-focus-visible="true"] :is(button):focus-visible { outline: 1px } }')
       .join() === 'data-kf-focus-visible'],
