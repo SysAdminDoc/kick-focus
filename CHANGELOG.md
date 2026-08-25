@@ -2,6 +2,21 @@
 
 All notable changes are documented here. Dates use ISO 8601.
 
+## Unreleased
+
+### Fixed
+
+- Settings opens reliably again. The runtime now supplies the section-composition helper that was missed when the renderer moved into its own module, and a host-contract test protects that wiring.
+- The settings search state no longer leaves the previous page highlighted or lets Reset act on a hidden page. Narrow screens keep the active tab in view, fit the header and footer inside 375 pixels, and avoid horizontal clipping.
+- Viewer cards distinguish a reading that was not attempted from one that failed. Neutral states no longer carry a green success stripe.
+
+### Changed
+
+- Settings controls use one height scale and one focus outline. Their adjustable corners now follow the Corner radius setting, and both injected header actions share the same declaration.
+- Reset Undo stays available until it is used or dismissed. The toast sits above the settings footer and never moves focus.
+- Kick Focus no longer claims a page-wide keyboard shortcut. Pause and recovery remain on the visible Focus control and command menu.
+- The emote organizer keeps Organize and Library visible at compact desktop widths, then wraps both labelled actions on the narrowest chat rail.
+
 ## 1.40.0, 2026-08-25
 
 ### Fixed

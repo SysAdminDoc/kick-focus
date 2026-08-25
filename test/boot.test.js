@@ -475,6 +475,52 @@ test('one focus treatment, defined once and used everywhere', { tags: ['artifact
     .filter((line) => !line.includes('.kf-page:focus'));
   assert.deepEqual(suppressed, [],
     `a focus rule still removes its outline: ${suppressed.map((l) => l.trim()).join(' | ')}`);
+
+  // A base declaration is just as destructive as one repeated on :focus. The
+  // command input used to set outline: 0 in its normal rule, which the older
+  // check above could not see even though it erased the shared focus ring.
+  const uiStart = source.indexOf('const UI_CSS = `');
+  const ui = source.slice(uiStart, source.indexOf('\n`;', uiStart));
+  const zeroOutlineRules = [...ui.matchAll(/([^{}]+)\{[^{}]*\boutline:\s*0\s*;?[^{}]*\}/g)]
+    .map((match) => match[1].trim())
+    .filter((selector) => selector !== '.kf-page:focus');
+  assert.deepEqual(zeroOutlineRules, [],
+    `a base rule still removes the shared focus ring: ${zeroOutlineRules.join(' | ')}`);
+
+  assert.doesNotMatch(ui, /:focus(?:-visible)?[^{}]*\{[^{}]*box-shadow:\s*0 0 0/,
+    'a focus rule still draws a second ring with box-shadow');
+});
+
+test('settings controls share one geometry scale and injected header actions share one base', { tags: ['artifact'] }, async () => {
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  assert.match(source, /--control-height:\s*40px;/);
+  assert.match(source, /--control-height-small:\s*32px;/);
+  for (const selector of ['.kf-icon-button', '.kf-segmented button', '.kf-switch', '.kf-select', '.kf-button']) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const block = new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(source)?.[1] || '';
+    assert.match(block, /var\(--control-height/,
+      `${selector} bypasses the shared control-height scale`);
+  }
+  assert.equal((source.match(/\$\{HEADER_BUTTON_BASE_CSS\}/g) || []).length, 2,
+    'the two injected header actions no longer share their control declaration');
+
+  const uiStart = source.indexOf('const UI_CSS = `');
+  const ui = source.slice(uiStart, source.indexOf('\n`;', uiStart));
+  const fixedRadii = ui.split('\n')
+    .map((line, index) => [index + 1, line])
+    .filter(([, line]) => /border-radius:/.test(line))
+    .filter(([, line]) => !/border-radius:\s*(?:var\(--radius|inherit)/.test(line));
+  assert.deepEqual(fixedRadii, [],
+    `settings chrome still bypasses the shared radius scale: ${fixedRadii.map(([n, line]) => `${n}: ${line.trim()}`).join(' | ')}`);
+});
+
+test('reset recovery persists without a timer and the page keyboard stays with Kick', { tags: ['artifact'] }, async () => {
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  assert.match(source, /showToast\('Settings reset\.', false, \[\{ label: 'Undo',[^\n]+\{ persistent: true \}\);/,
+    'reset Undo still races the action-toast timeout');
+  const handler = source.slice(source.indexOf('function onGlobalKeydown'), source.indexOf('\n}\n\nconst HEADER_BUTTON_BASE_CSS'));
+  assert.doesNotMatch(handler, /ctrlKey|shiftKey|toLowerCase\(\) === 'f'/,
+    'the global key handler still claims a page-wide shortcut');
 });
 
 test('the emote shelf is styled by the sheet that can actually reach it', { tags: ['artifact'] }, async () => {

@@ -22,7 +22,7 @@ The implementation is exercised through `test/fixtures/settings-preview.html` at
 - Theme/state: Studio theme, Kick Green accent, Balanced radius, top-of-page state unless noted below.
 - Layout was captured in Auto mode to match its target and then restored to Compact.
 - Content & Ads uses seven intercepted fixture requests so protection metrics contain realistic local data.
-- Accessibility was captured once in its default state and once while assigning `F` to Open settings to prove the conflict treatment.
+- Accessibility was captured in its default state and again with the larger-target and contrast controls enabled.
 
 ## Full-view evidence
 
@@ -41,7 +41,7 @@ Each retained image contains the normalized target and its browser implementatio
 
 - Shared shell and Layout controls: `design/qa/focused-layout.png`
 - Appearance live preview: `design/qa/focused-appearance-preview.png`
-- Accessibility shortcut conflict table: `design/qa/focused-accessibility-table.png`
+- Accessibility control table: `design/qa/focused-accessibility-table.png`
 - Responsive shell: `design/qa/settings-responsive-900.jpg` and `design/qa/settings-responsive-680.jpg`
 
 ## Findings and iterations
@@ -70,6 +70,15 @@ The first implementation still read as a card-heavy preferences dialog. The shel
 - P2: settings header copy repeated information already present in the page. The shell now keeps identity, autosave status, and close in the header while the page title owns the content area.
 - P2: the companion popup used flatter surfaces and an over-bright disabled primary action. Its cards, disabled state, focus treatment, and reduced-motion behavior now match the main interface.
 
+### Iteration 5, responsive recovery and control consistency
+
+- P0: Settings failed at runtime after its renderer moved into a module because one host helper was not wired through. The host contract now names and tests every renderer dependency.
+- P1: a 375-pixel viewport clipped the close and Done controls, while the active horizontal tab could open off-screen. The shell no longer exceeds the viewport and scrolls its current tab into view.
+- P2: settings search retained the previous page highlight and reset target. Search now owns a distinct shell state and disables page reset until a result opens.
+- P2: reset recovery sat over Done and disappeared after seven seconds. It now remains above the footer until Undo or Dismiss is pressed, without moving focus.
+- P2: text controls drew a shadow focus ring while buttons used an outline, and control heights stepped between 32 and 40 pixels. One outline, two height tokens, and a radius scale now govern the settings chrome.
+- P2: the compact emote organizer hid the names of its two top actions. Organize and Library stay labelled, then wrap as a full-width row on the narrowest chat rail.
+
 ### Residual P3 differences
 
 - Layout uses a live textual Current setup summary instead of the mock's tiny schematic, improving legibility while preserving the same hierarchy.
@@ -84,8 +93,8 @@ No actionable P0, P1, or P2 visual differences remain.
 - Switched Layout between Auto and Compact and changed chat layout.
 - Switched Appearance through Studio, OLED, and Slate, then verified the exact selected control retained focus after every re-render.
 - Toggled Organize chat stickers off and on from Content & Ads.
-- Entered and canceled shortcut capture, and confirmed a duplicate `F` assignment reports a conflict without changing saved settings.
-- Opened and canceled Reset confirmation, closed Settings with Done, and reopened it from the Focus command menu.
+- Confirmed that no page-wide keyboard chord is claimed and every former shortcut action remains on visible controls or the command menu.
+- Reset a page, waited past the old timeout, used Undo, dismissed the next recovery toast, closed Settings with Done, and reopened it from the Focus command menu.
 - Verified the settings shell and populated multi-stream board at 900 and 680 pixels without document-level horizontal overflow.
 - Exercised multi-stream empty, invalid-channel, disabled-control, populated-player, and read-only chat states.
 - Opened the companion popup without an extension service and verified its unavailable and disabled states remained legible.

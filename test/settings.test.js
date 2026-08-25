@@ -107,6 +107,14 @@ test('the extracted surface still composes navigation, icons, summaries, and vie
  */
 function makeRenderHost({ state: stateOverrides = {}, values: valueOverrides = {}, scratch = null, pageList = [] } = {}) {
   const rendered = new Map();
+  const navButtons = ['layout', 'appearance', 'content', 'emotes', 'accessibility', 'viewer', 'about'].map((id) => ({
+    dataset: { page: id },
+    attributes: {},
+    setAttribute(name, value) { this.attributes[name] = value; },
+    scrollIntoView() {},
+  }));
+  const shell = { dataset: {} };
+  const reset = { disabled: false, title: '' };
   const page = {
     dataset: {},
     scrollTop: 0,
@@ -121,7 +129,17 @@ function makeRenderHost({ state: stateOverrides = {}, values: valueOverrides = {
     classList: { add: () => {}, remove: () => {}, toggle: () => {} },
   };
   const state = {
-    shadow: { querySelector: () => page, querySelectorAll: () => [], activeElement: null },
+    shadow: {
+      querySelector: (selector) => {
+        if (selector === '[data-kf-settings-shell]') return shell;
+        if (selector === '[data-action="reset-page"]') return reset;
+        const pageMatch = String(selector).match(/^\[data-page="([^"]+)"\]$/);
+        if (pageMatch) return navButtons.find((button) => button.dataset.page === pageMatch[1]) || null;
+        return page;
+      },
+      querySelectorAll: (selector) => (selector === '[data-page]' ? navButtons : []),
+      activeElement: null,
+    },
     currentPage: 'layout',
     settingsQuery: '',
     settingsIndex: null,
@@ -234,7 +252,7 @@ function makeRenderHost({ state: stateOverrides = {}, values: valueOverrides = {
     state.currentPage = id;
     surface.renderSettingsPage();
   }
-  return { rendered, pages, state, surface, host };
+  return { rendered, pages, state, surface, host, navButtons, reset, shell };
 }
 
 /** Attribute values are escaped and headings are not, so compare decoded text. */
@@ -603,7 +621,7 @@ const NAV = [
 test('the settings search indexes every page and ranks what it finds', { tags: ['unit'] }, () => {
   const { scratch, restore } = installScratchDocument();
   try {
-    const { state, surface, host } = makeRenderHost({ scratch, pageList: NAV });
+    const { state, surface, host, navButtons, reset, shell } = makeRenderHost({ scratch, pageList: NAV });
     assert.equal(host.NAV_ITEMS.length, 7, 'the index is being built from an empty page list');
 
     state.settingsQuery = 'chat';
@@ -612,6 +630,10 @@ test('the settings search indexes every page and ranks what it finds', { tags: [
     const hits = state.lastMarkup;
     assert.ok(hits.length > 200, 'searching rendered nothing at all');
     assert.match(hits, /chat/i, 'a query matching many rows produced no visible match');
+    assert.ok(navButtons.every((button) => button.attributes['aria-current'] === 'false'),
+      'search results left a page selected in the navigation');
+    assert.equal(reset.disabled, true, 'search results inherited the previous page reset action');
+    assert.equal(shell.dataset.kfCurrentPage, 'search');
 
     // The index is cached, because rebuilding it renders five pages and that
     // would otherwise happen on every keystroke.

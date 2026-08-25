@@ -856,7 +856,12 @@ const unguardedMotion = motionSheets.flatMap(([name, css]) => {
   // `animation:` or a `transition-duration:` added to any of them would have
   // animated unguarded with the build green.
   const motion = [...css.matchAll(/\b(?:transition|animation)(?:-[a-z]+)?\s*:/g)]
-    .filter((match) => !/^(?:transition|animation)-duration\s*:\s*\.001ms/.test(match[0] + css.slice(match.index + match[0].length, match.index + match[0].length + 8)))
+    .filter((match) => {
+      const declaration = match[0] + css.slice(match.index + match[0].length, match.index + match[0].length + 20);
+      if (/^(?:transition|animation)(?:-(?:duration|name|property))?\s*:\s*(?:none|\.001ms|0s)\b/.test(declaration)) return false;
+      if (/^animation-iteration-count\s*:\s*1\b/.test(declaration)) return false;
+      return true;
+    })
     .map((match) => match.index);
   if (!motion.length) return [];
   const guards = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{/g)];
@@ -1182,20 +1187,18 @@ const checks = [
       && region.includes('new AbortController()')
       && !region.includes('kfChatResizeBound');
   })()],
-  ['the page keyboard belongs to Kick, apart from the pause chord', (() => {
+  ['the page-wide keyboard belongs to Kick', (() => {
     // Six configurable chords used to be captured here, four of them bare
     // letters. Kick owns the page keyboard and has its own bindings; a viewer
     // mod taking letters from it is not a preference, it is a collision waiting
     // for the day Kick binds the same one.
     const region = extractFunction(source, 'onGlobalKeydown');
     if (!region) return false;
-    // Exactly one chord is claimed, and it is the pause switch, which is fixed
-    // rather than configurable because its value is working when the interface
-    // is in the way.
-    const modifiers = region.match(/event\.(?:ctrlKey|altKey|metaKey)/g) || [];
-    return modifiers.length === 1
-      && region.includes("String(event.key).toLowerCase() === 'f'")
-      && region.includes('togglePanicSwitch()')
+    // Panic and recovery live on visible controls, so the page-wide handler
+    // owns only modal Escape and focus containment.
+    return !/event\.(?:ctrlKey|altKey|metaKey|shiftKey)/.test(region)
+      && !region.includes('togglePanicSwitch()')
+      && !source.includes('Ctrl+Shift+F')
       // Standard keys still work inside this build's own surfaces.
       && region.includes("event.key === 'Escape'")
       && region.includes('trapFocus(event)')

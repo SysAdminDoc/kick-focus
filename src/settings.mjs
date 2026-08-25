@@ -132,6 +132,7 @@ export function createSettings(host) {
     folder: '<path d="M3 5h6l2 2h10v12H3z"></path>',
     edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"></path>',
     plus: '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>',
+    arrowRight: '<line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline>',
   });
 
 
@@ -776,7 +777,7 @@ export function createSettings(host) {
     return cards.map((card) => `
       <div class="kf-mini-card kf-hub-card" data-kf-hub-card="${card.id}" data-state="${card.state}" data-kf-source="${card.source}">
         <span>${escapeHtml(tr(VIEWER_HUB_TITLES[card.id]))}</span>
-        <strong>${card.state === 'ready' ? escapeHtml(hubCardValue(card)) : escapeHtml(tr(card.state === 'loading' ? 'Reading…' : '—'))}</strong>
+        <strong>${card.state === 'ready' ? escapeHtml(hubCardValue(card)) : escapeHtml(tr(card.state === 'loading' ? 'Reading…' : card.state === 'error' ? 'Unavailable' : 'Not read'))}</strong>
         <em>${escapeHtml(card.state === 'ready' ? hubCardSource(card, now) : tr(VIEWER_HUB_REASONS[card.reason] || VIEWER_HUB_REASONS['not-read']))}</em>
       </div>`).join('');
   }
@@ -818,7 +819,7 @@ export function createSettings(host) {
         <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
         ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>${trf('This started {timing}. On Chromium 138 and later a userscript manager needs its own {toggle} toggle enabled on the browser’s extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.', { timing: escapeHtml(INJECTION.summary), toggle: `<strong>${escapeHtml(tr('Allow user scripts'))}</strong>` })}</p></div></div>`}
         <div class="kf-action-row"><div><h3>Multi-stream</h3><p>Watch up to ${MULTISTREAM_MAX} Kick channels in one grid, with audio and chat following whichever you focus. Uses Kick’s own embedded player, so subscriptions and entitlements are unchanged.${state.multistream.streams.length ? ` Currently holding ${state.multistream.streams.length}.` : ''}</p></div><button type="button" class="kf-button" data-action="open-multistream">Open multi-stream</button></div>
-        <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
+        <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
         <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>${trf('Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks {hosts} third-party ad and telemetry hosts and {none}, so pausing Kick Focus will not change that behavior. Check your ad blocker’s filters for kick.com before blaming an extension.', { hosts: AD_HOSTS.length + TELEMETRY_HOSTS.length, none: `<strong>${escapeHtml(tr('no kick.com host at all'))}</strong>` })}</p></div></div>
         <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
         <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
@@ -835,7 +836,7 @@ export function createSettings(host) {
         <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
-      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+Shift+F pauses · nothing else is bound</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
+      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>No page-wide shortcuts</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : 'Not measured'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : 'Not measured'}</td></tr></tbody></table></div></section>`;
   }
 
   // A stable selector for the focused control, so focus can be restored to the
@@ -913,8 +914,24 @@ export function createSettings(host) {
     return `${header}<section class="kf-panel kf-search-results">${matches.map((match) => `
       <button type="button" class="kf-search-result" data-kf-search-goto="${escapeHtml(match.page)}">
         <span class="kf-search-result-copy"><strong>${escapeHtml(match.title)}</strong>${match.description ? `<small>${escapeHtml(match.description)}</small>` : ''}</span>
-        <span class="kf-search-result-page">${escapeHtml(match.pageTitle)}</span>
+        <span class="kf-search-result-trail"><span class="kf-search-result-page">${escapeHtml(match.pageTitle)}</span>${uiIcon('arrowRight')}</span>
       </button>`).join('')}</section>`;
+  }
+
+  function syncSettingsChrome() {
+    const searching = Boolean(state.settingsQuery);
+    for (const button of state.shadow.querySelectorAll('[data-page]')) {
+      button.setAttribute('aria-current', !searching && button.dataset.page === state.currentPage ? 'page' : 'false');
+    }
+    if (!searching) {
+      state.shadow.querySelector(`[data-page="${state.currentPage}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    const reset = state.shadow.querySelector('[data-action="reset-page"]');
+    if (!reset) return;
+    reset.disabled = searching || !resettableSection(state.currentPage);
+    reset.title = tr(searching
+      ? 'Choose a page before resetting'
+      : reset.disabled ? 'This page has its own reset control' : 'Restore page defaults');
   }
 
 
@@ -933,7 +950,9 @@ export function createSettings(host) {
     if (state.settingsQuery) {
       setMarkup(page, renderSettingsSearchResults(state.settingsQuery));
       page.dataset.kfCurrentPage = 'search';
+      state.shadow.querySelector('[data-kf-settings-shell]').dataset.kfCurrentPage = 'search';
       page.scrollTop = 0;
+      syncSettingsChrome();
       localizeInterface();
       return;
     }
@@ -962,17 +981,10 @@ export function createSettings(host) {
         if (restore) restore.focus({ preventScroll: true });
       }
     }
-    for (const button of state.shadow.querySelectorAll('[data-page]')) {
-      // While results are showing, no page is the current one.
-      button.setAttribute('aria-current', !state.settingsQuery && button.dataset.page === state.currentPage ? 'page' : 'false');
-    }
-    state.shadow.querySelector(`[data-page="${state.currentPage}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    const reset = state.shadow.querySelector('[data-action="reset-page"]');
     // Derived from the same table the reset itself reads, so a page can never
-    // offer a reset that would refuse. It used to name two pages by hand and
-    // missed Viewer, which has no section either.
-    reset.disabled = !resettableSection(state.currentPage);
-    reset.title = tr(reset.disabled ? 'This page has its own reset control' : 'Restore page defaults');
+    // offer a reset that would refuse. Search is not a page and cannot inherit
+    // a stale active nav item or reset action from the page underneath it.
+    syncSettingsChrome();
     localizeInterface();
     if (state.currentPage === 'emotes') applyStickerLibrarySearch();
     if (state.currentPage === 'content') renderChatHistoryResults();

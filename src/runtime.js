@@ -2135,10 +2135,14 @@ const SITE_CSS = `
     [data-kf-sticker-empty] strong { display: block !important; margin-bottom: 3px !important; color: var(--kf-text) !important; font-size: 13px !important; }
 
     @media (max-width: 1023px) {
-      [data-kf-sticker-top-actions] button span { display: none !important; }
       [data-kf-sticker-batch] { grid-template-columns: 1fr !important; }
       [data-kf-sticker-batch-actions] { justify-content: flex-start !important; }
       [data-kf-sticker-group-summary] { align-items: flex-start !important; flex-direction: column !important; }
+    }
+    @media (max-width: 430px) {
+      [data-kf-sticker-topline] { align-items: stretch !important; flex-wrap: wrap !important; }
+      [data-kf-sticker-top-actions] { width: 100% !important; }
+      [data-kf-sticker-top-actions] button { flex: 1 1 0 !important; }
     }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
@@ -7414,16 +7418,20 @@ const UI_CSS = `
     --danger-text: #ffaaa4;
     --warning: var(--kf-warning, #f6b943);
     --success: var(--accent);
-    /* Derived from the Corner radius setting rather than fixed, because these
-       three carry every rounded edge in this build's own chrome and only the
-       bare --radius below was wired to the setting, on a single element. The
-       offsets are chosen so the 7px default reproduces the previous 4/6/10
-       exactly: this changes nothing until somebody moves the setting, and then
-       it moves the whole panel instead of one corner. */
+    /* Derived from the Corner radius setting rather than fixed. The offsets
+       keep the 7px default visually unchanged while every adjustable corner
+       follows one scale. Circle, pill and square tokens keep their silhouette. */
+    --radius-none: 0;
+    --radius-xxs: max(1px, calc(var(--kf-radius, 7px) - 5px));
+    --radius-xs: max(2px, calc(var(--kf-radius, 7px) - 4px));
     --radius-sm: calc(var(--kf-radius, 7px) - 3px);
     --radius-md: calc(var(--kf-radius, 7px) - 1px);
     --radius-lg: calc(var(--kf-radius, 7px) + 3px);
     --radius: var(--kf-radius, 7px);
+    --radius-circle: 50%;
+    --radius-pill: 999px;
+    --control-height: 40px;
+    --control-height-small: 32px;
     --focus-ring: var(--kf-focus-ring, 3px solid var(--accent));
     --focus-offset: var(--kf-focus-offset, 2px);
     --shadow-dialog: 0 38px 110px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.015);
@@ -7446,7 +7454,7 @@ const UI_CSS = `
     bottom: 18px;
     z-index: 2147483000;
     min-width: 76px;
-    height: 38px;
+    height: var(--control-height);
     padding: 0 16px;
     border: 1px solid var(--border-control);
     border-radius: var(--radius-md);
@@ -7505,8 +7513,9 @@ const UI_CSS = `
   }
 
   .kf-header {
+    min-width: 0;
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 18px;
     padding: 0 20px;
@@ -7515,19 +7524,19 @@ const UI_CSS = `
   }
   .kf-brand { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 16px; font-weight: 820; letter-spacing: -.02em; }
   .kf-brand-mark { width: 28px; height: 28px; display: block; object-fit: contain; }
-  .kf-badge { padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .68); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+  .kf-badge { padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .68); border-radius: var(--radius-xs); color: var(--accent); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
   .kf-save { display: flex; align-items: center; color: var(--text-secondary); font-size: 12px; font-weight: 650; }
-  .kf-save::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border: 1px solid var(--accent); border-radius: 2px; background: var(--accent); }
+  .kf-save::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border: 1px solid var(--accent); border-radius: var(--radius-xxs); background: var(--accent); }
   .kf-save[data-error="true"] { color: var(--danger); }
   .kf-save[data-error="true"]::before { border-color: var(--danger); background: var(--danger); }
 
   .kf-icon-button {
-    width: 38px;
-    height: 38px;
+    width: var(--control-height);
+    height: var(--control-height);
     display: grid;
     place-items: center;
     border: 1px solid transparent;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text);
     cursor: pointer;
@@ -7537,7 +7546,7 @@ const UI_CSS = `
   .kf-icon-button:active { background: var(--surface-selected); transform: translateY(1px); }
   .kf-icon { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  .kf-body { min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+  .kf-body { min-width: 0; min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
   .kf-nav { padding: 14px 10px; border-right: 1px solid var(--border); background: var(--surface-0); }
   .kf-nav button {
     position: relative;
@@ -7554,7 +7563,7 @@ const UI_CSS = `
     text-align: left;
     cursor: pointer;
   }
-  .kf-nav button::before { content: ''; position: absolute; inset: 12px auto 12px 0; width: 3px; border-radius: 2px; background: transparent; }
+  .kf-nav button::before { content: ''; position: absolute; inset: 12px auto 12px 0; width: 3px; border-radius: var(--radius-xxs); background: transparent; }
   .kf-nav button:hover { border-color: var(--border-subtle); background: var(--surface-hover); }
   .kf-nav button:active { transform: translateY(1px); }
   .kf-nav button[aria-current="page"]::before { background: var(--accent); box-shadow: 0 0 14px rgba(var(--accent-rgb), .35); }
@@ -7563,14 +7572,23 @@ const UI_CSS = `
   .kf-nav button[aria-current="page"] .kf-icon { color: var(--accent); }
   .kf-nav-copy { display: grid; gap: 2px; min-width: 0; }
   .kf-nav strong { font-size: 13px; font-weight: 760; }
-  .kf-nav span { overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+  .kf-nav-copy > span:not(.kf-nav-earned) {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.3;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
 
   .kf-page { min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 24px 34px 40px 36px; scrollbar-color: var(--border-control) transparent; scrollbar-width: thin; }
   .kf-page:focus { outline: 0; }
   .kf-nav-search { padding: 0 10px 10px; }
   .kf-nav-search input {
     width: 100%;
-    min-height: 32px;
+    min-height: var(--control-height-small);
     padding: 6px 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -7580,7 +7598,7 @@ const UI_CSS = `
     font-size: 12px;
   }
   .kf-nav-search input:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-  .kf-search-results { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+  .kf-search-results { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; }
   .kf-search-result {
     display: flex;
     align-items: center;
@@ -7589,11 +7607,11 @@ const UI_CSS = `
     width: 100%;
     /* The 24px target floor the rest of this panel holds; density and the
        interface scale must not shrink a result below it. */
-    min-height: 44px;
-    padding: 8px 10px;
-    border: 1px solid transparent;
+    min-height: 58px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
-    background: none;
+    background: var(--surface-inset);
     color: var(--text);
     font: inherit;
     text-align: left;
@@ -7603,8 +7621,10 @@ const UI_CSS = `
   .kf-search-result-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .kf-search-result-copy strong { font-size: 13px; }
   .kf-search-result-copy small { color: var(--muted); font-size: 11px; line-height: 1.35; }
-  .kf-search-result-page { flex: none; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-  .kf-search-empty { padding: 18px; color: var(--muted); }
+  .kf-search-result-trail { display: inline-flex; flex: none; align-items: center; gap: 9px; color: var(--muted); }
+  .kf-search-result-trail .kf-icon { width: 15px; height: 15px; }
+  .kf-search-result-page { color: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .kf-search-empty { max-width: 680px; margin-top: 12px; padding: 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--muted); }
   .kf-search-empty p { margin: 0 0 6px; }
 
   .kf-page-header { min-height: 86px; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
@@ -7616,7 +7636,7 @@ const UI_CSS = `
   .kf-page-meta strong { color: var(--text-secondary); font-size: 12px; font-weight: 740; }
   .kf-page-meta-control { min-width: 118px; justify-items: end; }
 
-  .kf-panel { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+  .kf-panel { border: 0; border-radius: var(--radius-none); background: transparent; overflow: visible; }
   .kf-row {
     min-height: 74px;
     display: grid;
@@ -7634,7 +7654,7 @@ const UI_CSS = `
   .kf-segmented { display: inline-flex; border: 1px solid var(--border-control); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-inset); box-shadow: inset 0 1px rgba(255,255,255,.02); }
   .kf-segmented button {
     min-width: 78px;
-    height: 40px;
+    height: var(--control-height);
     padding: 0 13px;
     border: 0;
     border-left: 1px solid var(--border-control);
@@ -7677,7 +7697,7 @@ const UI_CSS = `
 
   .kf-switch {
     width: 58px;
-    height: 32px;
+    height: var(--control-height);
     position: relative;
     border: 1px solid var(--border-control);
     border-radius: var(--radius-md);
@@ -7697,7 +7717,7 @@ const UI_CSS = `
      on an inset that is near-black in all three themes. */
   .kf-text::placeholder, .kf-textarea::placeholder { color: var(--muted); opacity: 1; }
 
-  .kf-lock { display: inline-block; margin-left: 7px; padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .5); border-radius: 3px; color: var(--accent); font-size: 9px; font-weight: 850; text-transform: uppercase; }
+  .kf-lock { display: inline-block; margin-left: 7px; padding: 2px 6px; border: 1px solid rgba(var(--accent-rgb), .5); border-radius: var(--radius-xs); color: var(--accent); font-size: 9px; font-weight: 850; text-transform: uppercase; }
 
   .kf-range { display: grid; grid-template-columns: 48px minmax(220px, 1fr) 48px; align-items: end; gap: 10px; width: 100%; }
   .kf-range span { color: var(--muted); font-size: 11px; }
@@ -7708,7 +7728,7 @@ const UI_CSS = `
 
   .kf-text, .kf-textarea {
     width: 100%;
-    min-height: 40px;
+    min-height: var(--control-height);
     padding: 9px 11px;
     border: 1px solid var(--border-control);
     border-radius: var(--radius-md);
@@ -7716,10 +7736,10 @@ const UI_CSS = `
     color: var(--text);
   }
   .kf-textarea { min-height: 86px; resize: vertical; }
-  .kf-text:focus, .kf-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
-  .kf-select { min-width: 118px; height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text); font-size: 12px; }
+  .kf-text:focus-visible, .kf-textarea:focus-visible { border-color: var(--accent); }
+  .kf-select { min-width: 118px; height: var(--control-height); padding: 0 28px 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text); font-size: 12px; }
   .kf-select:hover { border-color: var(--border-strong); }
-  .kf-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-select:focus-visible { border-color: var(--accent); }
 
   .kf-theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .kf-swatch-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
@@ -7751,8 +7771,8 @@ const UI_CSS = `
   .kf-theme-board-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .kf-theme-board-top > span:first-child { color: var(--subtle); font-size: 8px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
   .kf-theme-selected { min-height: 15px; color: var(--accent); font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-  .kf-theme-tones { height: 34px; display: grid; grid-template-columns: 1.4fr 1fr .8fr; gap: 3px; padding: 4px; border: 1px solid var(--theme-border); border-radius: 4px; background: var(--theme-canvas); }
-  .kf-theme-tones i { display: block; border-radius: 2px; background: var(--theme-panel); }
+  .kf-theme-tones { height: 34px; display: grid; grid-template-columns: 1.4fr 1fr .8fr; gap: 3px; padding: 4px; border: 1px solid var(--theme-border); border-radius: var(--radius-sm); background: var(--theme-canvas); }
+  .kf-theme-tones i { display: block; border-radius: var(--radius-xxs); background: var(--theme-panel); }
   .kf-theme-tones i:nth-child(2) { background: var(--theme-raised); }
   .kf-theme-tones i:nth-child(3) { background: var(--theme-high); }
   .kf-theme-board[data-value="studio"] { --theme-canvas: #080b09; --theme-panel: #0e130f; --theme-raised: #141a16; --theme-high: #1a221c; --theme-border: #46564b; }
@@ -7765,14 +7785,14 @@ const UI_CSS = `
   .kf-accent-chip:hover { border-color: var(--border-strong); background: var(--surface-hover); }
   .kf-accent-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-selected); color: var(--text); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .12); }
   .kf-accent-chip strong { min-width: 0; font-size: 9px; line-height: 1.15; }
-  .kf-swatch { width: 18px; height: 30px; border-radius: 3px; border: 1px solid rgba(255,255,255,.24); }
+  .kf-swatch { width: 18px; height: 30px; border-radius: var(--radius-xs); border: 1px solid rgba(255,255,255,.24); }
   .kf-swatch[data-color="kick"] { background: #7cff2b; }
   .kf-swatch[data-color="cyan"] { background: #38d7d0; }
   .kf-swatch[data-color="violet"] { background: #9667ff; }
   .kf-swatch[data-color="gold"] { background: #ffbe2e; }
   .kf-swatch[data-color="custom"] { background: var(--kf-custom-accent, #ff5ca8); }
   .kf-custom-color { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-inset); }
-  .kf-custom-color input { width: 42px; height: 34px; padding: 2px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
+  .kf-custom-color input { width: 42px; height: 34px; padding: 2px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; }
   .kf-custom-color strong { color: var(--text); font-size: 11px; }
   .kf-custom-color small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
   .kf-custom-accent-row[data-visible="false"] { display: none; }
@@ -7799,9 +7819,9 @@ const UI_CSS = `
   .kf-preview-feature h3 { margin: 7px 0 3px; font-size: 15px; line-height: 1.2; }
   .kf-preview-feature p { margin: 0; color: var(--muted); font-size: 10px; }
   .kf-preview-live { display: inline-flex; align-items: center; gap: 7px; color: #dce3de; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-  .kf-preview-live::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: var(--accent); }
+  .kf-preview-live::before { content: ''; width: 7px; height: 7px; border-radius: var(--radius-xxs); background: var(--accent); }
   .kf-preview-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; color: var(--muted); font-size: 9px; }
-  .kf-preview-action b { padding: 7px 10px; border: 1px solid var(--accent); border-radius: 3px; color: var(--accent); font-size: 9px; }
+  .kf-preview-action b { padding: 7px 10px; border: 1px solid var(--accent); border-radius: var(--radius-xs); color: var(--accent); font-size: 9px; }
   .kf-preview-list { display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); font-size: 9px; }
   .kf-preview-list:last-child { border-bottom: 0; }
   .kf-preview-list span { color: var(--muted); }
@@ -7902,7 +7922,7 @@ const UI_CSS = `
   /* Kick edits emotes users already pulled; the local record is the only copy
      that can prove it, so a changed entry is called out rather than quietly
      overwritten. */
-  .kf-sticker-changed { display: inline-flex; margin: 5px 0 0 5px; padding: 2px 5px; border: 1px solid rgba(217,139,58,.62); border-radius: 3px; color: #e0a367; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .kf-sticker-changed { display: inline-flex; margin: 5px 0 0 5px; padding: 2px 5px; border: 1px solid rgba(217,139,58,.62); border-radius: var(--radius-xs); color: #e0a367; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .kf-sticker-library-item[data-changed="true"] { border-color: rgba(217,139,58,.42); }
   /* A dead greyed tile teaches nothing; a reason plus Kick's own unlock path
      is the clearest possible signal that entitlements are respected. */
@@ -7942,7 +7962,7 @@ const UI_CSS = `
   [data-kf-earned="reward-ready"] { position: relative; }
   [data-kf-earned="reward-ready"]::after {
     content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
-    border: 1px solid var(--surface-2); border-radius: 50%; background: var(--accent);
+    border: 1px solid var(--surface-2); border-radius: var(--radius-circle); background: var(--accent);
     animation: kf-earned-pulse 2.4s ease-in-out infinite;
   }
   @keyframes kf-earned-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -7954,7 +7974,7 @@ const UI_CSS = `
 
   .kf-layout-save { display: grid; gap: 8px; justify-items: stretch; min-width: 240px; }
   .kf-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .kf-chip { padding: 5px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; background: transparent; font-size: 11px; cursor: pointer; }
+  .kf-chip { padding: 5px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-pill); background: transparent; font-size: 11px; cursor: pointer; }
   .kf-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
   /* The pressed chip is named as well as coloured, so the state does not depend
      on seeing the colour: the button carries aria-pressed and the entry below
@@ -7979,7 +7999,9 @@ const UI_CSS = `
   /* A card with no reading is quieter than one with a number, and says so in
      words as well: state is never carried by colour alone. */
   .kf-hub-card[data-state="unavailable"] strong, .kf-hub-card[data-state="loading"] strong { color: var(--muted); }
+  .kf-hub-card[data-state="unavailable"]::before, .kf-hub-card[data-state="loading"]::before { background: var(--border-control); opacity: .45; }
   .kf-hub-card[data-state="error"] strong { color: var(--danger-text); }
+  .kf-hub-card[data-state="error"]::before { background: var(--danger); opacity: .8; }
   .kf-action-row { min-height: 78px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
   .kf-action-row h3 { margin: 0 0 4px; font-size: 13px; }
   .kf-action-row p { max-width: 560px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
@@ -8003,10 +8025,10 @@ const UI_CSS = `
   }
   [data-kf-current-page="about"] .kf-action-row { min-height: 78px; padding-block: 13px; }
   [data-kf-current-page="about"] .kf-subsection { margin-top: 18px; }
-  [data-kf-current-page="about"] .kf-subsection > .kf-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 4px; }
+  [data-kf-current-page="about"] .kf-subsection > .kf-panel { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 
   .kf-button {
-    min-height: 40px;
+    min-height: var(--control-height);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -8026,12 +8048,12 @@ const UI_CSS = `
   .kf-button-primary:hover { border-color: var(--accent); background: var(--accent); filter: brightness(1.08); }
   .kf-button:disabled { opacity: .48; cursor: not-allowed; transform: none; box-shadow: none; }
   .kf-button-primary:disabled { opacity: 1; border-color: var(--border); background: var(--surface-hover); color: var(--muted); }
-  .kf-button-small { min-height: 32px; padding-inline: 10px; font-size: 11px; }
+  .kf-button-small { min-height: var(--control-height-small); padding-inline: 10px; font-size: 11px; }
   .kf-button .kf-icon { width: 16px; height: 16px; }
   .kf-button-group { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
-  .kf-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; border-top: 1px solid var(--border); background: var(--surface-2); }
-  .kf-footer-left, .kf-footer-right { display: flex; align-items: center; gap: 10px; }
+  .kf-footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; border-top: 1px solid var(--border); background: var(--surface-2); }
+  .kf-footer-left, .kf-footer-right { min-width: 0; display: flex; align-items: center; gap: 10px; }
 
 
   .kf-toast {
@@ -8042,19 +8064,21 @@ const UI_CSS = `
     max-width: 430px;
     padding: 11px 14px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface-3);
     box-shadow: 0 18px 48px rgba(0,0,0,.5);
     color: var(--text);
   }
   .kf-toast[data-error="true"] { border-color: var(--danger); background: var(--surface-danger); }
   .kf-toast:has(.kf-toast-action) { display: flex; align-items: center; gap: 10px; }
+  [data-kf-settings-backdrop]:not([hidden]) ~ .kf-toast:not([hidden]) { bottom: 120px; }
+  [data-kf-multistream-backdrop]:not([hidden]) ~ .kf-toast:not([hidden]) { bottom: 150px; }
   .kf-toast-text { flex: 1 1 auto; }
   .kf-toast-action {
     flex: 0 0 auto;
     padding: 5px 10px;
     border: 1px solid var(--accent);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--accent);
     font: inherit;
@@ -8104,27 +8128,24 @@ const UI_CSS = `
   .kf-command-head input {
     grid-column: 1 / -1;
     width: 100%;
-    height: 44px;
+    height: var(--control-height);
     padding: 0 13px;
     border: 1px solid var(--border-control);
     border-radius: var(--radius-md);
     background: var(--surface-inset);
     color: var(--text);
-    outline: 0;
   }
-  .kf-command-head input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-command-head input:focus-visible { border-color: var(--accent); }
 
-  /* Windows High Contrast suppresses box-shadow outright, so every control
-     whose focus ring is a shadow had no visible focus at all — a WCAG 2.4.7
-     failure on a build that ships an accessibility page. Buttons were already
-     safe because they use a real outline. */
+  /* Windows High Contrast uses the system highlight so the shared outline
+     remains visible even when custom colours are suppressed. */
   @media (forced-colors: active) {
-    .kf-text:focus,
-    .kf-textarea:focus,
-    .kf-command-head input:focus,
-    .kf-ms-head input:focus,
-    .kf-ms-foot input:focus,
-    .kf-select:focus,
+    .kf-text:focus-visible,
+    .kf-textarea:focus-visible,
+    .kf-command-head input:focus-visible,
+    .kf-ms-head input:focus-visible,
+    .kf-ms-foot input:focus-visible,
+    .kf-select:focus-visible,
     input:focus-visible,
     select:focus-visible,
     textarea:focus-visible,
@@ -8190,7 +8211,7 @@ const UI_CSS = `
   /* Kick publishes no drop odds and documents no duplicate protection, so this
      states what is known and attributes it, rather than filling the gap. */
   .kf-fact-list { margin: 0; padding: 0; display: grid; gap: 10px; }
-  .kf-fact { margin: 0; padding: 10px 12px; border-left: 3px solid var(--border-subtle); background: rgba(255,255,255,.02); border-radius: 0 4px 4px 0; }
+  .kf-fact { margin: 0; padding: 10px 12px; border-left: 3px solid var(--border-subtle); background: rgba(255,255,255,.02); border-radius: var(--radius-none) var(--radius-sm) var(--radius-sm) var(--radius-none); }
   .kf-fact dt { margin: 0 0 3px; font-size: 12px; font-weight: 700; }
   .kf-fact dd { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 
@@ -8256,7 +8277,7 @@ const UI_CSS = `
     color: var(--text);
     font-size: 12px;
   }
-  .kf-ms-head input:focus, .kf-ms-foot input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+  .kf-ms-head input:focus-visible, .kf-ms-foot input:focus-visible { border-color: var(--accent); }
   .kf-ms-select { min-height: 32px; font-size: 12px; }
   .kf-ms-error { padding: 9px 14px; border-bottom: 1px solid var(--danger); background: var(--surface-danger); color: var(--danger-text); font-size: 12px; }
   .kf-ms-error[hidden] { display: none; }
@@ -8332,7 +8353,7 @@ const UI_CSS = `
   .kf-ms-tile:hover .kf-ms-bar, .kf-ms-tile:focus-within .kf-ms-bar { opacity: 1; }
   .kf-ms-bar button, .kf-ms-bar .kf-ms-link {
     border: 1px solid rgba(255,255,255,.25);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: rgba(0,0,0,.55);
     color: var(--text);
     padding: 2px 7px;
@@ -8349,7 +8370,7 @@ const UI_CSS = `
   .kf-ms-merged-row { padding: 2px 0; overflow-wrap: anywhere; }
   /* The source channel first and always visible: an interleaved feed is only
      readable if every line says where it came from without hovering. */
-  .kf-ms-merged-source { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px;
+  .kf-ms-merged-source { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: var(--radius-sm);
     background: var(--kf-panel-high, #18201b); color: var(--kf-accent, #7cff2b); font-size: 11px; font-weight: 700; }
   .kf-ms-merged-who { margin-right: 4px; font-weight: 700; }
   .kf-ms-merged-who::after { content: ':'; }
@@ -8380,8 +8401,8 @@ const UI_CSS = `
     font-size: 11px;
     cursor: pointer;
   }
-  .kf-ms-layout button:first-child { border-radius: 6px 0 0 6px; }
-  .kf-ms-layout button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+  .kf-ms-layout button:first-child { border-radius: var(--radius-md) var(--radius-none) var(--radius-none) var(--radius-md); }
+  .kf-ms-layout button:last-child { border-radius: var(--radius-none) var(--radius-md) var(--radius-md) var(--radius-none); border-left: 0; }
   .kf-ms-layout button:hover { border-color: var(--accent); color: var(--accent); }
   .kf-ms-layout small { opacity: .6; }
   /* One bulk request answers for every saved layout, so live status is cheap
@@ -8442,8 +8463,8 @@ const UI_CSS = `
 
   @media (max-width: 700px) {
     .kf-backdrop { padding: 0; }
-    .kf-settings { width: calc(100vw / var(--kf-interface-scale, 1)); height: calc(100vh / var(--kf-interface-scale, 1)); min-height: 0; grid-template-rows: 66px minmax(0, 1fr) 68px; border: 0; border-radius: 0; }
-    .kf-header { grid-template-columns: 1fr auto auto; padding-inline: 14px; }
+    .kf-settings { width: calc(100vw / var(--kf-interface-scale, 1)); height: calc(100vh / var(--kf-interface-scale, 1)); min-height: 0; grid-template-rows: 66px minmax(0, 1fr) 68px; border: 0; border-radius: var(--radius-none); }
+    .kf-header { grid-template-columns: minmax(0, 1fr) auto auto; padding-inline: 14px; }
     .kf-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
     .kf-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; overscroll-behavior-inline: contain; }
     .kf-nav::-webkit-scrollbar { display: none; }
@@ -8484,6 +8505,7 @@ const UI_CSS = `
     .kf-row { gap: 12px; padding-block: 13px; }
     .kf-row p { font-size: 11px; }
     .kf-footer-left .kf-button { padding-inline: 10px; }
+    .kf-footer [data-action="reset-page"] .kf-button-label { display: none; }
     .kf-command-shell { width: calc(100vw - 24px); }
   }
 
@@ -8557,6 +8579,8 @@ const TRANSLATIONS = {
   'Account readings and this browser session, in one place. Nothing here is claimed or sent anywhere.': ['Lecturas de la cuenta y esta sesión del navegador, reunidas en un sitio. Aquí no se reclama ni se envía nada.', 'Leituras da conta e esta sessão do navegador, reunidas num só lugar. Aqui nada é resgatado ou enviado.'],
   'Reading': ['Lecturas', 'Leituras'],
   'Reading…': ['Leyendo…', 'A ler…'],
+  'Not read': ['Sin leer', 'Não lido'],
+  'Unavailable': ['No disponible', 'Indisponível'],
   'From Kick’s API': ['Desde la API de Kick', 'Da API da Kick'],
   'Read from the page': ['Leído de la página', 'Lido da página'],
   'This browser session only': ['Solo esta sesión del navegador', 'Apenas esta sessão do navegador'],
@@ -8757,6 +8781,7 @@ const TRANSLATIONS = {
   'Core protection always stays on': ['La protección principal permanece siempre activada', 'A proteção principal permanece sempre ativada'],
   'This page has its own reset control': ['Esta página tiene su propio control de restablecimiento', 'Esta página tem seu próprio controle de redefinição'],
   'Restore page defaults': ['Restaurar los valores predeterminados de la página', 'Restaurar os padrões da página'],
+  'Choose a page before resetting': ['Elige una página antes de restablecer', 'Escolha uma página antes de redefinir'],
   'Find a command': ['Buscar un comando', 'Buscar um comando'],
   'Type an action or setting…': ['Escribe una acción o ajuste…', 'Digite uma ação ou configuração…'],
   'Available commands': ['Comandos disponibles', 'Comandos disponíveis'],
@@ -9005,7 +9030,7 @@ const TRANSLATIONS = {
   'Channel keywords and private notes stay on this device.': ['Las palabras clave de canal y las notas privadas se quedan en este dispositivo.', 'As palavras-chave de canal e as notas privadas ficam neste dispositivo.'],
   'Sanitized in-memory diagnostics; query strings are never retained.': ['Diagnósticos en memoria y depurados; las cadenas de consulta nunca se conservan.', 'Diagnósticos em memória e limpos; as strings de consulta nunca são mantidas.'],
   'Settings stay in your userscript manager. No analytics. No remote code.': ['La configuración se queda en tu gestor de userscripts. Sin analíticas. Sin código remoto.', 'As configurações ficam no seu gerenciador de userscripts. Sem analytics. Sem código remoto.'],
-  'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': ['Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus o con Ctrl+Shift+F.', 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus ou com Ctrl+Shift+F.'],
+  'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button.': ['Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus.', 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus.'],
   'Copy a sanitized summary or run a local self-check.': ['Copia un resumen depurado o ejecuta una comprobación local.', 'Copie um resumo limpo ou execute uma verificação local.'],
   'Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.': ['Mueve preferencias, metadatos de emotes registrados, favoritos, elementos quitados y grupos personalizados con un solo archivo JSON local.', 'Mova preferências, metadados de emotes registrados, favoritos, itens removidos e grupos personalizados com um único arquivo JSON local.'],
   'Changes are not being saved': ['Los cambios no se están guardando', 'As alterações não estão sendo salvas'],
@@ -9210,7 +9235,7 @@ const TRANSLATIONS = {
   'The backup could not be restored. Your current settings are unchanged.': ['No se pudo restaurar la copia de seguridad. Tu configuración actual no ha cambiado.', 'Não foi possível restaurar o backup. Suas configurações atuais não foram alteradas.'],
   'Import undone. Your previous settings are back.': ['Importación deshecha: tu configuración anterior está de vuelta.', 'Importação desfeita: suas configurações anteriores voltaram.'],
   'Kick Focus restored.': ['Kick Focus restaurado.', 'Kick Focus restaurado.'],
-  'Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.': ['Kick Focus en pausa. Usa el botón Reanudar o Ctrl+Mayús+F para restaurarlo.', 'Kick Focus pausado. Use o botão Retomar ou Ctrl+Shift+F para restaurar.'],
+  'Kick Focus paused. Use the Focus button to restore.': ['Kick Focus en pausa. Usa el botón Focus para restaurarlo.', 'Kick Focus pausado. Use o botão Focus para restaurar.'],
   'Settings reset': ['Configuración restablecida', 'Configurações redefinidas'],
   'Kick Focus restored': ['Kick Focus restaurado', 'Kick Focus restaurado'],
   'Give this stream the audio and chat': ['Dar a esta transmisión el audio y el chat', 'Dar a esta transmissão o áudio e o chat'],
@@ -9262,8 +9287,10 @@ const TRANSLATIONS = {
   'Add this channel to Kick Focus multi-stream': ['Añadir este canal a la multitransmisión de Kick Focus', 'Adicionar este canal à multitransmissão do Kick Focus'],
   'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
   'Undo': ['Deshacer', 'Desfazer'],
+  'Dismiss': ['Cerrar', 'Fechar'],
   'Commands': ['Comandos', 'Comandos'],
-  'Ctrl+Shift+F pauses · nothing else is bound': ['Ctrl+Shift+F pausa · no hay nada más asignado', 'Ctrl+Shift+F pausa · não há mais nada atribuído'],
+  'No page-wide shortcuts': ['Sin atajos globales de página', 'Sem atalhos globais de página'],
+  'Not measured': ['Sin medir', 'Não medido'],
   'Comfort, contrast, and readable text across the whole page.': ['Comodidad, contraste y texto legible en toda la página.', 'Conforto, contraste e texto legível em toda a página.'],
   'Restore every setting, note, filter, and channel list to factory defaults. Your recorded emote library is kept. This happens straight away and can be undone once.': ['Restablece todos los ajustes, notas, filtros y listas de canales a los valores de fábrica. Se conserva tu biblioteca de emotes registrada. Ocurre de inmediato y se puede deshacer una vez.', 'Repõe todas as definições, notas, filtros e listas de canais para os valores de fábrica. A tua biblioteca de emotes registada é mantida. Acontece de imediato e pode ser desfeito uma vez.'],
   'This page has nothing to reset.': ['Esta página no tiene nada que restablecer.', 'Esta página não tem nada para repor.'],
@@ -9475,7 +9502,7 @@ function buildInterface() {
         </div>
         <footer class="kf-footer">
           <div class="kf-footer-left">
-            <button type="button" class="kf-button" data-action="reset-page">${uiIcon('reset')}Reset page</button>
+            <button type="button" class="kf-button" data-action="reset-page" aria-label="Reset page">${uiIcon('reset')}<span class="kf-button-label">Reset page</span></button>
             <button type="button" class="kf-button" data-action="export">${uiIcon('export')}Export settings</button>
             <button type="button" class="kf-button" data-action="open-command" aria-label="Open the Kick Focus command menu">${uiIcon('keyboard')}Commands</button>
             <button type="button" class="kf-button" data-action="help" aria-label="Open help and recovery">${uiIcon('info')}Help</button>
@@ -9604,6 +9631,7 @@ function buildInterface() {
     syncSessionWatchTime();
     repaintViewerWatchCard();
   });
+  window.addEventListener('resize', queueSettingsNavAlignment, { passive: true });
   // Colon completion. Delegated at the document because Kick replaces its
   // composer on every route change, and deliberately only on events the user
   // already caused — no keydown listener, so no keystroke can be captured.
@@ -10772,6 +10800,23 @@ function restoreFocus(target) {
   return deepActiveElement() === target;
 }
 
+let settingsNavFrame = 0;
+
+function alignCurrentSettingsNav() {
+  settingsNavFrame = 0;
+  if (!state.modal || state.modal.hidden || state.settingsQuery) return;
+  const nav = state.shadow?.querySelector('.kf-nav');
+  const active = state.shadow?.querySelector(`[data-page="${state.currentPage}"]`);
+  if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+  const left = active.offsetLeft - Math.max(0, (nav.clientWidth - active.offsetWidth) / 2);
+  nav.scrollTo({ left: Math.max(0, left), behavior: 'auto' });
+}
+
+function queueSettingsNavAlignment() {
+  cancelAnimationFrame(settingsNavFrame);
+  settingsNavFrame = requestAnimationFrame(alignCurrentSettingsNav);
+}
+
 function openSettings(page = state.currentPage) {
   if (!state.modal) return;
   closeCommandMenu();
@@ -10780,7 +10825,10 @@ function openSettings(page = state.currentPage) {
   renderSettingsPage();
   state.modal.hidden = false;
   syncPageInert();
-  requestAnimationFrame(() => state.shadow.querySelector('[data-action="close-settings"]')?.focus());
+  requestAnimationFrame(() => {
+    alignCurrentSettingsNav();
+    state.shadow.querySelector('[data-action="close-settings"]')?.focus();
+  });
 }
 
 function closeSettings() {
@@ -10866,7 +10914,7 @@ function resetSettings(scope) {
   // A reset replaces a configuration somebody spent time on, so it is offered
   // back rather than only announced. The slot survives the tab, and the About
   // page carries the same offer for as long as it holds one.
-  showToast('Settings reset.', false, [{ label: 'Undo', onClick: undoLastDestructiveAction }]);
+  showToast('Settings reset.', false, [{ label: 'Undo', onClick: undoLastDestructiveAction }], { persistent: true });
 }
 
 // Everything the About page says is stored travels with the backup, or the
@@ -11114,7 +11162,7 @@ const EMOTE_COMPLETION_CSS = `
     gap: 2px;
     padding: 4px;
     border: 1px solid var(--kf-border-strong, #38463d);
-    border-radius: 9px;
+    border-radius: calc(var(--kf-radius, 7px) + 2px);
     background: var(--kf-panel, #0b100d);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
     font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -11132,7 +11180,7 @@ const EMOTE_COMPLETION_CSS = `
     min-height: 28px;
     padding: 3px 6px;
     border: 0;
-    border-radius: 6px;
+    border-radius: calc(var(--kf-radius, 7px) - 1px);
     background: transparent;
     color: inherit;
     font: inherit;
@@ -11837,7 +11885,7 @@ function togglePanicSwitch() {
     showToast('Kick Focus restored.');
   } else {
     clearEnhancedPage();
-    showToast('Kick Focus paused. Use the Resume button or Ctrl+Shift+F to restore.');
+    showToast('Kick Focus paused. Use the Focus button to restore.');
   }
 }
 
@@ -11881,7 +11929,7 @@ function storageDiagnostics() {
   return approximateStorageBytes(entries);
 }
 
-function showToast(message, isError = false, actions = []) {
+function showToast(message, isError = false, actions = [], options = {}) {
   const toast = state.shadow?.querySelector('[data-kf-toast]');
   if (!toast) return;
   toast.textContent = '';
@@ -11903,12 +11951,21 @@ function showToast(message, isError = false, actions = []) {
     });
     toast.append(button);
   }
+  if (options.persistent && actions.length) {
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'kf-toast-action';
+    dismiss.textContent = tr('Dismiss');
+    dismiss.addEventListener('click', () => { toast.hidden = true; });
+    toast.append(dismiss);
+  }
   toast.dataset.error = String(isError);
   // Errors interrupt (assertive); routine confirmations wait their turn (polite).
   toast.setAttribute('role', isError ? 'alert' : 'status');
   toast.setAttribute('aria-live', isError ? 'assertive' : 'polite');
   toast.hidden = false;
   clearTimeout(showToast.timer);
+  if (options.persistent) return;
   // Action toasts stay long enough to be clicked; plain toasts clear quickly.
   showToast.timer = setTimeout(() => { toast.hidden = true; }, actions.length ? 7000 : 3600);
 }
@@ -12138,26 +12195,14 @@ function trapFocus(event) {
 }
 
 /**
- * The only key this build claims from the page, and Escape inside its own
- * surfaces.
+ * Escape inside this build's own surfaces and the focus trap that keeps each
+ * modal self-contained.
  *
- * Kick owns the page keyboard. Six configurable chords used to be captured
- * here, four of them bare letters, which is a lot of a stranger's keyboard to
- * take for a viewer mod. Every action they reached is on the command menu,
- * which now has a button in the header.
- *
- * Ctrl+Shift+F stays because it is the one binding whose value is that it
- * works when the interface itself is in the way. It is fixed rather than
- * configurable, and the same action sits on the command menu beside the rest.
+ * Kick owns the page keyboard. All Kick Focus actions are on visible controls
+ * or the command menu, so this handler never claims a page-wide shortcut.
  */
 function onGlobalKeydown(event) {
   if (!state.shadow) return;
-  if (event.ctrlKey && event.shiftKey && String(event.key).toLowerCase() === 'f') {
-    event.preventDefault();
-    event.stopPropagation();
-    togglePanicSwitch();
-    return;
-  }
   // Escape cancels the innermost open surface, off the same ladder the focus
   // trap uses. Closing all of Settings from a confirmation prompt discards the
   // page the user was working on to answer a question they only declined.
@@ -12175,9 +12220,43 @@ function onGlobalKeydown(event) {
   trapFocus(event);
 }
 
+const HEADER_BUTTON_BASE_CSS = `
+  button {
+    box-sizing: border-box;
+    display: inline-flex;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 11px;
+    border: 1px solid rgba(var(--kf-accent-rgb, 124,255,43), var(--kf-header-edge-alpha, .38));
+    border-radius: var(--kf-radius, 7px);
+    background: linear-gradient(180deg, rgba(var(--kf-accent-rgb, 124,255,43), .12), rgba(var(--kf-accent-rgb, 124,255,43), .055));
+    color: var(--kf-text, #f5f8f6);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+    cursor: pointer;
+    font: 750 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: .015em;
+    white-space: nowrap;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 80ms ease;
+  }
+  button:hover { border-color: var(--kf-accent, #7cff2b); background: rgba(var(--kf-accent-rgb, 124,255,43), .15); color: var(--kf-accent, #7cff2b); }
+  button:active { transform: scale(.97); }
+  button:focus-visible { outline: var(--kf-focus-ring, 3px solid var(--kf-accent, #7cff2b)); outline-offset: var(--kf-focus-offset, 2px); }
+  @media (max-width: 960px) {
+    button { width: 36px; padding: 0; }
+    span { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button { transition-duration: .001ms; }
+    button:active { transform: none; }
+  }
+`;
+
 const HEADER_CONTROL_CSS = `
   :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
   * { box-sizing: border-box; }
+  ${HEADER_BUTTON_BASE_CSS}
   /* Repeats the settings panel's earned marker inside Kick's own header. The
      status itself is in the button's accessible name; this is the glance. */
   [data-kf-earned="reward-ready"] { position: relative; }
@@ -12190,79 +12269,15 @@ const HEADER_CONTROL_CSS = `
   @media (prefers-reduced-motion: reduce) {
     [data-kf-earned="reward-ready"]::after { animation: none; }
   }
-  button {
-    display: inline-flex;
-    height: 36px;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 0 11px;
-    border: 1px solid rgba(var(--kf-accent-rgb, 124,255,43), var(--kf-header-edge-alpha, .38));
-    border-radius: 5px;
-    background: linear-gradient(180deg, rgba(var(--kf-accent-rgb, 124,255,43), .12), rgba(var(--kf-accent-rgb, 124,255,43), .055));
-    color: #f4f7f5;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
-    cursor: pointer;
-    font: 750 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    letter-spacing: .015em;
-    white-space: nowrap;
-    transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 80ms ease;
-  }
-  button:hover { border-color: var(--kf-accent, #7cff2b); background: rgba(var(--kf-accent-rgb, 124,255,43), .15); color: var(--kf-accent, #7cff2b); }
-  button:active { transform: scale(.97); }
-  button:focus-visible { outline: var(--kf-focus-ring, 3px solid var(--kf-accent, #7cff2b)); outline-offset: var(--kf-focus-offset, 2px); }
   img { display: block; width: 18px; height: 18px; object-fit: contain; }
   .kf-header-multi svg { width: 15px; height: 15px; fill: currentColor; opacity: .9; }
   .kf-header-add [data-kf-header-add-icon] { font-weight: 800; font-size: 14px; }
   .kf-header-add[data-in-multi="true"] { border-color: var(--kf-accent, #7cff2b); background: rgba(var(--kf-accent-rgb, 124,255,43), .2); color: var(--kf-accent, #7cff2b); }
-  @media (max-width: 960px) {
-    button { width: 36px; padding: 0; }
-    span { display: none; }
-  }
-  /* Last in the sheet on purpose. The pulse above was guarded and the button's
-     own transition and :active scale were not, which made this the only
-     injected control in the build that moved for a user who asked nothing to.
-     It has to come after the button rule's own transition shorthand, which
-     would otherwise reset the duration this sets. Matches the guard at the end
-     of PROFILE_STATS_CSS. */
-  @media (prefers-reduced-motion: reduce) {
-    button { transition-duration: .001ms; }
-    button:active { transform: none; }
-  }
 `;
 
 const PROFILE_STATS_CSS = `
   :host { display: inline-flex; }
-  button {
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 40px;
-    gap: 6px;
-    padding: 0 12px;
-    border: 1px solid var(--kf-border-strong, rgba(255,255,255,.16));
-    border-radius: 8px;
-    background: var(--kf-panel-raised, #111713);
-    color: var(--kf-text, #f5f8f6);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    font: 700 14px/1 "Segoe UI", sans-serif;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease;
-  }
-  button:hover {
-    border-color: rgba(var(--kf-accent-rgb, 83, 252, 24), .62);
-    background: rgba(var(--kf-accent-rgb, 83, 252, 24), .10);
-    color: var(--kf-accent, #7cff2b);
-    transform: translateY(-1px);
-  }
-  button:active { transform: translateY(0) scale(.98); }
-  button:focus-visible {
-    border-color: var(--kf-accent, #7cff2b);
-    outline: var(--kf-focus-ring, 3px solid var(--kf-accent, #7cff2b));
-    outline-offset: 2px;
-  }
+  ${HEADER_BUTTON_BASE_CSS}
   svg {
     width: 18px;
     height: 18px;
@@ -12271,13 +12286,6 @@ const PROFILE_STATS_CSS = `
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
-  }
-  @media (max-width: 960px) {
-    button { width: 40px; padding: 0; }
-    span { display: none; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    button { transition-duration: .001ms; }
   }
 `;
 

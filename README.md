@@ -111,9 +111,9 @@ Every network rule is scoped to `kick.com` initiators, so the companion never ch
 
 ## Keyboard
 
-Kick Focus claims one key from the page: `Ctrl+Shift+F` pauses and resumes it. That one is fixed rather than configurable, because the whole point of it is that it works when the interface itself is in the way, and the same action sits on the command menu beside everything else.
+Kick Focus doesn't claim a page-wide shortcut. Focus, pause, settings, and every other action remain available from visible controls and the command menu in Kick's header.
 
-Nothing else is bound. Earlier versions captured six configurable chords, four of them bare letters, which is a lot of somebody's keyboard to take for a viewer mod on a site that has its own keyboard behaviour. Every action those chords reached is on the command menu, and the command menu has a button in the header. A profile that stored custom shortcuts loses them on the next load, quietly and without error.
+Earlier versions captured six configurable chords plus a fixed pause chord. Stored custom shortcuts are discarded on load without an error.
 
 Inside Kick Focus's own surfaces the standard keys work as standard keys: Tab and Shift+Tab move within whichever panel is on top, Escape closes it, and the chat separator answers Left, Right, Home and End once you tab to it.
 
