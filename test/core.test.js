@@ -74,6 +74,8 @@ import {
   chatWidthAfterDrag,
   chatWidthAfterKey,
   createPageInertManager,
+  readUndoSlot,
+  undoSlotLabel,
   CHAT_WIDTH_MIN,
   CHAT_WIDTH_MAX,
   applyViewingPreset,
@@ -1354,6 +1356,36 @@ test('a modal makes the page behind it inert, and gives it back exactly as it wa
   manager.sync(true);
   manager.sync(false);
   assert.equal(alreadyInert.isInert, false, 'the second run restored the first run\u2019s snapshot');
+});
+
+test('one undo slot, and it says which destructive action it holds', { tag: 'unit' }, () => {
+  assert.equal(readUndoSlot(null), null);
+  assert.equal(readUndoSlot('nonsense'), null);
+  assert.equal(readUndoSlot(42), null);
+  assert.equal(undoSlotLabel(null), '', 'a button was offered with nothing behind it');
+
+  const payload = { settings: { layout: {} }, usage: {} };
+
+  // A slot written before resets shared it carried the payload alone. It is
+  // still readable, and it is still an import, because that is all it could
+  // have been.
+  assert.deepEqual(readUndoSlot(payload), { action: 'import', payload });
+  assert.equal(undoSlotLabel(payload), 'Undo import');
+
+  for (const [action, label] of [['import', 'Undo import'], ['reset-all', 'Undo reset'], ['reset-page', 'Undo reset']]) {
+    assert.deepEqual(readUndoSlot({ action, payload }), { action, payload });
+    assert.equal(undoSlotLabel({ action, payload }), label);
+  }
+
+  // An action nobody writes reads as an import rather than as a crash, and the
+  // payload still comes back, because losing the snapshot is the worse failure.
+  assert.deepEqual(readUndoSlot({ action: 'delete-everything', payload }), { action: 'import', payload });
+  assert.equal(undoSlotLabel({ action: 'delete-everything', payload }), 'Undo import');
+
+  // A record with no usable payload is not a slot. Offering an undo that
+  // restores nothing is worse than offering none.
+  assert.equal(readUndoSlot({ action: 'reset-all', payload: null }).action, 'import',
+    'a slot with no payload was read as a reset with nothing in it');
 });
 
 test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {

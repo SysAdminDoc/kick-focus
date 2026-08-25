@@ -9161,7 +9161,6 @@ const TRANSLATIONS = {
   'Density saved': ['Densidad guardada', 'Densidade salva'],
   'Content filter saved': ['Filtro de contenido guardado', 'Filtro de conteúdo salvo'],
   'Poor mode saved': ['Modo sin gastos guardado', 'Modo sem gastos salvo'],
-  'No import to undo.': ['No hay ninguna importación que deshacer.', 'Não há importação para desfazer.'],
   'The backup could not be restored. Your current settings are unchanged.': ['No se pudo restaurar la copia de seguridad. Tu configuración actual no ha cambiado.', 'Não foi possível restaurar o backup. Suas configurações atuais não foram alteradas.'],
   'Import undone. Your previous settings are back.': ['Importación deshecha: tu configuración anterior está de vuelta.', 'Importação desfeita: suas configurações anteriores voltaram.'],
   'Kick Focus restored.': ['Kick Focus restaurado.', 'Kick Focus restaurado.'],
@@ -9217,6 +9216,10 @@ const TRANSLATIONS = {
   'Add this channel to Kick Focus multi-stream': ['Añadir este canal a la multitransmisión de Kick Focus', 'Adicionar este canal à multitransmissão do Kick Focus'],
   'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
   'Undo': ['Deshacer', 'Desfazer'],
+  'Undo reset': ['Deshacer el restablecimiento', 'Desfazer a reposição'],
+  'Settings reset.': ['Ajustes restablecidos.', 'Definições repostas.'],
+  'There is nothing to undo.': ['No hay nada que deshacer.', 'Não há nada para desfazer.'],
+  'Reset undone. Your previous settings are back.': ['Se deshizo el restablecimiento. Tus ajustes anteriores han vuelto.', 'A reposição foi desfeita. As tuas definições anteriores voltaram.'],
   'View': ['Ver', 'Ver'],
   'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord}. That is {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': ['Tu inventario tiene {copies} {copiesWord} repartidos en {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, es decir, el {rate}% de lo que has conseguido.', 'Seu inventário tem {copies} {copiesWord} distribuídos em {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, ou seja, {rate}% do que você já obteve.'],
   'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it. That number is unavailable rather than zero.': ['Tu inventario tiene {distinct} {distinctWord} distintos. La respuesta de Kick no incluye la cantidad por artículo, así que no se puede medir una tasa de duplicados a partir de ella: ese número no está disponible, no es cero.', 'Seu inventário tem {distinct} {distinctWord} distintos. A resposta do Kick não traz a quantidade por item, então não é possível medir uma taxa de duplicatas a partir dela: esse número está indisponível, não é zero.'],
@@ -9623,6 +9626,7 @@ const settingsSurface = createSettings({
   ownedEmoteGroups,
   plural,
   PRE_IMPORT_BACKUP_KEY,
+  undoSlotLabel,
   protectionRows,
   rankSettingsMatches,
   refreshViewerCollectibles,
@@ -10405,7 +10409,7 @@ function onInterfaceClick(event) {
     state.shadow?.querySelector('[data-kf-page]')?.focus();
   }
   else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
-  else if (action === 'undo-import') undoImport();
+  else if (action === 'undo-import') undoLastDestructiveAction();
   else if (action === 'copy-sticker-name') copyStickerName(actionTarget);
   else if (action === 'insert-sticker-name') insertStickerName(actionTarget);
   else if (action === 'apply-viewing-preset') selectViewingPreset(actionTarget.dataset.preset);
@@ -10829,6 +10833,9 @@ function clearPrivateData() {
 
 function confirmReset() {
   const scope = state.resetPending;
+  // Taken before anything is thrown away, and written after, because the 'all'
+  // path clears every private store including the slot this goes in.
+  const before = currentExportPayload();
   if (scope === 'all') {
     state.settings = normalizeSettings(DEFAULT_SETTINGS);
     gmDelete(STORAGE_KEY);
@@ -10845,10 +10852,15 @@ function confirmReset() {
       saveSettings('Page reset');
     }
   }
+  gmSet(PRE_IMPORT_BACKUP_KEY, { action: scope === 'all' ? 'reset-all' : 'reset-page', payload: before });
   closeResetConfirmation();
   renderSettingsPage();
   scheduleApply(0);
   announce('Settings reset');
+  // A reset replaces a configuration somebody spent time on, so it is offered
+  // back rather than only announced. The slot survives the tab, and the About
+  // page carries the same offer for as long as it holds one.
+  showToast('Settings reset.', false, [{ label: 'Undo', onClick: undoLastDestructiveAction }]);
 }
 
 // Everything the About page says is stored travels with the backup, or the
@@ -10970,7 +10982,7 @@ async function onImportFile(event) {
       showToast(message, true);
       return;
     }
-    gmSet(PRE_IMPORT_BACKUP_KEY, snapshot);
+    gmSet(PRE_IMPORT_BACKUP_KEY, { action: 'import', payload: snapshot });
     renderSettingsPage();
     scheduleApply(0);
     // Naming what was not kept, because an import that silently drops half a
@@ -10996,15 +11008,15 @@ async function onImportFile(event) {
   }
 }
 
-function undoImport() {
-  const backup = gmGet(PRE_IMPORT_BACKUP_KEY, null);
-  if (!backup) {
-    showToast('No import to undo.', true);
+function undoLastDestructiveAction() {
+  const slot = readUndoSlot(gmGet(PRE_IMPORT_BACKUP_KEY, null));
+  if (!slot) {
+    showToast('There is nothing to undo.', true);
     return;
   }
   // The snapshot is this build's own, and it is a state the user was already
   // in, so the blocklist guard has nothing to protect them from here.
-  const result = validateImportedSettings(JSON.stringify(backup), { trusted: true });
+  const result = validateImportedSettings(JSON.stringify(slot.payload), { trusted: true });
   if (!result.ok) {
     showToast('The backup could not be restored. Your current settings are unchanged.', true);
     return;
@@ -11018,7 +11030,11 @@ function undoImport() {
   gmDelete(PRE_IMPORT_BACKUP_KEY);
   renderSettingsPage();
   scheduleApply(0);
-  showToast('Import undone. Your previous settings are back.');
+  // Undo is one step by design: the slot is spent, so a second press says so
+  // rather than putting back the state this one just replaced.
+  showToast(slot.action === 'import'
+    ? 'Import undone. Your previous settings are back.'
+    : 'Reset undone. Your previous settings are back.');
 }
 
 function libraryStickerFor(target) {

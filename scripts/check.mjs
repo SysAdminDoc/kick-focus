@@ -1238,9 +1238,25 @@ const checks = [
     .every((store) => (store.field === 'settings' ? ('probe' in exportProbe) : (store.field in exportProbe)))],
   [`import restores every backup store${importGaps.length ? ` — missing ${importGaps.join(', ')}` : ''}`,
     source.includes('function applyImportedStores') && importGaps.length === 0],
+  // The undo is shared with reset now, so the name moved. The property this
+  // asserts did not: an import is reversible, from a snapshot taken before it.
   ['import drops prototype-pollution keys and is non-destructive', source.includes('POLLUTION_KEYS')
     && source.includes('PRE_IMPORT_BACKUP_KEY')
-    && source.includes('function undoImport')],
+    && source.includes('function undoLastDestructiveAction')
+    && source.includes('readUndoSlot(gmGet(PRE_IMPORT_BACKUP_KEY, null))')
+    // Taken before the stores are written, or it is not a snapshot of what was
+    // there. Both writers do it the same way.
+    && source.includes("gmSet(PRE_IMPORT_BACKUP_KEY, { action: 'import', payload: snapshot })")],
+  ['a reset is reversible from a snapshot taken before it', (() => {
+    const region = extractFunction(source, 'confirmReset');
+    const snapshot = region.indexOf('const before = currentExportPayload();');
+    const write = region.indexOf('gmSet(PRE_IMPORT_BACKUP_KEY');
+    return snapshot >= 0
+      && write > snapshot
+      // Written after clearPrivateData, which deletes the very key it goes in.
+      && write > region.indexOf('clearPrivateData()')
+      && region.includes("label: 'Undo'");
+  })()],
   ['reset keeps the emote library and clears every private store', source.includes('resetStickerPreferences({ keepLibrary: true })')
     && source.includes('function clearPrivateData')
     && source.includes('gmDelete(CHANNEL_NOTES_KEY)')

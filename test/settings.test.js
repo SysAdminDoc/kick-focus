@@ -23,7 +23,7 @@ const EXPECTED_HOST_KEYS = [
   'remoteBlocklistSummary', 'renderChatHistoryResults', 'rewardStatusSummary', 'setMarkup', 'settingsFocusSelector',
   'startChannelEmoteImport', 'state', 'STICKER_GROUP_LIMIT', 'STICKER_LIBRARY_LIMIT', 'stickerChangedSinceCapture', 'storageDiagnostics',
   'storageHealth', 'TELEMETRY_HOSTS', 'tr', 'trf', 'VERSION', 'VIEWER_HUB_REASONS',
-  'VIEWER_HUB_REWARD_WORDS', 'VIEWER_HUB_TITLES', 'viewerHubCards', 'viewerHubSummary',
+  'undoSlotLabel', 'VIEWER_HUB_REWARD_WORDS', 'VIEWER_HUB_TITLES', 'viewerHubCards', 'viewerHubSummary',
 ].sort();
 
 function makeHost() {

@@ -1185,6 +1185,22 @@ node.setAttribute('inert', '');
 }
 return { sync, release };
 }
+const UNDO_ACTIONS = Object.freeze(['import', 'reset-all', 'reset-page']);
+function readUndoSlot(stored) {
+if (!isRecord(stored)) return null;
+if (isRecord(stored.payload)) {
+return {
+action: UNDO_ACTIONS.includes(stored.action) ? stored.action : 'import',
+payload: stored.payload,
+};
+}
+return { action: 'import', payload: stored };
+}
+function undoSlotLabel(stored) {
+const slot = readUndoSlot(stored);
+if (!slot) return '';
+return slot.action === 'import' ? 'Undo import' : 'Undo reset';
+}
 function topmostOverlayLayer(open) {
 if (!isRecord(open)) return null;
 const found = OVERLAY_LAYERS.find(([layer]) => open[layer] === true);
@@ -5596,6 +5612,7 @@ MULTISTREAM_MAX,
 ownedEmoteGroups,
 plural,
 PRE_IMPORT_BACKUP_KEY,
+undoSlotLabel,
 protectionRows,
 rankSettingsMatches,
 refreshViewerCollectibles,
@@ -6189,7 +6206,10 @@ function renderAboutPage() {
         <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
         ${state.updateNotice ? `<div class="kf-action-row"><div><h3>What changed in ${escapeHtml(state.updateNotice.to)}</h3><p>${escapeHtml(state.updateNotice.summary || `Updated from ${state.updateNotice.from}.`)}${state.updateNotice.defaults.length ? ` Defaults that moved: ${escapeHtml(state.updateNotice.defaults.join(', '))}.` : ''}</p></div></div>` : ''}
         <div class="kf-action-row"><div><h3>Apply cycle cost</h3><p data-kf-apply-cost data-kf-no-translate>${escapeHtml(tr(applyCostSummary(state.diagnostics.apply)))}</p></div></div>
-        <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group">${gmGet(PRE_IMPORT_BACKUP_KEY, null) ? `<button type="button" class="kf-button" data-action="undo-import">Undo import</button>` : ''}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
+        <div class="kf-action-row"><div><h3>Settings portability</h3><p>Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.</p></div><div class="kf-button-group">${(() => {
+const label = undoSlotLabel(gmGet(PRE_IMPORT_BACKUP_KEY, null));
+          return label ? `<button type="button" class="kf-button" data-action="undo-import">${label}</button>` : '';
+        })()}<button type="button" class="kf-button" data-action="import">Import settings</button><button type="button" class="kf-button" data-action="export">Export settings</button></div></div>
         <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
@@ -7069,7 +7089,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              847045') || 0;
+const BUNDLE_BYTES = Number('              848359') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -13907,7 +13927,6 @@ const TRANSLATIONS = {
 'Density saved': ['Densidad guardada', 'Densidade salva'],
 'Content filter saved': ['Filtro de contenido guardado', 'Filtro de conteúdo salvo'],
 'Poor mode saved': ['Modo sin gastos guardado', 'Modo sem gastos salvo'],
-'No import to undo.': ['No hay ninguna importación que deshacer.', 'Não há importação para desfazer.'],
 'The backup could not be restored. Your current settings are unchanged.': ['No se pudo restaurar la copia de seguridad. Tu configuración actual no ha cambiado.', 'Não foi possível restaurar o backup. Suas configurações atuais não foram alteradas.'],
 'Import undone. Your previous settings are back.': ['Importación deshecha: tu configuración anterior está de vuelta.', 'Importação desfeita: suas configurações anteriores voltaram.'],
 'Kick Focus restored.': ['Kick Focus restaurado.', 'Kick Focus restaurado.'],
@@ -13963,6 +13982,10 @@ const TRANSLATIONS = {
 'Add this channel to Kick Focus multi-stream': ['Añadir este canal a la multitransmisión de Kick Focus', 'Adicionar este canal à multitransmissão do Kick Focus'],
 'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
 'Undo': ['Deshacer', 'Desfazer'],
+'Undo reset': ['Deshacer el restablecimiento', 'Desfazer a reposição'],
+'Settings reset.': ['Ajustes restablecidos.', 'Definições repostas.'],
+'There is nothing to undo.': ['No hay nada que deshacer.', 'Não há nada para desfazer.'],
+'Reset undone. Your previous settings are back.': ['Se deshizo el restablecimiento. Tus ajustes anteriores han vuelto.', 'A reposição foi desfeita. As tuas definições anteriores voltaram.'],
 'View': ['Ver', 'Ver'],
 'Your inventory holds {copies} {copiesWord} across {distinct} distinct {distinctWord}. That is {duplicates} {duplicatesWord}, or {rate}% of what you have pulled.': ['Tu inventario tiene {copies} {copiesWord} repartidos en {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, es decir, el {rate}% de lo que has conseguido.', 'Seu inventário tem {copies} {copiesWord} distribuídos em {distinct} {distinctWord} distintos: {duplicates} {duplicatesWord}, ou seja, {rate}% do que você já obteve.'],
 'Your inventory holds {distinct} distinct {distinctWord}. Kick’s response carries no per-item quantity, so a duplicate rate cannot be measured from it. That number is unavailable rather than zero.': ['Tu inventario tiene {distinct} {distinctWord} distintos. La respuesta de Kick no incluye la cantidad por artículo, así que no se puede medir una tasa de duplicados a partir de ella: ese número no está disponible, no es cero.', 'Seu inventário tem {distinct} {distinctWord} distintos. A resposta do Kick não traz a quantidade por item, então não é possível medir uma taxa de duplicatas a partir dela: esse número está indisponível, não é zero.'],
@@ -14287,6 +14310,7 @@ MULTISTREAM_MAX,
 ownedEmoteGroups,
 plural,
 PRE_IMPORT_BACKUP_KEY,
+undoSlotLabel,
 protectionRows,
 rankSettingsMatches,
 refreshViewerCollectibles,
@@ -14944,7 +14968,7 @@ renderSettingsPage();
 state.shadow?.querySelector('[data-kf-page]')?.focus();
 }
 else if (action === 'import') state.shadow.querySelector('[data-kf-import]').click();
-else if (action === 'undo-import') undoImport();
+else if (action === 'undo-import') undoLastDestructiveAction();
 else if (action === 'copy-sticker-name') copyStickerName(actionTarget);
 else if (action === 'insert-sticker-name') insertStickerName(actionTarget);
 else if (action === 'apply-viewing-preset') selectViewingPreset(actionTarget.dataset.preset);
@@ -15295,6 +15319,7 @@ gmDelete(PRE_IMPORT_BACKUP_KEY);
 }
 function confirmReset() {
 const scope = state.resetPending;
+const before = currentExportPayload();
 if (scope === 'all') {
 state.settings = normalizeSettings(DEFAULT_SETTINGS);
 gmDelete(STORAGE_KEY);
@@ -15309,10 +15334,12 @@ if (section === 'accessibility') state.settings.shortcuts = { ...DEFAULT_SETTING
 saveSettings('Page reset');
 }
 }
+gmSet(PRE_IMPORT_BACKUP_KEY, { action: scope === 'all' ? 'reset-all' : 'reset-page', payload: before });
 closeResetConfirmation();
 renderSettingsPage();
 scheduleApply(0);
 announce('Settings reset');
+showToast('Settings reset.', false, [{ label: 'Undo', onClick: undoLastDestructiveAction }]);
 }
 function currentExportPayload() {
 return buildSettingsExport({
@@ -15409,7 +15436,7 @@ const message = commit.reason === 'over-budget'
 showToast(message, true);
 return;
 }
-gmSet(PRE_IMPORT_BACKUP_KEY, snapshot);
+gmSet(PRE_IMPORT_BACKUP_KEY, { action: 'import', payload: snapshot });
 renderSettingsPage();
 scheduleApply(0);
 const notes = Array.isArray(result.noteDetails) && result.noteDetails.length === result.notes?.length
@@ -15432,13 +15459,13 @@ if (notes.length === 0) {
 showToast('Could not read that settings file. Pick a JSON file exported by Kick Focus.', true);
 }
 }
-function undoImport() {
-const backup = gmGet(PRE_IMPORT_BACKUP_KEY, null);
-if (!backup) {
-showToast('No import to undo.', true);
+function undoLastDestructiveAction() {
+const slot = readUndoSlot(gmGet(PRE_IMPORT_BACKUP_KEY, null));
+if (!slot) {
+showToast('There is nothing to undo.', true);
 return;
 }
-const result = validateImportedSettings(JSON.stringify(backup), { trusted: true });
+const result = validateImportedSettings(JSON.stringify(slot.payload), { trusted: true });
 if (!result.ok) {
 showToast('The backup could not be restored. Your current settings are unchanged.', true);
 return;
@@ -15451,7 +15478,9 @@ return;
 gmDelete(PRE_IMPORT_BACKUP_KEY);
 renderSettingsPage();
 scheduleApply(0);
-showToast('Import undone. Your previous settings are back.');
+showToast(slot.action === 'import'
+? 'Import undone. Your previous settings are back.'
+: 'Reset undone. Your previous settings are back.');
 }
 function libraryStickerFor(target) {
 const key = target?.dataset?.kfStickerKey;

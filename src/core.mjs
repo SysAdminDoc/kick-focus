@@ -2023,6 +2023,37 @@ export function createPageInertManager(getBody, isOwn) {
   return { sync, release };
 }
 
+/**
+ * The one-step undo for a destructive action, and what it says it undoes.
+ *
+ * Import and reset both replace a whole configuration, and there is exactly one
+ * slot for putting one back: the second destructive action takes the first
+ * one's place. Two independent slots would leave "Undo import" offering to
+ * restore a state that a later reset had already thrown away, which is a worse
+ * answer than not offering at all.
+ *
+ * A slot written before resets shared it carried the payload on its own, so
+ * that shape is still read rather than discarded.
+ */
+export const UNDO_ACTIONS = Object.freeze(['import', 'reset-all', 'reset-page']);
+
+export function readUndoSlot(stored) {
+  if (!isRecord(stored)) return null;
+  if (isRecord(stored.payload)) {
+    return {
+      action: UNDO_ACTIONS.includes(stored.action) ? stored.action : 'import',
+      payload: stored.payload,
+    };
+  }
+  return { action: 'import', payload: stored };
+}
+
+export function undoSlotLabel(stored) {
+  const slot = readUndoSlot(stored);
+  if (!slot) return '';
+  return slot.action === 'import' ? 'Undo import' : 'Undo reset';
+}
+
 export function topmostOverlayLayer(open) {
   if (!isRecord(open)) return null;
   const found = OVERLAY_LAYERS.find(([layer]) => open[layer] === true);
