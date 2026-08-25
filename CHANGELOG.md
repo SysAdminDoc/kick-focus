@@ -8,6 +8,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - The chat separator can be used from the keyboard. Tab to it and the arrow keys move it sixteen pixels at a time, Home takes the chat to its narrowest and End to its widest, and it now says what it controls and how wide it is instead of exposing numbers with nothing attached to them. Dragging it works exactly as before.
 
+- The Kick page behind a Kick Focus dialog is properly out of reach. Settings, the command menu, the grid and the reset dialog all said they were modal and kept Tab inside themselves, but the page underneath stayed clickable and stayed visible to a screen reader the whole time. It is inert now, and closing the dialog puts it back exactly as it was rather than clearing anything Kick had set itself.
+
 ## 1.39.0, 2026-08-25
 
 ### Security

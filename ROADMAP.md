@@ -129,13 +129,6 @@ None open.
   Acceptance: Reset page and Reset all act immediately, preserve the emote library, and show a focused status toast with Undo; Undo restores every setting, note, filter, and channel list changed by that reset until the next destructive action or tab close; no reset confirmation dialog remains.
   Complexity: M
 
-- [ ] P1 — R-108: Make the Kick page inert while a modal surface is open
-  Why: Settings, command, and multistream overlays declare modal behavior and trap focus, but underlying Kick controls remain interactive and exposed to assistive technology.
-  Evidence: src/runtime.js overlay hosts; https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/; https://html.spec.whatwg.org/multipage/interaction.html#the-inert-attribute
-  Touches: src/runtime.js modal lifecycle, overlay tests, scripts/verify-extension.mjs
-  Acceptance: Opening the first modal snapshots and inerts every body sibling except Kick Focus hosts; nested modals use a reference count; closing the final modal restores each sibling’s exact prior inert state; pointer, Tab, and accessibility-tree checks cannot reach the page behind the modal.
-  Complexity: M
-
 - [ ] P1 — R-110: Use Firefox MAIN-world injection without inline source
   Why: Firefox 128 supports manifest-declared MAIN-world scripts, removing the current dependence on Kick allowing inline scripts and the build’s duplicated embedded bundle.
   Evidence: src/extension/bridge.firefox.js; src/extension/manifest.firefox.json; scripts/build.mjs; https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/
@@ -308,6 +301,12 @@ Found during a full-repository audit. Everything the audit fixed is in
 [CHANGELOG.md](CHANGELOG.md); these are the items it did not.
 
 ### P1
+
+- [ ] P1 — R-145: Stop the artifact tests from passing over a stale build
+  Why: `npm test` runs `node --test` and nothing else, but a third of the suite reads `dist/kick-focus.user.js`. After any source edit those tests judge the previous build, so they can report green on code that was never built and red on code that was already fixed. Hit on 2026-08-25: a TDZ fix looked like it had not worked, because the run that "verified" it was reading the bundle from before the edit.
+  Where: package.json `test` and `coverage` scripts; the artifact-tagged tests in test/boot.test.js, test/i18n.test.js and test/strip-comments.test.js; scripts/build.mjs
+  Acceptance: A test run cannot judge a bundle older than the sources it was built from. Either the artifact-tagged tests build first, or they compare the newest source mtime against the artifact and fail with a message naming the stale file rather than asserting against it. `npm run test:unit` stays build-free, because skipping the build is the point of that one.
+  Complexity: S
 
 - [ ] P1 — R-144: Stop muting a video from demoting the player it belongs to
   Why: `sessionWatchVideoCandidate` treats `muted` as evidence a video is decorative, and rescues only what Kick's four channel-player selectors claim. Browsers autoplay muted and plenty of people watch that way, so the day `#injected-channel-player` is renamed, every muted viewer loses the session watch clock, the uptime chip and the recording countdown together, silently.

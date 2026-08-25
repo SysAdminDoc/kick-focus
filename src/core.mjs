@@ -1967,6 +1967,62 @@ export const OVERLAY_LAYERS = [
  * Which layer owns focus and Escape right now, or null if none is open.
  * `open` maps a layer name to whether it is currently shown.
  */
+/**
+ * The page behind a modal, and exactly how inert each part of it already was.
+ *
+ * Settings, the command menu and the grid all declare `aria-modal` and trap
+ * Tab, but Kick's own controls stayed clickable, stayed focusable by pointer,
+ * and stayed in the accessibility tree the whole time, so the surface was modal
+ * for one input method and open for the rest. `inert` is the platform's answer
+ * and covers pointer, focus and the accessibility tree together.
+ *
+ * Restoring means restoring, not clearing. A page that already carried an inert
+ * sibling of its own has to get that sibling back inert, so the prior value is
+ * recorded per node rather than assumed to have been false.
+ *
+ * Nesting is settled by the caller passing "is any modal open" rather than by
+ * counting opens and closes here. The reset dialog opens over Settings and
+ * closes under it, and a hand-kept counter is the thing that leaves a page
+ * permanently inert the day one close path stops running.
+ *
+ * Lives here, away from the document, so the sequence can be tested: open,
+ * nest, close the inner one, close the outer one, and check that a sibling
+ * which arrived inert is handed back inert.
+ */
+export function createPageInertManager(getBody, isOwn) {
+  let snapshot = null;
+
+  function release() {
+    if (!snapshot) return;
+    for (const [node, wasInert] of snapshot) {
+      if (node.isConnected === false) continue;
+      if (wasInert) node.setAttribute('inert', '');
+      else node.removeAttribute('inert');
+    }
+    snapshot = null;
+  }
+
+  function sync(open) {
+    const body = getBody();
+    if (!body) return;
+    if (!open) {
+      release();
+      return;
+    }
+    if (!snapshot) snapshot = new Map();
+    // Re-swept rather than done once, because Kick keeps rendering while a
+    // modal is open and a sibling added afterwards would otherwise be the one
+    // reachable thing behind it. Nodes already recorded keep their first value.
+    for (const node of [...body.children]) {
+      if (isOwn(node) || snapshot.has(node)) continue;
+      snapshot.set(node, node.hasAttribute('inert'));
+      node.setAttribute('inert', '');
+    }
+  }
+
+  return { sync, release };
+}
+
 export function topmostOverlayLayer(open) {
   if (!isRecord(open)) return null;
   const found = OVERLAY_LAYERS.find(([layer]) => open[layer] === true);

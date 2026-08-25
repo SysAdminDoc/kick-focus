@@ -947,6 +947,23 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['every modal open and close re-decides what the page behind it can reach', (() => {
+    // The manager is unit-tested in core against a fake body. What only the
+    // artifact can show is that every surface which declares aria-modal is
+    // actually wired to it. Miss one open and that surface is modal for Tab and
+    // open for the pointer; miss one close and Kick stays inert afterwards.
+    const owners = [
+      'openSettings', 'closeSettings',
+      'openCommandMenu', 'closeCommandMenu',
+      'openResetConfirmation', 'closeResetConfirmation',
+      'openMultistream', 'closeMultistream',
+    ];
+    const missing = owners.filter((name) => !extractFunction(source, name).includes('syncPageInert()'));
+    return missing.length === 0
+      && source.includes('createPageInertManager(')
+      // The panic switch hands Kick back as it found it, whatever was open.
+      && extractFunction(source, 'clearEnhancedPage').includes('releasePageInert()');
+  })()],
   ['the chat separator is a real splitter: focusable, named, and keyboard-driven', (() => {
     // The derivation itself is unit-tested in core. What can only be checked
     // here is that the page half is still wired to it: a focusable separator

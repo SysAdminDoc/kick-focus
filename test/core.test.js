@@ -73,6 +73,7 @@ import {
   normalizeSettings,
   chatWidthAfterDrag,
   chatWidthAfterKey,
+  createPageInertManager,
   CHAT_WIDTH_MIN,
   CHAT_WIDTH_MAX,
   applyViewingPreset,
@@ -1291,6 +1292,68 @@ test('the separator moves the same way for an arrow key as for a drag', { tag: '
   for (const key of ['ArrowUp', 'ArrowDown', 'PageUp', 'Enter', ' ', 'Tab', 'a', '']) {
     assert.equal(chatWidthAfterKey('right', 400, key), null, key);
   }
+});
+
+test('a modal makes the page behind it inert, and gives it back exactly as it was', { tag: 'unit' }, () => {
+  const node = (id, alreadyInert = false) => {
+    const attributes = new Set(alreadyInert ? ['inert'] : []);
+    return {
+      id,
+      isConnected: true,
+      hasAttribute: (name) => attributes.has(name),
+      setAttribute: (name) => attributes.add(name),
+      removeAttribute: (name) => attributes.delete(name),
+      get isInert() { return attributes.has('inert'); },
+    };
+  };
+
+  const kickShell = node('main-view');
+  // A page that already had an inert sibling of its own. Handing this one back
+  // as "not inert" would be a change to Kick, not a restore.
+  const alreadyInert = node('offscreen-drawer', true);
+  const ours = node('kick-focus-root');
+  const body = { children: [kickShell, alreadyInert, ours] };
+  const manager = createPageInertManager(() => body, (element) => element.id.startsWith('kick-focus-'));
+
+  // Nothing is open yet, so releasing is a no-op rather than a throw.
+  manager.release();
+  assert.equal(kickShell.isInert, false);
+
+  manager.sync(true);
+  assert.equal(kickShell.isInert, true, 'the page behind the modal stayed reachable');
+  assert.equal(alreadyInert.isInert, true);
+  assert.equal(ours.isInert, false, 'the mod inerted its own surface');
+
+  // Kick keeps rendering while a modal is open. A sibling that arrives after
+  // the first sweep would otherwise be the one reachable thing behind it.
+  const late = node('late-toast');
+  body.children.push(late);
+  manager.sync(true);
+  assert.equal(late.isInert, true, 'a sibling added while the modal was open stayed reachable');
+
+  // Nesting: the reset dialog opens over Settings and closes under it. Only the
+  // last close may release the page.
+  manager.sync(true);
+  manager.sync(true);
+  assert.equal(kickShell.isInert, true);
+
+  // A node Kick removed mid-modal must not throw on the way out.
+  const removed = node('gone');
+  body.children.push(removed);
+  manager.sync(true);
+  removed.isConnected = false;
+
+  manager.sync(false);
+  assert.equal(kickShell.isInert, false, 'the page was left inert after the modal closed');
+  assert.equal(late.isInert, false);
+  assert.equal(alreadyInert.isInert, true, 'a sibling that arrived inert was cleared instead of restored');
+  assert.equal(ours.isInert, false);
+
+  // And a second open still works off a fresh snapshot rather than a stale one.
+  alreadyInert.removeAttribute('inert');
+  manager.sync(true);
+  manager.sync(false);
+  assert.equal(alreadyInert.isInert, false, 'the second run restored the first run\u2019s snapshot');
 });
 
 test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {

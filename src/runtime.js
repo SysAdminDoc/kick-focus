@@ -2966,6 +2966,7 @@ const multistreamSurface = createMultistream({
   mergedChatStatus,
   syncMergedChat,
   closeMergedChat,
+  syncPageInert,
 });
 const {
   addMultistream,
@@ -10744,6 +10745,7 @@ function openSettings(page = state.currentPage) {
   state.lastFocused = deepActiveElement();
   renderSettingsPage();
   state.modal.hidden = false;
+  syncPageInert();
   requestAnimationFrame(() => state.shadow.querySelector('[data-action="close-settings"]')?.focus());
 }
 
@@ -10756,6 +10758,7 @@ function closeSettings() {
   if (!state.modal || state.modal.hidden) return;
   state.modal.hidden = true;
   closeResetConfirmation();
+  syncPageInert();
   state.shortcutCapture = null;
   state.shortcutError = '';
   // Fall back to the header button rather than the body: it is the control that
@@ -10777,6 +10780,7 @@ function openResetConfirmation(scope) {
   copy.textContent = scope === 'all' ? tr('Every preference, shortcut, note, filter, and channel list returns to its factory default. Your recorded emote library is kept.') : tr('Only the settings on this page will return to their defaults.');
   localizeInterface();
   container.hidden = false;
+  syncPageInert();
   container.querySelector('[data-action="cancel-reset"]')?.focus();
 }
 
@@ -10784,6 +10788,7 @@ function closeResetConfirmation() {
   const container = state.shadow?.querySelector('[data-kf-confirm]');
   if (container) container.hidden = true;
   state.resetPending = false;
+  syncPageInert();
   // The opener can be inside the settings page, which a following render
   // replaces; renderSettingsPage re-restores by key from there, so handing
   // focus back here is correct in both cases.
@@ -11704,6 +11709,7 @@ function restoreShortcuts() {
 
 function clearEnhancedPage() {
   const root = document.documentElement;
+  releasePageInert();
   state.chatResizeCleanup?.();
   state.chatResizeCleanup = null;
   clearStickerUI();
@@ -11902,6 +11908,7 @@ function openCommandMenu() {
   closeSettings();
   state.commandOpener = opener;
   state.command.hidden = false;
+  syncPageInert();
   state.commandInput.value = '';
   renderCommands();
   requestAnimationFrame(() => state.commandInput.focus());
@@ -11910,6 +11917,7 @@ function openCommandMenu() {
 function closeCommandMenu() {
   if (!state.command || state.command.hidden) return;
   state.command.hidden = true;
+  syncPageInert();
   // Every dismissal routes here (Escape, the backdrop, running a command), and
   // none of them used to put focus anywhere, so it fell to the body each time.
   restoreFocus(state.commandOpener);
@@ -11998,6 +12006,32 @@ function isTypingTarget(target) {
 function resetConfirmationOpen() {
   const container = state.shadow?.querySelector('[data-kf-confirm]');
   return Boolean(container && !container.hidden);
+}
+
+// Every surface this build appends to the body carries one of these ids, and
+// they are the only body children that stay reachable while a modal is up.
+//
+// Declared as functions and built on first use on purpose. The multi-stream
+// host object is assembled near the top of the bundle and takes syncPageInert
+// as one of its collaborators, so an arrow bound to a `const` down here is read
+// before it exists. The boot gate catches that as a TDZ, which is how this was
+// found rather than shipped.
+let pageInertManager = null;
+
+function pageInert() {
+  pageInertManager ||= createPageInertManager(
+    () => document.body,
+    (node) => typeof node?.id === 'string' && node.id.startsWith('kick-focus-'),
+  );
+  return pageInertManager;
+}
+
+function releasePageInert() {
+  pageInert().release();
+}
+
+function syncPageInert() {
+  pageInert().sync(Boolean(topmostOverlayLayer(overlayOpenState())));
 }
 
 function overlayOpenState() {

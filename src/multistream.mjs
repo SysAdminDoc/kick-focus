@@ -70,6 +70,7 @@ export function createMultistream(host) {
     syncMergedChat,
     closeMergedChat,
     syncCardMultiState = () => {},
+    syncPageInert = () => {},
   } = host;
 
   let syncChannel = null;
@@ -259,6 +260,7 @@ export function createMultistream(host) {
     // where Settings had to return to.
     state.multistreamOpener = deepActiveElement();
     backdrop.hidden = false;
+    syncPageInert();
     // Re-read on open. A tab that was asleep, on the other origin, or simply
     // not listening when another one added a channel picks it up here — which
     // is why the broadcast can be an enhancement rather than a dependency.
@@ -314,6 +316,7 @@ export function createMultistream(host) {
     const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
     if (!backdrop || backdrop.hidden) return;
     backdrop.hidden = true;
+    syncPageInert();
     // Blanking the grid drops every embedded player, so closing the surface
     // actually stops the decoding rather than leaving nine streams running.
     const grid = backdrop.querySelector('[data-kf-multistream-grid]');

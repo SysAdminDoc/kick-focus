@@ -1178,6 +1178,33 @@ const OVERLAY_LAYERS = [
 ['resetConfirm', '.kf-confirm-card'],
 ['settings', '[data-kf-settings-shell]'],
 ];
+function createPageInertManager(getBody, isOwn) {
+let snapshot = null;
+function release() {
+if (!snapshot) return;
+for (const [node, wasInert] of snapshot) {
+if (node.isConnected === false) continue;
+if (wasInert) node.setAttribute('inert', '');
+else node.removeAttribute('inert');
+}
+snapshot = null;
+}
+function sync(open) {
+const body = getBody();
+if (!body) return;
+if (!open) {
+release();
+return;
+}
+if (!snapshot) snapshot = new Map();
+for (const node of [...body.children]) {
+if (isOwn(node) || snapshot.has(node)) continue;
+snapshot.set(node, node.hasAttribute('inert'));
+node.setAttribute('inert', '');
+}
+}
+return { sync, release };
+}
 function topmostOverlayLayer(open) {
 if (!isRecord(open)) return null;
 const found = OVERLAY_LAYERS.find(([layer]) => open[layer] === true);
@@ -4914,6 +4941,7 @@ mergedChatStatus,
 syncMergedChat,
 closeMergedChat,
 syncCardMultiState = () => {},
+syncPageInert = () => {},
 } = host;
 let syncChannel = null;
 function persistMultistream() {
@@ -5040,6 +5068,7 @@ const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
 if (!backdrop) return;
 state.multistreamOpener = deepActiveElement();
 backdrop.hidden = false;
+syncPageInert();
 commitMultistream();
 installMultistreamSuspension();
 if (!state.multistream.paused && matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -5073,6 +5102,7 @@ function closeMultistream() {
 const backdrop = state.shadow?.querySelector('[data-kf-multistream-backdrop]');
 if (!backdrop || backdrop.hidden) return;
 backdrop.hidden = true;
+syncPageInert();
 const grid = backdrop.querySelector('[data-kf-multistream-grid]');
 if (grid) grid.replaceChildren();
 stopMergedChatPaint();
@@ -7059,7 +7089,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              847711') || 0;
+const BUNDLE_BYTES = Number('              848864') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8536,7 +8566,6 @@ if (next === null) return;
 event.preventDefault();
 if (keyStartWidth === null) keyStartWidth = state.settings.layout.chatWidth;
 if (next === state.settings.layout.chatWidth) return;
-updateSetting('layout.chatWidth', next, 'Chat width saved.');
 state.settings.layout.chatWidth = next;
     document.documentElement.style.setProperty('--kf-chat-width', `${next}px`);
 setChatSeparatorValue(separator, next);
@@ -8735,6 +8764,7 @@ mergedChatEntries,
 mergedChatStatus,
 syncMergedChat,
 closeMergedChat,
+syncPageInert,
 });
 const {
 addMultistream,
@@ -15222,12 +15252,14 @@ state.currentPage = page;
 state.lastFocused = deepActiveElement();
 renderSettingsPage();
 state.modal.hidden = false;
+syncPageInert();
 requestAnimationFrame(() => state.shadow.querySelector('[data-action="close-settings"]')?.focus());
 }
 function closeSettings() {
 if (!state.modal || state.modal.hidden) return;
 state.modal.hidden = true;
 closeResetConfirmation();
+syncPageInert();
 state.shortcutCapture = null;
 state.shortcutError = '';
 if (!restoreFocus(state.lastFocused)) {
@@ -15244,12 +15276,14 @@ const copy = state.shadow.querySelector('[data-kf-confirm-copy]');
 copy.textContent = scope === 'all' ? tr('Every preference, shortcut, note, filter, and channel list returns to its factory default. Your recorded emote library is kept.') : tr('Only the settings on this page will return to their defaults.');
 localizeInterface();
 container.hidden = false;
+syncPageInert();
 container.querySelector('[data-action="cancel-reset"]')?.focus();
 }
 function closeResetConfirmation() {
 const container = state.shadow?.querySelector('[data-kf-confirm]');
 if (container) container.hidden = true;
 state.resetPending = false;
+syncPageInert();
 const opener = state.resetOpener;
 state.resetOpener = null;
 if (opener?.isConnected) {
@@ -15965,6 +15999,7 @@ renderSettingsPage();
 }
 function clearEnhancedPage() {
 const root = document.documentElement;
+releasePageInert();
 state.chatResizeCleanup?.();
 state.chatResizeCleanup = null;
 clearStickerUI();
@@ -16132,6 +16167,7 @@ const opener = deepActiveElement();
 closeSettings();
 state.commandOpener = opener;
 state.command.hidden = false;
+syncPageInert();
 state.commandInput.value = '';
 renderCommands();
 requestAnimationFrame(() => state.commandInput.focus());
@@ -16139,6 +16175,7 @@ requestAnimationFrame(() => state.commandInput.focus());
 function closeCommandMenu() {
 if (!state.command || state.command.hidden) return;
 state.command.hidden = true;
+syncPageInert();
 restoreFocus(state.commandOpener);
 state.commandOpener = null;
 }
@@ -16212,6 +16249,20 @@ return target instanceof HTMLInputElement || target instanceof HTMLTextAreaEleme
 function resetConfirmationOpen() {
 const container = state.shadow?.querySelector('[data-kf-confirm]');
 return Boolean(container && !container.hidden);
+}
+let pageInertManager = null;
+function pageInert() {
+pageInertManager ||= createPageInertManager(
+() => document.body,
+(node) => typeof node?.id === 'string' && node.id.startsWith('kick-focus-'),
+);
+return pageInertManager;
+}
+function releasePageInert() {
+pageInert().release();
+}
+function syncPageInert() {
+pageInert().sync(Boolean(topmostOverlayLayer(overlayOpenState())));
 }
 function overlayOpenState() {
 return {

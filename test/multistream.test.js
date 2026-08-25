@@ -435,6 +435,26 @@ test('closing the grid drops every player document', { tag: 'unit' }, () => {
   assert.equal(state.observers.multistream, null);
 });
 
+test('opening and closing the grid tells the page to re-decide what is inert', { tag: 'unit' }, () => {
+  // The grid is a modal overlay owned by another module, so the page behind it
+  // can only be made inert if the grid says when it opened and when it closed.
+  // Without both calls the grid is modal for Tab and open for the pointer.
+  const calls = [];
+  const { host, dom } = makeHost({ multistream: { streams: ['alpha'] } });
+  const surface = createMultistream({ ...host, syncPageInert: () => calls.push(dom.backdrop.hidden) });
+
+  surface.openMultistream();
+  assert.deepEqual(calls, [false], 'opening the grid never told the page it was covered');
+
+  surface.closeMultistream();
+  assert.deepEqual(calls, [false, true], 'closing the grid never told the page it was uncovered');
+
+  // A close that had nothing to close must not report one either, or a nested
+  // surface above it would be released early.
+  surface.closeMultistream();
+  assert.deepEqual(calls, [false, true]);
+});
+
 test('an add is broadcast once, and applying it twice lands in the same place', { tag: 'unit' }, () => {
   const { host: a, state: aState, store } = makeHost({ multistream: { streams: ['alpha'] } });
   const surfaceA = createMultistream(a);
