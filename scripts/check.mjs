@@ -950,6 +950,32 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['every literal colour fallback is the value its token actually has', (() => {
+    // `var(--kf-panel, #0b100d)` carries a copy of the palette in its second
+    // argument, and thirteen of sixteen of them were from a palette that had
+    // stopped shipping. Inside the page that is invisible, because the tokens
+    // are always defined — with one exception that matters: the multi-stream
+    // chat pop-out is a separate document, and its sheet's fallbacks are
+    // deliberately the path for "the page has not painted yet". All five of
+    // those were wrong, so the designed path painted colours from nowhere.
+    const head = source.indexOf('--kf-focus-ring: 3px solid var(--kf-accent);');
+    if (head < 0) return false;
+    const block = source.slice(head, source.indexOf('}', head));
+    const tokens = new Map([...block.matchAll(/--kf-([a-z-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/g)]
+      .map((match) => [match[1], match[2].toLowerCase()]));
+    if (tokens.size < 12) return false;
+
+    const wrong = [];
+    for (const use of source.matchAll(/var\(--kf-([a-z-]+),\s*(#[0-9a-fA-F]{3,8})\)/g)) {
+      const [, name, literal] = use;
+      const declared = tokens.get(name);
+      // A token with no `:root` value of its own is set elsewhere and is not
+      // this check's business; a wrong copy of one that has a value is.
+      if (declared && declared !== literal.toLowerCase()) wrong.push(`--kf-${name}: ${literal} should be ${declared}`);
+    }
+    if (wrong.length) console.error([...new Set(wrong)].map((entry) => `  ${entry}`).join('\n'));
+    return wrong.length === 0;
+  })()],
   ['a listbox this build ships is one a keyboard can actually operate', (() => {
     // Two surfaces claimed the role and neither honoured it. The palette
     // hard-coded aria-selected on the first option, so a reader was told the

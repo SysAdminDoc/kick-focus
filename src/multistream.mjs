@@ -541,9 +541,9 @@ export function createMultistream(host) {
   // document throws. So the window gets its own small sheet rather than a copy.
   const POPOUT_CSS = `
     :root { color-scheme: dark; }
-    body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--kf-panel, #0d100e); color: var(--kf-text, #f7f9fa);
+    body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--kf-panel, #0b100d); color: var(--kf-text, #f5f8f6);
       font: 12px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-    p { margin: 0; padding: 6px 8px; background: var(--kf-panel-raised, #151917); border-bottom: 1px solid var(--kf-border, #2a312c); color: var(--kf-text-muted, #a5aea8); font-size: 11px; }
+    p { margin: 0; padding: 6px 8px; background: var(--kf-panel-raised, #111713); border-bottom: 1px solid var(--kf-border, #202a23); color: var(--kf-text-muted, #aab4ae); font-size: 11px; }
     iframe { flex: 1 1 auto; width: 100%; border: 0; }
   `;
 

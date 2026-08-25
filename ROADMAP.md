@@ -257,12 +257,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P2
 
-- [ ] P2 — R-136: Regenerate the panel's literal token fallbacks from the palette
-  Why: Thirteen of sixteen `var(--kf-*, #literal)` fallbacks in src/runtime.js and src/multistream.mjs are from a palette that no longer ships. Inside the page this is harmless because SITE_CSS always defines the tokens, with one exception: the multi-stream chat pop-out at src/multistream.mjs:531-537 is a separate document whose comment explicitly designs the fallback path for "the case where the page has not painted yet". All five of that sheet's fallbacks are wrong, so the designed path paints a palette that ships nowhere.
-  Where: src/runtime.js:7159-7197 (the panel token re-export) and 12572-12638; src/multistream.mjs:531-549
-  Acceptance: Every literal fallback equals its token's `:root` value, or the fallbacks are dropped and the pop-out relies on `copyThemeTokens` alone; a gate compares the two sets.
-  Complexity: S
-
 - [ ] P2 — R-137: Normalize the control geometry the panel renders
   Why: Controls that sit in the same `.kf-control` column are 32, 36, 38 and 40 pixels tall (`.kf-switch`, `.kf-select`, `.kf-icon-button`, `.kf-button`), which reads as jitter down the right edge of every settings page. Eight radius literals bypass the Corner radius setting: `.kf-toast` and `.kf-toast-action` at 4px, `.kf-icon-button` at 5px, the About panel at 4px, the emote completion list and rows at 9px and 6px, and the two injected header buttons at 5px and 8px. Those two buttons also disagree on height, weight and font size while sitting in the same Kick chrome. Two focus treatments coexist: `outline: var(--focus-ring)` on the nav search, and `outline: 0` plus a box-shadow ring on `.kf-text`, `.kf-textarea`, `.kf-select`, and both multi-stream inputs.
   Where: src/runtime.js UI_CSS around 7289-7500, 7769, 7819-7831, 11555-11573, 12598-12645

@@ -1248,7 +1248,7 @@ const SITE_CSS = `
       border-radius: 10px !important;
       background: var(--kf-panel, #0b100d) !important;
       box-shadow: 0 20px 54px rgba(0,0,0,.58), 0 2px 12px rgba(0,0,0,.3) !important;
-      color: var(--kf-text, #f7f9f8) !important;
+      color: var(--kf-text, #f5f8f6) !important;
       opacity: 0 !important;
       transform: translateX(-4px) scale(.985) !important;
       transform-origin: center left !important;
@@ -1278,7 +1278,7 @@ const SITE_CSS = `
       gap: 12px !important;
       padding: 9px 11px 10px !important;
       border-top: 1px solid rgba(255,255,255,.08) !important;
-      background: var(--kf-surface-hover, #101612) !important;
+      background: var(--kf-surface-hover, #171f1a) !important;
       font: 500 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
     }
     #kick-focus-following-preview strong {
@@ -4838,16 +4838,16 @@ const TOOLTIP_CSS = `
   }
   .card {
     padding: 8px 10px;
-    border: 1px solid var(--kf-border-strong, #59645c);
+    border: 1px solid var(--kf-border-strong, #38463d);
     border-radius: var(--kf-radius, 7px);
-    background: var(--kf-panel-raised, #151917);
-    color: var(--kf-text, #f4f7f5);
+    background: var(--kf-panel-raised, #111713);
+    color: var(--kf-text, #f5f8f6);
     box-shadow: 0 10px 28px rgba(0,0,0,.45);
     font: 12px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .card div { white-space: normal; overflow-wrap: anywhere; }
   .card div:first-child { font-weight: 700; }
-  .card div + div { color: var(--kf-text-muted, #a5aea8); }
+  .card div + div { color: var(--kf-text-muted, #aab4ae); }
   .card div[data-warn="true"] { color: var(--kf-warning, #f6b943); }
 `;
 
@@ -7390,21 +7390,21 @@ const UI_CSS = `
     color-scheme: dark;
     --accent: var(--kf-accent, #7cff2b);
     --accent-rgb: var(--kf-accent-rgb, 124, 255, 43);
-    --surface-0: var(--kf-canvas, #070908);
-    --surface-1: var(--kf-panel, #101311);
-    --surface-2: var(--kf-panel-raised, #151917);
-    --surface-3: var(--kf-panel-high, #1c211e);
-    --surface-inset: var(--kf-surface-inset, #0b0e0c);
-    --surface-hover: var(--kf-surface-hover, #202621);
-    --surface-selected: var(--kf-surface-selected, #182019);
+    --surface-0: var(--kf-canvas, #070a08);
+    --surface-1: var(--kf-panel, #0b100d);
+    --surface-2: var(--kf-panel-raised, #111713);
+    --surface-3: var(--kf-panel-high, #18201b);
+    --surface-inset: var(--kf-surface-inset, #070b08);
+    --surface-hover: var(--kf-surface-hover, #171f1a);
+    --surface-selected: var(--kf-surface-selected, #111d14);
     --surface-danger: #2a1416;
-    --border: var(--kf-border, #353b37);
+    --border: var(--kf-border, #202a23);
     --border-subtle: color-mix(in srgb, var(--border) 68%, transparent);
     --border-control: color-mix(in srgb, var(--border-strong) 78%, var(--border));
-    --border-strong: var(--kf-border-strong, #59645c);
-    --text: var(--kf-text, #f4f7f5);
-    --text-secondary: var(--kf-text-secondary, #c7cec9);
-    --muted: var(--kf-text-muted, #a5aea8);
+    --border-strong: var(--kf-border-strong, #38463d);
+    --text: var(--kf-text, #f5f8f6);
+    --text-secondary: var(--kf-text-secondary, #d0d7d3);
+    --muted: var(--kf-text-muted, #aab4ae);
     --subtle: color-mix(in srgb, var(--muted) 72%, var(--surface-0));
     --on-accent: var(--kf-on-accent, #071004);
     --danger: var(--kf-danger, #ff6258);
@@ -8347,7 +8347,7 @@ const UI_CSS = `
   /* The source channel first and always visible: an interleaved feed is only
      readable if every line says where it came from without hovering. */
   .kf-ms-merged-source { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px;
-    background: var(--kf-panel-high, #202626); color: var(--kf-accent, #53fc18); font-size: 11px; font-weight: 700; }
+    background: var(--kf-panel-high, #18201b); color: var(--kf-accent, #7cff2b); font-size: 11px; font-weight: 700; }
   .kf-ms-merged-who { margin-right: 4px; font-weight: 700; }
   .kf-ms-merged-who::after { content: ':'; }
   /* One chat at a time: the merged pane replaces the per-tile one rather than
@@ -11099,12 +11099,12 @@ const EMOTE_COMPLETION_CSS = `
     flex-direction: column;
     gap: 2px;
     padding: 4px;
-    border: 1px solid var(--kf-border-strong, #2a3a30);
+    border: 1px solid var(--kf-border-strong, #38463d);
     border-radius: 9px;
     background: var(--kf-panel, #0b100d);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
     font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: var(--kf-text, #f7f9fa);
+    color: var(--kf-text, #f5f8f6);
     max-height: 260px;
     overflow-y: auto;
   }
@@ -12169,7 +12169,7 @@ const HEADER_CONTROL_CSS = `
   [data-kf-earned="reward-ready"] { position: relative; }
   [data-kf-earned="reward-ready"]::after {
     content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px;
-    border-radius: 50%; background: var(--kf-accent, #53fc18);
+    border-radius: 50%; background: var(--kf-accent, #7cff2b);
     animation: kf-earned-pulse 2.4s ease-in-out infinite;
   }
   @keyframes kf-earned-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -12229,8 +12229,8 @@ const PROFILE_STATS_CSS = `
     padding: 0 12px;
     border: 1px solid var(--kf-border-strong, rgba(255,255,255,.16));
     border-radius: 8px;
-    background: var(--kf-panel-raised, #191e1b);
-    color: var(--kf-text, #f4f7f5);
+    background: var(--kf-panel-raised, #111713);
+    color: var(--kf-text, #f5f8f6);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
     font: 700 14px/1 "Segoe UI", sans-serif;
     white-space: nowrap;
@@ -12240,12 +12240,12 @@ const PROFILE_STATS_CSS = `
   button:hover {
     border-color: rgba(var(--kf-accent-rgb, 83, 252, 24), .62);
     background: rgba(var(--kf-accent-rgb, 83, 252, 24), .10);
-    color: var(--kf-accent, #53fc18);
+    color: var(--kf-accent, #7cff2b);
     transform: translateY(-1px);
   }
   button:active { transform: translateY(0) scale(.98); }
   button:focus-visible {
-    border-color: var(--kf-accent, #53fc18);
+    border-color: var(--kf-accent, #7cff2b);
     outline: var(--kf-focus-ring, 3px solid var(--kf-accent, #7cff2b));
     outline-offset: 2px;
   }
