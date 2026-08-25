@@ -64,6 +64,7 @@ import {
   nextApplyDelay,
   normalizeStickerPreferences,
   platformStickerKey,
+  compactPresence,
   mergePresence,
   presenceOffer,
   PRESENCE_TTL_MS,
@@ -561,6 +562,26 @@ test('a roll-call collects open tabs, expires stale answers, and offers only wha
     null,
   ], now), []);
   assert.deepEqual(mergePresence(null, now), []);
+
+  // Compaction is what bounds the stored array. Every tab opens the presence
+  // channel at boot and only the tab that opens the grid ever reset it, so a
+  // tab left on a channel page grew one entry per answer to every roll-call
+  // anybody else made, for as long as it stayed open.
+  const noisy = [];
+  for (let round = 0; round < 200; round += 1) {
+    noisy.push({ slug: 'xqc', ts: fresh + round });
+    noisy.push({ slug: 'adin_ross', ts: fresh + round });
+    noisy.push({ slug: '../evil', ts: fresh + round });
+  }
+  const compact = compactPresence(noisy, now);
+  assert.equal(compact.length, 2, `600 answers compacted to ${compact.length} entries`);
+  assert.deepEqual(compact.map((entry) => entry.slug), ['adin_ross', 'xqc']);
+  // The newest timestamp survives, so the entry expires from the latest answer.
+  assert.equal(compact.find((entry) => entry.slug === 'xqc').ts, fresh + 199);
+  // And compacting is idempotent, so pushing onto an already-compacted array
+  // cannot grow it.
+  assert.deepEqual(compactPresence(compact, now), compact);
+  assert.deepEqual(mergePresence(noisy, now), compactPresence(noisy, now).map((entry) => entry.slug));
 
   // The offer excludes what the grid already holds, case-insensitively.
   assert.deepEqual(presenceOffer(['xqc', 'adin_ross', 'trainwreck'], ['XQC']), ['adin_ross', 'trainwreck']);

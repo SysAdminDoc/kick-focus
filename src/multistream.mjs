@@ -17,6 +17,7 @@ import {
   MULTISTREAM_MAX,
   addMultistreamChannel,
   mergeMultistream,
+  compactPresence,
   mergePresence,
   multistreamColumns,
   multistreamTileActive,
@@ -197,7 +198,14 @@ export function createMultistream(host) {
           return;
         }
         if (message.type === 'here') {
-          state.presence.answers.push({ slug: message.slug, ts: message.ts });
+          // Compacted on the way in rather than only on the way out. Every tab
+          // listens from boot, and only the tab that opens the grid ever reset
+          // this, so an ordinary browsing tab grew one entry per answer to
+          // every roll-call anybody else made.
+          state.presence.answers = compactPresence(
+            [...state.presence.answers, { slug: message.slug, ts: message.ts }],
+            Date.now(),
+          );
           renderPresenceOffer();
         }
       });

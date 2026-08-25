@@ -65,6 +65,19 @@ const MERGED_CHAT_QUEUE_LIMIT = 2;
  */
 const HARVEST_MAX_INFLIGHT = 4;
 const HARVEST_NEGATIVE_CAP = 5000;
+/**
+ * An image request that neither loads nor errors holds a harvest slot forever.
+ * Four of those and the pump's `while` never runs again, so emote harvesting is
+ * dead for the rest of the session with nothing to show for it. A captive
+ * portal or a throttled CDN is enough. Long enough that a slow but working CDN
+ * still counts as a hit.
+ */
+const HARVEST_TIMEOUT_MS = 8000;
+/**
+ * A stalled key never reaches `negative`, so every later sighting re-queues it.
+ * Every sibling structure here is capped; this one was the gap.
+ */
+const HARVEST_QUEUE_CAP = 600;
 
 /**
  * Kick's chat identity payload carries `badges_v2`, which includes the
@@ -541,6 +554,10 @@ export function createLive(host) {
       state.live.socketState = 'open';
       state.live.lastFrameAt = Date.now();
       state.live.reconnectAttempts = 0;
+      // A reconnect goes close -> schedule -> connect without passing through
+      // teardownRealtime, which is the only other place this is cleared, so
+      // every wifi blip used to append the same names again.
+      state.live.subscribed = [];
       for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
         socket.send(realtimeSubscribeFrame(name));
         state.live.subscribed.push(name);
@@ -996,7 +1013,9 @@ export function createLive(host) {
     const known = [];
     for (const [key, observation] of chatEmoteHarvest.buffer) {
       if (state.stickerPreferences.library.has(key)) known.push(observation);
-      else if (!chatEmoteHarvest.negative.has(key)) chatEmoteHarvest.queue.push(observation);
+      else if (!chatEmoteHarvest.negative.has(key) && chatEmoteHarvest.queue.length < HARVEST_QUEUE_CAP) {
+        chatEmoteHarvest.queue.push(observation);
+      }
     }
     chatEmoteHarvest.buffer.clear();
     // Already-recorded emotes only need their last-seen refreshed — no image round-trip.
@@ -1010,7 +1029,15 @@ export function createLive(host) {
       if (chatEmoteHarvest.negative.has(observation.key) || state.stickerPreferences.library.has(observation.key)) continue;
       chatEmoteHarvest.inflight += 1;
       const image = new Image();
+      let settled = false;
+      let timer = 0;
+      // Guarded against a second call: the timeout and a late `onload` can both
+      // arrive, and decrementing `inflight` twice would let the pump run more
+      // requests than the cap allows.
       const settle = (ok) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
         image.onload = null;
         image.onerror = null;
         chatEmoteHarvest.inflight -= 1;
@@ -1020,6 +1047,7 @@ export function createLive(host) {
       };
       image.onload = () => settle(image.naturalWidth > 0);
       image.onerror = () => settle(false);
+      timer = window.setTimeout(() => settle(false), HARVEST_TIMEOUT_MS);
       image.src = observation.src;
     }
   }

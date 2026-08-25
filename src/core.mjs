@@ -3826,7 +3826,7 @@ export function cardSlugFromPath(path) {
   return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(first) ? first : '';
 }
 
-export function mergePresence(entries, now = 0) {
+export function compactPresence(entries, now = 0) {
   const seen = new Map();
   for (const entry of Array.isArray(entries) ? entries : []) {
     if (!isRecord(entry)) continue;
@@ -3840,7 +3840,20 @@ export function mergePresence(entries, now = 0) {
     const prior = seen.get(key);
     if (!prior || ts > prior.ts) seen.set(key, { slug, ts });
   }
-  return [...seen.values()].sort((a, b) => a.slug.localeCompare(b.slug)).map((entry) => entry.slug);
+  return [...seen.values()].sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+/**
+ * The slugs a roll-call found, deduplicated and inside the TTL.
+ *
+ * Kept as a read-time view over `compactPresence` so the answer a tab renders
+ * and the answer it stores can never drift: the stored array is compacted on
+ * every push, which is what bounds it. Before that, a tab that never opened the
+ * grid had no reset at all and accumulated one entry per answer to every other
+ * tab's roll-call for as long as it stayed open.
+ */
+export function mergePresence(entries, now = 0) {
+  return compactPresence(entries, now).map((entry) => entry.slug);
 }
 
 /**

@@ -118,7 +118,13 @@ function eventMethods(target) {
   return target;
 }
 
-globalThis.window = eventMethods({ setTimeout: (fn, ms) => setTimeout(fn, ms) });
+// The harvest pump arms a stall deadline, so the stub needs the clearing half
+// of the pair as well; a stub that models only one is a fixture gap, not a
+// contract.
+globalThis.window = eventMethods({
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (id) => clearTimeout(id),
+});
 globalThis.document = eventMethods({
   cookie: '',
   hidden: false,
@@ -379,6 +385,55 @@ test('a message from somebody else never lands in this user’s usage counts', {
   await new Promise((done) => setTimeout(done, 260));
   assert.equal(merged.flat().some((observation) => observation.name === 'PogChamp'), true,
     'an emote from somebody else is still collected into the library');
+});
+
+test('images that never settle cannot wedge the harvest, and the queue stays bounded', { tag: 'unit' }, async () => {
+  const { host, state, merged } = makeHost();
+  state.settings.content.organizeChatStickers = true;
+  state.live.slug = 'alpha';
+  globalThis.document.querySelector = () => null;
+
+  // An image that neither loads nor errors: a captive portal, a throttled CDN,
+  // a connection that hangs. `settle` used to be reachable only from onload and
+  // onerror, so four of these pinned inflight at the cap and the pump's while
+  // loop never ran again for the rest of the session.
+  const RealImage = globalThis.Image;
+  const stalled = [];
+  globalThis.Image = class StalledImage {
+    constructor() { this.onload = null; this.onerror = null; stalled.push(this); }
+    set src(value) { this._src = value; }
+    get src() { return this._src; }
+  };
+
+  // Collapse the eight-second stall deadline rather than waiting it out. Not to
+  // zero: the stub image resolves on a 0 ms timer of its own, and a deadline
+  // sharing that slot is armed first and would win every race, which measures
+  // the stub's scheduling rather than the code.
+  const realSetTimeout = globalThis.window.setTimeout;
+  globalThis.window.setTimeout = (fn, ms) => realSetTimeout(fn, ms >= 1000 ? 40 : ms);
+
+  const surface = createLive(host);
+  const send = (name, id) => surface.onRealtimeFrame(frame('App\Events\ChatMessageEvent', {
+    id,
+    sender: { username: 'someone', identity: { badges: [] } },
+    content: `[emote:${id}:${name}]`,
+  }));
+
+  for (let i = 0; i < 8; i += 1) send(`Stall${i}`, `10${i}`);
+  await new Promise((done) => realSetTimeout(done, 400));
+  assert.ok(stalled.length > 0, 'the harvest never reached the image stage at all');
+
+  // Once the stall deadline fires, the slots are released and the good emote
+  // that arrived behind them is collected.
+  globalThis.Image = RealImage;
+  await new Promise((done) => realSetTimeout(done, 60));
+  send('Recovered', '999');
+  await new Promise((done) => realSetTimeout(done, 300));
+  assert.equal(merged.flat().some((observation) => observation.name === 'Recovered'), true,
+    'harvesting stayed wedged behind images that never settled');
+
+  globalThis.window.setTimeout = realSetTimeout;
+  globalThis.document.querySelector = () => null;
 });
 
 test('a deletion is annotated once per node, and a reconnect is scheduled with backoff', { tag: 'unit' }, () => {

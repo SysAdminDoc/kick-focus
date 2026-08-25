@@ -2440,7 +2440,7 @@ const [first] = rest.split(/[?#]/)[0].split('/').filter(Boolean);
 if (!first || NON_CHANNEL_SEGMENTS.has(first.toLowerCase())) return '';
 return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(first) ? first : '';
 }
-function mergePresence(entries, now = 0) {
+function compactPresence(entries, now = 0) {
 const seen = new Map();
 for (const entry of Array.isArray(entries) ? entries : []) {
 if (!isRecord(entry)) continue;
@@ -2452,7 +2452,10 @@ const key = slug.toLowerCase();
 const prior = seen.get(key);
 if (!prior || ts > prior.ts) seen.set(key, { slug, ts });
 }
-return [...seen.values()].sort((a, b) => a.slug.localeCompare(b.slug)).map((entry) => entry.slug);
+return [...seen.values()].sort((a, b) => a.slug.localeCompare(b.slug));
+}
+function mergePresence(entries, now = 0) {
+return compactPresence(entries, now).map((entry) => entry.slug);
 }
 function presenceOffer(present, streams, max = MULTISTREAM_MAX) {
 const have = new Set((Array.isArray(streams) ? streams : []).map((slug) => String(slug).toLowerCase()));
@@ -3980,6 +3983,8 @@ const MERGED_CHAT_SILENCE_MS = 45_000;
 const MERGED_CHAT_QUEUE_LIMIT = 2;
 const HARVEST_MAX_INFLIGHT = 4;
 const HARVEST_NEGATIVE_CAP = 5000;
+const HARVEST_TIMEOUT_MS = 8000;
+const HARVEST_QUEUE_CAP = 600;
 const CHAT_BADGE_WAIT_MS = 30_000;
 function chatMessageSelector(id) {
 const escaped = CSS.escape(id);
@@ -4301,6 +4306,7 @@ socket.addEventListener('open', () => {
 state.live.socketState = 'open';
 state.live.lastFrameAt = Date.now();
 state.live.reconnectAttempts = 0;
+state.live.subscribed = [];
 for (const name of realtimeChannels({ chatroomId: channel.chatroomId, channelId: channel.id })) {
 socket.send(realtimeSubscribeFrame(name));
 state.live.subscribed.push(name);
@@ -4679,7 +4685,9 @@ chatEmoteHarvest.timer = 0;
 const known = [];
 for (const [key, observation] of chatEmoteHarvest.buffer) {
 if (state.stickerPreferences.library.has(key)) known.push(observation);
-else if (!chatEmoteHarvest.negative.has(key)) chatEmoteHarvest.queue.push(observation);
+else if (!chatEmoteHarvest.negative.has(key) && chatEmoteHarvest.queue.length < HARVEST_QUEUE_CAP) {
+chatEmoteHarvest.queue.push(observation);
+}
 }
 chatEmoteHarvest.buffer.clear();
 if (known.length) mergeStickerLibrary(known);
@@ -4691,7 +4699,12 @@ const observation = chatEmoteHarvest.queue.shift();
 if (chatEmoteHarvest.negative.has(observation.key) || state.stickerPreferences.library.has(observation.key)) continue;
 chatEmoteHarvest.inflight += 1;
 const image = new Image();
+let settled = false;
+let timer = 0;
 const settle = (ok) => {
+if (settled) return;
+settled = true;
+window.clearTimeout(timer);
 image.onload = null;
 image.onerror = null;
 chatEmoteHarvest.inflight -= 1;
@@ -4701,6 +4714,7 @@ pumpChatEmoteHarvest();
 };
 image.onload = () => settle(image.naturalWidth > 0);
 image.onerror = () => settle(false);
+timer = window.setTimeout(() => settle(false), HARVEST_TIMEOUT_MS);
 image.src = observation.src;
 }
 }
@@ -4961,7 +4975,10 @@ if (slug) channel.postMessage({ type: 'here', slug, ts: Date.now() });
 return;
 }
 if (message.type === 'here') {
-state.presence.answers.push({ slug: message.slug, ts: message.ts });
+state.presence.answers = compactPresence(
+[...state.presence.answers, { slug: message.slug, ts: message.ts }],
+Date.now(),
+);
 renderPresenceOffer();
 }
 });
@@ -7016,7 +7033,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              857026') || 0;
+const BUNDLE_BYTES = Number('              857486') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
