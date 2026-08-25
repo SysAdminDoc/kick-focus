@@ -2376,13 +2376,6 @@ const start = Math.min(Math.max(0, requested - lead), list.length - count);
 const end = start + count;
 return { start, end, items: list.slice(start, end), before: start, after: list.length - end };
 }
-function unusedEmotes(counts, emotes, { channel = '' } = {}) {
-const used = new Set([
-...Object.keys(counts?.global || {}),
-...Object.keys((channel && counts?.channels?.[channel]) || {}),
-]);
-return (emotes || []).filter((emote) => !used.has(String(emote.id)));
-}
 const MULTISTREAM_SCHEMA = 1;
 const MULTISTREAM_MAX = 9;
 const MULTISTREAM_LAYOUT_LIMIT = 24;
@@ -2798,7 +2791,6 @@ return { token };
 socketUrl: kickGatewaySocketUrl,
 }),
 });
-const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(Object.keys(REALTIME_TRANSPORTS));
 function realtimeTransport(provider) {
 return REALTIME_TRANSPORTS[String(provider || '').toUpperCase()] || null;
 }
@@ -3116,12 +3108,6 @@ sets,
 emotes,
 account: { authenticated: true, ownedSets: [...ownedSets].sort(), ownedEmotes },
 };
-}
-function emoteReachLabel(emote, channel = '') {
-const source = emote && typeof emote === 'object' ? emote : {};
-if (source.usableHere === false) return 'not-yours';
-if (source.usableEverywhere) return 'anywhere';
-return channel ? 'this-channel' : 'source-channel';
 }
 function channelCatalogEmotes(catalog, slug) {
 if (!catalog?.ok || !Array.isArray(catalog.sets) || !isValidSlug(slug)) return [];
@@ -6149,10 +6135,10 @@ function renderAboutPage() {
       <div class="kf-about-status"><div class="kf-mini-card"><span>Script health</span><strong>Active</strong></div><div class="kf-mini-card"><span>Site compatibility</span><strong data-kf-compatibility data-error="${String(Boolean(state.compatibility && !state.compatibility.healthy))}">${state.compatibility ? (state.compatibility.healthy ? 'Healthy' : 'Needs attention') : 'Checking…'}</strong></div><div class="kf-mini-card"><span>Protection layer</span><strong>${companionInfo().active ? 'Network + page' : 'Page only'}</strong></div></div>
       <section class="kf-panel">
         <div class="kf-action-row"><div><h3>Data & privacy</h3><p>Settings stay in your userscript manager. No analytics. No remote code.</p></div></div>
-        ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>This started ${escapeHtml(INJECTION.summary)}. On Chromium 138 and later a userscript manager needs its own <strong>Allow user scripts</strong> toggle enabled on the browser's extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.</p></div></div>`}
+        ${companionInfo().active || INJECTION.grade === 'first' ? '' : `<div class="kf-action-row"><div><h3>Not running as early as it could</h3><p>${trf('This started {timing}. On Chromium 138 and later a userscript manager needs its own {toggle} toggle enabled on the browser’s extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.', { timing: escapeHtml(INJECTION.summary), toggle: `<strong>${escapeHtml(tr('Allow user scripts'))}</strong>` })}</p></div></div>`}
         <div class="kf-action-row"><div><h3>Multi-stream</h3><p>Watch up to ${MULTISTREAM_MAX} Kick channels in one grid, with audio and chat following whichever you focus. Uses Kick’s own embedded player, so subscriptions and entitlements are unchanged.${state.multistream.streams.length ? ` Currently holding ${state.multistream.streams.length}.` : ''}</p></div><button type="button" class="kf-button" data-action="open-multistream">Open multi-stream</button></div>
         <div class="kf-action-row"><div><h3>Panic switch</h3><p>Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.</p></div><button type="button" class="kf-button kf-danger" data-action="toggle-panic">${state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'}</button></div>
-        <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks ${AD_HOSTS.length + TELEMETRY_HOSTS.length} third-party ad and telemetry hosts and <strong>no kick.com host at all</strong>, so pausing Kick Focus will not change that behavior. Check your ad blocker&rsquo;s filters for kick.com before blaming an extension.</p></div></div>
+        <div class="kf-action-row"><div><h3>If Kick sign-in, sign-up, or Follow stops working</h3><p>${trf('Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks {hosts} third-party ad and telemetry hosts and {none}, so pausing Kick Focus will not change that behavior. Check your ad blocker’s filters for kick.com before blaming an extension.', { hosts: AD_HOSTS.length + TELEMETRY_HOSTS.length, none: `<strong>${escapeHtml(tr('no kick.com host at all'))}</strong>` })}</p></div></div>
         <div class="kf-action-row"><div><h3>Diagnostics</h3><p>Copy a sanitized summary or run a local self-check.</p></div><div class="kf-button-group"><button type="button" class="kf-button" data-action="copy-diagnostics">Copy diagnostic summary</button><button type="button" class="kf-button" data-action="self-check">Run self-check</button></div></div>
         <div class="kf-action-row"><div><h3>Compatibility self-test</h3><p data-kf-compatibility-detail>${escapeHtml(state.compatibility ? `${compatibilitySummary(state.compatibility)} Probes are checked after every route update.` : 'The shell probes will run after the page mounts.')}</p></div><button type="button" class="kf-button" data-action="self-check">Run now</button></div>
         <div class="kf-action-row"><div><h3>API drift</h3><p data-kf-api-drift>${escapeHtml(assessApiDrift(state.live.apiDrift).summary)}</p></div></div>
@@ -7038,7 +7024,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              860147') || 0;
+const BUNDLE_BYTES = Number('              874717') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -13554,6 +13540,75 @@ es: {
 'Increase legibility on muted surfaces.': 'Aumenta la legibilidad en superficies atenuadas.',
 'Use the selected accent for live-state emphasis.': 'Usa el color de acento elegido para destacar el estado en directo.',
 'Enable subscription': 'Activar suscripción',
+'no kick.com host at all': 'ningún host de kick.com',
+'This started {timing}. On Chromium 138 and later a userscript manager needs its own {toggle} toggle enabled on the browser’s extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.': 'Esto se inició {timing}. En Chromium 138 y posteriores, un gestor de userscripts necesita su propia opción {toggle} activada en la página de extensiones del navegador, y su modo de inyección instantánea encendido. Instalar la extensión complementaria elimina la cuestión por completo.',
+'Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks {hosts} third-party ad and telemetry hosts and {none}, so pausing Kick Focus will not change that behavior. Check your ad blocker’s filters for kick.com before blaming an extension.': 'Desde que Kick empezó a servir anuncios el 2026-08-06, se ha informado de que algunas listas de filtros de bloqueadores rompen esas acciones, que fallan con un error genérico hasta que se desactiva el bloqueador y se reinicia el navegador. Kick Focus no interviene: bloquea {hosts} hosts externos de anuncios y telemetría, y {none}, así que pausar Kick Focus no cambiará ese comportamiento. Revisa los filtros de tu bloqueador para kick.com antes de culpar a una extensión.',
+'Merge chats': 'Combinar chats',
+'0 of 0 chats live': '0 de 0 chats en directo',
+'Core protection': 'Protección básica',
+'Live preview': 'Vista previa en directo',
+'Live now': 'En directo ahora',
+'Clear this channel': 'Borrar este canal',
+'Remove cached list': 'Quitar la lista en caché',
+'Changed by Kick': 'Cambiado por Kick',
+'Copy name': 'Copiar el nombre',
+'Type in chat': 'Escribir en el chat',
+'Create group': 'Crear grupo',
+'No groups yet.': 'Aún no hay grupos.',
+'Restore all': 'Restaurar todo',
+'Kick data': 'Datos de Kick',
+'Collectible rarity': 'Rareza de coleccionables',
+'Shadowed emote names': 'Nombres de emote duplicados',
+'Blocked this page': 'Bloqueado en esta página',
+'Removed shells': 'Contenedores eliminados',
+'Last match': 'Última coincidencia',
+'Filtering & ad defense': 'Filtrado y defensa contra anuncios',
+'Emote library': 'Biblioteca de emotes',
+'Open library': 'Abrir la biblioteca',
+'Local discovery choices': 'Elecciones locales de descubrimiento',
+'Error log': 'Registro de errores',
+'Copy error log': 'Copiar el registro de errores',
+'Not saving': 'No se guarda',
+'Local storage': 'Almacenamiento local',
+'Export now': 'Exportar ahora',
+'Not running as early as it could': 'No se ejecuta tan pronto como podría',
+'Allow user scripts': 'Permitir user scripts',
+'If Kick sign-in, sign-up, or Follow stops working': 'Si el inicio de sesión, el registro o Seguir de Kick dejan de funcionar',
+'Run now': 'Ejecutar ahora',
+'Undo import': 'Deshacer la importación',
+'kick.com desktop': 'kick.com en escritorio',
+'Run timing': 'Momento de ejecución',
+'Test viewports': 'Ventanas de prueba',
+'Remote code': 'Código remoto',
+'Creative tools and workflows': 'Herramientas y flujos de trabajo creativos',
+'Three calm, focused rows': 'Tres filas tranquilas y centradas',
+'Open a channel page to set channel-specific chat keywords or a private local note.': 'Abre la página de un canal para definir palabras clave del chat o una nota local privada para ese canal.',
+'Comma-separated words are highlighted locally in chat. They never leave this browser.': 'Las palabras separadas por comas se resaltan localmente en el chat. Nunca salen de este navegador.',
+'Keep a local reminder for this channel. It is not sent to Kick.': 'Guarda un recordatorio local para este canal. No se envía a Kick.',
+'Save local channel tools': 'Guardar las herramientas locales del canal',
+'Only this channel path and the values above are stored.': 'Solo se guardan la ruta de este canal y los valores de arriba.',
+'Optional data-only blocklist': 'Lista de bloqueo opcional, solo datos',
+'Fetch a user-supplied JSON list of channels, categories, and keywords. No code is accepted or executed.': 'Descarga una lista JSON de canales, categorías y palabras clave que tú indiques. No se acepta ni se ejecuta ningún código.',
+'Add emotes from a channel': 'Añadir emotes de un canal',
+'Paste a channel name or Kick URL. Access rules still apply.': 'Pega el nombre de un canal o una URL de Kick. Las reglas de acceso siguen aplicándose.',
+'Create a group, then select emotes and move them together.': 'Crea un grupo y luego selecciona emotes para moverlos juntos.',
+'New emotes save automatically.': 'Los emotes nuevos se guardan automáticamente.',
+'What Kick does not explain': 'Lo que Kick no explica',
+'These names exist in more than one of your sets. Kick sends the last one loaded, so typing the name may not send what you expect.': 'Estos nombres existen en más de uno de tus conjuntos. Kick envía el último que se cargó, así que escribir el nombre puede no enviar lo que esperas.',
+'Requests, promotional modules, and sensitive content.': 'Peticiones, módulos promocionales y contenido sensible.',
+'Local playback memory, chat control, emotes, and diagnostics.': 'Memoria local de reproducción, control del chat, emotes y diagnósticos.',
+'Favorites and not-interested choices stay on this device.': 'Los favoritos y las opciones de no me interesa se quedan en este dispositivo.',
+'Channel keywords and private notes stay on this device.': 'Las palabras clave de canal y las notas privadas se quedan en este dispositivo.',
+'Sanitized in-memory diagnostics; query strings are never retained.': 'Diagnósticos en memoria y depurados; las cadenas de consulta nunca se conservan.',
+'Choose memorable shortcuts that do not conflict.': 'Elige atajos fáciles de recordar que no entren en conflicto.',
+'Settings stay in your userscript manager. No analytics. No remote code.': 'La configuración se queda en tu gestor de userscripts. Sin analíticas. Sin código remoto.',
+'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': 'Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus o con Ctrl+Shift+F.',
+'Copy a sanitized summary or run a local self-check.': 'Copia un resumen depurado o ejecuta una comprobación local.',
+'Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.': 'Mueve preferencias, metadatos de emotes registrados, favoritos, elementos quitados y grupos personalizados con un solo archivo JSON local.',
+'Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.': 'Restaura todos los ajustes, atajos, notas, filtros y listas de canales a los valores de fábrica. Tu biblioteca de emotes registrada se conserva.',
+'Changes are not being saved': 'Los cambios no se están guardando',
+'No errors recorded this session.': 'No se registraron errores en esta sesión.',
+'Read Kick’s own endpoints instead of scraping the page. Same-origin, read-only, using the session you are already signed into. Nothing is sent anywhere.': 'Lee los propios endpoints de Kick en lugar de raspar la página. Mismo origen, solo lectura y con la sesión que ya tienes iniciada. No se envía nada a ninguna parte.',
 'Emote already saved': 'El emote ya estaba guardado',
 'Emote saved': 'Emote guardado',
 'All streams paused': 'Todas las transmisiónes en pausa',
@@ -14312,6 +14367,75 @@ pt: {
 'Increase legibility on muted surfaces.': 'Aumente a legibilidade em superfícies atenuadas.',
 'Use the selected accent for live-state emphasis.': 'Use a cor de destaque escolhida para enfatizar o estado ao vivo.',
 'Enable subscription': 'Ativar assinatura',
+'no kick.com host at all': 'nenhum host do kick.com',
+'This started {timing}. On Chromium 138 and later a userscript manager needs its own {toggle} toggle enabled on the browser’s extensions page, and its instant-injection mode turned on. Installing the companion extension removes the question entirely.': 'Isto começou {timing}. No Chromium 138 e posteriores, um gerenciador de userscripts precisa da própria opção {toggle} ativada na página de extensões do navegador, e do modo de injeção instantânea ligado. Instalar a extensão complementar elimina a questão por completo.',
+'Since Kick began serving ads on 2026-08-06, some ad-blocker filter lists have been reported to break those actions, which fail with a generic error until the blocker is disabled and the browser restarted. Kick Focus is not involved: it blocks {hosts} third-party ad and telemetry hosts and {none}, so pausing Kick Focus will not change that behavior. Check your ad blocker’s filters for kick.com before blaming an extension.': 'Desde que o Kick começou a exibir anúncios em 2026-08-06, há relatos de que algumas listas de filtros de bloqueadores quebram essas ações, que falham com um erro genérico até o bloqueador ser desativado e o navegador reiniciado. O Kick Focus não participa disso: ele bloqueia {hosts} hosts externos de anúncios e telemetria, e {none}, então pausar o Kick Focus não vai mudar esse comportamento. Verifique os filtros do seu bloqueador para kick.com antes de culpar uma extensão.',
+'Merge chats': 'Juntar chats',
+'0 of 0 chats live': '0 de 0 chats ao vivo',
+'Core protection': 'Proteção básica',
+'Live preview': 'Prévia ao vivo',
+'Live now': 'Ao vivo agora',
+'Clear this channel': 'Limpar este canal',
+'Remove cached list': 'Remover a lista em cache',
+'Changed by Kick': 'Alterado pelo Kick',
+'Copy name': 'Copiar o nome',
+'Type in chat': 'Escrever no chat',
+'Create group': 'Criar grupo',
+'No groups yet.': 'Ainda não há grupos.',
+'Restore all': 'Restaurar tudo',
+'Kick data': 'Dados do Kick',
+'Collectible rarity': 'Raridade dos colecionáveis',
+'Shadowed emote names': 'Nomes de emote duplicados',
+'Blocked this page': 'Bloqueado nesta página',
+'Removed shells': 'Contêineres removidos',
+'Last match': 'Última correspondência',
+'Filtering & ad defense': 'Filtragem e defesa contra anúncios',
+'Emote library': 'Biblioteca de emotes',
+'Open library': 'Abrir a biblioteca',
+'Local discovery choices': 'Escolhas locais de descoberta',
+'Error log': 'Registro de erros',
+'Copy error log': 'Copiar o registro de erros',
+'Not saving': 'Não está salvando',
+'Local storage': 'Armazenamento local',
+'Export now': 'Exportar agora',
+'Not running as early as it could': 'Não está sendo executado tão cedo quanto poderia',
+'Allow user scripts': 'Permitir user scripts',
+'If Kick sign-in, sign-up, or Follow stops working': 'Se o login, o cadastro ou o Seguir do Kick pararem de funcionar',
+'Run now': 'Executar agora',
+'Undo import': 'Desfazer a importação',
+'kick.com desktop': 'kick.com no computador',
+'Run timing': 'Momento da execução',
+'Test viewports': 'Janelas de teste',
+'Remote code': 'Código remoto',
+'Creative tools and workflows': 'Ferramentas e fluxos de trabalho criativos',
+'Three calm, focused rows': 'Três linhas calmas e focadas',
+'Open a channel page to set channel-specific chat keywords or a private local note.': 'Abra a página de um canal para definir palavras-chave do chat ou uma nota local privada para esse canal.',
+'Comma-separated words are highlighted locally in chat. They never leave this browser.': 'As palavras separadas por vírgulas são destacadas localmente no chat. Elas nunca saem deste navegador.',
+'Keep a local reminder for this channel. It is not sent to Kick.': 'Guarde um lembrete local para este canal. Ele não é enviado ao Kick.',
+'Save local channel tools': 'Salvar as ferramentas locais do canal',
+'Only this channel path and the values above are stored.': 'Somente o caminho deste canal e os valores acima são guardados.',
+'Optional data-only blocklist': 'Lista de bloqueio opcional, somente dados',
+'Fetch a user-supplied JSON list of channels, categories, and keywords. No code is accepted or executed.': 'Baixa uma lista JSON de canais, categorias e palavras-chave que você indicar. Nenhum código é aceito nem executado.',
+'Add emotes from a channel': 'Adicionar emotes de um canal',
+'Paste a channel name or Kick URL. Access rules still apply.': 'Cole o nome de um canal ou uma URL do Kick. As regras de acesso continuam valendo.',
+'Create a group, then select emotes and move them together.': 'Crie um grupo e depois selecione emotes para movê-los juntos.',
+'New emotes save automatically.': 'Os emotes novos são salvos automaticamente.',
+'What Kick does not explain': 'O que o Kick não explica',
+'These names exist in more than one of your sets. Kick sends the last one loaded, so typing the name may not send what you expect.': 'Estes nomes existem em mais de um dos seus conjuntos. O Kick envia o último que carregou, então digitar o nome pode não enviar o que você espera.',
+'Requests, promotional modules, and sensitive content.': 'Requisições, módulos promocionais e conteúdo sensível.',
+'Local playback memory, chat control, emotes, and diagnostics.': 'Memória local de reprodução, controle do chat, emotes e diagnósticos.',
+'Favorites and not-interested choices stay on this device.': 'Os favoritos e as escolhas de não tenho interesse ficam neste dispositivo.',
+'Channel keywords and private notes stay on this device.': 'As palavras-chave de canal e as notas privadas ficam neste dispositivo.',
+'Sanitized in-memory diagnostics; query strings are never retained.': 'Diagnósticos em memória e limpos; as strings de consulta nunca são mantidas.',
+'Choose memorable shortcuts that do not conflict.': 'Escolha atalhos fáceis de lembrar que não entrem em conflito.',
+'Settings stay in your userscript manager. No analytics. No remote code.': 'As configurações ficam no seu gerenciador de userscripts. Sem analytics. Sem código remoto.',
+'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus ou com Ctrl+Shift+F.',
+'Copy a sanitized summary or run a local self-check.': 'Copie um resumo limpo ou execute uma verificação local.',
+'Move preferences, recorded emote metadata, favorites, removals, and custom groups using one local JSON file.': 'Mova preferências, metadados de emotes registrados, favoritos, itens removidos e grupos personalizados com um único arquivo JSON local.',
+'Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.': 'Restaura todas as configurações, atalhos, notas, filtros e listas de canais para os valores de fábrica. Sua biblioteca de emotes registrada é mantida.',
+'Changes are not being saved': 'As alterações não estão sendo salvas',
+'No errors recorded this session.': 'Nenhum erro registrado nesta sessão.',
+'Read Kick’s own endpoints instead of scraping the page. Same-origin, read-only, using the session you are already signed into. Nothing is sent anywhere.': 'Lê os próprios endpoints do Kick em vez de raspar a página. Mesma origem, somente leitura e com a sessão em que você já está conectado. Nada é enviado a lugar nenhum.',
 'Emote already saved': 'O emote já estava salvo',
 'Emote saved': 'Emote salvo',
 'All streams paused': 'Todas as transmissões pausadas',

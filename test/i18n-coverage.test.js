@@ -53,6 +53,24 @@ const SCANNERS = [
   ['announce ternary', new RegExp(`\\bannounce\\([^;]{0,200}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['textContent ternary', new RegExp(`textContent = tr\\([^;]{0,160}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['setAttribute ternary', new RegExp(`setAttribute\\('(?:aria-label|title|placeholder)', tr\\([^;]{0,160}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
+  /**
+   * Prose written straight into a settings page's markup.
+   *
+   * The scanners above all read a string handed to a *function*. Settings copy
+   * that is typed into an `<h3>` or a `<p>` in a page template is never handed
+   * to anything: it reaches the DOM as markup and `localizeInterface` looks the
+   * finished text node up afterwards. So a paragraph with no dictionary entry
+   * is indistinguishable from an intentional English one, and 33 of them were
+   * sitting in Spanish and Portuguese builds untranslated while this gate
+   * reported full coverage.
+   *
+   * Deliberately narrow. It takes only a text node that is entirely literal:
+   * no interpolation, no nested element, four or more words. A node carrying a
+   * `${…}` is a different bug with a different fix — it can never match a
+   * dictionary key at all and has to become a `trf` template — and matching it
+   * here would only add an unfixable key.
+   */
+  ['markup prose', /<(?:h[1-6]|p|span|strong|small|b|li|td|th|button|div|aside|summary)\b[^<>]*>([^<>{}$`]*[a-z][ ][a-z][^<>{}$`]*)</g],
   ['showToast', new RegExp(`\\bshowToast\\(${STR}`, 'g')],
   ['showToast ternary', new RegExp(`\\bshowToast\\([^;?]{0,300}\\?\\s*${STR}\\s*:\\s*${STR}`, 'g')],
   ['save status', new RegExp(`\\b(?:saveSettings|setSaveStatus)\\(${STR}`, 'g')],

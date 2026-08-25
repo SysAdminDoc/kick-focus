@@ -174,7 +174,6 @@ export const REALTIME_TRANSPORTS = Object.freeze({
   }),
 });
 
-export const SUPPORTED_REALTIME_PROVIDERS = Object.freeze(Object.keys(REALTIME_TRANSPORTS));
 
 export function realtimeTransport(provider) {
   return REALTIME_TRANSPORTS[String(provider || '').toUpperCase()] || null;
@@ -718,17 +717,6 @@ export function applyAccountEntitlement(catalog, { slug = '', authenticated = fa
     emotes,
     account: { authenticated: true, ownedSets: [...ownedSets].sort(), ownedEmotes },
   };
-}
-
-/**
- * Where an emote may actually be sent, phrased for a person rather than as a
- * flag. `channel` is the slug the catalog was read for.
- */
-export function emoteReachLabel(emote, channel = '') {
-  const source = emote && typeof emote === 'object' ? emote : {};
-  if (source.usableHere === false) return 'not-yours';
-  if (source.usableEverywhere) return 'anywhere';
-  return channel ? 'this-channel' : 'source-channel';
 }
 
 /**

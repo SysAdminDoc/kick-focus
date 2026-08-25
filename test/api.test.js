@@ -27,7 +27,6 @@ import {
   emoteLockState,
   emoteFollowRequirement,
   applyAccountEntitlement,
-  emoteReachLabel,
   catalogEmoteAccess,
   channelCatalogEmotes,
   normalizeCurrentViewers,
@@ -35,7 +34,7 @@ import {
   COLLECTIBLE_FACTS,
   REALTIME_TRANSPORTS,
 } from '../src/api.mjs';
-import { rankEmoteUsage, recordEmoteUse, unusedEmotes } from '../src/core.mjs';
+import { rankEmoteUsage, recordEmoteUse } from '../src/core.mjs';
 
 // Shapes below are from first-hand captures against the live site on 2026-08-15.
 
@@ -493,23 +492,19 @@ test('an authenticated catalog states entitlement; an anonymous one never does',
     entitlement: 'granted', usableEverywhere: true, usableHere: true,
   });
   assert.equal(catalogEmoteAccess(at(guest, 'peyxwhy')), 'available');
-  assert.equal(emoteReachLabel(at(guest, 'peyxwhy'), 'xqc'), 'anywhere');
 
   // The viewed channel's own subscriber emote: Kick said no, so it is denied
   // rather than merely unknown. Sending it answers SUBSCRIBERS_ONLY_EMOTE_ERROR.
   assert.partialDeepStrictEqual(at(guest, 'xqcAM'), { entitlement: 'denied', usableHere: false });
   assert.equal(catalogEmoteAccess(at(guest, 'xqcAM')), 'locked');
-  assert.equal(emoteReachLabel(at(guest, 'xqcAM'), 'xqc'), 'not-yours');
 
   // Its free emote is usable here and refused anywhere else — the measured
   // FOREIGN_CHANNEL_EMOTE_ERROR, and the half Kick's own interface never says.
   assert.partialDeepStrictEqual(at(guest, 'xqcLK'), { usableEverywhere: false, usableHere: true });
-  assert.equal(emoteReachLabel(at(guest, 'xqcLK'), 'xqc'), 'this-channel');
 
   // A pulled collectible travels, and is not a channel named "Collectibles".
   assert.equal(at(guest, 'collectiblesCooked').kind, 'collectible');
   assert.equal(catalogEmoteAccess(at(guest, 'collectiblesCooked')), 'available');
-  assert.equal(emoteReachLabel(at(guest, 'collectiblesCooked')), 'anywhere');
 
   // The summary counts only what the account may send, and names the sets.
   assert.deepEqual(guest.account.ownedSets, ['peyx']);
@@ -668,10 +663,6 @@ test('usage counting produces the ranking Kick itself does not have', { tag: 'un
   assert.equal(fresh.length, 2);
   assert.equal(fresh.every((entry) => entry.count === 0), true);
   assert.equal(fresh[0].id, '37226');
-
-  // The inverse view: owned but never sent.
-  const owned = [{ id: '37226' }, { id: '900' }, { id: '555' }];
-  assert.deepEqual(unusedEmotes(counts, owned).map((entry) => entry.id), ['555']);
 
   // A write with no id must not corrupt the store.
   assert.equal(recordEmoteUse(counts, { channel: 'xqc' }), counts);

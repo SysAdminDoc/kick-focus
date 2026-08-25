@@ -3732,15 +3732,6 @@ export function visibleWindow(entries, anchor = 0, size = EMOTE_WINDOW_SIZE) {
   return { start, end, items: list.slice(start, end), before: start, after: list.length - end };
 }
 
-/** Emotes the user owns but has never sent — the inverse view nothing offers. */
-export function unusedEmotes(counts, emotes, { channel = '' } = {}) {
-  const used = new Set([
-    ...Object.keys(counts?.global || {}),
-    ...Object.keys((channel && counts?.channels?.[channel]) || {}),
-  ]);
-  return (emotes || []).filter((emote) => !used.has(String(emote.id)));
-}
-
 // ---------------------------------------------------------------------------
 // Multi-stream
 // ---------------------------------------------------------------------------
