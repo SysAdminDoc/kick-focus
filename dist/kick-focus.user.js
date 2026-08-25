@@ -7106,7 +7106,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              847667') || 0;
+const BUNDLE_BYTES = Number('              848924') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -14012,6 +14012,9 @@ const TRANSLATIONS = {
 'Add this channel to Kick Focus multi-stream': ['Añadir este canal a la multitransmisión de Kick Focus', 'Adicionar este canal à multitransmissão do Kick Focus'],
 'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
 'Undo': ['Deshacer', 'Desfazer'],
+'Commands': ['Comandos', 'Comandos'],
+'Menu': ['Menú', 'Menu'],
+'Open Kick Focus command menu': ['Abrir el menú de comandos de Kick Focus', 'Abrir o menu de comandos do Kick Focus'],
 'Undo reset': ['Deshacer el restablecimiento', 'Desfazer a reposição'],
 'Settings reset.': ['Ajustes restablecidos.', 'Definições repostas.'],
 'There is nothing to undo.': ['No hay nada que deshacer.', 'Não há nada para desfazer.'],
@@ -16564,6 +16567,10 @@ const shadow = host.attachShadow({ mode: 'open' });
       <button type="button" data-kf-header-add-multi class="kf-header-add" hidden aria-label="Add this channel to Kick Focus multi-stream" title="Add to multi-stream">
         <span data-kf-header-add-icon aria-hidden="true">+</span>
         <span data-kf-header-add-label>Multi</span>
+      </button>
+      <button type="button" data-kf-header-commands class="kf-header-multi" aria-label="Open Kick Focus command menu" title="Commands">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="2.4" rx="1.2"/><rect x="3" y="10.8" width="18" height="2.4" rx="1.2"/><rect x="3" y="16.6" width="12" height="2.4" rx="1.2"/></svg>
+        <span data-kf-header-commands-label>Menu</span>
       </button>`);
 adoptStyles(shadow, HEADER_CONTROL_CSS);
 const button = shadow.querySelector('[data-kf-header-focus]');
@@ -16579,6 +16586,12 @@ event.stopPropagation();
 if (multistreamOpen()) closeMultistream();
 else openMultistream();
 });
+shadow.querySelector('[data-kf-header-commands]').addEventListener('click', (event) => {
+event.preventDefault();
+event.stopPropagation();
+if (state.command && !state.command.hidden) closeCommandMenu();
+else openCommandMenu();
+});
 shadow.querySelector('[data-kf-header-add-multi]').addEventListener('click', (event) => {
 event.preventDefault();
 event.stopPropagation();
@@ -16588,6 +16601,8 @@ state.headerControlHost = host;
 state.headerControlButton = button;
 state.headerAddMultiButton = shadow.querySelector('[data-kf-header-add-multi]');
 state.headerMultiLabel = shadow.querySelector('[data-kf-header-multi-label]');
+state.headerCommandsButton = shadow.querySelector('[data-kf-header-commands]');
+state.headerCommandsLabel = shadow.querySelector('[data-kf-header-commands-label]');
 }
 if (state.headerControlHost.parentElement !== owner || state.headerControlHost.nextElementSibling !== target) {
 owner.insertBefore(state.headerControlHost, target);
@@ -16625,6 +16640,11 @@ if (state.headerControlButton) {
 state.headerControlButton.querySelector('[data-kf-header-control-label]').textContent = label;
 state.headerControlButton.setAttribute('aria-label', accessibleLabel);
 state.headerControlButton.title = label;
+}
+if (state.headerCommandsButton) {
+state.headerCommandsLabel.textContent = tr('Menu');
+state.headerCommandsButton.setAttribute('aria-label', tr('Open Kick Focus command menu'));
+state.headerCommandsButton.title = tr('Commands');
 }
 document.documentElement.dataset.kfMiniPlayerCollision = String(
 state.settings.layout.miniPlayerCollision && state.settings.layout.quickButton && !headerMounted,
