@@ -119,7 +119,7 @@ function diagnosticSettingsDiff(settings) {
 const current = normalizeSettings(settings);
 const defaults = DEFAULT_SETTINGS;
 const diff = {};
-for (const section of ['layout', 'appearance', 'content', 'accessibility', 'shortcuts']) {
+for (const section of ['layout', 'appearance', 'content', 'accessibility']) {
 const now = current[section];
 const base = defaults[section];
 const changed = {};
@@ -246,14 +246,6 @@ largeTargets: false,
 announceChanges: true,
 textSize: 100,
 captionOpacity: 72,
-}),
-shortcuts: Object.freeze({
-command: 'Ctrl+K',
-focus: 'F',
-chat: 'C',
-sidebar: 'S',
-settings: 'Alt+K',
-mature: 'B',
 }),
 });
 const VIEWING_PRESETS = Object.freeze({
@@ -428,26 +420,6 @@ const darkInk = '#000000';
 const lightInk = '#FFFFFF';
 const onAccent = colorContrastRatio(hex, darkInk) >= colorContrastRatio(hex, lightInk) ? darkInk : lightInk;
   return Object.freeze({ hex, rgb: `${rgb.red}, ${rgb.green}, ${rgb.blue}`, onAccent });
-}
-function normalizeShortcut(value, fallback) {
-if (typeof value !== 'string') return fallback;
-const cleaned = value
-.trim()
-.replace(/\s+/g, '')
-.split('+')
-.filter(Boolean)
-    .map((part) => part.length === 1 ? part.toUpperCase() : `${part[0].toUpperCase()}${part.slice(1).toLowerCase()}`)
-.join('+');
-return cleaned.length > 0 && cleaned.length <= 32 ? cleaned : fallback;
-}
-function findShortcutConflict(shortcuts, capturingKey, candidate) {
-if (!isRecord(shortcuts) || typeof candidate !== 'string' || !candidate) return '';
-const wanted = candidate.toLowerCase();
-for (const [key, value] of Object.entries(shortcuts)) {
-if (key === capturingKey) continue;
-if (typeof value === 'string' && value.toLowerCase() === wanted) return key;
-}
-return '';
 }
 const EMOTE_ACCESS_LABELS = Object.freeze({
 available: 'Seen available',
@@ -1262,7 +1234,6 @@ const layout = isRecord(source.layout) ? source.layout : {};
 const appearance = isRecord(source.appearance) ? source.appearance : {};
 const content = isRecord(source.content) ? source.content : {};
 const accessibility = isRecord(source.accessibility) ? source.accessibility : {};
-const shortcuts = isRecord(source.shortcuts) ? source.shortcuts : {};
 const defaults = clone(DEFAULT_SETTINGS);
 const sourceSchema = Number(source.schema) || 0;
 const sidebar = sourceSchema < 2 && (layout.sidebar == null || layout.sidebar === 'compact')
@@ -1360,10 +1331,6 @@ announceChanges: bool(accessibility.announceChanges, defaults.accessibility.anno
 textSize: enumValue(Number(accessibility.textSize), [90, 100, 110, 120], defaults.accessibility.textSize),
 captionOpacity: Math.round(clamp(accessibility.captionOpacity, 0, 100, defaults.accessibility.captionOpacity)),
 },
-shortcuts: Object.fromEntries(Object.entries(defaults.shortcuts).map(([key, fallback]) => [
-key,
-normalizeShortcut(shortcuts[key], fallback),
-])),
 };
 }
 const CHAT_WIDTH_MIN = 320;
@@ -2195,7 +2162,7 @@ const method = first ? 'unshift' : 'push';
 notes[method](message);
 noteDetails[method]({ key, values });
 };
-const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
+const sections = ['layout', 'appearance', 'content', 'accessibility'];
 const hasSettings = sections.some((section) => isRecord(parsed[section]));
 const known = new Set(['schema', 'lastSeenVersion', 'stickers', 'usage', 'multistream', 'channelLayouts',
 'favoriteChannels', 'dismissedChannels', 'chatKeywords', 'channelNotes', 'mediaPreferences']);
@@ -5661,7 +5628,7 @@ const NAV_ITEMS = [
 ['appearance', 'Appearance', 'Theme, color, and scale', 'sliders'],
 ['content', 'Content & Ads', 'Privacy, filters, and playback', 'shield'],
 ['emotes', 'Emotes', 'Library, favorites, and groups', 'smile'],
-['accessibility', 'Accessibility & Shortcuts', 'Comfort and shortcuts', 'keyboard'],
+['accessibility', 'Accessibility', 'Comfort and readability', 'keyboard'],
 ['viewer', 'Viewer', 'Read-only account signals', 'user'],
 ['about', 'About', 'Status, privacy, and diagnostics', 'info'],
 ];
@@ -6113,13 +6080,8 @@ const companion = companionInfo();
 }
 function renderAccessibilityPage() {
 const value = state.settings.accessibility;
-const shortcuts = state.settings.shortcuts;
-const rows = [
-['command','Open command menu'],['focus','Toggle focus mode'],['chat','Toggle chat'],
-['sidebar','Toggle sidebar'],['settings','Open settings'],['mature','Reveal mature thumbnails'],
-];
     return `
-      ${pageHeader('Accessibility & Shortcuts', 'Improve comfort and keep core actions within reach.', 'Text scale', `${value.textSize}%`)}
+      ${pageHeader('Accessibility', 'Improve comfort and keep core actions within reach.', 'Text scale', `${value.textSize}%`)}
       <section class="kf-panel">
         ${row('Reduce motion', 'Minimize non-essential animations and transitions.', toggle('accessibility.reduceMotion', value.reduceMotion, { label: 'Reduce motion' }))}
         ${row('High-contrast controls', 'Increase separation for controls, borders, and surfaces.', toggle('accessibility.highContrast', value.highContrast, { label: 'High-contrast controls' }))}
@@ -6129,13 +6091,7 @@ const rows = [
         ${row('Text size', 'Scale text in the main Kick content area.', segmented('accessibility.textSize', value.textSize, [[90,'90%'],[100,'100%'],[110,'110%'],[120,'120%']]))}
         ${row('Caption background opacity', 'Set the preferred caption background strength.', range('accessibility.captionOpacity', value.captionOpacity, 0, 100, '0%', '100%', '%'), { wide: true })}
       </section>
-      <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Keyboard shortcuts</h3><p>Choose memorable shortcuts that do not conflict.</p></div><button type="button" class="kf-button kf-button-small" data-action="restore-shortcuts">Restore defaults</button></div>
-        <div class="kf-panel"><table class="kf-table"><thead><tr><th>Action</th><th>Current shortcut</th><th>Status</th><th class="kf-table-actions">Change</th></tr></thead><tbody>${rows.map(([key,label]) => {
-const conflict = state.shortcutError && state.shortcutCapture === key;
-const capture = state.shortcutCapture === key && !state.shortcutError;
-          return `<tr class="${conflict ? 'kf-conflict' : ''}"><td>${label}</td><td><span class="kf-shortcut">${capture ? 'Press keys, or Escape to cancel' : escapeHtml(shortcuts[key])}</span></td><td>${conflict ? `<span class="kf-conflict-message">${escapeHtml(state.shortcutError)}</span>` : capture ? 'Listening' : '<span class="kf-active">OK</span>'}</td><td class="kf-table-actions">${conflict ? '<button type="button" class="kf-button kf-button-small" data-action="cancel-shortcut">Cancel</button>' : `<button type="button" class="kf-button kf-button-small" data-shortcut="${key}">${capture ? 'Cancel' : 'Change'}</button>`}</td></tr>`;
-        }).join('')}</tbody></table></div>
-      </section>`;
+`;
 }
 function renderStorageHealthPanel() {
 const report = storageDiagnostics();
@@ -6495,8 +6451,6 @@ errors: [],
 lastCrash: readLastCrash(),
 apply: {},
 },
-shortcutCapture: null,
-shortcutError: '',
 chatEmoteTooltip: null,
 companion: { active: false, version: '' },
 watched: new Set(normalizeChannelList(readSessionArray(WATCHED_KEY))),
@@ -7106,7 +7060,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              848924') || 0;
+const BUNDLE_BYTES = Number('              841807') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -13326,8 +13280,6 @@ const TRANSLATIONS = {
 'Imported': ['Importado', 'Importado'],
 'All settings reset': ['Se restablecieron todos los ajustes', 'Todas as configurações foram redefinidas'],
 'Page reset': ['Se restableció la página', 'A página foi redefinida'],
-'Shortcuts restored': ['Se restauraron los atajos', 'Atalhos restaurados'],
-'Shortcut saved': ['Atajo guardado', 'Atalho salvo'],
 'Added {name}. Now {count} of {max}.': ['Se añadió {name}. Ahora {count} de {max}.', '{name} foi adicionado. Agora {count} de {max}.'],
 'Removed {name}. Now {count} of {max}.': ['Se quitó {name}. Ahora {count} de {max}.', '{name} foi removido. Agora {count} de {max}.'],
 'Removed {name} from the grid.': ['Se quitó {name} de la cuadrícula.', '{name} foi removido da grade.'],
@@ -13445,7 +13397,6 @@ const TRANSLATIONS = {
 'Remove {name} from the grid': ['Quitar {name} de la cuadrícula', 'Remover {name} da grade'],
 'Copy a link to board {name}': ['Copiar un enlace al tablero {name}', 'Copiar um link para o painel {name}'],
 'Delete board {name}': ['Eliminar el tablero {name}', 'Excluir o painel {name}'],
-'Press keys, or Escape to cancel': ['Pulsa las teclas, o Escape para cancelar', 'Pressione as teclas, ou Escape para cancelar'],
 '{preset} preset applied': ['Preajuste {preset} aplicado', 'Predefinição {preset} aplicada'],
 'Hidden {channel}': ['{channel} oculto', '{channel} oculto'],
 'Showing {channel} again': ['{channel} vuelve a mostrarse', '{channel} voltou a ser exibido'],
@@ -13479,7 +13430,6 @@ const TRANSLATIONS = {
 '{items} kept in this browser session': ['{items}, guardado en esta sesión del navegador', '{items}, guardado nesta sessão do navegador'],
 '{n} showing an older reading.': ['{n} con una lectura anterior.', '{n} com uma leitura anterior.'],
 '{n} could not be built.': ['No se pudieron crear: {n}.', 'Não foi possível criar: {n}.'],
-'{shortcut} is already used by {action}.': ['{shortcut} ya lo usa {action}.', '{shortcut} já é usado por {action}.'],
 'Added': ['Añadido', 'Adicionado'],
 'Removed': ['Eliminado', 'Removido'],
 'Error log copied.': ['Registro de errores copiado.', 'Log de erros copiado.'],
@@ -13513,12 +13463,10 @@ const TRANSLATIONS = {
 'Content & Ads': ['Contenido y anuncios', 'Conteúdo e anúncios'],
 'Emotes': ['Emotes', 'Emotes'],
 'Find, favorite, remove, and group every emote you have recorded.': ['Busca, marca como favorito, elimina y agrupa todos los emotes registrados.', 'Encontre, favorite, remova e agrupe todos os emotes registrados.'],
-'Accessibility & Shortcuts': ['Accesibilidad y atajos', 'Acessibilidade e atalhos'],
 'About': ['Acerca de', 'Sobre'],
 'Shell, player, and chat': ['Estructura, reproductor y chat', 'Estrutura, player e chat'],
 'Theme, color, and scale': ['Tema, color y escala', 'Tema, cor e escala'],
 'Privacy, filters, and playback': ['Privacidad, filtros y reproducción', 'Privacidade, filtros e reprodução'],
-'Comfort and shortcuts': ['Comodidad y atajos', 'Conforto e atalhos'],
 'Read-only account signals': ['Datos de cuenta de solo lectura', 'Sinais da conta somente para leitura'],
 'Status, privacy, and diagnostics': ['Estado, privacidad y diagnósticos', 'Status, privacidade e diagnósticos'],
 'Control how Kick is arranged across your desktop.': ['Controla cómo se organiza Kick en tu escritorio.', 'Controle como o Kick é organizado na sua área de trabalho.'],
@@ -13620,12 +13568,7 @@ const TRANSLATIONS = {
 'Kick Focus updated to {version}.': ['Kick Focus se actualizó a {version}.', 'O Kick Focus foi atualizado para {version}.'],
 'Changed defaults: {list}.': ['Valores predeterminados que cambiaron: {list}.', 'Padrões que mudaram: {list}.'],
 'What changed': ['Qué cambió', 'O que mudou'],
-'Keyboard shortcuts': ['Atajos de teclado', 'Atalhos de teclado'],
-'Restore defaults': ['Restaurar valores predeterminados', 'Restaurar padrões'],
 'Action': ['Acción', 'Ação'],
-'Current shortcut': ['Atajo actual', 'Atalho atual'],
-'Status': ['Estado', 'Status'],
-'Change': ['Cambiar', 'Alterar'],
 'Script health': ['Estado del script', 'Saúde do script'],
 'Site compatibility': ['Compatibilidad del sitio', 'Compatibilidade do site'],
 'Protection layer': ['Capa de protección', 'Camada de proteção'],
@@ -13752,7 +13695,6 @@ const TRANSLATIONS = {
 'Favorites and not-interested choices stay on this device.': ['Los favoritos y las opciones de no me interesa se quedan en este dispositivo.', 'Os favoritos e as escolhas de não tenho interesse ficam neste dispositivo.'],
 'Channel keywords and private notes stay on this device.': ['Las palabras clave de canal y las notas privadas se quedan en este dispositivo.', 'As palavras-chave de canal e as notas privadas ficam neste dispositivo.'],
 'Sanitized in-memory diagnostics; query strings are never retained.': ['Diagnósticos en memoria y depurados; las cadenas de consulta nunca se conservan.', 'Diagnósticos em memória e limpos; as strings de consulta nunca são mantidas.'],
-'Choose memorable shortcuts that do not conflict.': ['Elige atajos fáciles de recordar que no entren en conflicto.', 'Escolha atalhos fáceis de lembrar que não entrem em conflito.'],
 'Settings stay in your userscript manager. No analytics. No remote code.': ['La configuración se queda en tu gestor de userscripts. Sin analíticas. Sin código remoto.', 'As configurações ficam no seu gerenciador de userscripts. Sem analytics. Sem código remoto.'],
 'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': ['Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus o con Ctrl+Shift+F.', 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus ou com Ctrl+Shift+F.'],
 'Copy a sanitized summary or run a local self-check.': ['Copia un resumen depurado o ejecuta una comprobación local.', 'Copie um resumo limpo ou execute uma verificação local.'],
@@ -14013,6 +13955,8 @@ const TRANSLATIONS = {
 'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
 'Undo': ['Deshacer', 'Desfazer'],
 'Commands': ['Comandos', 'Comandos'],
+'Accessibility': ['Accesibilidad', 'Acessibilidade'],
+'Comfort and readability': ['Comodidad y legibilidad', 'Conforto e legibilidade'],
 'Menu': ['Menú', 'Menu'],
 'Open Kick Focus command menu': ['Abrir el menú de comandos de Kick Focus', 'Abrir o menu de comandos do Kick Focus'],
 'Undo reset': ['Deshacer el restablecimiento', 'Desfazer a reposição'],
@@ -14945,8 +14889,6 @@ const pageButton = event.target.closest('[data-page]');
 if (pageButton) {
 state.currentPage = pageButton.dataset.page;
 clearSettingsSearch();
-state.shortcutCapture = null;
-state.shortcutError = '';
 renderSettingsPage();
 state.shadow.querySelector('[data-kf-page]')?.focus();
 return;
@@ -14954,19 +14896,6 @@ return;
 const settingButton = event.target.closest('button[data-set]');
 if (settingButton && !settingButton.disabled) {
 updateSetting(settingButton.dataset.set, coerceSetting(settingButton.dataset.set, settingButton.dataset.value));
-return;
-}
-const shortcut = event.target.closest('[data-shortcut]');
-if (shortcut) {
-const key = shortcut.dataset.shortcut;
-if (state.shortcutCapture === key) {
-state.shortcutCapture = null;
-state.shortcutError = '';
-} else {
-state.shortcutCapture = key;
-state.shortcutError = '';
-}
-renderSettingsPage();
 return;
 }
 const actionTarget = event.target.closest('[data-action]');
@@ -15112,7 +15041,6 @@ state.viewerHub.collectibles = null;
 refreshViewerCollectibles();
 renderViewerHubInPlace();
 }
-else if (action === 'restore-shortcuts') restoreShortcuts();
 else if (action === 'save-local-channel') saveLocalChannelTools();
 else if (action === 'clear-local-channel') clearLocalChannelTools();
 else if (action === 'clear-blocklist') {
@@ -15175,11 +15103,7 @@ else if (action === 'remove-selected-stickers') editLibrarySelection('remove');
 else if (action === 'favorite-library-sticker') toggleLibrarySticker(actionTarget, 'favorite');
 else if (action === 'remove-library-sticker') toggleLibrarySticker(actionTarget, 'remove');
 else if (action === 'restore-removed-stickers') restoreRemovedStickers();
-else if (action === 'cancel-shortcut') {
-state.shortcutCapture = null;
-state.shortcutError = '';
-renderSettingsPage();
-} else if (action.startsWith('command:')) {
+else if (action.startsWith('command:')) {
 executeCommand(action.slice(8));
 }
 }
@@ -15284,8 +15208,6 @@ function closeSettings() {
 if (!state.modal || state.modal.hidden) return;
 state.modal.hidden = true;
 syncPageInert();
-state.shortcutCapture = null;
-state.shortcutError = '';
 if (!restoreFocus(state.lastFocused)) {
 restoreFocus(state.headerControlHost?.shadowRoot?.querySelector('[data-kf-header-focus]'));
 }
@@ -15323,7 +15245,6 @@ saveSettings('All settings reset');
 const section = { layout: 'layout', appearance: 'appearance', content: 'content', accessibility: 'accessibility' }[state.currentPage];
 if (section) {
 state.settings = normalizeSettings({ ...state.settings, [section]: DEFAULT_SETTINGS[section] });
-if (section === 'accessibility') state.settings.shortcuts = { ...DEFAULT_SETTINGS.shortcuts };
 saveSettings('Page reset');
 }
 }
@@ -15992,13 +15913,6 @@ showToast(failures.length
     ? `Self-check needs attention: ${failures.join(', ')}.`
     : `Self-check passed: ${checks.length}/${checks.length}. Protection layer: ${layer}. Started ${timing}.`, failures.length > 0);
 }
-function restoreShortcuts() {
-state.settings = normalizeSettings({ ...state.settings, shortcuts: DEFAULT_SETTINGS.shortcuts });
-state.shortcutCapture = null;
-state.shortcutError = '';
-saveSettings('Shortcuts restored');
-renderSettingsPage();
-}
 function clearEnhancedPage() {
 const root = document.documentElement;
 state.chatResizeCleanup?.();
@@ -16146,17 +16060,17 @@ showToast.timer = setTimeout(() => { toast.hidden = true; }, actions.length ? 70
 }
 function commandDefinitions() {
 return [
-{ id: 'panic', label: tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'), description: tr('Temporarily remove enhanced layout and request hooks'), key: 'Ctrl+Shift+F' },
-{ id: 'focus', label: tr(state.runtime.focus ? 'Exit focus mode' : 'Enter focus mode'), description: tr('Maximize the stream and hide side panels'), key: state.settings.shortcuts.focus },
-{ id: 'theater', label: tr(state.runtime.theater ? 'Exit theater mode' : 'Enter theater mode'), description: tr('Hide discovery while keeping chat'), key: 'T' },
-{ id: 'chat', label: tr(state.runtime.chatHidden ? 'Show chat' : 'Hide chat'), description: tr('Toggle the chat panel for this session'), key: state.settings.shortcuts.chat },
-{ id: 'sidebar', label: tr(state.runtime.sidebarHidden ? 'Show sidebar' : 'Hide sidebar'), description: tr('Toggle the discovery rail for this session'), key: state.settings.shortcuts.sidebar },
-{ id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
-{ id: 'density', label: tr(state.settings.layout.density === 'compact' ? 'Use comfortable density' : 'Use compact density'), description: tr('Change discovery spacing and save it'), key: 'D' },
-{ id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
-{ id: 'poor', label: tr(state.settings.content.hideMonetization ? 'Disable Poor mode' : 'Enable Poor mode'), description: tr('Remove spending prompts without changing your Kick account'), key: '' },
-{ id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid'), key: '' },
-{ id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access'), key: state.settings.shortcuts.settings },
+{ id: 'panic', label: tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'), description: tr('Temporarily remove enhanced layout and request hooks') },
+{ id: 'focus', label: tr(state.runtime.focus ? 'Exit focus mode' : 'Enter focus mode'), description: tr('Maximize the stream and hide side panels') },
+{ id: 'theater', label: tr(state.runtime.theater ? 'Exit theater mode' : 'Enter theater mode'), description: tr('Hide discovery while keeping chat') },
+{ id: 'chat', label: tr(state.runtime.chatHidden ? 'Show chat' : 'Hide chat'), description: tr('Toggle the chat panel for this session') },
+{ id: 'sidebar', label: tr(state.runtime.sidebarHidden ? 'Show sidebar' : 'Hide sidebar'), description: tr('Toggle the discovery rail for this session') },
+{ id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur') },
+{ id: 'density', label: tr(state.settings.layout.density === 'compact' ? 'Use comfortable density' : 'Use compact density'), description: tr('Change discovery spacing and save it') },
+{ id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams') },
+{ id: 'poor', label: tr(state.settings.content.hideMonetization ? 'Disable Poor mode' : 'Enable Poor mode'), description: tr('Remove spending prompts without changing your Kick account') },
+{ id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid') },
+{ id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access') },
 ];
 }
 function renderCommands() {
@@ -16166,7 +16080,7 @@ const query = (state.commandInput?.value || '').trim().toLowerCase();
 const count = state.shadow?.querySelector('[data-kf-command-count]');
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
 setMarkup(state.commandList, commands.length
-    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" aria-selected="${index === 0}" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
+    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" aria-selected="${index === 0}" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div></button>`).join('')
 : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>');
 localizeInterface();
 }
@@ -16242,19 +16156,6 @@ executeCommand(first.dataset.action.slice(8));
 }
 }
 }
-function eventShortcut(event) {
-const parts = [];
-if (event.ctrlKey) parts.push('Ctrl');
-if (event.altKey) parts.push('Alt');
-if (event.shiftKey) parts.push('Shift');
-if (event.metaKey) parts.push('Meta');
-const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
-if (!['Control','Alt','Shift','Meta'].includes(key)) parts.push(key);
-return parts.join('+');
-}
-function isTypingTarget(target) {
-return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
-}
 let pageInertManager = null;
 function pageInert() {
 pageInertManager ||= createPageInertManager(
@@ -16304,43 +16205,6 @@ event.stopPropagation();
 togglePanicSwitch();
 return;
 }
-if (state.shortcutCapture) {
-if (event.key === 'Tab') return;
-if (event.key === 'Escape') {
-event.preventDefault();
-state.shortcutCapture = null;
-state.shortcutError = '';
-renderSettingsPage();
-return;
-}
-const shortcut = eventShortcut(event);
-if (!shortcut) return;
-event.preventDefault();
-event.stopPropagation();
-const conflictKey = findShortcutConflict(state.settings.shortcuts, state.shortcutCapture, shortcut);
-if (conflictKey) {
-const labels = {
-command: 'Open command menu',
-focus: 'Toggle focus mode',
-chat: 'Toggle chat',
-sidebar: 'Toggle sidebar',
-settings: 'Open settings',
-mature: 'Reveal mature thumbnails',
-};
-state.shortcutError = trf('{shortcut} is already used by {action}.', {
-shortcut,
-action: tr(labels[conflictKey] || conflictKey),
-});
-renderSettingsPage();
-return;
-}
-state.settings = normalizeSettings({ ...state.settings, shortcuts: { ...state.settings.shortcuts, [state.shortcutCapture]: shortcut } });
-state.shortcutCapture = null;
-state.shortcutError = '';
-saveSettings('Shortcut saved');
-renderSettingsPage();
-return;
-}
 if (event.key === 'Escape') {
 const top = topmostOverlayLayer(overlayOpenState())?.layer;
 if (top) {
@@ -16352,18 +16216,7 @@ else closeSettings();
 return;
 }
 }
-if (trapFocus(event)) return;
-const shortcut = eventShortcut(event);
-const isGlobalCombo = shortcut === state.settings.shortcuts.command || shortcut === state.settings.shortcuts.settings;
-const actualTarget = event.composedPath?.()[0] || event.target;
-if (isTypingTarget(actualTarget) && !isGlobalCombo) return;
-const action = Object.entries(state.settings.shortcuts).find(([, value]) => value.toLowerCase() === shortcut.toLowerCase())?.[0];
-if (!action) return;
-event.preventDefault();
-event.stopPropagation();
-if (action === 'command') openCommandMenu();
-else if (action === 'settings') openSettings();
-else executeCommand(action);
+trapFocus(event);
 }
 const HEADER_CONTROL_CSS = `
   :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
@@ -16568,9 +16421,9 @@ const shadow = host.attachShadow({ mode: 'open' });
         <span data-kf-header-add-icon aria-hidden="true">+</span>
         <span data-kf-header-add-label>Multi</span>
       </button>
-      <button type="button" data-kf-header-commands class="kf-header-multi" aria-label="Open Kick Focus command menu" title="Commands">
+      <button type="button" data-kf-header-cmds class="kf-header-multi" aria-label="Open Kick Focus command menu" title="Commands">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="2.4" rx="1.2"/><rect x="3" y="10.8" width="18" height="2.4" rx="1.2"/><rect x="3" y="16.6" width="12" height="2.4" rx="1.2"/></svg>
-        <span data-kf-header-commands-label>Menu</span>
+        <span data-kf-header-cmds-label>Menu</span>
       </button>`);
 adoptStyles(shadow, HEADER_CONTROL_CSS);
 const button = shadow.querySelector('[data-kf-header-focus]');
@@ -16586,7 +16439,7 @@ event.stopPropagation();
 if (multistreamOpen()) closeMultistream();
 else openMultistream();
 });
-shadow.querySelector('[data-kf-header-commands]').addEventListener('click', (event) => {
+shadow.querySelector('[data-kf-header-cmds]').addEventListener('click', (event) => {
 event.preventDefault();
 event.stopPropagation();
 if (state.command && !state.command.hidden) closeCommandMenu();
@@ -16601,8 +16454,8 @@ state.headerControlHost = host;
 state.headerControlButton = button;
 state.headerAddMultiButton = shadow.querySelector('[data-kf-header-add-multi]');
 state.headerMultiLabel = shadow.querySelector('[data-kf-header-multi-label]');
-state.headerCommandsButton = shadow.querySelector('[data-kf-header-commands]');
-state.headerCommandsLabel = shadow.querySelector('[data-kf-header-commands-label]');
+state.headerCommandsButton = shadow.querySelector('[data-kf-header-cmds]');
+state.headerCommandsLabel = shadow.querySelector('[data-kf-header-cmds-label]');
 }
 if (state.headerControlHost.parentElement !== owner || state.headerControlHost.nextElementSibling !== target) {
 owner.insertBefore(state.headerControlHost, target);

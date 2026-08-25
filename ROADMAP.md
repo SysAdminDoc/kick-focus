@@ -108,13 +108,6 @@ None open.
   Acceptance: A dependency-free local command captures Home, channel, settings, emote picker, and multistream in Studio, OLED, and Slate at both supported widths; volatile media and text regions are masked; a browser-canvas pixel comparison emits an inspectable diff and fails above documented per-pixel and changed-area thresholds.
   Complexity: L
 
-- [ ] P1 — R-106: Remove custom app shortcuts and keep every action visibly reachable
-  Why: Kick Focus still captures configurable page-wide shortcuts even though its interaction policy forbids custom shortcuts and Kick owns the page keyboard context.
-  Evidence: src/core.mjs shortcuts defaults and normalization; src/settings.mjs Accessibility & Shortcuts page; src/runtime.js onGlobalKeydown; README.md command menu
-  Touches: src/core.mjs schema migration, src/settings.mjs navigation and page renderer, src/runtime.js global key handling, translations, README.md, tests
-  Acceptance: No Kick Focus action captures a custom page-wide chord or letter; old stored shortcut values migrate away without error; every former action remains available from a visible button, settings, command surface, or userscript-manager menu; Tab, Enter, Space, Escape, arrows, Home, and End remain available where standard widgets require them.
-  Complexity: M
-
 - [ ] P1 — R-110: Use Firefox MAIN-world injection without inline source
   Why: Firefox 128 supports manifest-declared MAIN-world scripts, removing the current dependence on Kick allowing inline scripts and the build’s duplicated embedded bundle.
   Evidence: src/extension/bridge.firefox.js; src/extension/manifest.firefox.json; scripts/build.mjs; https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/

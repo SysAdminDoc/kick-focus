@@ -121,7 +121,7 @@ export function diagnosticSettingsDiff(settings) {
   const current = normalizeSettings(settings);
   const defaults = DEFAULT_SETTINGS;
   const diff = {};
-  for (const section of ['layout', 'appearance', 'content', 'accessibility', 'shortcuts']) {
+  for (const section of ['layout', 'appearance', 'content', 'accessibility']) {
     const now = current[section];
     const base = defaults[section];
     const changed = {};
@@ -293,14 +293,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
     announceChanges: true,
     textSize: 100,
     captionOpacity: 72,
-  }),
-  shortcuts: Object.freeze({
-    command: 'Ctrl+K',
-    focus: 'F',
-    chat: 'C',
-    sidebar: 'S',
-    settings: 'Alt+K',
-    mature: 'B',
   }),
 });
 
@@ -580,34 +572,6 @@ export function customAccentTokens(value) {
   const lightInk = '#FFFFFF';
   const onAccent = colorContrastRatio(hex, darkInk) >= colorContrastRatio(hex, lightInk) ? darkInk : lightInk;
   return Object.freeze({ hex, rgb: `${rgb.red}, ${rgb.green}, ${rgb.blue}`, onAccent });
-}
-
-export function normalizeShortcut(value, fallback) {
-  if (typeof value !== 'string') return fallback;
-  const cleaned = value
-    .trim()
-    .replace(/\s+/g, '')
-    .split('+')
-    .filter(Boolean)
-    .map((part) => part.length === 1 ? part.toUpperCase() : `${part[0].toUpperCase()}${part.slice(1).toLowerCase()}`)
-    .join('+');
-  return cleaned.length > 0 && cleaned.length <= 32 ? cleaned : fallback;
-}
-
-/**
- * The key of the shortcut that already uses `candidate`, or '' if none does.
- * README advertises that reassigning a shortcut rejects a duplicate; this is the
- * decision behind that, extracted so it can be tested rather than only reached
- * through the capture handler.
- */
-export function findShortcutConflict(shortcuts, capturingKey, candidate) {
-  if (!isRecord(shortcuts) || typeof candidate !== 'string' || !candidate) return '';
-  const wanted = candidate.toLowerCase();
-  for (const [key, value] of Object.entries(shortcuts)) {
-    if (key === capturingKey) continue;
-    if (typeof value === 'string' && value.toLowerCase() === wanted) return key;
-  }
-  return '';
 }
 
 /** How an emote's access level reads to a user, shared by the library and the chat tooltip. */
@@ -2149,7 +2113,6 @@ export function normalizeSettings(input) {
   const appearance = isRecord(source.appearance) ? source.appearance : {};
   const content = isRecord(source.content) ? source.content : {};
   const accessibility = isRecord(source.accessibility) ? source.accessibility : {};
-  const shortcuts = isRecord(source.shortcuts) ? source.shortcuts : {};
   const defaults = clone(DEFAULT_SETTINGS);
   const sourceSchema = Number(source.schema) || 0;
   // v2 aligns the effective defaults with the site redesign. Preserve any
@@ -2266,10 +2229,6 @@ export function normalizeSettings(input) {
       textSize: enumValue(Number(accessibility.textSize), [90, 100, 110, 120], defaults.accessibility.textSize),
       captionOpacity: Math.round(clamp(accessibility.captionOpacity, 0, 100, defaults.accessibility.captionOpacity)),
     },
-    shortcuts: Object.fromEntries(Object.entries(defaults.shortcuts).map(([key, fallback]) => [
-      key,
-      normalizeShortcut(shortcuts[key], fallback),
-    ])),
   };
 }
 
@@ -3535,7 +3494,7 @@ export function validateImportedSettings(jsonText, { currentBlocklistUrl = '', c
     notes[method](message);
     noteDetails[method]({ key, values });
   };
-  const sections = ['layout', 'appearance', 'content', 'accessibility', 'shortcuts'];
+  const sections = ['layout', 'appearance', 'content', 'accessibility'];
   const hasSettings = sections.some((section) => isRecord(parsed[section]));
   // `lastSeenVersion` is carried by every export this build writes, because the
   // export spreads the whole settings record. Leaving it out of this set made

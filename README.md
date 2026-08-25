@@ -22,7 +22,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - Adds a native-sized **Stats** button beside Follow on every channel profile. It opens that exact channel at [StreamerStats](https://streamerstats.com/kick) in a centered compact popup, reuses the popup while you browse profiles, and offers a normal-tab fallback if the browser blocks it. StreamerStats forbids iframe embedding, so nothing is framed inside Kick and no extra extension permission is needed.
 
 ![Kick Focus Stats action on a channel profile](design/screenshots/profile-stats-button.png)
-- Adds a searchable command menu (`Ctrl+K`) and configurable keyboard shortcuts.
+- Adds a searchable command menu, reached from a button in Kick's own header, for the session toggles that have no other home.
 - Adds three complete surface systems. Studio uses layered graphite with a quiet green undertone, OLED is true black with minimal lift, and Slate uses cool blue graphite with stronger separation. Theme boards preview the actual hierarchy before you choose one. Four ready-made viewing directions and five accent choices sit beside the same density, radius, thumbnail, contrast, and scale controls.
 
 ![Studio, OLED, and Slate appearance boards](design/screenshots/settings-appearance-themes.png)
@@ -62,14 +62,14 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 - **Starts playback without waiting for blocked ad preflight scripts.** Kick waits on Google PAL, Datazoom, and OM before requesting playback, so blocking them, which this build does, otherwise leaves the player sitting out the full timeout.
 - Can freeze animated emotes and collectibles to a static frame, applied automatically when your system asks for reduced motion.
 - Stores settings locally in the userscript manager, and the emote library in IndexedDB, which holds orders of magnitude more than the ~5MB `localStorage` ceiling a growing library eventually reaches. A small synchronous copy is kept where the page can read it before the first render, so startup is unchanged, and a browser that refuses IndexedDB (a private window, a locked-down profile) keeps working on that copy alone. There is no analytics, network update code, `@require`, or remote executable code. An optional, off-by-default subscription accepts only user-supplied JSON data containing channels, categories, and keywords.
-- Keeps settings controls, save states, import and storage errors, Viewer source notes, and shortcut conflicts readable in English, Spanish, or Portuguese.
+- Keeps settings controls, save states, import and storage errors, and Viewer source notes readable in English, Spanish, or Portuguese.
 
 ## Install
 
 1. Install a current desktop userscript manager such as Tampermonkey or Violentmonkey.
 2. Open `dist/kick-focus.user.js` in the manager, or create a new userscript and paste that file into the editor.
 3. Save it, ensure it is enabled for `https://kick.com/*`, and reload Kick.
-4. Press the **Focus** button in Kick's header to open settings, press `Ctrl+K` for the command menu, or choose **Open Kick Focus settings** from the manager menu.
+4. Press the **Focus** button in Kick's header to open settings, or **Menu** beside it for the command menu. A userscript manager also lists both under its own menu.
 
 The script is not published or auto-updated. `dist/kick-focus.user.js` is the canonical install artifact in this repository.
 
@@ -109,18 +109,13 @@ The companion is self-contained: it carries the same page-world script as the us
 
 Every network rule is scoped to `kick.com` initiators, so the companion never changes how any other site loads. Required Chromium host access remains limited to Kick. Firefox needs `webRequest` access to the enumerated hosts it blocks and still filters by Kick initiator. Both packages declare optional HTTPS access so the popup can request one user-chosen feed origin, but that access is not granted at install time. Both packages contain no remote code.
 
-## Default shortcuts
+## Keyboard
 
-| Action | Shortcut |
-| --- | --- |
-| Command menu | `Ctrl+K` |
-| Focus mode | `F` |
-| Toggle chat | `C` |
-| Toggle sidebar | `S` |
-| Settings | `Alt+K` |
-| Reveal mature thumbnails | `B` |
+Kick Focus claims one key from the page: `Ctrl+Shift+F` pauses and resumes it. That one is fixed rather than configurable, because the whole point of it is that it works when the interface itself is in the way, and the same action sits on the command menu beside everything else.
 
-Plain-letter shortcuts do not fire while typing in an input, textarea, select, or editable chat surface. Conflicting custom shortcuts are rejected with an inline recovery state.
+Nothing else is bound. Earlier versions captured six configurable chords, four of them bare letters, which is a lot of somebody's keyboard to take for a viewer mod on a site that has its own keyboard behaviour. Every action those chords reached is on the command menu, and the command menu has a button in the header. A profile that stored custom shortcuts loses them on the next load, quietly and without error.
+
+Inside Kick Focus's own surfaces the standard keys work as standard keys: Tab and Shift+Tab move within whichever panel is on top, Escape closes it, and the chat separator answers Left, Right, Home and End once you tab to it.
 
 ## Ad-defense boundary
 

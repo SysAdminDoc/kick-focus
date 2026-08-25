@@ -106,7 +106,6 @@ import {
   observationsFromChatEmotes,
   mergeMultistream,
   MULTISTREAM_MAX,
-  normalizeShortcut,
   emoteTooltipText,
   emoteReach,
   ownedEmoteGroups,
@@ -122,7 +121,6 @@ import {
   recordApplyCost,
   applyCostSummary,
   findKeywordSpans,
-  findShortcutConflict,
   planStorageCommit,
   topmostOverlayLayer,
   OVERLAY_LAYERS,
@@ -520,22 +518,29 @@ test('pluralForm follows CLDR locale rules, including the es/pt "many" category 
   assert.equal(pluralForm(1, { other: 'b' }, 'en'), 'b');
 });
 
-test('normalizeShortcut canonicalizes case and spacing, rejecting empty and overlong', { tag: 'unit' }, () => {
-  assert.equal(normalizeShortcut('ctrl + k', 'X'), 'Ctrl+K');
-  assert.equal(normalizeShortcut('  shift+ALT+p ', 'X'), 'Shift+Alt+P');
-  assert.equal(normalizeShortcut('f', 'X'), 'F');
-  assert.equal(normalizeShortcut('', 'FB'), 'FB');
-  assert.equal(normalizeShortcut(123, 'FB'), 'FB');
-  assert.equal(normalizeShortcut('a'.repeat(40), 'FB'), 'FB');
-});
+test('a profile that stored custom shortcuts loses them without error', { tag: 'unit' }, () => {
+  // Two tests stood here, for normalizeShortcut and findShortcutConflict. Both
+  // covered a feature that was deliberately removed: this build no longer takes
+  // page-wide chords or bare letters from Kick's keyboard. What has to keep
+  // holding is the migration, so that is what is asserted instead.
+  const stored = {
+    layout: { chatWidth: 400 },
+    shortcuts: { command: 'Ctrl+K', focus: 'F', chat: 'C', sidebar: 'S', settings: 'Alt+K', mature: 'B' },
+  };
+  const settings = normalizeSettings(stored);
+  assert.equal('shortcuts' in settings, false, 'a stored shortcut section survived normalization');
+  assert.equal(settings.layout.chatWidth, 400, 'the rest of the profile was lost with it');
 
-test('shortcut reassignment rejects a value already bound to another action (README claim)', { tag: 'unit' }, () => {
-  const shortcuts = { focus: 'F', chat: 'C', settings: 'Alt+K' };
-  assert.equal(findShortcutConflict(shortcuts, 'chat', 'F'), 'focus');
-  assert.equal(findShortcutConflict(shortcuts, 'chat', 'f'), 'focus'); // case-insensitive
-  assert.equal(findShortcutConflict(shortcuts, 'focus', 'F'), ''); // reassigning to own value is fine
-  assert.equal(findShortcutConflict(shortcuts, 'chat', 'Z'), ''); // a free key conflicts with nothing
-  assert.equal(findShortcutConflict(null, 'chat', 'F'), '');
+  // Junk in that slot is no different, because nothing reads it at all.
+  for (const junk of [null, 'F', 42, [], { focus: { nested: true } }]) {
+    assert.equal('shortcuts' in normalizeSettings({ shortcuts: junk }), false);
+  }
+
+  // And the export a build like this writes carries no shortcut section either,
+  // so importing one is the same non-event as loading an old profile.
+  const exported = normalizeSettings(DEFAULT_SETTINGS);
+  assert.equal('shortcuts' in exported, false);
+  assert.equal('shortcuts' in DEFAULT_SETTINGS, false);
 });
 
 test('a roll-call collects open tabs, expires stale answers, and offers only what fits', { tag: 'unit' }, () => {

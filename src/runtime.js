@@ -204,8 +204,6 @@ const state = {
     lastCrash: readLastCrash(),
     apply: {},
   },
-  shortcutCapture: null,
-  shortcutError: '',
   chatEmoteTooltip: null,
   companion: { active: false, version: '' },
   watched: new Set(normalizeChannelList(readSessionArray(WATCHED_KEY))),
@@ -8563,8 +8561,6 @@ const TRANSLATIONS = {
   'Imported': ['Importado', 'Importado'],
   'All settings reset': ['Se restablecieron todos los ajustes', 'Todas as configurações foram redefinidas'],
   'Page reset': ['Se restableció la página', 'A página foi redefinida'],
-  'Shortcuts restored': ['Se restauraron los atajos', 'Atalhos restaurados'],
-  'Shortcut saved': ['Atajo guardado', 'Atalho salvo'],
   'Added {name}. Now {count} of {max}.': ['Se añadió {name}. Ahora {count} de {max}.', '{name} foi adicionado. Agora {count} de {max}.'],
   'Removed {name}. Now {count} of {max}.': ['Se quitó {name}. Ahora {count} de {max}.', '{name} foi removido. Agora {count} de {max}.'],
   'Removed {name} from the grid.': ['Se quitó {name} de la cuadrícula.', '{name} foi removido da grade.'],
@@ -8682,7 +8678,6 @@ const TRANSLATIONS = {
   'Remove {name} from the grid': ['Quitar {name} de la cuadrícula', 'Remover {name} da grade'],
   'Copy a link to board {name}': ['Copiar un enlace al tablero {name}', 'Copiar um link para o painel {name}'],
   'Delete board {name}': ['Eliminar el tablero {name}', 'Excluir o painel {name}'],
-  'Press keys, or Escape to cancel': ['Pulsa las teclas, o Escape para cancelar', 'Pressione as teclas, ou Escape para cancelar'],
   '{preset} preset applied': ['Preajuste {preset} aplicado', 'Predefinição {preset} aplicada'],
   'Hidden {channel}': ['{channel} oculto', '{channel} oculto'],
   'Showing {channel} again': ['{channel} vuelve a mostrarse', '{channel} voltou a ser exibido'],
@@ -8716,7 +8711,6 @@ const TRANSLATIONS = {
   '{items} kept in this browser session': ['{items}, guardado en esta sesión del navegador', '{items}, guardado nesta sessão do navegador'],
   '{n} showing an older reading.': ['{n} con una lectura anterior.', '{n} com uma leitura anterior.'],
   '{n} could not be built.': ['No se pudieron crear: {n}.', 'Não foi possível criar: {n}.'],
-  '{shortcut} is already used by {action}.': ['{shortcut} ya lo usa {action}.', '{shortcut} já é usado por {action}.'],
   'Added': ['Añadido', 'Adicionado'],
   'Removed': ['Eliminado', 'Removido'],
   'Error log copied.': ['Registro de errores copiado.', 'Log de erros copiado.'],
@@ -8750,12 +8744,10 @@ const TRANSLATIONS = {
   'Content & Ads': ['Contenido y anuncios', 'Conteúdo e anúncios'],
   'Emotes': ['Emotes', 'Emotes'],
   'Find, favorite, remove, and group every emote you have recorded.': ['Busca, marca como favorito, elimina y agrupa todos los emotes registrados.', 'Encontre, favorite, remova e agrupe todos os emotes registrados.'],
-  'Accessibility & Shortcuts': ['Accesibilidad y atajos', 'Acessibilidade e atalhos'],
   'About': ['Acerca de', 'Sobre'],
   'Shell, player, and chat': ['Estructura, reproductor y chat', 'Estrutura, player e chat'],
   'Theme, color, and scale': ['Tema, color y escala', 'Tema, cor e escala'],
   'Privacy, filters, and playback': ['Privacidad, filtros y reproducción', 'Privacidade, filtros e reprodução'],
-  'Comfort and shortcuts': ['Comodidad y atajos', 'Conforto e atalhos'],
   'Read-only account signals': ['Datos de cuenta de solo lectura', 'Sinais da conta somente para leitura'],
   'Status, privacy, and diagnostics': ['Estado, privacidad y diagnósticos', 'Status, privacidade e diagnósticos'],
   'Control how Kick is arranged across your desktop.': ['Controla cómo se organiza Kick en tu escritorio.', 'Controle como o Kick é organizado na sua área de trabalho.'],
@@ -8857,12 +8849,7 @@ const TRANSLATIONS = {
   'Kick Focus updated to {version}.': ['Kick Focus se actualizó a {version}.', 'O Kick Focus foi atualizado para {version}.'],
   'Changed defaults: {list}.': ['Valores predeterminados que cambiaron: {list}.', 'Padrões que mudaram: {list}.'],
   'What changed': ['Qué cambió', 'O que mudou'],
-  'Keyboard shortcuts': ['Atajos de teclado', 'Atalhos de teclado'],
-  'Restore defaults': ['Restaurar valores predeterminados', 'Restaurar padrões'],
   'Action': ['Acción', 'Ação'],
-  'Current shortcut': ['Atajo actual', 'Atalho atual'],
-  'Status': ['Estado', 'Status'],
-  'Change': ['Cambiar', 'Alterar'],
   'Script health': ['Estado del script', 'Saúde do script'],
   'Site compatibility': ['Compatibilidad del sitio', 'Compatibilidade do site'],
   'Protection layer': ['Capa de protección', 'Camada de proteção'],
@@ -8989,7 +8976,6 @@ const TRANSLATIONS = {
   'Favorites and not-interested choices stay on this device.': ['Los favoritos y las opciones de no me interesa se quedan en este dispositivo.', 'Os favoritos e as escolhas de não tenho interesse ficam neste dispositivo.'],
   'Channel keywords and private notes stay on this device.': ['Las palabras clave de canal y las notas privadas se quedan en este dispositivo.', 'As palavras-chave de canal e as notas privadas ficam neste dispositivo.'],
   'Sanitized in-memory diagnostics; query strings are never retained.': ['Diagnósticos en memoria y depurados; las cadenas de consulta nunca se conservan.', 'Diagnósticos em memória e limpos; as strings de consulta nunca são mantidas.'],
-  'Choose memorable shortcuts that do not conflict.': ['Elige atajos fáciles de recordar que no entren en conflicto.', 'Escolha atalhos fáceis de lembrar que não entrem em conflito.'],
   'Settings stay in your userscript manager. No analytics. No remote code.': ['La configuración se queda en tu gestor de userscripts. Sin analíticas. Sin código remoto.', 'As configurações ficam no seu gerenciador de userscripts. Sem analytics. Sem código remoto.'],
   'Temporarily restore Kick’s native layout and pause Kick Focus hooks without reloading. Restore it from the Focus button or with Ctrl+Shift+F.': ['Restaura temporalmente el diseño nativo de Kick y pausa los enganches de Kick Focus sin recargar. Vuelve a activarlo desde el botón Focus o con Ctrl+Shift+F.', 'Restaura temporariamente o layout nativo do Kick e pausa os ganchos do Kick Focus sem recarregar. Reative pelo botão Focus ou com Ctrl+Shift+F.'],
   'Copy a sanitized summary or run a local self-check.': ['Copia un resumen depurado o ejecuta una comprobación local.', 'Copie um resumo limpo ou execute uma verificação local.'],
@@ -9250,6 +9236,8 @@ const TRANSLATIONS = {
   'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
   'Undo': ['Deshacer', 'Desfazer'],
   'Commands': ['Comandos', 'Comandos'],
+  'Accessibility': ['Accesibilidad', 'Acessibilidade'],
+  'Comfort and readability': ['Comodidad y legibilidad', 'Conforto e legibilidade'],
   'Menu': ['Menú', 'Menu'],
   'Open Kick Focus command menu': ['Abrir el menú de comandos de Kick Focus', 'Abrir o menu de comandos do Kick Focus'],
   'Undo reset': ['Deshacer el restablecimiento', 'Desfazer a reposição'],
@@ -10382,8 +10370,6 @@ function onInterfaceClick(event) {
   if (pageButton) {
     state.currentPage = pageButton.dataset.page;
     clearSettingsSearch();
-    state.shortcutCapture = null;
-    state.shortcutError = '';
     renderSettingsPage();
     state.shadow.querySelector('[data-kf-page]')?.focus();
     return;
@@ -10392,20 +10378,6 @@ function onInterfaceClick(event) {
   const settingButton = event.target.closest('button[data-set]');
   if (settingButton && !settingButton.disabled) {
     updateSetting(settingButton.dataset.set, coerceSetting(settingButton.dataset.set, settingButton.dataset.value));
-    return;
-  }
-
-  const shortcut = event.target.closest('[data-shortcut]');
-  if (shortcut) {
-    const key = shortcut.dataset.shortcut;
-    if (state.shortcutCapture === key) {
-      state.shortcutCapture = null;
-      state.shortcutError = '';
-    } else {
-      state.shortcutCapture = key;
-      state.shortcutError = '';
-    }
-    renderSettingsPage();
     return;
   }
 
@@ -10567,7 +10539,6 @@ function onInterfaceClick(event) {
     refreshViewerCollectibles();
     renderViewerHubInPlace();
   }
-  else if (action === 'restore-shortcuts') restoreShortcuts();
   else if (action === 'save-local-channel') saveLocalChannelTools();
   else if (action === 'clear-local-channel') clearLocalChannelTools();
   else if (action === 'clear-blocklist') {
@@ -10630,11 +10601,7 @@ function onInterfaceClick(event) {
   else if (action === 'favorite-library-sticker') toggleLibrarySticker(actionTarget, 'favorite');
   else if (action === 'remove-library-sticker') toggleLibrarySticker(actionTarget, 'remove');
   else if (action === 'restore-removed-stickers') restoreRemovedStickers();
-  else if (action === 'cancel-shortcut') {
-    state.shortcutCapture = null;
-    state.shortcutError = '';
-    renderSettingsPage();
-  } else if (action.startsWith('command:')) {
+  else if (action.startsWith('command:')) {
     executeCommand(action.slice(8));
   }
 }
@@ -10786,8 +10753,6 @@ function closeSettings() {
   if (!state.modal || state.modal.hidden) return;
   state.modal.hidden = true;
   syncPageInert();
-  state.shortcutCapture = null;
-  state.shortcutError = '';
   // Fall back to the header button rather than the body: it is the control that
   // opens this surface, so it is where a reader expects to land on the way out.
   if (!restoreFocus(state.lastFocused)) {
@@ -10846,7 +10811,6 @@ function resetSettings(scope) {
     const section = { layout: 'layout', appearance: 'appearance', content: 'content', accessibility: 'accessibility' }[state.currentPage];
     if (section) {
       state.settings = normalizeSettings({ ...state.settings, [section]: DEFAULT_SETTINGS[section] });
-      if (section === 'accessibility') state.settings.shortcuts = { ...DEFAULT_SETTINGS.shortcuts };
       saveSettings('Page reset');
     }
   }
@@ -11725,14 +11689,6 @@ function runSelfCheck() {
     : `Self-check passed: ${checks.length}/${checks.length}. Protection layer: ${layer}. Started ${timing}.`, failures.length > 0);
 }
 
-function restoreShortcuts() {
-  state.settings = normalizeSettings({ ...state.settings, shortcuts: DEFAULT_SETTINGS.shortcuts });
-  state.shortcutCapture = null;
-  state.shortcutError = '';
-  saveSettings('Shortcuts restored');
-  renderSettingsPage();
-}
-
 function clearEnhancedPage() {
   const root = document.documentElement;
   state.chatResizeCleanup?.();
@@ -11910,17 +11866,17 @@ function showToast(message, isError = false, actions = []) {
 
 function commandDefinitions() {
   return [
-    { id: 'panic', label: tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'), description: tr('Temporarily remove enhanced layout and request hooks'), key: 'Ctrl+Shift+F' },
-    { id: 'focus', label: tr(state.runtime.focus ? 'Exit focus mode' : 'Enter focus mode'), description: tr('Maximize the stream and hide side panels'), key: state.settings.shortcuts.focus },
-    { id: 'theater', label: tr(state.runtime.theater ? 'Exit theater mode' : 'Enter theater mode'), description: tr('Hide discovery while keeping chat'), key: 'T' },
-    { id: 'chat', label: tr(state.runtime.chatHidden ? 'Show chat' : 'Hide chat'), description: tr('Toggle the chat panel for this session'), key: state.settings.shortcuts.chat },
-    { id: 'sidebar', label: tr(state.runtime.sidebarHidden ? 'Show sidebar' : 'Hide sidebar'), description: tr('Toggle the discovery rail for this session'), key: state.settings.shortcuts.sidebar },
-    { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur'), key: state.settings.shortcuts.mature },
-    { id: 'density', label: tr(state.settings.layout.density === 'compact' ? 'Use comfortable density' : 'Use compact density'), description: tr('Change discovery spacing and save it'), key: 'D' },
-    { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams'), key: 'G' },
-    { id: 'poor', label: tr(state.settings.content.hideMonetization ? 'Disable Poor mode' : 'Enable Poor mode'), description: tr('Remove spending prompts without changing your Kick account'), key: '' },
-    { id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid'), key: '' },
-    { id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access'), key: state.settings.shortcuts.settings },
+    { id: 'panic', label: tr(state.runtime.suspended ? 'Restore Kick Focus' : 'Pause Kick Focus'), description: tr('Temporarily remove enhanced layout and request hooks') },
+    { id: 'focus', label: tr(state.runtime.focus ? 'Exit focus mode' : 'Enter focus mode'), description: tr('Maximize the stream and hide side panels') },
+    { id: 'theater', label: tr(state.runtime.theater ? 'Exit theater mode' : 'Enter theater mode'), description: tr('Hide discovery while keeping chat') },
+    { id: 'chat', label: tr(state.runtime.chatHidden ? 'Show chat' : 'Hide chat'), description: tr('Toggle the chat panel for this session') },
+    { id: 'sidebar', label: tr(state.runtime.sidebarHidden ? 'Show sidebar' : 'Hide sidebar'), description: tr('Toggle the discovery rail for this session') },
+    { id: 'mature', label: tr(state.runtime.matureVisible ? 'Blur mature thumbnails' : 'Reveal mature thumbnails'), description: tr('Temporarily override mature-card blur') },
+    { id: 'density', label: tr(state.settings.layout.density === 'compact' ? 'Use comfortable density' : 'Use compact density'), description: tr('Change discovery spacing and save it') },
+    { id: 'casino', label: tr(state.settings.content.hideCasino ? 'Show casino content' : 'Hide casino content'), description: tr('Filter clearly labeled casino streams') },
+    { id: 'poor', label: tr(state.settings.content.hideMonetization ? 'Disable Poor mode' : 'Enable Poor mode'), description: tr('Remove spending prompts without changing your Kick account') },
+    { id: 'multistream', label: tr(multistreamOpen() ? 'Close multi-stream' : 'Open multi-stream'), description: tr('Watch several Kick channels in one grid') },
+    { id: 'settings', label: tr('Open Kick Focus settings'), description: tr('Customize layout, appearance, content, and access') },
   ];
 }
 
@@ -11935,7 +11891,7 @@ function renderCommands() {
   // back from that recorded source.
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
   setMarkup(state.commandList, commands.length
-    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" aria-selected="${index === 0}" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div><span class="kf-shortcut">${escapeHtml(command.key)}</span></button>`).join('')
+    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" aria-selected="${index === 0}" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div></button>`).join('')
     : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>');
   localizeInterface();
 }
@@ -12020,21 +11976,6 @@ function onCommandKeydown(event) {
   }
 }
 
-function eventShortcut(event) {
-  const parts = [];
-  if (event.ctrlKey) parts.push('Ctrl');
-  if (event.altKey) parts.push('Alt');
-  if (event.shiftKey) parts.push('Shift');
-  if (event.metaKey) parts.push('Meta');
-  const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
-  if (!['Control','Alt','Shift','Meta'].includes(key)) parts.push(key);
-  return parts.join('+');
-}
-
-function isTypingTarget(target) {
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
-}
-
 /**
  * Keep Tab inside whichever overlay is on top.
  *
@@ -12102,6 +12043,19 @@ function trapFocus(event) {
   return false;
 }
 
+/**
+ * The only key this build claims from the page, and Escape inside its own
+ * surfaces.
+ *
+ * Kick owns the page keyboard. Six configurable chords used to be captured
+ * here, four of them bare letters, which is a lot of a stranger's keyboard to
+ * take for a viewer mod. Every action they reached is on the command menu,
+ * which now has a button in the header.
+ *
+ * Ctrl+Shift+F stays because it is the one binding whose value is that it
+ * works when the interface itself is in the way. It is fixed rather than
+ * configurable, and the same action sits on the command menu beside the rest.
+ */
 function onGlobalKeydown(event) {
   if (!state.shadow) return;
   if (event.ctrlKey && event.shiftKey && String(event.key).toLowerCase() === 'f') {
@@ -12110,49 +12064,6 @@ function onGlobalKeydown(event) {
     togglePanicSwitch();
     return;
   }
-  if (state.shortcutCapture) {
-    // Tab is left alone so capture is not a keyboard trap. Every other key is
-    // swallowed as a shortcut candidate, and Tab used to be too, which meant
-    // the only way out was Escape and the Cancel button beside the row had
-    // become unreachable. A shortcut bound to a bare Tab would take Tab away
-    // from the whole page anyway, so nothing is lost by refusing it here.
-    if (event.key === 'Tab') return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      state.shortcutCapture = null;
-      state.shortcutError = '';
-      renderSettingsPage();
-      return;
-    }
-    const shortcut = eventShortcut(event);
-    if (!shortcut) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const conflictKey = findShortcutConflict(state.settings.shortcuts, state.shortcutCapture, shortcut);
-    if (conflictKey) {
-      const labels = {
-        command: 'Open command menu',
-        focus: 'Toggle focus mode',
-        chat: 'Toggle chat',
-        sidebar: 'Toggle sidebar',
-        settings: 'Open settings',
-        mature: 'Reveal mature thumbnails',
-      };
-      state.shortcutError = trf('{shortcut} is already used by {action}.', {
-        shortcut,
-        action: tr(labels[conflictKey] || conflictKey),
-      });
-      renderSettingsPage();
-      return;
-    }
-    state.settings = normalizeSettings({ ...state.settings, shortcuts: { ...state.settings.shortcuts, [state.shortcutCapture]: shortcut } });
-    state.shortcutCapture = null;
-    state.shortcutError = '';
-    saveSettings('Shortcut saved');
-    renderSettingsPage();
-    return;
-  }
-
   // Escape cancels the innermost open surface, off the same ladder the focus
   // trap uses. Closing all of Settings from a confirmation prompt discards the
   // page the user was working on to answer a question they only declined.
@@ -12167,19 +12078,7 @@ function onGlobalKeydown(event) {
       return;
     }
   }
-  if (trapFocus(event)) return;
-
-  const shortcut = eventShortcut(event);
-  const isGlobalCombo = shortcut === state.settings.shortcuts.command || shortcut === state.settings.shortcuts.settings;
-  const actualTarget = event.composedPath?.()[0] || event.target;
-  if (isTypingTarget(actualTarget) && !isGlobalCombo) return;
-  const action = Object.entries(state.settings.shortcuts).find(([, value]) => value.toLowerCase() === shortcut.toLowerCase())?.[0];
-  if (!action) return;
-  event.preventDefault();
-  event.stopPropagation();
-  if (action === 'command') openCommandMenu();
-  else if (action === 'settings') openSettings();
-  else executeCommand(action);
+  trapFocus(event);
 }
 
 const HEADER_CONTROL_CSS = `

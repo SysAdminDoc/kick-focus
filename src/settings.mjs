@@ -83,7 +83,7 @@ export function createSettings(host) {
     ['appearance', 'Appearance', 'Theme, color, and scale', 'sliders'],
     ['content', 'Content & Ads', 'Privacy, filters, and playback', 'shield'],
     ['emotes', 'Emotes', 'Library, favorites, and groups', 'smile'],
-    ['accessibility', 'Accessibility & Shortcuts', 'Comfort and shortcuts', 'keyboard'],
+    ['accessibility', 'Accessibility', 'Comfort and readability', 'keyboard'],
     ['viewer', 'Viewer', 'Read-only account signals', 'user'],
     ['about', 'About', 'Status, privacy, and diagnostics', 'info'],
   ];
@@ -679,13 +679,8 @@ export function createSettings(host) {
 
   function renderAccessibilityPage() {
     const value = state.settings.accessibility;
-    const shortcuts = state.settings.shortcuts;
-    const rows = [
-      ['command','Open command menu'],['focus','Toggle focus mode'],['chat','Toggle chat'],
-      ['sidebar','Toggle sidebar'],['settings','Open settings'],['mature','Reveal mature thumbnails'],
-    ];
     return `
-      ${pageHeader('Accessibility & Shortcuts', 'Improve comfort and keep core actions within reach.', 'Text scale', `${value.textSize}%`)}
+      ${pageHeader('Accessibility', 'Improve comfort and keep core actions within reach.', 'Text scale', `${value.textSize}%`)}
       <section class="kf-panel">
         ${row('Reduce motion', 'Minimize non-essential animations and transitions.', toggle('accessibility.reduceMotion', value.reduceMotion, { label: 'Reduce motion' }))}
         ${row('High-contrast controls', 'Increase separation for controls, borders, and surfaces.', toggle('accessibility.highContrast', value.highContrast, { label: 'High-contrast controls' }))}
@@ -695,13 +690,7 @@ export function createSettings(host) {
         ${row('Text size', 'Scale text in the main Kick content area.', segmented('accessibility.textSize', value.textSize, [[90,'90%'],[100,'100%'],[110,'110%'],[120,'120%']]))}
         ${row('Caption background opacity', 'Set the preferred caption background strength.', range('accessibility.captionOpacity', value.captionOpacity, 0, 100, '0%', '100%', '%'), { wide: true })}
       </section>
-      <section class="kf-subsection"><div class="kf-subsection-header"><div><h3>Keyboard shortcuts</h3><p>Choose memorable shortcuts that do not conflict.</p></div><button type="button" class="kf-button kf-button-small" data-action="restore-shortcuts">Restore defaults</button></div>
-        <div class="kf-panel"><table class="kf-table"><thead><tr><th>Action</th><th>Current shortcut</th><th>Status</th><th class="kf-table-actions">Change</th></tr></thead><tbody>${rows.map(([key,label]) => {
-          const conflict = state.shortcutError && state.shortcutCapture === key;
-          const capture = state.shortcutCapture === key && !state.shortcutError;
-          return `<tr class="${conflict ? 'kf-conflict' : ''}"><td>${label}</td><td><span class="kf-shortcut">${capture ? 'Press keys, or Escape to cancel' : escapeHtml(shortcuts[key])}</span></td><td>${conflict ? `<span class="kf-conflict-message">${escapeHtml(state.shortcutError)}</span>` : capture ? 'Listening' : '<span class="kf-active">OK</span>'}</td><td class="kf-table-actions">${conflict ? '<button type="button" class="kf-button kf-button-small" data-action="cancel-shortcut">Cancel</button>' : `<button type="button" class="kf-button kf-button-small" data-shortcut="${key}">${capture ? 'Cancel' : 'Change'}</button>`}</td></tr>`;
-        }).join('')}</tbody></table></div>
-      </section>`;
+`;
   }
 
   /**

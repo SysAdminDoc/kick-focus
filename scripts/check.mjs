@@ -1007,6 +1007,38 @@ const checks = [
       && region.includes('new AbortController()')
       && !region.includes('kfChatResizeBound');
   })()],
+  ['the page keyboard belongs to Kick, apart from the pause chord', (() => {
+    // Six configurable chords used to be captured here, four of them bare
+    // letters. Kick owns the page keyboard and has its own bindings; a viewer
+    // mod taking letters from it is not a preference, it is a collision waiting
+    // for the day Kick binds the same one.
+    const region = extractFunction(source, 'onGlobalKeydown');
+    if (!region) return false;
+    // Exactly one chord is claimed, and it is the pause switch, which is fixed
+    // rather than configurable because its value is working when the interface
+    // is in the way.
+    const modifiers = region.match(/event\.(?:ctrlKey|altKey|metaKey)/g) || [];
+    return modifiers.length === 1
+      && region.includes("String(event.key).toLowerCase() === 'f'")
+      && region.includes('togglePanicSwitch()')
+      // Standard keys still work inside this build's own surfaces.
+      && region.includes("event.key === 'Escape'")
+      && region.includes('trapFocus(event)')
+      // And nothing anywhere still reads or writes a shortcut table.
+      && !source.includes('settings.shortcuts')
+      && !source.includes('function eventShortcut')
+      && !source.includes('function normalizeShortcut')
+      && !source.includes('function findShortcutConflict')
+      && !source.includes('data-shortcut=')
+      // Every action those chords reached is still reachable by pointer: the
+      // command menu carries them and the header carries the command menu.
+      && source.includes('data-kf-header-commands')
+      && source.includes("id: 'focus'")
+      && source.includes("id: 'chat'")
+      && source.includes("id: 'sidebar'")
+      && source.includes("id: 'mature'")
+      && source.includes("id: 'panic'");
+  })()],
   ['pausing hands Kick back every surface, in an order that can release the page', (() => {
     const region = extractFunction(source, 'clearEnhancedPage');
     const grid = region.indexOf('closeMultistream()');

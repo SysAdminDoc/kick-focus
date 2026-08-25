@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Removed
+
+- Custom keyboard shortcuts. Kick Focus used to capture six configurable chords, four of them bare letters, on a site that has its own keyboard behaviour. Every action they reached is on the command menu, and the command menu now has a **Menu** button in Kick's header beside **Focus**. `Ctrl+Shift+F` still pauses and resumes, because that one is worth having when the interface itself is in the way. A profile that stored custom shortcuts loses them on the next load without error, and the Accessibility page is just Accessibility now.
+
 ### Changed
 
 - Pausing Kick Focus now closes the multi-stream grid with everything else and hands Kick's chat separator back exactly as it was found, including its keyboard. Pausing used to leave the grid on screen over a page that had already been made reachable again, and left a focusable separator behind that a paused mod was still steering.
