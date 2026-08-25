@@ -2787,7 +2787,7 @@ function cleanStickerGroups(input) {
     ids.add(id);
     names.add(normalizedName);
     groups.push({ id, name });
-    if (groups.length >= 40) break;
+    if (groups.length >= STICKER_GROUP_LIMIT) break;
   }
   return groups;
 }
@@ -2809,6 +2809,16 @@ function cleanStickerAssignments(input, groupIds) {
 }
 
 export const STICKER_LIBRARY_LIMIT = 2400;
+
+/**
+ * How many custom emote groups a library may hold.
+ *
+ * Named for the same reason `MULTISTREAM_MAX` is: the number was written out
+ * six times, including inside the toast that reports it and inside that
+ * toast's two translations, so raising it would have left three of them
+ * saying something untrue.
+ */
+export const STICKER_GROUP_LIMIT = 40;
 
 /**
  * Evict the recorded library down to `limit` without discarding anything the

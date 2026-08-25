@@ -5457,16 +5457,19 @@ function savePickerStickerGroup(organizer, editor) {
     input?.focus?.();
     return;
   }
+  // The ceiling is checked before the name, matching the Library surface. The
+  // other order told a user at the ceiling that the name was taken, which reads
+  // as "pick another name" for a state where no name would have worked.
+  if (editor === 'new' && state.stickerPreferences.groups.length >= STICKER_GROUP_LIMIT) {
+    showToast(trf('The emote group limit is {limit}.', { limit: STICKER_GROUP_LIMIT }), true);
+    return;
+  }
   if (state.stickerPreferences.groups.some((group) => group.id !== editor && group.name.toLowerCase() === name.toLowerCase())) {
     showToast('That emote group already exists.', true);
     input?.focus?.();
     return;
   }
   if (editor === 'new') {
-    if (state.stickerPreferences.groups.length >= 40) {
-      showToast('The emote group limit is 40.', true);
-      return;
-    }
     const id = `group_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     state.stickerPreferences.groups.push({ id, name });
     state.stickerPreferences.activeGroup = id;
@@ -8851,7 +8854,7 @@ const TRANSLATIONS = {
     'Local channel tools saved.': 'Herramientas locales del canal guardadas.',
     'Local channel tools cleared.': 'Herramientas locales del canal borradas.',
     'Enter a custom emote group name.': 'Escribe un nombre para el grupo personalizado de emotes.',
-    'The emote group limit is 40.': 'El límite de grupos de emotes es 40.',
+    'The emote group limit is {limit}.': 'El límite de grupos de emotes es {limit}.',
     'That emote group already exists.': 'Ese grupo de emotes ya existe.',
     'Enter a valid emote group name.': 'Escribe un nombre de grupo de emotes válido.',
     'Board saved.': 'Tablero guardado.',
@@ -9582,7 +9585,7 @@ const TRANSLATIONS = {
     'Local channel tools saved.': 'Ferramentas locais do canal salvas.',
     'Local channel tools cleared.': 'Ferramentas locais do canal limpas.',
     'Enter a custom emote group name.': 'Digite um nome para o grupo personalizado de emotes.',
-    'The emote group limit is 40.': 'O limite de grupos de emotes é 40.',
+    'The emote group limit is {limit}.': 'O limite de grupos de emotes é {limit}.',
     'That emote group already exists.': 'Esse grupo de emotes já existe.',
     'Enter a valid emote group name.': 'Digite um nome de grupo de emotes válido.',
     'Board saved.': 'Painel salvo.',
@@ -9874,7 +9877,7 @@ function buildInterface() {
         <header class="kf-header">
           <div class="kf-brand"><img class="kf-brand-mark" src="__KICK_FOCUS_ICON__" alt=""><span>Kick Focus</span><span class="kf-badge">Premium</span></div>
           <span class="kf-sr-only" id="kf-settings-title">Kick Focus settings</span>
-          <div class="kf-save" data-kf-save-status data-error="false">Autosaved</div>
+          <div class="kf-save" data-kf-save-status data-error="false" role="status">Autosaved</div>
           <button class="kf-icon-button" type="button" data-action="close-settings" aria-label="Close settings">${uiIcon('close')}</button>
         </header>
         <div class="kf-body">
@@ -9882,7 +9885,7 @@ function buildInterface() {
             <div class="kf-nav-search"><input type="search" class="kf-input" data-kf-settings-search placeholder="Search settings" aria-label="Search settings" aria-controls="kf-settings-page"></div>
             ${NAV_ITEMS.map(([id, title, description, icon]) => `<button type="button" data-page="${id}">${uiIcon(icon)}<span class="kf-nav-copy"><strong>${title}</strong><span>${description}</span><span class="kf-nav-earned" data-kf-nav-earned></span></span></button>`).join('')}
           </nav>
-          <main class="kf-page" data-kf-page tabindex="-1"></main>
+          <main class="kf-page" id="kf-settings-page" data-kf-page tabindex="-1"></main>
         </div>
         <footer class="kf-footer">
           <div class="kf-footer-left">
@@ -10103,6 +10106,7 @@ const settingsSurface = createSettings({
   settingsFocusSelector,
   startChannelEmoteImport,
   state,
+  STICKER_GROUP_LIMIT,
   STICKER_LIBRARY_LIMIT,
   stickerChangedSinceCapture,
   storageDiagnostics,
@@ -10659,8 +10663,8 @@ function createStickerGroup() {
     input?.focus?.();
     return;
   }
-  if (state.stickerPreferences.groups.length >= 40) {
-    showToast('The emote group limit is 40.', true);
+  if (state.stickerPreferences.groups.length >= STICKER_GROUP_LIMIT) {
+    showToast(trf('The emote group limit is {limit}.', { limit: STICKER_GROUP_LIMIT }), true);
     return;
   }
   if (state.stickerPreferences.groups.some((group) => group.name.toLowerCase() === name.toLowerCase())) {

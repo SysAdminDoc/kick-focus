@@ -644,7 +644,7 @@ export function createMultistream(host) {
     } catch {
       // Denied, or no activation left. Nothing changes, and the grid keeps its
       // own chat exactly where it was.
-      showToast(tr('Kick Focus could not open the pop-out chat window.'));
+      showToast(tr('Kick Focus could not open the pop-out chat window.'), true);
       return false;
     }
     chatWindow = pip;

@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import { HIDEABLE_ELEMENTS, colorContrastRatio } from '../src/core.mjs';
+import { HIDEABLE_ELEMENTS, STICKER_GROUP_LIMIT, colorContrastRatio } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -543,8 +543,13 @@ test('emote organization has a direct route, visible search, and batch controls'
     'batch selection status must be announced');
   assert.match(runtime, /input\[data-kf-sticker-group-name\]/,
     'group renames must save when the field changes');
-  assert.match(runtime, /groups\.length >= 40/,
+  // Reads the constant rather than spelling the number: the literal used to
+  // appear six times, including inside the toast that reports it and inside
+  // that toast's two translations.
+  assert.equal(STICKER_GROUP_LIMIT, 40, 'the shipped group limit moved without this test noticing');
+  assert.match(runtime, /groups\.length >= STICKER_GROUP_LIMIT/,
     'the UI must stop cleanly at the stored group limit');
+  assert.ok(!/groups\.length >= 40/.test(runtime), 'a bare 40 is back beside the named limit');
   assert.match(runtime, /renameStickerGroup\(event\.target\)/,
     'Enter must commit a group rename directly');
 });

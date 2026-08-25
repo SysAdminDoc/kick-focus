@@ -153,6 +153,11 @@ async function render() {
     ? approved ? 'This exact feed is approved' : 'Allow this exact origin and feed URL'
     : 'Configure an HTTPS feed in settings first';
   els.revokeBlocklist.hidden = !approvedUrl;
+  // Re-enabled here, like every other button this render owns. The click
+  // handler disables it and only calls render(), so a failed revoke used to
+  // leave it visible and dead to both mouse and keyboard until the popup was
+  // closed and reopened.
+  els.revokeBlocklist.disabled = false;
 
   if (!onKick) {
     els.note.textContent = 'Open a Kick tab to change settings.';

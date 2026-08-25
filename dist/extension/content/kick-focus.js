@@ -1674,7 +1674,7 @@ if (!id || !name || ids.has(id) || names.has(normalizedName)) continue;
 ids.add(id);
 names.add(normalizedName);
 groups.push({ id, name });
-if (groups.length >= 40) break;
+if (groups.length >= STICKER_GROUP_LIMIT) break;
 }
 return groups;
 }
@@ -1694,6 +1694,7 @@ if (assignments.length >= 2400) break;
 return assignments;
 }
 const STICKER_LIBRARY_LIMIT = 2400;
+const STICKER_GROUP_LIMIT = 40;
 function evictStickerLibrary(library, limit = STICKER_LIBRARY_LIMIT, protectedKeys = new Set()) {
 const list = Array.isArray(library) ? library : [...library];
 if (list.length <= limit) return { library: list, evicted: 0 };
@@ -5252,7 +5253,7 @@ let pip;
 try {
 pip = await window.documentPictureInPicture.requestWindow({ width: 420, height: 620 });
 } catch {
-showToast(tr('Kick Focus could not open the pop-out chat window.'));
+showToast(tr('Kick Focus could not open the pop-out chat window.'), true);
 return false;
 }
 chatWindow = pip;
@@ -5554,6 +5555,7 @@ setMarkup,
 settingsFocusSelector,
 startChannelEmoteImport,
 state,
+STICKER_GROUP_LIMIT,
 STICKER_LIBRARY_LIMIT,
 stickerChangedSinceCapture,
 storageDiagnostics,
@@ -5878,7 +5880,7 @@ const disabled = chosen.size ? '' : ' disabled';
       <div class="kf-subsection-header"><div><h3>${filter === 'mine' ? 'My emotes' : 'Library'}</h3><p data-kf-sticker-library-summary>${escapeHtml(stickerLibrarySummary())}</p>${inventory ? `<p class="kf-meta" data-kf-emote-inventory data-kf-no-translate>${escapeHtml(inventory)}</p>` : ''}</div><div class="kf-button-group"><button type="button" class="kf-button kf-button-small${filter === 'mine' ? ' kf-button-primary' : ''}" data-action="show-my-emotes" aria-pressed="${filter === 'mine'}">${escapeHtml(myEmotesLabel)}</button><button type="button" class="kf-button kf-button-small" data-action="export">Export</button><button type="button" class="kf-button kf-button-small" data-action="clear-sticker-preferences">Reset</button></div></div>
       <div class="kf-emote-catalog-browser"><div><h4>Add emotes from a channel</h4><p>Paste a channel name or Kick URL. Access rules still apply.</p></div><div class="kf-emote-catalog-form"><input class="kf-text" value="${escapeHtml(state.runtime.emoteCatalogSlug)}" data-kf-emote-catalog-input placeholder="Channel name or kick.com URL" aria-label="Channel emote catalog"><button type="button" class="kf-button kf-button-primary" data-action="import-channel-emotes"${state.runtime.emoteCatalogLoading ? ' disabled' : ''}>${state.runtime.emoteCatalogLoading ? 'Loading…' : 'Add emotes'}</button></div><p class="kf-emote-catalog-status" data-kf-emote-catalog-status data-error="${state.runtime.emoteCatalogError}"${state.runtime.emoteCatalogStatus ? '' : ' hidden'}>${escapeHtml(state.runtime.emoteCatalogStatus)}</p></div>
       <div class="kf-sticker-library-workspace">
-        <aside class="kf-sticker-group-panel" aria-label="Custom emote groups"><div class="kf-sticker-group-heading"><h4>Groups</h4><span>${state.stickerPreferences.groups.length}/40</span></div><p>Create a group, then select emotes and move them together.</p><div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="Group name" aria-label="New emote group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : '<div class="kf-sticker-group-empty">No groups yet.</div>'}</aside>
+        <aside class="kf-sticker-group-panel" aria-label="Custom emote groups"><div class="kf-sticker-group-heading"><h4>Groups</h4><span data-kf-no-translate>${state.stickerPreferences.groups.length}/${STICKER_GROUP_LIMIT}</span></div><p>Create a group, then select emotes and move them together.</p><div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="Group name" aria-label="New emote group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : '<div class="kf-sticker-group-empty">No groups yet.</div>'}</aside>
         <div class="kf-sticker-library-main">
           <div class="kf-sticker-library-controls"><input class="kf-text" type="search" value="${escapeHtml(state.runtime.stickerLibraryQuery)}" data-kf-sticker-library-search placeholder="Search emotes or Kick groups" aria-label="Search recorded emotes"><select class="kf-select" data-kf-sticker-library-filter aria-label="Filter recorded emotes">${filters.map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(filter, value) ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div>
           <div class="kf-sticker-library-bulk" aria-live="polite"><strong>${chosen.size} selected</strong><button type="button" class="kf-button kf-button-small" data-action="select-visible-stickers">Select shown</button><button type="button" class="kf-button kf-button-small" data-action="clear-library-selection"${disabled}>Clear</button><select class="kf-select" data-kf-sticker-bulk-group aria-label="Group for selected emotes"${disabled}>${stickerGroupOptions(state.runtime.stickerLibraryBulkGroup)}</select><button type="button" class="kf-button kf-button-small kf-button-primary" data-action="move-selected-stickers"${disabled}>Move</button><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-selected-stickers"${disabled}>Remove</button></div>
@@ -7016,7 +7018,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              854884') || 0;
+const BUNDLE_BYTES = Number('              855216') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -10629,16 +10631,16 @@ showToast('Enter a custom emote group name.', true);
 input?.focus?.();
 return;
 }
+if (editor === 'new' && state.stickerPreferences.groups.length >= STICKER_GROUP_LIMIT) {
+showToast(trf('The emote group limit is {limit}.', { limit: STICKER_GROUP_LIMIT }), true);
+return;
+}
 if (state.stickerPreferences.groups.some((group) => group.id !== editor && group.name.toLowerCase() === name.toLowerCase())) {
 showToast('That emote group already exists.', true);
 input?.focus?.();
 return;
 }
 if (editor === 'new') {
-if (state.stickerPreferences.groups.length >= 40) {
-showToast('The emote group limit is 40.', true);
-return;
-}
     const id = `group_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 state.stickerPreferences.groups.push({ id, name });
 state.stickerPreferences.activeGroup = id;
@@ -13637,7 +13639,7 @@ es: {
 'Local channel tools saved.': 'Herramientas locales del canal guardadas.',
 'Local channel tools cleared.': 'Herramientas locales del canal borradas.',
 'Enter a custom emote group name.': 'Escribe un nombre para el grupo personalizado de emotes.',
-'The emote group limit is 40.': 'El límite de grupos de emotes es 40.',
+'The emote group limit is {limit}.': 'El límite de grupos de emotes es {limit}.',
 'That emote group already exists.': 'Ese grupo de emotes ya existe.',
 'Enter a valid emote group name.': 'Escribe un nombre de grupo de emotes válido.',
 'Board saved.': 'Tablero guardado.',
@@ -14367,7 +14369,7 @@ pt: {
 'Local channel tools saved.': 'Ferramentas locais do canal salvas.',
 'Local channel tools cleared.': 'Ferramentas locais do canal limpas.',
 'Enter a custom emote group name.': 'Digite um nome para o grupo personalizado de emotes.',
-'The emote group limit is 40.': 'O limite de grupos de emotes é 40.',
+'The emote group limit is {limit}.': 'O limite de grupos de emotes é {limit}.',
 'That emote group already exists.': 'Esse grupo de emotes já existe.',
 'Enter a valid emote group name.': 'Digite um nome de grupo de emotes válido.',
 'Board saved.': 'Painel salvo.',
@@ -14598,7 +14600,7 @@ const shadow = root.attachShadow({ mode: 'open' });
         <header class="kf-header">
           <div class="kf-brand"><img class="kf-brand-mark" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkElEQVR42u2XSwqAMAxEZ18P4L28/00E3QmKVPOfioHs2sxb5AtcrLVpi3T0LFq8C5ElfguRLX6CqBI/IIYDWNa562EAT8JaEESISyAgFfd+D89gmn+vASzJqgKwiEtiqAGs5WcC8OoBP8C4AOVJmFKG5Y2IohWXDyOKcUyxkFCsZN/dissPE4rTjOI4rTrPd9CSNAqXgFAlAAAAAElFTkSuQmCC" alt=""><span>Kick Focus</span><span class="kf-badge">Premium</span></div>
           <span class="kf-sr-only" id="kf-settings-title">Kick Focus settings</span>
-          <div class="kf-save" data-kf-save-status data-error="false">Autosaved</div>
+          <div class="kf-save" data-kf-save-status data-error="false" role="status">Autosaved</div>
           <button class="kf-icon-button" type="button" data-action="close-settings" aria-label="Close settings">${uiIcon('close')}</button>
         </header>
         <div class="kf-body">
@@ -14606,7 +14608,7 @@ const shadow = root.attachShadow({ mode: 'open' });
             <div class="kf-nav-search"><input type="search" class="kf-input" data-kf-settings-search placeholder="Search settings" aria-label="Search settings" aria-controls="kf-settings-page"></div>
             ${NAV_ITEMS.map(([id, title, description, icon]) => `<button type="button" data-page="${id}">${uiIcon(icon)}<span class="kf-nav-copy"><strong>${title}</strong><span>${description}</span><span class="kf-nav-earned" data-kf-nav-earned></span></span></button>`).join('')}
           </nav>
-          <main class="kf-page" data-kf-page tabindex="-1"></main>
+          <main class="kf-page" id="kf-settings-page" data-kf-page tabindex="-1"></main>
         </div>
         <footer class="kf-footer">
           <div class="kf-footer-left">
@@ -14806,6 +14808,7 @@ setMarkup,
 settingsFocusSelector,
 startChannelEmoteImport,
 state,
+STICKER_GROUP_LIMIT,
 STICKER_LIBRARY_LIMIT,
 stickerChangedSinceCapture,
 storageDiagnostics,
@@ -15262,8 +15265,8 @@ showToast('Enter a custom emote group name.', true);
 input?.focus?.();
 return;
 }
-if (state.stickerPreferences.groups.length >= 40) {
-showToast('The emote group limit is 40.', true);
+if (state.stickerPreferences.groups.length >= STICKER_GROUP_LIMIT) {
+showToast(trf('The emote group limit is {limit}.', { limit: STICKER_GROUP_LIMIT }), true);
 return;
 }
 if (state.stickerPreferences.groups.some((group) => group.name.toLowerCase() === name.toLowerCase())) {
