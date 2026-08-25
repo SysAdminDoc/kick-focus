@@ -5,6 +5,9 @@ import { AD_HOSTS, TELEMETRY_HOSTS, cancellableTelemetryHosts, VERSION } from '.
 import { renderIcon } from './icons.mjs';
 import { stripComments } from './strip-comments.mjs';
 import { createZip } from './zip.mjs';
+import { requireSupportedEngine } from './engine.mjs';
+
+requireSupportedEngine();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative) => readFile(resolve(root, relative), 'utf8');

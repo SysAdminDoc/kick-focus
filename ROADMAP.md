@@ -117,13 +117,6 @@ None open.
   Acceptance: Name, description, action title, popup controls, errors, and status text have key-parity in en, es, and pt_BR; the popup sets lang and dir; stored pt remains compatible while document metadata emits pt-BR; packaging fails on a missing or unused key.
   Complexity: M
 
-- [ ] P2 — R-113: Restrict the build to the supported Node 24 LTS line
-  Why: node >=24.19 also admits end-of-life Node 25, while Node 26 is not yet the project’s LTS target.
-  Evidence: package.json engines; https://nodejs.org/en/about/previous-releases; https://nodejs.org/en/blog/release/v24.19.0
-  Touches: package.json, scripts/check.mjs, README.md setup text
-  Acceptance: The engine range is >=24.19 <25 or equivalent; verify and release checks refuse unsupported majors with a clear message; Node 24.19 and the current Node 24 LTS pass the full suite.
-  Complexity: S
-
 - [ ] P2 — R-114: Extract the emote workspace from runtime behind a host factory
   Why: src/runtime.js is 12,864 lines and the emote picker, library, groups, selection, restore, and completion state now form the largest coherent boundary left in the monolith.
   Evidence: src/runtime.js emote workspace; src/settings.mjs createSettings factory; scripts/build.mjs concatenation order

@@ -4,6 +4,11 @@ import { execFile } from 'node:child_process';
 import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, normalizeBlocklistUrl, VERSION } from '../src/core.mjs';
 import { LIBRARY_SEED_BYTES } from '../src/storage.mjs';
 import { ONLY_ACCOUNT_WRITE, SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
+import { requireSupportedEngine, SUPPORTED_ENGINE } from './engine.mjs';
+
+// Before anything is judged: a gate run on an unsupported interpreter proves
+// nothing about the one this ships for.
+requireSupportedEngine();
 
 const exportProbe = buildSettingsExport({
   settings: { probe: 1 }, stickers: 1, usage: 1, multistream: 1, channelLayouts: 1,

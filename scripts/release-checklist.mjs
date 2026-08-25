@@ -19,6 +19,9 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 import { MANDATORY_CHROMIUM_CHECKS, MANDATORY_FIREFOX_CHECKS, mandatoryLiveFailures } from './live-contract.mjs';
+import { requireSupportedEngine } from './engine.mjs';
+
+requireSupportedEngine();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Far enough left of every real display to be off all of them, and the same

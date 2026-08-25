@@ -27,7 +27,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Everything the build reads: the sources, and the scripts that decide how they
 // are composed. scripts/zip.mjs belongs here because build.mjs imports it and
 // the archives are artifacts the tests can read.
-const INPUTS = ['src', 'scripts/build.mjs', 'scripts/strip-comments.mjs', 'scripts/icons.mjs', 'scripts/zip.mjs'];
+const INPUTS = ['src', 'scripts/build.mjs', 'scripts/strip-comments.mjs', 'scripts/icons.mjs', 'scripts/zip.mjs', 'scripts/engine.mjs'];
 
 // Every built file the suite judges. The userscript is written first and the
 // companion trees afterwards, so a build that dies in between leaves the

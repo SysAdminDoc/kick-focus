@@ -204,7 +204,7 @@ Kick changes frequently. The most brittle hooks are the sidebar and chat selecto
 
 ## Build and verify
 
-No runtime or development dependencies are required beyond Node.js 24.19+, which is the `engines` floor (the test suite uses `--experimental-test-tag-filter`).
+No runtime or development dependencies are required beyond Node.js on the 24 LTS line: `>=24.19.0 <25`, which is the `engines` range. The upper bound is deliberate rather than lazy. The suite uses `--experimental-test-tag-filter`, and an experimental flag is allowed to change behaviour between majors, so the build and the gates refuse an unsupported major with a message instead of finding out during a release.
 
 ```powershell
 npm run build              # userscript + dist/extension/ + shareable zip
