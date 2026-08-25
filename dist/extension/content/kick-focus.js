@@ -7013,7 +7013,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              855772') || 0;
+const BUNDLE_BYTES = Number('              855756') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8091,22 +8091,24 @@ const SITE_CSS = `
     #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; }
 
+
+
+  html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; }
+
+  html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
+
+
+
+  html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; }
+  html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
+  html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
+
+  html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible {
+    outline: var(--kf-focus-ring) !important;
+    outline-offset: 3px !important;
+  }
+
   @media (min-width: 1024px) {
-    html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; }
-
-    html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
-
-
-
-    html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; }
-    html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
-    html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
-
-    html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible {
-      outline: var(--kf-focus-ring) !important;
-      outline-offset: 3px !important;
-    }
-
     html[data-kf-focus="true"] :is(main, #main-container) {
       width: 100% !important;
       max-width: none !important;

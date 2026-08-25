@@ -680,7 +680,60 @@ const onlyWritesAreTheFollowGesture = (bundle) => {
   return bundle.slice(Math.max(0, undo - 600), undo).includes('undoChatStickerSave');
 };
 
+/**
+ * The body of **every** `@media (<query>)` block in a stylesheet, by brace
+ * matching rather than by regex.
+ *
+ * Every, not the first: SITE_CSS carries two `(min-width: 1024px)` blocks, and
+ * a gate that read only the first reported green while a focus outline sat in
+ * the second. Nested blocks are counted, so a `:is()` or a nested at-rule
+ * cannot end a region early.
+ */
+const mediaBlockBodies = (css, query) => {
+  const bodies = [];
+  const needle = `@media ${query}`;
+  let from = 0;
+  for (;;) {
+    const head = css.indexOf(needle, from);
+    if (head === -1) return bodies;
+    const open = css.indexOf('{', head);
+    if (open === -1) return bodies;
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < css.length; i += 1) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') {
+        depth -= 1;
+        if (depth === 0) { close = i; break; }
+      }
+    }
+    if (close === -1) return bodies;
+    bodies.push(css.slice(open + 1, close));
+    from = close;
+  }
+};
+
+/**
+ * An accessibility setting must not be conditional on viewport width. Layout
+ * rules may be; a focus outline and a touch target may not.
+ */
+const ACCESSIBILITY_ATTRIBUTES = [
+  'data-kf-large-targets',
+  'data-kf-contrast',
+  'data-kf-control-contrast',
+  'data-kf-focus-visible',
+];
+const widthGatedAccessibility = (css, query = '(min-width: 1024px)') => {
+  const bodies = mediaBlockBodies(css, query);
+  return ACCESSIBILITY_ATTRIBUTES.filter((attribute) => bodies.some((body) => body.includes(attribute)));
+};
+const gatedAccessibility = widthGatedAccessibility(source);
+
 const checks = [
+  [`no accessibility setting is gated on viewport width${gatedAccessibility.length ? `: ${gatedAccessibility.join(', ')}` : ''}`,
+    gatedAccessibility.length === 0
+    // And the rules are present at all, so deleting them is not a way to pass.
+    && ACCESSIBILITY_ATTRIBUTES.every((attribute) => source.includes(`html[${attribute}="true"]`))],
   ['every account write in every bundle is the follow gesture or the undo that reverses it',
     bundleTargets.every(([, bundleSource]) => onlyWritesAreTheFollowGesture(bundleSource))],
   ['every signed-in journey the live gate names is declared read-only, with a reason a session is needed',
@@ -1408,6 +1461,22 @@ const checks = [
 // ever becomes vacuous (passes on empty/hostile input), its probe returns true
 // and this fails — the gate's proof that it can actually fire.
 const redProbes = [
+  ['the width-gate probe would catch a focus outline moved back inside the desktop block',
+    widthGatedAccessibility('a{b:c}@media (min-width: 1024px){ html[data-kf-focus-visible="true"] :is(button):focus-visible { outline: 1px } }')
+      .join() === 'data-kf-focus-visible'],
+  // The blind spot the first version of this gate had: SITE_CSS carries two
+  // (min-width: 1024px) blocks and it only ever read the first one.
+  ['the width-gate probe reads every desktop block, not only the first',
+    widthGatedAccessibility('@media (min-width: 1024px){ .a { color: red } } @media (min-width: 1024px){ html[data-kf-large-targets="true"] { min-height: 40px } }')
+      .join() === 'data-kf-large-targets'],
+  // Brace matching, not a substring search: a rule *after* the block must read
+  // as outside it, and a nested block must not end the region early.
+  ['the width-gate probe reads a rule after the desktop block as outside it',
+    widthGatedAccessibility('@media (min-width: 1024px){ .a { color: red } } html[data-kf-large-targets="true"] { min-height: 40px }').length === 0],
+  ['the width-gate probe survives a nested block inside the desktop block',
+    widthGatedAccessibility('@media (min-width: 1024px){ @supports (a:b) { .a { color: red } } } html[data-kf-contrast="true"] { color: red }').length === 0],
+  ['the width-gate probe reports nothing when the stylesheet has no such block',
+    widthGatedAccessibility('.a { color: red }').length === 0],
   ['size budget would reject an artifact one byte over',
     overBudgetIn([['a.js', 'x'.repeat(11), 10, 'test']]).length === 1],
   ['size budget accepts an artifact exactly at its budget',

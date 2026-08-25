@@ -2157,28 +2157,36 @@ const SITE_CSS = `
     #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; }
 
+  /* Accessibility settings are not a width. Everything below used to sit inside
+     the desktop layout media query with the wide-viewport layout rules, so
+     Large touch targets, High-contrast text, High-contrast controls and Always
+     show focus outlines all switched themselves off under 1024px — on a snapped
+     half-screen window, which is exactly where a bigger target and a visible
+     outline matter more, not less. The panel's own copies were always
+     unconditional, so the mod's chrome honoured the settings while Kick's page
+     did not. Layout rules stay in the media query below; these do not. */
+  html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; }
+
+  html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
+
+  /* "High-contrast controls" promises separation for controls, borders and
+     surfaces, and for a long time shared one attribute with the text setting
+     above and styled nothing but that text-shadow. Raising the two border
+     tokens is what the promise actually needs: every control edge in this
+     build resolves through them, in Kick's page and in the mod's own chrome,
+     so one declaration per theme reaches all of it. Measured edges sat at
+     1.15 to 2.78 against their surfaces, under the 3:1 that WCAG 1.4.11 asks
+     of a control boundary. */
+  html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; }
+  html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
+  html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
+
+  html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible {
+    outline: var(--kf-focus-ring) !important;
+    outline-offset: 3px !important;
+  }
+
   @media (min-width: 1024px) {
-    html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; }
-
-    html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; }
-
-    /* "High-contrast controls" promises separation for controls, borders and
-       surfaces, and for a long time shared one attribute with the text setting
-       above and styled nothing but that text-shadow. Raising the two border
-       tokens is what the promise actually needs: every control edge in this
-       build resolves through them, in Kick's page and in the mod's own chrome,
-       so one declaration per theme reaches all of it. Measured edges sat at
-       1.15 to 2.78 against their surfaces, under the 3:1 that WCAG 1.4.11 asks
-       of a control boundary. */
-    html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; }
-    html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; }
-    html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; }
-
-    html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible {
-      outline: var(--kf-focus-ring) !important;
-      outline-offset: 3px !important;
-    }
-
     html[data-kf-focus="true"] :is(main, #main-container) {
       width: 100% !important;
       max-width: none !important;
