@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, VERSION } from '../src/core.mjs';
+import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, normalizeBlocklistUrl, VERSION } from '../src/core.mjs';
 import { LIBRARY_SEED_BYTES } from '../src/storage.mjs';
 import { ONLY_ACCOUNT_WRITE, SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
@@ -729,7 +729,82 @@ const widthGatedAccessibility = (css, query = '(min-width: 1024px)') => {
 };
 const gatedAccessibility = widthGatedAccessibility(source);
 
+/**
+ * Do all five copies of the blocklist URL rule actually agree?
+ *
+ * The old gate asserted each file contained the string
+ * `function normalizeBlocklistUrl`, which is a spelling check: core's copy
+ * accepted `https://user:pass@host/x#f` and the four extension copies rejected
+ * it for months underneath a green build. Each copy is extracted by brace
+ * matching, evaluated, and run over one corpus beside the real exported
+ * function, and any disagreement names the input.
+ */
+const extractFunction = (text, name) => {
+  const head = text.indexOf(`function ${name}(`);
+  if (head === -1) return '';
+  const open = text.indexOf('{', head);
+  if (open === -1) return '';
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '{') depth += 1;
+    else if (text[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(head, i + 1);
+    }
+  }
+  return '';
+};
+
+const BLOCKLIST_URL_CORPUS = [
+  'https://example.com/list.json',
+  'https://example.com/list.json#fragment',
+  'https://user:pass@example.com/list.json',
+  'https://user@example.com/list.json',
+  'https://:pass@example.com/list.json',
+  'http://example.com/list.json',
+  'ftp://example.com/list.json',
+  'javascript:alert(1)',
+  'data:application/json,{}',
+  'file:///etc/passwd',
+  '  https://example.com/list.json  ',
+  '',
+  'not a url',
+  `https://example.com/${'a'.repeat(2100)}`,
+  'https://example.com/list.json?a=1&b=2',
+  'HTTPS://EXAMPLE.COM/List.JSON',
+];
+
+// The source files, not the built ones: the Firefox bridge carries the whole
+// page bundle inline as a string literal, so a search of the artifact finds
+// core's copy inside that string before it finds the bridge's own.
+const blocklistUrlCopies = await Promise.all([
+  'src/extension/background.js',
+  'src/extension/background.firefox.js',
+  'src/extension/bridge.js',
+  'src/extension/bridge.firefox.js',
+].map(async (name) => [name, await read(name)])).then((entries) => entries.map(([name, text]) => {
+  const body = extractFunction(text, 'normalizeBlocklistUrl');
+  // eslint-disable-next-line no-new-func
+  const fn = body ? new Function(`${body}; return normalizeBlocklistUrl;`)() : null;
+  return [name, fn];
+}));
+
+const blocklistUrlDisagreements = blocklistUrlCopies.flatMap(([name, fn]) => {
+  if (typeof fn !== 'function') return [`${name} has no readable normalizeBlocklistUrl`];
+  return BLOCKLIST_URL_CORPUS
+    .filter((input) => fn(input) !== normalizeBlocklistUrl(input))
+    .map((input) => `${name} answers ${JSON.stringify(fn(input))} where core answers ${JSON.stringify(normalizeBlocklistUrl(input))} for ${JSON.stringify(input.slice(0, 60))}`);
+});
+
+// A rule that accepts everything would make the comparison above vacuous.
+const blocklistUrlRefusals = BLOCKLIST_URL_CORPUS.filter((input) => normalizeBlocklistUrl(input) === '').length;
+
 const checks = [
+  [`every copy of the blocklist URL rule answers the same${blocklistUrlDisagreements.length ? `: ${blocklistUrlDisagreements[0]}` : ''}`,
+    blocklistUrlDisagreements.length === 0 && blocklistUrlRefusals >= 9],
+  ['the shared blocklist URL rule refuses credentials and drops the fragment',
+    normalizeBlocklistUrl('https://user:pass@example.com/list.json') === ''
+    && normalizeBlocklistUrl('https://example.com/list.json#frag') === 'https://example.com/list.json'],
   [`no accessibility setting is gated on viewport width${gatedAccessibility.length ? `: ${gatedAccessibility.join(', ')}` : ''}`,
     gatedAccessibility.length === 0
     // And the rules are present at all, so deleting them is not a way to pass.

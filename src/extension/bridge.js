@@ -41,9 +41,14 @@ function readSettings() {
   }
 }
 
+// Must answer exactly as core.mjs `normalizeBlocklistUrl` does, including the
+// length cap; scripts/check.mjs runs both over one corpus and compares.
 function normalizeBlocklistUrl(raw) {
+  if (typeof raw !== 'string' || raw.length > 2048) return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
   try {
-    const url = new URL(String(raw || ''));
+    const url = new URL(trimmed);
     if (url.protocol !== 'https:' || url.username || url.password) return '';
     url.hash = '';
     return url.href;

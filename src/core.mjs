@@ -2011,13 +2011,35 @@ export function sanitizeErrorMessage(message, limit = 300) {
  * companion fetch and the userscript transport can never be a `javascript:`,
  * `data:`, `http:` or otherwise malformed string.
  */
+/**
+ * The one shape a blocklist URL is allowed to take.
+ *
+ * Five copies of this rule exist: this one, and one in each of the four
+ * extension files, which cannot import. They must agree, because they guard the
+ * same value at different points in its life, and for a while they did not.
+ * This copy accepted `https://user:pass@host/list.json#frag` and the extension
+ * copies rejected it, so the settings panel showed a configured feed while the
+ * companion reported none. On a userscript-only install nothing rejected it at
+ * all: the credentials rode out to an arbitrary host on every refresh through
+ * `GM_xmlhttpRequest` under `@connect *`.
+ *
+ * Credentials are refused rather than stripped, because a URL that carries them
+ * is not the URL the user meant minus a detail. The fragment is stripped
+ * because it never reaches the server, and leaving it in made a redirect
+ * recheck compare two strings that could differ for no reason that mattered.
+ *
+ * `scripts/check.mjs` runs this and all four copies over one corpus and fails
+ * the build if any answer differs.
+ */
 export function normalizeBlocklistUrl(value) {
   if (typeof value !== 'string' || value.length > 2048) return '';
   const trimmed = value.trim();
   if (!trimmed) return '';
   try {
     const url = new URL(trimmed);
-    return url.protocol === 'https:' ? url.href : '';
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    url.hash = '';
+    return url.href;
   } catch {
     return '';
   }

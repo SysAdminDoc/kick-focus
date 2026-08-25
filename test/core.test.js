@@ -1051,6 +1051,29 @@ test('import drops prototype-pollution keys in every store and never touches Obj
   assert.equal(result.mediaPreferences['volume:/xqc'], 0.5);
 });
 
+test('a blocklist URL carrying credentials is refused, not carried', { tag: 'unit' }, () => {
+  // On a userscript-only install this value goes out through GM_xmlhttpRequest
+  // under @connect *, so credentials in it are credentials sent to whatever host
+  // the URL names. The four extension copies of this rule refused them and this
+  // one did not, which also meant the settings panel could show a configured
+  // feed while the companion reported none.
+  assert.equal(normalizeBlocklistUrl('https://user:pass@example.com/list.json'), '');
+  assert.equal(normalizeBlocklistUrl('https://user@example.com/list.json'), '');
+  assert.equal(normalizeBlocklistUrl('https://:pass@example.com/list.json'), '');
+
+  // The fragment never reaches the server, and leaving it on made the redirect
+  // recheck in the companion compare two strings that could differ for nothing.
+  assert.equal(normalizeBlocklistUrl('https://example.com/list.json#frag'), 'https://example.com/list.json');
+  assert.equal(normalizeBlocklistUrl('https://example.com/list.json?a=1'), 'https://example.com/list.json?a=1');
+
+  // Everything the rule already refused, still refused.
+  for (const hostile of ['http://example.com/l.json', 'javascript:alert(1)', 'data:application/json,{}',
+    'file:///etc/passwd', 'not a url', '', `https://example.com/${'a'.repeat(2100)}`]) {
+    assert.equal(normalizeBlocklistUrl(hostile), '', `accepted ${JSON.stringify(hostile.slice(0, 40))}`);
+  }
+  assert.equal(normalizeBlocklistUrl('  https://example.com/list.json  '), 'https://example.com/list.json');
+});
+
 test('an imported file cannot switch on a subscription to a host the user has not seen', { tag: 'unit' }, () => {
   // Every other field in a settings file is local. This one becomes a repeating
   // outbound request under the userscript's @connect * grant, so a shared

@@ -1184,7 +1184,9 @@ const trimmed = value.trim();
 if (!trimmed) return '';
 try {
 const url = new URL(trimmed);
-return url.protocol === 'https:' ? url.href : '';
+if (url.protocol !== 'https:' || url.username || url.password) return '';
+url.hash = '';
+return url.href;
 } catch {
 return '';
 }
@@ -7014,7 +7016,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              854858') || 0;
+const BUNDLE_BYTES = Number('              854884') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -11572,15 +11574,13 @@ if (!settings.blocklistSubscription) {
 if (state.remoteBlocklist.status !== 'off') clearRemoteBlocklist();
 return;
 }
-let url;
-try {
-url = new URL(settings.blocklistUrl);
-if (url.protocol !== 'https:') throw new Error('HTTPS required');
-} catch {
+const href = normalizeBlocklistUrl(settings.blocklistUrl);
+if (!href) {
 state.remoteBlocklist.status = 'error';
 updateRemoteBlocklistInPlace();
 return;
 }
+const url = new URL(href);
 const now = Date.now();
 const interval = settings.blocklistRefreshHours * 60 * 60 * 1000;
 const sameSource = state.remoteBlocklist.source === url.href;

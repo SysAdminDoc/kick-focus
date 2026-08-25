@@ -6608,15 +6608,15 @@ function scheduleRemoteBlocklistSync(force = false) {
     if (state.remoteBlocklist.status !== 'off') clearRemoteBlocklist();
     return;
   }
-  let url;
-  try {
-    url = new URL(settings.blocklistUrl);
-    if (url.protocol !== 'https:') throw new Error('HTTPS required');
-  } catch {
+  // The shared rule, not a sixth spelling of it. This used to check only the
+  // protocol, so it accepted a credentialed URL the extension copies refused.
+  const href = normalizeBlocklistUrl(settings.blocklistUrl);
+  if (!href) {
     state.remoteBlocklist.status = 'error';
     updateRemoteBlocklistInPlace();
     return;
   }
+  const url = new URL(href);
   const now = Date.now();
   const interval = settings.blocklistRefreshHours * 60 * 60 * 1000;
   const sameSource = state.remoteBlocklist.source === url.href;
