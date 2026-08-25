@@ -72,6 +72,9 @@ import {
   STICKER_LIBRARY_LIMIT,
   normalizeSettings,
   chatWidthAfterDrag,
+  chatWidthAfterKey,
+  CHAT_WIDTH_MIN,
+  CHAT_WIDTH_MAX,
   applyViewingPreset,
   colorContrastRatio,
   customAccentTokens,
@@ -1253,6 +1256,41 @@ test('chat separator drag grows away from the player on either side', { tag: 'un
   assert.equal(chatWidthAfterDrag('left', 410, 340, 410), 480);
   assert.equal(chatWidthAfterDrag('right', 500, 900, 700), 520);
   assert.equal(chatWidthAfterDrag('left', 340, 340, 200), 320);
+});
+
+test('the separator moves the same way for an arrow key as for a drag', { tag: 'unit' }, () => {
+  // Arrows move the separator, not the chat, so the same key widens the chat on
+  // the right and narrows it on the left. Anything else would mean the control
+  // moved one way on screen and the other way in the layout.
+  assert.equal(chatWidthAfterKey('right', 400, 'ArrowLeft'), 416);
+  assert.equal(chatWidthAfterKey('right', 400, 'ArrowRight'), 384);
+  assert.equal(chatWidthAfterKey('left', 400, 'ArrowLeft'), 384);
+  assert.equal(chatWidthAfterKey('left', 400, 'ArrowRight'), 416);
+
+  // Which is exactly the drag relationship, so the two can never drift apart.
+  for (const side of ['left', 'right']) {
+    assert.equal(chatWidthAfterKey(side, 400, 'ArrowLeft'), chatWidthAfterDrag(side, 400, 0, -16));
+    assert.equal(chatWidthAfterKey(side, 400, 'ArrowRight'), chatWidthAfterDrag(side, 400, 0, 16));
+  }
+
+  // Home and End name widths, so they do not mirror.
+  assert.equal(chatWidthAfterKey('right', 400, 'Home'), CHAT_WIDTH_MIN);
+  assert.equal(chatWidthAfterKey('left', 400, 'Home'), CHAT_WIDTH_MIN);
+  assert.equal(chatWidthAfterKey('right', 400, 'End'), CHAT_WIDTH_MAX);
+  assert.equal(chatWidthAfterKey('left', 400, 'End'), CHAT_WIDTH_MAX);
+
+  // The stops hold, and a key at a stop reports the stop rather than a value
+  // outside the range the separator advertises.
+  assert.equal(chatWidthAfterKey('right', CHAT_WIDTH_MAX, 'ArrowLeft'), CHAT_WIDTH_MAX);
+  assert.equal(chatWidthAfterKey('right', CHAT_WIDTH_MIN, 'ArrowRight'), CHAT_WIDTH_MIN);
+  assert.equal(chatWidthAfterKey('left', CHAT_WIDTH_MIN, 'ArrowLeft'), CHAT_WIDTH_MIN);
+  assert.equal(chatWidthAfterKey('left', CHAT_WIDTH_MAX, 'ArrowRight'), CHAT_WIDTH_MAX);
+
+  // Every other key belongs to the page, and null is how the binding knows to
+  // leave the event alone instead of swallowing it.
+  for (const key of ['ArrowUp', 'ArrowDown', 'PageUp', 'Enter', ' ', 'Tab', 'a', '']) {
+    assert.equal(chatWidthAfterKey('right', 400, key), null, key);
+  }
 });
 
 test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {

@@ -2180,14 +2180,47 @@ export function normalizeSettings(input) {
 }
 
 /** Convert a horizontal separator drag into a bounded chat-column width. */
+export const CHAT_WIDTH_MIN = 320;
+export const CHAT_WIDTH_MAX = 520;
+
 export function chatWidthAfterDrag(side, startWidth, startX, currentX) {
   const direction = side === 'left' ? 1 : -1;
   return Math.round(clamp(
     Number(startWidth) + ((Number(currentX) - Number(startX)) * direction),
-    320,
-    520,
+    CHAT_WIDTH_MIN,
+    CHAT_WIDTH_MAX,
     DEFAULT_SETTINGS.layout.chatWidth,
   ));
+}
+
+// One arrow press moves the separator by this many CSS pixels.
+const CHAT_WIDTH_KEY_STEP = 16;
+
+/**
+ * The splitter's keyboard half, derived rather than bound to a browser.
+ *
+ * Arrow keys move the *separator*, which is what a person sees, so which way
+ * the chat grows depends on the side it sits on. That is the same relationship
+ * a drag has, so this reuses the drag derivation with a synthetic pointer
+ * displacement instead of restating the sign. Home and End name widths rather
+ * than directions, so they are the same on either side.
+ *
+ * Returns null for a key the splitter does not own, which is the caller's
+ * signal to leave the event alone rather than swallow it.
+ */
+export function chatWidthAfterKey(side, currentWidth, key) {
+  switch (key) {
+    case 'ArrowLeft':
+      return chatWidthAfterDrag(side, currentWidth, 0, -CHAT_WIDTH_KEY_STEP);
+    case 'ArrowRight':
+      return chatWidthAfterDrag(side, currentWidth, 0, CHAT_WIDTH_KEY_STEP);
+    case 'Home':
+      return CHAT_WIDTH_MIN;
+    case 'End':
+      return CHAT_WIDTH_MAX;
+    default:
+      return null;
+  }
 }
 
 export function applyViewingPreset(settings, presetId) {

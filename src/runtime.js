@@ -2582,6 +2582,18 @@ function chatLayoutOwner(separator, panel) {
   return ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]');
 }
 
+/**
+ * The separator's reported value, in the two forms a reader needs.
+ *
+ * aria-valuenow is the number, and aria-valuetext replaces it in speech, so a
+ * stale valuetext is not merely late, it is wrong. Both are written together
+ * for that reason, from the drag, from the keyboard, and from the initial tag.
+ */
+function setChatSeparatorValue(separator, width) {
+  separator.setAttribute('aria-valuenow', String(width));
+  separator.setAttribute('aria-valuetext', trf('Chat width {width} pixels', { width }));
+}
+
 function bindChatResizer(separator) {
   if (separator.dataset.kfChatResizeBound === 'true') return;
   separator.dataset.kfChatResizeBound = 'true';
@@ -2603,7 +2615,7 @@ function bindChatResizer(separator) {
       nextWidth = chatWidthAfterDrag(state.settings.layout.chat, startWidth, startX, moveEvent.clientX);
       state.settings.layout.chatWidth = nextWidth;
       document.documentElement.style.setProperty('--kf-chat-width', `${nextWidth}px`);
-      separator.setAttribute('aria-valuenow', String(nextWidth));
+      setChatSeparatorValue(separator, nextWidth);
     };
     const cleanup = () => {
       window.removeEventListener('pointermove', move, true);
@@ -2625,6 +2637,41 @@ function bindChatResizer(separator) {
     window.addEventListener('pointerup', finish, true);
     window.addEventListener('pointercancel', finish, true);
   }), true);
+
+  // The keyboard half. Held arrows repeat keydown and fire one keyup, so the
+  // width follows every press and the save happens once at the end of the run,
+  // which is how the panel's own sliders behave and why holding an arrow does
+  // not write settings thirty times a second.
+  let keyStartWidth = null;
+  const commitKeyResize = () => {
+    if (keyStartWidth === null) return;
+    const width = state.settings.layout.chatWidth;
+    const changed = width !== keyStartWidth;
+    keyStartWidth = null;
+    if (!changed) return;
+    updateSetting('layout.chatWidth', width, 'Chat width saved.');
+    showToast('Chat width saved.');
+  };
+
+  separator.addEventListener('keydown', guard('chat resize keys', (event) => {
+    if (!['right', 'left'].includes(state.settings.layout.chat)) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const next = chatWidthAfterKey(state.settings.layout.chat, state.settings.layout.chatWidth, event.key);
+    if (next === null) return;
+    // Claimed even when the width is already at the stop, so Home and the arrows
+    // never fall through to Kick and scroll the page out from under the person
+    // adjusting the split.
+    event.preventDefault();
+    if (keyStartWidth === null) keyStartWidth = state.settings.layout.chatWidth;
+    if (next === state.settings.layout.chatWidth) return;
+    state.settings.layout.chatWidth = next;
+    document.documentElement.style.setProperty('--kf-chat-width', `${next}px`);
+    setChatSeparatorValue(separator, next);
+  }));
+  separator.addEventListener('keyup', guard('chat resize keys', commitKeyResize));
+  // Tabbing away mid-hold would otherwise leave the new width applied but never
+  // written, so it would come back on the next load.
+  separator.addEventListener('blur', guard('chat resize keys', commitKeyResize));
 }
 
 function tagChatPanel() {
@@ -2648,9 +2695,16 @@ function tagChatPanel() {
       if (previous !== row) delete previous.dataset.kfChannelRow;
     }
     if (row && row !== document.body) row.dataset.kfChannelRow = 'true';
-    separator.setAttribute('aria-valuemin', '320');
-    separator.setAttribute('aria-valuemax', '520');
-    separator.setAttribute('aria-valuenow', String(state.settings.layout.chatWidth));
+    // Kick's own resizer answers the first probe by test id, which carries no
+    // role at all, so the range values below would describe nothing. A role it
+    // already has is left alone rather than overwritten.
+    if (!separator.getAttribute('role')) separator.setAttribute('role', 'separator');
+    if (!separator.hasAttribute('tabindex')) separator.setAttribute('tabindex', '0');
+    if (!owner.id) owner.id = 'kf-chat-panel';
+    separator.setAttribute('aria-controls', owner.id);
+    separator.setAttribute('aria-valuemin', String(CHAT_WIDTH_MIN));
+    separator.setAttribute('aria-valuemax', String(CHAT_WIDTH_MAX));
+    setChatSeparatorValue(separator, state.settings.layout.chatWidth);
     bindChatResizer(separator);
   }
 }
@@ -8680,6 +8734,7 @@ const TRANSLATIONS = {
   'Left': ['Izquierda', 'Esquerda'],
   'Chat layout': ['Diseño del chat', 'Layout do chat'],
   'Chat width': ['Ancho del chat', 'Largura do chat'],
+  'Chat width {width} pixels': ['Ancho del chat {width} píxeles', 'Largura do chat {width} píxeis'],
   'Chat width saved.': ['Ancho del chat guardado.', 'Largura do chat salva.'],
   'Content density': ['Densidad del contenido', 'Densidade do conteúdo'],
   'Stream start behavior': ['Comportamiento al abrir streams', 'Comportamento ao abrir transmissões'],

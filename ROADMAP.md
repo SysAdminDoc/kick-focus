@@ -136,13 +136,6 @@ None open.
   Acceptance: Opening the first modal snapshots and inerts every body sibling except Kick Focus hosts; nested modals use a reference count; closing the final modal restores each sibling’s exact prior inert state; pointer, Tab, and accessibility-tree checks cannot reach the page behind the modal.
   Complexity: M
 
-- [ ] P1 — R-109: Give the chat separator standard ARIA splitter keyboard behavior
-  Why: The separator exposes range ARIA values and pointer drag but cannot receive focus or respond as a splitter.
-  Evidence: src/runtime.js bindChatResizer and tagChatPanel; https://www.w3.org/WAI/ARIA/apg/patterns/windowsplitter/
-  Touches: src/runtime.js separator binding, src/core.mjs width helper, test/core.test.js, fixtures, scripts/verify-extension.mjs
-  Acceptance: The separator has tabindex 0, aria-controls, and readable value text; Left and Right change width in the correct direction for left or right chat, Home selects 320 px, End selects 520 px, settings persist through updateSetting, and pointer behavior remains unchanged.
-  Complexity: S
-
 - [ ] P1 — R-110: Use Firefox MAIN-world injection without inline source
   Why: Firefox 128 supports manifest-declared MAIN-world scripts, removing the current dependence on Kick allowing inline scripts and the build’s duplicated embedded bundle.
   Evidence: src/extension/bridge.firefox.js; src/extension/manifest.firefox.json; scripts/build.mjs; https://blog.mozilla.org/addons/2024/07/10/manifest-v3-updates-landed-in-firefox-128/

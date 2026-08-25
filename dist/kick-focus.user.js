@@ -1325,14 +1325,31 @@ normalizeShortcut(shortcuts[key], fallback),
 ])),
 };
 }
+const CHAT_WIDTH_MIN = 320;
+const CHAT_WIDTH_MAX = 520;
 function chatWidthAfterDrag(side, startWidth, startX, currentX) {
 const direction = side === 'left' ? 1 : -1;
 return Math.round(clamp(
 Number(startWidth) + ((Number(currentX) - Number(startX)) * direction),
-320,
-520,
+CHAT_WIDTH_MIN,
+CHAT_WIDTH_MAX,
 DEFAULT_SETTINGS.layout.chatWidth,
 ));
+}
+const CHAT_WIDTH_KEY_STEP = 16;
+function chatWidthAfterKey(side, currentWidth, key) {
+switch (key) {
+case 'ArrowLeft':
+return chatWidthAfterDrag(side, currentWidth, 0, -CHAT_WIDTH_KEY_STEP);
+case 'ArrowRight':
+return chatWidthAfterDrag(side, currentWidth, 0, CHAT_WIDTH_KEY_STEP);
+case 'Home':
+return CHAT_WIDTH_MIN;
+case 'End':
+return CHAT_WIDTH_MAX;
+default:
+return null;
+}
 }
 function applyViewingPreset(settings, presetId) {
 const current = normalizeSettings(settings);
@@ -7042,7 +7059,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              845474') || 0;
+const BUNDLE_BYTES = Number('              847711') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8456,6 +8473,10 @@ return split;
 }
 return ownerFromChild(panel, '#channel-chatroom, [data-testid="chatroom"], [data-testid="chatroom-messages"]');
 }
+function setChatSeparatorValue(separator, width) {
+separator.setAttribute('aria-valuenow', String(width));
+separator.setAttribute('aria-valuetext', trf('Chat width {width} pixels', { width }));
+}
 function bindChatResizer(separator) {
 if (separator.dataset.kfChatResizeBound === 'true') return;
 separator.dataset.kfChatResizeBound = 'true';
@@ -8475,7 +8496,7 @@ if (moveEvent.pointerId !== event.pointerId) return;
 nextWidth = chatWidthAfterDrag(state.settings.layout.chat, startWidth, startX, moveEvent.clientX);
 state.settings.layout.chatWidth = nextWidth;
       document.documentElement.style.setProperty('--kf-chat-width', `${nextWidth}px`);
-separator.setAttribute('aria-valuenow', String(nextWidth));
+setChatSeparatorValue(separator, nextWidth);
 };
 const cleanup = () => {
 window.removeEventListener('pointermove', move, true);
@@ -8497,6 +8518,31 @@ window.addEventListener('pointermove', move, true);
 window.addEventListener('pointerup', finish, true);
 window.addEventListener('pointercancel', finish, true);
 }), true);
+let keyStartWidth = null;
+const commitKeyResize = () => {
+if (keyStartWidth === null) return;
+const width = state.settings.layout.chatWidth;
+const changed = width !== keyStartWidth;
+keyStartWidth = null;
+if (!changed) return;
+updateSetting('layout.chatWidth', width, 'Chat width saved.');
+showToast('Chat width saved.');
+};
+separator.addEventListener('keydown', guard('chat resize keys', (event) => {
+if (!['right', 'left'].includes(state.settings.layout.chat)) return;
+if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+const next = chatWidthAfterKey(state.settings.layout.chat, state.settings.layout.chatWidth, event.key);
+if (next === null) return;
+event.preventDefault();
+if (keyStartWidth === null) keyStartWidth = state.settings.layout.chatWidth;
+if (next === state.settings.layout.chatWidth) return;
+updateSetting('layout.chatWidth', next, 'Chat width saved.');
+state.settings.layout.chatWidth = next;
+    document.documentElement.style.setProperty('--kf-chat-width', `${next}px`);
+setChatSeparatorValue(separator, next);
+}));
+separator.addEventListener('keyup', guard('chat resize keys', commitKeyResize));
+separator.addEventListener('blur', guard('chat resize keys', commitKeyResize));
 }
 function tagChatPanel() {
 const separator = findProbe(document, 'chatSeparator').element;
@@ -8519,9 +8565,13 @@ for (const previous of document.querySelectorAll('[data-kf-channel-row]')) {
 if (previous !== row) delete previous.dataset.kfChannelRow;
 }
 if (row && row !== document.body) row.dataset.kfChannelRow = 'true';
-separator.setAttribute('aria-valuemin', '320');
-separator.setAttribute('aria-valuemax', '520');
-separator.setAttribute('aria-valuenow', String(state.settings.layout.chatWidth));
+if (!separator.getAttribute('role')) separator.setAttribute('role', 'separator');
+if (!separator.hasAttribute('tabindex')) separator.setAttribute('tabindex', '0');
+if (!owner.id) owner.id = 'kf-chat-panel';
+separator.setAttribute('aria-controls', owner.id);
+separator.setAttribute('aria-valuemin', String(CHAT_WIDTH_MIN));
+separator.setAttribute('aria-valuemax', String(CHAT_WIDTH_MAX));
+setChatSeparatorValue(separator, state.settings.layout.chatWidth);
 bindChatResizer(separator);
 }
 }
@@ -13421,6 +13471,7 @@ const TRANSLATIONS = {
 'Left': ['Izquierda', 'Esquerda'],
 'Chat layout': ['Diseño del chat', 'Layout do chat'],
 'Chat width': ['Ancho del chat', 'Largura do chat'],
+'Chat width {width} pixels': ['Ancho del chat {width} píxeles', 'Largura do chat {width} píxeis'],
 'Chat width saved.': ['Ancho del chat guardado.', 'Largura do chat salva.'],
 'Content density': ['Densidad del contenido', 'Densidade do conteúdo'],
 'Stream start behavior': ['Comportamiento al abrir streams', 'Comportamento ao abrir transmissões'],

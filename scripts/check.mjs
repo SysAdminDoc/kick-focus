@@ -947,6 +947,25 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['the chat separator is a real splitter: focusable, named, and keyboard-driven', (() => {
+    // The derivation itself is unit-tested in core. What can only be checked
+    // here is that the page half is still wired to it: a focusable separator
+    // that reports its value, and a keydown that defers to the derivation
+    // rather than deciding a direction of its own.
+    const start = source.indexOf('function setChatSeparatorValue');
+    const end = source.indexOf('function readPersistentArray', start);
+    const region = start >= 0 && end > start ? source.slice(start, end) : '';
+    return region.includes("setAttribute('role', 'separator')")
+      && region.includes("setAttribute('tabindex', '0')")
+      && region.includes("setAttribute('aria-controls'")
+      && region.includes("setAttribute('aria-valuetext'")
+      && region.includes("addEventListener('keydown'")
+      && region.includes('chatWidthAfterKey(state.settings.layout.chat')
+      // Held arrows repeat keydown and fire one keyup, so the write belongs to
+      // the end of the run. A commit inside keydown would save on every repeat.
+      && /addEventListener\('keyup'[\s\S]{0,80}commitKeyResize/.test(region)
+      && !/addEventListener\('keydown'[\s\S]*?updateSetting\('layout\.chatWidth'[\s\S]*?addEventListener\('keyup'/.test(region);
+  })()],
   ['composer recall is opt-in, session-only, and leaves plain ArrowUp to Kick', (() => {
     const start = source.indexOf('function rememberComposerMessage');
     const end = source.indexOf('function insertStickerName', start);

@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Added
+
+- The chat separator can be used from the keyboard. Tab to it and the arrow keys move it sixteen pixels at a time, Home takes the chat to its narrowest and End to its widest, and it now says what it controls and how wide it is instead of exposing numbers with nothing attached to them. Dragging it works exactly as before.
+
 ## 1.39.0, 2026-08-25
 
 ### Security
