@@ -140,13 +140,20 @@ test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
   // quoted literal, or as the complete text of a markup node.
   const live = (key) => {
     const quoted = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    // A key whose text node the parser will decode is written entity-encoded in
+    // the markup. The dictionary has to hold the decoded form, because that is
+    // what `localizeInterface` looks up, so the search for a call site has to
+    // look for the encoded one.
+    const markup = key.replaceAll('&', '&amp;');
     return usage.includes(`'${quoted}'`)
       || usage.includes(`\`${key}\``)
       || usage.includes(`>${key}<`)
+      || usage.includes(`>${markup}<`)
       // A label that follows an inline icon: `${uiIcon('reset')}Reset page<`.
       // The text node is still the whole key; what precedes it is the close of
       // an interpolation rather than a tag.
       || usage.includes(`}${key}<`)
+      || usage.includes(`}${markup}<`)
       || usage.includes(`"${key}"`);
   };
   const dead = keys.filter((key) => !live(key));

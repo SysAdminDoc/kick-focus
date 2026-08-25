@@ -690,13 +690,15 @@ const onlyWritesAreTheFollowGesture = (bundle) => {
  * the second. Nested blocks are counted, so a `:is()` or a nested at-rule
  * cannot end a region early.
  */
-const mediaBlockBodies = (css, query) => {
+const mediaBlockBodies = (css, pattern = /@media[^{]*\(\s*min-width\s*:/g) => {
   const bodies = [];
-  const needle = `@media ${query}`;
+  const finder = new RegExp(pattern.source, 'g');
   let from = 0;
   for (;;) {
-    const head = css.indexOf(needle, from);
-    if (head === -1) return bodies;
+    finder.lastIndex = from;
+    const found = finder.exec(css);
+    if (!found) return bodies;
+    const head = found.index;
     const open = css.indexOf('{', head);
     if (open === -1) return bodies;
     let depth = 0;
@@ -724,8 +726,16 @@ const ACCESSIBILITY_ATTRIBUTES = [
   'data-kf-control-contrast',
   'data-kf-focus-visible',
 ];
-const widthGatedAccessibility = (css, query = '(min-width: 1024px)') => {
-  const bodies = mediaBlockBodies(css, query);
+/**
+ * Any width-conditional block, not one hand-typed query.
+ *
+ * The first version matched the literal string `@media (min-width: 1024px)`.
+ * `SITE_CSS` also carries a 1280px block, and `@media screen and (min-width:
+ * 1024px)` or the same query with no space would both have read as absent, so
+ * moving a rule a few lines reproduced the defect with the gate green.
+ */
+const widthGatedAccessibility = (css, pattern) => {
+  const bodies = mediaBlockBodies(css, pattern);
   return ACCESSIBILITY_ATTRIBUTES.filter((attribute) => bodies.some((body) => body.includes(attribute)));
 };
 const gatedAccessibility = widthGatedAccessibility(source);
@@ -816,12 +826,25 @@ const motionSheets = [...source.matchAll(/const (\w*_CSS) = `([\s\S]*?)`;/g)]
   .map((match) => [match[1], match[2]]);
 
 const unguardedMotion = motionSheets.flatMap(([name, css]) => {
-  const transitions = [...css.matchAll(/\btransition:/g)].map((match) => match.index);
-  if (!transitions.length) return [];
-  const guards = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\)/g)].map((match) => match.index);
+  // Longhands and animations count too. Keying on the `transition:` shorthand
+  // alone left three of the injected sheets outside the gate entirely, so an
+  // `animation:` or a `transition-duration:` added to any of them would have
+  // animated unguarded with the build green.
+  const motion = [...css.matchAll(/\b(?:transition|animation)(?:-[a-z]+)?\s*:/g)]
+    .filter((match) => !/^(?:transition|animation)-duration\s*:\s*\.001ms/.test(match[0] + css.slice(match.index + match[0].length, match.index + match[0].length + 8)))
+    .map((match) => match.index);
+  if (!motion.length) return [];
+  const guards = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{/g)];
   if (!guards.length) return [`${name} animates and never mentions prefers-reduced-motion`];
-  if (Math.max(...guards) < Math.max(...transitions)) {
-    return [`${name} guards motion before its last transition, so the shorthand wins`];
+  // The last guard must actually neutralise something, not merely exist: an
+  // empty block at the end of the sheet satisfied position alone.
+  const last = guards.at(-1);
+  const body = css.slice(last.index + last[0].length);
+  if (!/(?:animation|transition)[a-z-]*\s*:\s*(?:none|\.001ms|0s)/.test(body)) {
+    return [`${name} has a prefers-reduced-motion block that neutralises no motion`];
+  }
+  if (last.index < Math.max(...motion)) {
+    return [`${name} guards motion before its last motion rule, so the later declaration wins`];
   }
   return [];
 });
@@ -1611,6 +1634,20 @@ const redProbes = [
     widthGatedAccessibility('@media (min-width: 1024px){ @supports (a:b) { .a { color: red } } } html[data-kf-contrast="true"] { color: red }').length === 0],
   ['the width-gate probe reports nothing when the stylesheet has no such block',
     widthGatedAccessibility('.a { color: red }').length === 0],
+  // The three shapes the hard-coded query used to miss.
+  ['the width-gate probe catches a different breakpoint',
+    widthGatedAccessibility('@media (min-width: 1280px){ html[data-kf-contrast="true"] { color: red } }')
+      .join() === 'data-kf-contrast'],
+  ['the width-gate probe catches a compound query',
+    widthGatedAccessibility('@media screen and (min-width: 1024px){ html[data-kf-large-targets="true"] { a: b } }')
+      .join() === 'data-kf-large-targets'],
+  ['the width-gate probe catches a query written without spaces',
+    widthGatedAccessibility('@media (min-width:1024px){ html[data-kf-control-contrast="true"] { a: b } }')
+      .join() === 'data-kf-control-contrast'],
+  // A max-width block is a mobile rule, not a desktop gate, and is not the
+  // defect this looks for.
+  ['the width-gate probe ignores a max-width block',
+    widthGatedAccessibility('@media (max-width: 700px){ html[data-kf-contrast="true"] { a: b } }').length === 0],
   ['size budget would reject an artifact one byte over',
     overBudgetIn([['a.js', 'x'.repeat(11), 10, 'test']]).length === 1],
   ['size budget accepts an artifact exactly at its budget',

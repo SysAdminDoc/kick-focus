@@ -2391,9 +2391,14 @@ const SITE_CSS = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    html[data-kf-route] *,
-    html[data-kf-route] *::before,
-    html[data-kf-route] *::after {
+    /* Excludes an explicit "false". The setting defaults to on, so this is the
+       operating system's preference reaching the page for a user who never
+       opened the panel; somebody who went in and turned Reduce motion off has
+       said what they want, and the build's own reward-animation rule treats the
+       two the same way. */
+    html[data-kf-route]:not([data-kf-reduce-motion="false"]) *,
+    html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::before,
+    html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::after {
       scroll-behavior: auto !important;
       animation-duration: .001ms !important;
       animation-iteration-count: 1 !important;
@@ -6398,6 +6403,7 @@ function sessionWatchVideoCandidate(video) {
   const preview = Boolean(videoClosest(video, VIDEO_PREVIEW_SELECTOR));
   const preload = Boolean(videoClosest(video, VIDEO_PRELOAD_SELECTOR));
   const markedBackground = Boolean(videoClosest(video, VIDEO_BACKGROUND_SELECTOR));
+  const playerSurface = channelPlayer || genericPlayer || (width >= 480 && height >= 270);
   return {
     video,
     route: state.route,
@@ -6405,11 +6411,16 @@ function sessionWatchVideoCandidate(video) {
     connected: Boolean(video?.isConnected),
     visible: videoIsVisible(video),
     intersectsViewport: width > 0 && height > 0,
-    playerSurface: channelPlayer || genericPlayer || (width >= 480 && height >= 270),
+    playerSurface,
     playerPriority: channelPlayer ? 2 : 1,
     preview,
     preload,
-    background: markedBackground || (muted && !channelPlayer),
+    // Muted is a hint about a decorative loop, not a fact about the main
+    // player: plenty of people watch muted, and browsers autoplay muted by
+    // default. Keyed on `playerSurface` rather than on Kick's channel-player
+    // selectors alone, so a rename of `#injected-channel-player` cannot make
+    // every muted viewer lose the watch clock and the player chips at once.
+    background: markedBackground || (muted && !playerSurface),
     muted,
     playing: Boolean(video && !video.paused && !video.ended && video.readyState >= 3),
     width,
@@ -8444,7 +8455,7 @@ const TRANSLATIONS = {
   'Nothing has been read yet. Each card above says why.': ['Todavía no se ha leído nada. Cada tarjeta de arriba explica por qué.', 'Ainda não foi lido nada. Cada cartão acima explica porquê.'],
   'Read again': ['Leer otra vez', 'Ler outra vez'],
   'Nothing is claimed for you here': ['Aquí no se reclama nada por ti', 'Aqui nada é resgatado por ti'],
-  'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content &amp; Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': ['Esta página lee. La recompensa diaria la sigue reclamando el propio diálogo de Kick, y solo si lo has activado en Contenido y anuncios. Una tarjeta sin lectura lo dice en lugar de mostrar un cero, porque un saldo vacío y uno que no se puede leer no son lo mismo.', 'Esta página lê. A recompensa diária continua a ser resgatada pela própria janela da Kick, e só se tiveres ativado isso em Conteúdo e anúncios. Um cartão sem leitura di-lo em vez de mostrar um zero, porque um saldo vazio e um saldo ilegível não são a mesma coisa.'],
+  'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content & Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': ['Esta página lee. La recompensa diaria la sigue reclamando el propio diálogo de Kick, y solo si lo has activado en Contenido y anuncios. Una tarjeta sin lectura lo dice en lugar de mostrar un cero, porque un saldo vacío y uno que no se puede leer no son lo mismo.', 'Esta página lê. A recompensa diária continua a ser resgatada pela própria janela da Kick, e só se tiveres ativado isso em Conteúdo e anúncios. Um cartão sem leitura di-lo em vez de mostrar um zero, porque um saldo vazio e um saldo ilegível não são a mesma coisa.'],
   'Settings': ['Configuración', 'Configurações'],
   'Autosaved': ['Guardado automático', 'Salvo automaticamente'],
   'Could not save': ['No se pudo guardar', 'Não foi possível salvar'],
@@ -10874,7 +10885,10 @@ async function onImportFile(event) {
   event.target.value = '';
   if (!file) return;
   try {
-    const result = validateImportedSettings(await file.text(), { currentBlocklistUrl: state.settings.content.blocklistUrl });
+    const result = validateImportedSettings(await file.text(), {
+      currentBlocklistUrl: state.settings.content.blocklistUrl,
+      currentBlocklistSubscription: state.settings.content.blocklistSubscription,
+    });
     if (!result.ok) {
       showToast(result.errorKey ? trf(result.errorKey, result.errorValues || {}) : result.error, true);
       return;

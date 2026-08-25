@@ -1084,7 +1084,7 @@ test('an imported file cannot switch on a subscription to a host the user has no
     content: { blocklistSubscription: true, blocklistUrl: 'https://attacker.example/list.json' },
   });
 
-  const guarded = validateImportedSettings(hostile, { currentBlocklistUrl: '' });
+  const guarded = validateImportedSettings(hostile, { currentBlocklistUrl: '', currentBlocklistSubscription: false });
   assert.ok(guarded.ok);
   assert.equal(guarded.value.content.blocklistSubscription, false, 'the file armed a fetch to an unknown host');
   // The URL still lands, so the user can read it and turn it on deliberately.
@@ -1092,11 +1092,39 @@ test('an imported file cannot switch on a subscription to a host the user has no
   assert.ok(guarded.notes.some((note) => note.includes('attacker.example')),
     `no note named the host: ${JSON.stringify(guarded.notes)}`);
 
-  // The same file, when that host is already what the user subscribes to,
-  // changes nothing — an export/import round trip has to stay lossless.
-  const sameHost = validateImportedSettings(hostile, { currentBlocklistUrl: 'https://attacker.example/list.json' });
+  // Importing the same file again is the whole attack. The first import writes
+  // the file's URL into settings by design, so a guard that trusted "the URL
+  // already in settings" would see its own address the second time, call it
+  // familiar, and arm with no note. Trust is a *subscribed* URL, not a stored
+  // one, so this stays refused however many times it is run.
+  let current = { url: guarded.value.content.blocklistUrl, subscribed: guarded.value.content.blocklistSubscription };
+  for (let attempt = 2; attempt <= 4; attempt += 1) {
+    const again = validateImportedSettings(hostile, {
+      currentBlocklistUrl: current.url,
+      currentBlocklistSubscription: current.subscribed,
+    });
+    assert.equal(again.value.content.blocklistSubscription, false,
+      `import ${attempt} of the same file armed the subscription`);
+    assert.ok(again.notes.some((note) => note.includes('attacker.example')),
+      `import ${attempt} armed nothing but also said nothing`);
+    current = { url: again.value.content.blocklistUrl, subscribed: again.value.content.blocklistSubscription };
+  }
+
+  // A profile that is already subscribed to that host re-imports losslessly:
+  // this is the ordinary export and restore, and the user has already agreed.
+  const sameHost = validateImportedSettings(hostile, {
+    currentBlocklistUrl: 'https://attacker.example/list.json',
+    currentBlocklistSubscription: true,
+  });
   assert.equal(sameHost.value.content.blocklistSubscription, true);
   assert.ok(!sameHost.notes.some((note) => note.includes('switched off')));
+
+  // A URL stored but not subscribed to is not an approval.
+  const storedNotSubscribed = validateImportedSettings(hostile, {
+    currentBlocklistUrl: 'https://attacker.example/list.json',
+    currentBlocklistSubscription: false,
+  });
+  assert.equal(storedNotSubscribed.value.content.blocklistSubscription, false);
 
   // And the undo path restores a state the user was already in.
   const restored = validateImportedSettings(hostile, { currentBlocklistUrl: '', trusted: true });
@@ -1109,6 +1137,27 @@ test('an imported file cannot switch on a subscription to a host the user has no
   }), { currentBlocklistUrl: '' });
   assert.equal(off.value.content.blocklistSubscription, false);
   assert.ok(!off.notes.some((note) => note.includes('switched off')));
+});
+
+test('a subscription cannot outlive the URL it points at', { tag: 'unit' }, () => {
+  // Refusing credentials blanks a URL somebody already had saved. Leaving the
+  // switch on beside an empty field pinned the sync in a permanent error state
+  // with nothing on screen to explain it, so the switch goes with the URL.
+  const migrated = normalizeSettings({
+    content: { blocklistSubscription: true, blocklistUrl: 'https://user:pass@feeds.example/list.json' },
+  });
+  assert.equal(migrated.content.blocklistUrl, '');
+  assert.equal(migrated.content.blocklistSubscription, false, 'a subscription survived its URL being rejected');
+
+  // A URL that still normalises keeps its subscription.
+  const kept = normalizeSettings({
+    content: { blocklistSubscription: true, blocklistUrl: 'https://feeds.example/list.json' },
+  });
+  assert.equal(kept.content.blocklistUrl, 'https://feeds.example/list.json');
+  assert.equal(kept.content.blocklistSubscription, true);
+
+  // And an empty URL was never a working subscription to begin with.
+  assert.equal(normalizeSettings({ content: { blocklistSubscription: true } }).content.blocklistSubscription, false);
 });
 
 test('import round-trips the previously omitted stores with their bounds enforced', { tag: 'unit' }, () => {

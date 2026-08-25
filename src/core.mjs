@@ -2136,7 +2136,13 @@ export function normalizeSettings(input) {
       favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
       playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
       hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
-      blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
+      // A subscription cannot survive its own URL being rejected. Tightening the
+      // rule to refuse credentials blanks a URL somebody already had saved, and
+      // leaving the switch on next to an empty field pins the sync in a
+      // permanent error state with nothing on screen explaining it. Off with an
+      // empty field is at least a state the user can read and act on.
+      blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription)
+        && Boolean(normalizeBlocklistUrl(content.blocklistUrl)),
       blocklistUrl: normalizeBlocklistUrl(content.blocklistUrl),
       blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
       liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
@@ -3333,17 +3339,23 @@ function numericSchema(value) {
  * to "valid", so importing a shared settings pack used to enable a subscription
  * to an unfamiliar host and report nothing but "Settings imported."
  *
- * `currentBlocklistUrl` is what the user already trusts. A file carrying that
- * same URL changes nothing and is left alone, which keeps a plain export/import
- * round trip lossless. A file carrying a different one still imports the URL,
- * so it is visible and one click from working, but arrives switched off with a
- * note naming the host.
+ * Trust is a *subscribed* URL, not merely a stored one. The disarmed import
+ * writes the file's URL into settings on purpose, so it is visible and one click
+ * from working — which meant that comparing against the stored URL alone let the
+ * same file through on a second import: run twice, the second run saw its own
+ * address sitting in settings, called it familiar, and armed with no note. The
+ * subscription flag is what says a human agreed, so a URL the user is not
+ * currently subscribed to is not a URL the user has approved.
+ *
+ * A file carrying the URL of a subscription that is already on changes nothing
+ * and is left alone, which keeps a plain export/import round trip lossless
+ * within a profile.
  *
  * `trusted` is for this build's own pre-import snapshot: the undo path restores
  * a state the user was already in, and re-disarming it there would make undo
  * lossy in exactly the case it exists to cover.
  */
-export function validateImportedSettings(jsonText, { currentBlocklistUrl = '', trusted = false } = {}) {
+export function validateImportedSettings(jsonText, { currentBlocklistUrl = '', currentBlocklistSubscription = false, trusted = false } = {}) {
   let parsed;
   try {
     parsed = JSON.parse(String(jsonText));
@@ -3424,7 +3436,8 @@ export function validateImportedSettings(jsonText, { currentBlocklistUrl = '', t
   // only note that describes something the file tried to switch on.
   if (!trusted && value.content.blocklistSubscription) {
     const incoming = value.content.blocklistUrl;
-    if (incoming && incoming !== String(currentBlocklistUrl || '')) {
+    const approved = currentBlocklistSubscription === true && String(currentBlocklistUrl || '');
+    if (incoming && incoming !== approved) {
       value.content.blocklistSubscription = false;
       let host = incoming;
       try { host = new URL(incoming).host; } catch { host = incoming; }

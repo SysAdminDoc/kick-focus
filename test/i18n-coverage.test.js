@@ -105,6 +105,27 @@ async function interfaceSource() {
   return `${runtime}\n${settings}`;
 }
 
+/**
+ * What the HTML parser will hand `localizeInterface`, not what the source says.
+ *
+ * `localizeInterface` reads `node.nodeValue` from parsed markup, so a paragraph
+ * written as `Content &amp; Ads` arrives as `Content & Ads`. A scanner that
+ * captured the source bytes certified a dictionary key the lookup could never
+ * hit, which is the exact failure it was added to catch. JS string literals
+ * carry no entities, so decoding is a no-op for every other scanner.
+ */
+function decodeEntities(value) {
+  return String(value)
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#039;', "'")
+    .replaceAll('&#39;', "'")
+    .replaceAll('&rsquo;', '\u2019')
+    .replaceAll('&nbsp;', '\u00a0')
+    .replaceAll('&amp;', '&');
+}
+
 async function collect(override = null) {
   const src = override === null ? await interfaceSource() : override;
   const start = src.indexOf('const TRANSLATIONS = {');
@@ -163,7 +184,8 @@ async function collect(override = null) {
   for (const [, pattern] of SCANNERS) {
     for (const match of src.matchAll(pattern)) {
       for (const group of match.slice(1)) {
-        if (group && !EXEMPT.has(group)) rendered.add(group);
+        const text = decodeEntities(group);
+        if (text && !EXEMPT.has(text)) rendered.add(text);
       }
     }
   }

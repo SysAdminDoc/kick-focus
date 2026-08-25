@@ -322,10 +322,10 @@ Found during a full-repository audit. Everything the audit fixed is in
   Acceptance: One map keyed by the English string, valued by a per-locale array or record; `tr()` and `trf()` behave identically; both i18n parsers read the new shape; the artifact drops by at least 25,000 bytes; the reserve below the 1,000,000 byte ceiling exceeds 100,000 bytes.
   Complexity: M
 
-- [ ] P1 — R-133: Prove the second viewport and the Firefox package on v1.39.0
-  Why: the 1440x900 Chromium run was re-done on 2026-08-25 against the shipped build and passes 96/96 with 15 skips, and README now says so. The 1920x1080 run and `npm run verify:firefox` were not repeated, so the README line about the 92-check predecessor at 1920x1080 is still dated 2026-08-19 and the Firefox result is still the v1.34.0 one.
-  Where: scripts/verify-extension.mjs (accepts a viewport), scripts/verify-firefox.mjs, scripts/release-checklist.mjs, README.md:197
-  Acceptance: Both viewports and both engines run against v1.39.0, their real pass and skip counts are in README, and `npm run release:check` is green.
+- [ ] P1 — R-133: Prove the Firefox package on v1.39.0
+  Why: both Chromium viewports were re-run on 2026-08-25 against the shipped build and pass 96/96 with 15 skips at 1440x900 and at 1920x1080, and README says so. `npm run verify:firefox` was not repeated, so the Firefox result on record is still the v1.34.0 one (8/8 with one documented popup skip), and `npm run release:check` runs both engines so it cannot be green until that half is.
+  Where: scripts/verify-firefox.mjs; scripts/release-checklist.mjs; README.md
+  Acceptance: The MV2 package runs in real Firefox over WebDriver BiDi against v1.39.0, its real pass and skip counts go into README, and `npm run release:check` is green.
   Complexity: S
 
 ### P2

@@ -1274,7 +1274,8 @@ autoClaimRewards: bool(content.autoClaimRewards, defaults.content.autoClaimRewar
 favoriteScope: enumValue(content.favoriteScope, ['global', 'channel'], defaults.content.favoriteScope),
 playbackDiagnostics: bool(content.playbackDiagnostics, defaults.content.playbackDiagnostics),
 hiddenChannels: cleanBlocklistValues(content.hiddenChannels, normalizeChannelPath, 200),
-blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription),
+blocklistSubscription: bool(content.blocklistSubscription, defaults.content.blocklistSubscription)
+&& Boolean(normalizeBlocklistUrl(content.blocklistUrl)),
 blocklistUrl: normalizeBlocklistUrl(content.blocklistUrl),
 blocklistRefreshHours: enumValue(Number(content.blocklistRefreshHours), [6, 12, 24, 72], defaults.content.blocklistRefreshHours),
 liveEmoteCatalog: bool(content.liveEmoteCatalog, defaults.content.liveEmoteCatalog),
@@ -2070,7 +2071,7 @@ if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === 
 const parsed = Number(value);
 return Number.isNaN(parsed) ? null : parsed;
 }
-function validateImportedSettings(jsonText, { currentBlocklistUrl = '', trusted = false } = {}) {
+function validateImportedSettings(jsonText, { currentBlocklistUrl = '', currentBlocklistSubscription = false, trusted = false } = {}) {
 let parsed;
 try {
 parsed = JSON.parse(String(jsonText));
@@ -2138,7 +2139,8 @@ if (!Object.hasOwn(value[section], key)) {
 }
 if (!trusted && value.content.blocklistSubscription) {
 const incoming = value.content.blocklistUrl;
-if (incoming && incoming !== String(currentBlocklistUrl || '')) {
+const approved = currentBlocklistSubscription === true && String(currentBlocklistUrl || '');
+if (incoming && incoming !== approved) {
 value.content.blocklistSubscription = false;
 let host = incoming;
 try { host = new URL(incoming).host; } catch { host = incoming; }
@@ -4674,20 +4676,23 @@ chatEmoteHarvest.inflight += 1;
 const image = new Image();
 let settled = false;
 let timer = 0;
-const settle = (ok) => {
+const settle = (ok, remember = true) => {
 if (settled) return;
 settled = true;
 window.clearTimeout(timer);
 image.onload = null;
 image.onerror = null;
+image.src = '';
 chatEmoteHarvest.inflight -= 1;
 if (ok) mergeStickerLibrary([observation]);
-else if (chatEmoteHarvest.negative.size < HARVEST_NEGATIVE_CAP) chatEmoteHarvest.negative.add(observation.key);
+else if (remember && chatEmoteHarvest.negative.size < HARVEST_NEGATIVE_CAP) {
+chatEmoteHarvest.negative.add(observation.key);
+}
 pumpChatEmoteHarvest();
 };
 image.onload = () => settle(image.naturalWidth > 0);
 image.onerror = () => settle(false);
-timer = window.setTimeout(() => settle(false), HARVEST_TIMEOUT_MS);
+timer = window.setTimeout(() => settle(false, false), HARVEST_TIMEOUT_MS);
 image.src = observation.src;
 }
 }
@@ -6132,7 +6137,7 @@ function renderAboutPage() {
         <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
-      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} byte gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} byte reserve` : '—'}</td></tr></tbody></table></div></section>`;
+      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
 }
 function focusRestoreKey(element) {
 return settingsFocusSelector(element);
@@ -7008,7 +7013,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              842873') || 0;
+const BUNDLE_BYTES = Number('              843346') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -8283,9 +8288,11 @@ const SITE_CSS = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    html[data-kf-route] *,
-    html[data-kf-route] *::before,
-    html[data-kf-route] *::after {
+
+
+    html[data-kf-route]:not([data-kf-reduce-motion="false"]) *,
+    html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::before,
+    html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::after {
       scroll-behavior: auto !important;
       animation-duration: .001ms !important;
       animation-iteration-count: 1 !important;
@@ -11378,6 +11385,7 @@ const muted = Boolean(video?.muted || Number(video?.volume) === 0);
 const preview = Boolean(videoClosest(video, VIDEO_PREVIEW_SELECTOR));
 const preload = Boolean(videoClosest(video, VIDEO_PRELOAD_SELECTOR));
 const markedBackground = Boolean(videoClosest(video, VIDEO_BACKGROUND_SELECTOR));
+const playerSurface = channelPlayer || genericPlayer || (width >= 480 && height >= 270);
 return {
 video,
 route: state.route,
@@ -11385,11 +11393,11 @@ documentVisible: document.visibilityState !== 'hidden',
 connected: Boolean(video?.isConnected),
 visible: videoIsVisible(video),
 intersectsViewport: width > 0 && height > 0,
-playerSurface: channelPlayer || genericPlayer || (width >= 480 && height >= 270),
+playerSurface,
 playerPriority: channelPlayer ? 2 : 1,
 preview,
 preload,
-background: markedBackground || (muted && !channelPlayer),
+background: markedBackground || (muted && !playerSurface),
 muted,
 playing: Boolean(video && !video.paused && !video.ended && video.readyState >= 3),
 width,
@@ -13166,7 +13174,7 @@ const TRANSLATIONS = {
 'Nothing has been read yet. Each card above says why.': ['Todavía no se ha leído nada. Cada tarjeta de arriba explica por qué.', 'Ainda não foi lido nada. Cada cartão acima explica porquê.'],
 'Read again': ['Leer otra vez', 'Ler outra vez'],
 'Nothing is claimed for you here': ['Aquí no se reclama nada por ti', 'Aqui nada é resgatado por ti'],
-'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content &amp; Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': ['Esta página lee. La recompensa diaria la sigue reclamando el propio diálogo de Kick, y solo si lo has activado en Contenido y anuncios. Una tarjeta sin lectura lo dice en lugar de mostrar un cero, porque un saldo vacío y uno que no se puede leer no son lo mismo.', 'Esta página lê. A recompensa diária continua a ser resgatada pela própria janela da Kick, e só se tiveres ativado isso em Conteúdo e anúncios. Um cartão sem leitura di-lo em vez de mostrar um zero, porque um saldo vazio e um saldo ilegível não são a mesma coisa.'],
+'This page reads. The daily reward is still claimed by Kick’s own dialog, and only when you have turned that on under Content & Ads. A card with no reading says so rather than showing a zero, because an empty balance and an unreadable one are not the same thing.': ['Esta página lee. La recompensa diaria la sigue reclamando el propio diálogo de Kick, y solo si lo has activado en Contenido y anuncios. Una tarjeta sin lectura lo dice en lugar de mostrar un cero, porque un saldo vacío y uno que no se puede leer no son lo mismo.', 'Esta página lê. A recompensa diária continua a ser resgatada pela própria janela da Kick, e só se tiveres ativado isso em Conteúdo e anúncios. Um cartão sem leitura di-lo em vez de mostrar um zero, porque um saldo vazio e um saldo ilegível não são a mesma coisa.'],
 'Settings': ['Configuración', 'Configurações'],
 'Autosaved': ['Guardado automático', 'Salvo automaticamente'],
 'Could not save': ['No se pudo guardar', 'Não foi possível salvar'],
@@ -15289,7 +15297,10 @@ const file = event.target.files?.[0];
 event.target.value = '';
 if (!file) return;
 try {
-const result = validateImportedSettings(await file.text(), { currentBlocklistUrl: state.settings.content.blocklistUrl });
+const result = validateImportedSettings(await file.text(), {
+currentBlocklistUrl: state.settings.content.blocklistUrl,
+currentBlocklistSubscription: state.settings.content.blocklistSubscription,
+});
 if (!result.ok) {
 showToast(result.errorKey ? trf(result.errorKey, result.errorValues || {}) : result.error, true);
 return;

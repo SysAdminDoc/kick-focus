@@ -156,9 +156,9 @@ export function createSettings(host) {
    *
    * Substituted by `row` rather than passed in, because every one of these
    * controls is rendered inside a `row` and copying the title to a second
-   * argument is a pair that drifts. `scripts/check.mjs` fails the build if the
-   * token survives into the artifact, which is what catches a control rendered
-   * outside a row.
+   * argument is a pair that drifts. A control rendered outside a `row` would
+   * ship the token as its accessible name, which is what the assertion in
+   * `test/settings.test.js` looks for after rendering all seven pages.
    */
   const ROW_LABEL = '__KF_ROW_LABEL__';
 
@@ -838,7 +838,7 @@ export function createSettings(host) {
         <div class="kf-action-row"><div><h3>Reset all settings</h3><p>Restore every setting, shortcut, note, filter, and channel list to factory defaults. Your recorded emote library is kept.</p></div><button type="button" class="kf-button kf-danger" data-action="reset-all">Reset all settings</button></div>
       </section>
       ${renderStorageHealthPanel()}
-      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} byte gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} byte reserve` : '—'}</td></tr></tbody></table></div></section>`;
+      <section class="kf-subsection"><div class="kf-panel"><table class="kf-table"><tbody><tr><th>Target</th><td>kick.com desktop</td><th>Run timing</th><td>${escapeHtml(INJECTION.summary)}</td></tr><tr><th>Keyboard</th><td>Ctrl+K commands · Alt+K settings</td><th>Test viewports</th><td>1440×900 · 1920×1080</td></tr><tr><th>Version</th><td>${VERSION}</td><th>Remote code</th><td>None</td></tr><tr><th>Userscript size</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${BUNDLE_BYTES.toLocaleString('en-US')} / ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} bytes` : '—'}</td><th>Injection ceiling</th><td data-kf-no-translate>${BUNDLE_BYTES ? `${(BUNDLE_BYTES + LIBRARY_SEED_BYTES).toLocaleString('en-US')} / ${INJECTION_BYTE_BUDGET.toLocaleString('en-US')} gate · ${(BUNDLE_BYTE_CEILING - BUNDLE_BYTES - LIBRARY_SEED_BYTES).toLocaleString('en-US')} under the ${BUNDLE_BYTE_CEILING.toLocaleString('en-US')} ceiling` : '—'}</td></tr></tbody></table></div></section>`;
   }
 
   // A stable selector for the focused control, so focus can be restored to the

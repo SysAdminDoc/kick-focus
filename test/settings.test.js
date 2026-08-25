@@ -237,7 +237,15 @@ test('every settings control takes its accessible name from the row it sits in',
       // The row's own setting controls only. A row can also hold chips, a
       // preview, or a free-text field, and each of those carries a name of its
       // own that is correctly not the heading.
-      for (const [tag] of row.markup.matchAll(/<[^>]*\bdata-set="[^"]*"[^>]*>/g)) {
+      // `toggle` and `range` carry data-set and aria-label on one element;
+      // `segmented` puts the name on the role="group" wrapper and data-set on
+      // its child buttons, so matching on data-set alone skipped every
+      // segmented control, which is half of what this test exists to check.
+      const tags = [
+        ...row.markup.matchAll(/<[^>]*\bdata-set="[^"]*"[^>]*>/g),
+        ...row.markup.matchAll(/<div class="kf-segmented"[^>]*>/g),
+      ];
+      for (const [tag] of tags) {
         const raw = (tag.match(/aria-label="([^"]*)"/) || [])[1];
         const label = raw === undefined ? undefined : decodeEntities(raw);
         if (label === undefined) continue;
@@ -251,5 +259,5 @@ test('every settings control takes its accessible name from the row it sits in',
       }
     }
   }
-  assert.ok(checked >= 40, `only ${checked} named controls were reachable, so this gate is not covering the panel`);
+  assert.ok(checked >= 65, `only ${checked} named controls were reachable (70 today), so this gate is not covering the panel`);
 });

@@ -8,7 +8,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Security
 
-- A settings file can no longer switch on a blocklist subscription by itself. Importing one that carries an unfamiliar HTTPS feed keeps the address, leaves the subscription off, and names the host in an import note, so nothing starts calling out to a stranger's server on the strength of a file somebody shared. Importing your own export is unchanged, and Undo restores what you had.
+- A settings file can no longer switch on a blocklist subscription by itself. Importing one that carries an unfamiliar HTTPS feed keeps the address, leaves the subscription off, and names the host in an import note, so nothing starts calling out to a stranger's server on the strength of a file somebody shared. Re-importing into the profile the file came from is unchanged. Restoring into a fresh browser arrives with the subscription off, since nothing there has agreed to that host yet, and turning it back on is one click. Undo restores what you had.
 - All six copies of the blocklist URL rule now answer the same. Two of them used to accept a URL carrying a username and password, which on a userscript-only install meant those credentials went out to that host on every refresh. Credentials are refused everywhere and the fragment is dropped.
 - Remote blocklist feeds in the companion require approval from its popup. The extension stores one exact HTTPS URL, asks for that origin only, and refuses redirects, non-JSON responses, bodies over 512 KiB, and requests that run longer than eight seconds.
 
@@ -28,7 +28,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Changed
 
-- The synchronous emote seed is bounded at 50 KB rather than 150 KB, which keeps a 75 KB reserve below the injection ceiling a userscript manager enforces. A library larger than that still loads in full a moment later from the database, and the storage panel now says when that is happening.
+- The synchronous emote seed is bounded at 50 KB rather than 150 KB, and each translated string is stored once instead of once per language. Together those leave about 105 KB of room below the injection ceiling a userscript manager enforces. A library larger than the seed still loads in full a moment later from the database, and the storage panel now says when that is happening.
 
 ### Removed
 

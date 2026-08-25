@@ -1034,20 +1034,27 @@ export function createLive(host) {
       // Guarded against a second call: the timeout and a late `onload` can both
       // arrive, and decrementing `inflight` twice would let the pump run more
       // requests than the cap allows.
-      const settle = (ok) => {
+      // `remember` separates "this image is not usable" from "the network did
+      // not answer in time". A timeout releases the slot without blacklisting
+      // the key, so a captive portal or a throttled CDN costs one attempt
+      // rather than the emote for the rest of the session.
+      const settle = (ok, remember = true) => {
         if (settled) return;
         settled = true;
         window.clearTimeout(timer);
         image.onload = null;
         image.onerror = null;
+        image.src = '';
         chatEmoteHarvest.inflight -= 1;
         if (ok) mergeStickerLibrary([observation]);
-        else if (chatEmoteHarvest.negative.size < HARVEST_NEGATIVE_CAP) chatEmoteHarvest.negative.add(observation.key);
+        else if (remember && chatEmoteHarvest.negative.size < HARVEST_NEGATIVE_CAP) {
+          chatEmoteHarvest.negative.add(observation.key);
+        }
         pumpChatEmoteHarvest();
       };
       image.onload = () => settle(image.naturalWidth > 0);
       image.onerror = () => settle(false);
-      timer = window.setTimeout(() => settle(false), HARVEST_TIMEOUT_MS);
+      timer = window.setTimeout(() => settle(false, false), HARVEST_TIMEOUT_MS);
       image.src = observation.src;
     }
   }

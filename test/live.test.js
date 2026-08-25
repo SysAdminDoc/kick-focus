@@ -387,7 +387,7 @@ test('a message from somebody else never lands in this user’s usage counts', {
     'an emote from somebody else is still collected into the library');
 });
 
-test('images that never settle cannot wedge the harvest, and the queue stays bounded', { tag: 'unit' }, async () => {
+test('images that never settle cannot wedge the harvest', { tag: 'unit' }, async () => {
   const { host, state, merged } = makeHost();
   state.settings.content.organizeChatStickers = true;
   state.live.slug = 'alpha';
@@ -431,6 +431,15 @@ test('images that never settle cannot wedge the harvest, and the queue stays bou
   await new Promise((done) => realSetTimeout(done, 300));
   assert.equal(merged.flat().some((observation) => observation.name === 'Recovered'), true,
     'harvesting stayed wedged behind images that never settled');
+
+  // A stalled key is released without being blacklisted, so the same emote is
+  // still collectable once the network recovers. A hard error is what earns a
+  // place in the negative set.
+  merged.length = 0;
+  send('Stall0', '100');
+  await new Promise((done) => realSetTimeout(done, 300));
+  assert.equal(merged.flat().some((observation) => observation.name === 'Stall0'), true,
+    'a timed-out emote was blacklisted rather than retried');
 
   globalThis.window.setTimeout = realSetTimeout;
   globalThis.document.querySelector = () => null;

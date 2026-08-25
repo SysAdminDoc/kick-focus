@@ -554,6 +554,20 @@ test('emote organization has a direct route, visible search, and batch controls'
     'Enter must commit a group rename directly');
 });
 
+test('the chat emote harvest queue is capped at its only push site', { tag: 'artifact' }, async () => {
+  const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  // A stalled key never reaches the negative set, so every later sighting
+  // re-queues it. The cap is the backstop, and it lives inside a closure with
+  // no seam a unit test can reach, so this pins the push site instead: one
+  // push, guarded by the named constant. Nothing is lost when it trips, because
+  // a dropped observation is re-buffered the next time that emote is sent.
+  const pushes = [...runtime.matchAll(/chatEmoteHarvest\.queue\.push\(/g)].length;
+  assert.equal(pushes, 1, `the harvest queue has ${pushes} push sites; the cap guards one`);
+  assert.match(runtime, /chatEmoteHarvest\.queue\.length < HARVEST_QUEUE_CAP\)?\s*\{?\s*chatEmoteHarvest\.queue\.push\(/,
+    'the harvest queue push is not guarded by HARVEST_QUEUE_CAP');
+  assert.match(runtime, /HARVEST_QUEUE_CAP = \d+/, 'HARVEST_QUEUE_CAP is not a named constant');
+});
+
 test('the memoised playback owner is invalidated everywhere it can go stale', { tag: 'artifact' }, async () => {
   const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
   // Measuring the owner walks every video ancestor through getComputedStyle, and
