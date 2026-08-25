@@ -2582,8 +2582,9 @@ try {
     const anchorStart = anchor?.offset ?? null;
 
     // Five seconds gives a busy channel enough time to append and recycle rows.
-    // The same visible row must stay in place while it remains mounted, and the
-    // transcript must remain outside the pause-on-scroll threshold.
+    // The same visible row must stay in place while it remains mounted. When
+    // Kick removes that row entirely, the runtime deliberately falls back to
+    // the last stable pixel and captures a new row for the next mutation.
     await settle(5000);
     const held = Math.round(messages.scrollTop);
     const pixelDrift = Math.round(Math.abs(held - after.top) * 10) / 10;
@@ -2593,6 +2594,7 @@ try {
       : null;
     const anchorEndSignature = anchor?.node?.isConnected ? rowSignature(anchor.node) : '';
     const anchorSame = Boolean(anchorSignature) && anchorEndSignature === anchorSignature;
+    const anchorRecycled = Boolean(anchorSignature) && anchor?.node?.isConnected === false;
     const anchorDrift = anchorStart === null || anchorEnd === null
       ? null
       : Math.round(Math.abs(anchorEnd - anchorStart) * 10) / 10;
@@ -2604,7 +2606,7 @@ try {
     const off = await setSwitch('content.stickyChatPause', false);
     await settle(400);
     const cleared = { button: Boolean(control()) };
-    return { ok: true, before, after, held, pixelDrift, heldDistance, landed: Math.round(landed), anchorRowCount, anchorSignature, anchorEndSignature, anchorSame, anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
+    return { ok: true, before, after, held, pixelDrift, heldDistance, landed: Math.round(landed), anchorRowCount, anchorSignature, anchorEndSignature, anchorSame, anchorRecycled, anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
   })()`);
   const scroll = scrollPause.value || { why: scrollPause.error || 'the probe returned nothing' };
   recordProbe('scrolling chat up enters the paused state, and Resume leaves it',
@@ -2613,15 +2615,18 @@ try {
       && scroll.before?.paused === 'false'
       && scroll.after?.paused === 'true'
       && /Resume chat/.test(scroll.after?.label || '')
-      && scroll.anchorSame === true
-      && Number.isFinite(scroll.anchorDrift)
-      && scroll.anchorDrift <= 8
+      && ((scroll.anchorSame === true
+          && Number.isFinite(scroll.anchorDrift)
+          && scroll.anchorDrift <= 8)
+        || (scroll.anchorRecycled === true
+          && Number.isFinite(scroll.pixelDrift)
+          && scroll.pixelDrift <= 8))
       && scroll.heldDistance > 64
       && scroll.resumed?.paused === 'false'
       && /Pause chat/.test(scroll.resumed?.label || '')
       && scroll.cleared?.button === false,
     scroll.ok
-      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, same message=${scroll.anchorSame}, drift ${scroll.anchorDrift}px, pixel drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
+      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, ${scroll.anchorSame ? 'same message held' : scroll.anchorRecycled ? 'recycled row used stable-pixel fallback' : 'anchor lost'}, drift ${scroll.anchorDrift}px, pixel drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
       : scroll.why);
 
   // R-76: a banned reader's way back into a chat, still on screen.

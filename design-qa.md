@@ -38,7 +38,7 @@ The implementation is exercised through `test/fixtures/settings-preview.html` at
 - `design/screenshots/emote-library.png`
 - `design/screenshots/profile-stats-button.png`
 
-The retained QA comparisons contain the normalized target and browser implementation in the same frame. The files under `design/screenshots` are final standalone captures from the verified v1.41.0 bundle.
+The retained QA comparisons contain the normalized target and browser implementation in the same frame. The files under `design/screenshots` are final standalone captures from the verified v1.42.0 bundle.
 
 ## Focused evidence
 
@@ -110,6 +110,16 @@ The first implementation still read as a card-heavy preferences dialog. The shel
 - P2: an off-screen Chromium window throttled sub-second timers, which made otherwise healthy focus, scroll, and search journeys intermittent. The gate now keeps ordinary timer behavior while remaining off-screen and bounds every browser command to 70 seconds.
 - P2: Kick serves its ranged chat separator inconsistently between channel loads. The fixture contract treats its absence as valid while still failing if another selector starts winning.
 
+### Iteration 11, visual hierarchy and compact-state recovery
+
+- P1: status colors collapsed warnings, unavailable companion state, and healthy readings into the same green treatment. About now separates healthy, warning, error, and neutral readings, while the companion marks a missing service as unavailable.
+- P1: fully rounded status and selection backdrops conflicted with the selected rectangular visual system. Settings, multi-stream, the emote workspace, and the companion now share a 4, 6, 8, and 12-pixel corner scale with compact rectangular labels.
+- P1: multi-stream Close could leave the viewport at 1280 pixels. The toolbar now wraps before that point, empty boards hide unavailable actions, and Save board remains disabled until a channel and name exist.
+- P2: compact chat could place Focus over the composer or an open emote picker, and narrow settings navigation gave no overflow cue. Focus now avoids those surfaces, and the navigation strip exposes its scroll affordance.
+- P2: Commands closed Settings and discarded the current page. It now layers above Settings and returns focus, page state, and scroll position when dismissed.
+- P2: focusing a followed channel could scroll the sidebar and immediately dismiss the preview opened by that focus. Focus-driven scroll now repositions the preview after layout settles, while ordinary wheel movement still dismisses it.
+- P2: Kick can recycle the held chat row while paused even when the stable pixel remains fixed. The release probe now accepts that documented virtualizer fallback, but still fails a connected-row identity change or more than 8 pixels of drift.
+
 ### Residual P3 differences
 
 - Layout uses a live textual Current setup summary instead of the mock's tiny schematic, improving legibility while preserving the same hierarchy.
@@ -133,9 +143,9 @@ No actionable P0, P1, or P2 visual differences remain.
 - Enabled composer recall, verified its disabled empty state, recorded two public sends, cycled both from the visible control, and checked the focused control at 1440 and 680 pixels.
 - Scrolled the About page to the destructive section and verified the reset explanation, action alignment, wrapping, and separation from the storage table.
 - Ran all seven settings pages at 1440 × 900, 900 × 800, 680 × 760, and 375 × 812. The second pass found a fixed Appearance control column and an oversized protection log at 375 pixels. Appearance now stacks those controls, long request paths wrap inside a fixed table, and the repeated matrix has no clipped page control or page-level horizontal overflow.
-- Ran the packaged v1.41.0 companion at 1440 × 900 and 1920 × 1080. Chromium passed 98 of 98 asserted checks at each viewport with 15 documented anonymous-session skips. Firefox passed 8 of 8 asserted checks with one documented popup-navigation skip.
+- Ran the packaged v1.42.0 companion at 1440 × 900 and 1920 × 1080. Chromium passed 98 of 98 asserted checks at each viewport with 15 documented anonymous-session skips. Firefox passed 8 of 8 asserted checks with one documented popup-navigation skip.
 - Compared the final 1440-pixel Home capture beside `design/mockups/kick-home-premium.png` at equal height. The canvas, navigation, featured stream, chat rail, category grid, and Focus entry point stay inside the viewport with no clipped controls or broken spacing.
-- Ran 460 tests, 213 artifact checks, and 91 deliberate negative probes. The userscript is 855,323 bytes, leaving 94,677 bytes below its injection ceiling after the library seed allowance.
+- Ran 463 tests, 213 artifact checks, and 91 deliberate negative probes. The userscript is 858,234 bytes, leaving 91,766 bytes below its injection ceiling after the library seed allowance.
 - Browser console inspection after the final build returned no warnings or errors.
 
 ## Main Kick theme, v1.31.0

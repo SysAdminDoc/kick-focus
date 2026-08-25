@@ -564,6 +564,12 @@ test('reset recovery persists without a timer and the page keyboard stays with K
     'the floating Focus fallback must clear a narrow chat composer');
   assert.match(source, /state\.quickButton\.hidden = !shouldShow \|\| headerMounted \|\| pickerVisible/,
     'the floating Focus fallback must leave a narrow open emote picker unobstructed');
+  const previewScrollStart = source.indexOf('function onFollowingPreviewScroll');
+  const previewScrollHandler = source.slice(previewScrollStart, source.indexOf('\n}\n\nfunction onFollowingPreviewKeydown', previewScrollStart));
+  assert.match(previewScrollHandler, /document\.activeElement[\s\S]*hideFollowingPreview\(\);[\s\S]*requestAnimationFrame[\s\S]*showFollowingPreview\(row\)/,
+    'focus-driven sidebar scrolling must reposition the followed-channel preview instead of dismissing it');
+  assert.match(source, /addEventListener\('scroll', guard\('following preview scroll', onFollowingPreviewScroll\), true\)/,
+    'sidebar scrolling must use the focus-aware followed-preview handler');
   const privateReset = source.slice(source.indexOf('function clearPrivateData'), source.indexOf('\n}\n\n/**', source.indexOf('function clearPrivateData')));
   assert.doesNotMatch(privateReset, /REWARD_STATE_KEY|state\.reward/,
     'full reset still deletes reward history that its undo snapshot cannot restore');

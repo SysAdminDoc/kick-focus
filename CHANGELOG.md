@@ -4,6 +4,21 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.42.0, 2026-08-25
+
+### Fixed
+
+- Commands now opens above Settings instead of discarding the page underneath. Closing it returns focus to the control that opened it, with the same settings page and scroll position intact.
+- Multi-stream wraps its toolbar before Close can leave a 1280-pixel viewport. The empty board hides controls that cannot do anything yet, and Save board stays disabled until the board has a channel and a name.
+- Compact chat no longer lets the floating Focus action cover the composer or an open emote picker. Narrow settings navigation now shows its horizontal scroll affordance.
+- About distinguishes active, warning, and neutral readings by color. A degraded injection notice uses warning treatment instead of looking healthy, while the companion marks an unavailable service as an error instead of success.
+
+### Changed
+
+- Settings, multi-stream, the emote organizer, and the companion now share a restrained 4, 6, 8, and 12-pixel corner scale. Fully rounded status backdrops and selection markers have been replaced with compact rectangular treatments.
+- Appearance theme boards use a readable two-column layout at desktop widths. Their labels and descriptions no longer compete for one cramped row.
+- Empty diagnostic protection logs use plain status copy instead of a dash-only timestamp.
+
 ## 1.41.0, 2026-08-25
 
 ### Fixed

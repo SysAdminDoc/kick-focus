@@ -3635,6 +3635,18 @@ function onFollowingPreviewLeave(event) {
   hideFollowingPreview();
 }
 
+function onFollowingPreviewScroll() {
+  const row = state.followingPreviewRow;
+  const active = document.activeElement;
+  const keepForFocus = row?.isConnected && (active === row || row.contains?.(active));
+  hideFollowingPreview();
+  if (!keepForFocus) return;
+  requestAnimationFrame(() => {
+    const current = document.activeElement;
+    if (row.isConnected && (current === row || row.contains?.(current))) showFollowingPreview(row);
+  });
+}
+
 function onFollowingPreviewKeydown(event) {
   if (event.key !== 'Escape' || event.defaultPrevented
     || state.followingPreview?.dataset.kfOpen !== 'true') return;
@@ -3651,7 +3663,8 @@ function installFollowingPreviewInteractions() {
   document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
   document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
   document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
-  for (const type of ['scroll', 'wheel']) document.addEventListener(type, hideFollowingPreview, true);
+  document.addEventListener('scroll', guard('following preview scroll', onFollowingPreviewScroll), true);
+  document.addEventListener('wheel', hideFollowingPreview, true);
   window.addEventListener('resize', hideFollowingPreview);
   window.addEventListener('blur', hideFollowingPreview);
   const root = document.getElementById('kick-focus-root');

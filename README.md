@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.41.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.42.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -13,7 +13,7 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 
 ## What it changes
 
-- Restyles Kick's current semantic desktop shell with clearer type, tighter spacing, quieter borders, fewer status pills, and text-first route tabs. Stream and category cards use imagery and whitespace instead of boxed perimeters.
+- Restyles Kick's current semantic desktop shell with clearer type, tighter spacing, quieter borders, rectangular status labels, and text-first route tabs. Stream and category cards use imagery and whitespace instead of boxed perimeters.
 - Reclaims the permanent discovery rail with Auto, Compact, Dropdown, and Hidden modes; Auto is the default so the live site can choose the appropriate desktop width. Dropdown collapses the rail to a tab that expands on hover or keyboard focus.
 - A followed channel's existing Kick image opens in a compact preview when its sidebar row is hovered or focused. The preview stays inside the viewport, Escape closes it, and Reduced Motion freezes the source into a still canvas.
 - Adds Standard, Theater, and Focus stream layouts, plus Right, Docked, and Hidden chat. Theater keeps the player/chat split inside the viewport, and Kick's chat separator remains draggable with widths saved from 320 to 520 px.

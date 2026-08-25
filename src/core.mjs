@@ -1,4 +1,4 @@
-export const VERSION = '1.41.0';
+export const VERSION = '1.42.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 5;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.42.0': Object.freeze({
+    summary: 'Settings and the companion now use clearer status colors with consistent corners. Compact layouts keep controls reachable. Blank multi-stream boards stay unsavable, and Commands returns you to the setting you were editing.',
+    defaults: Object.freeze([]),
+  }),
   '1.41.0': Object.freeze({
     summary: 'Settings now opens reliably and stays inside the viewport down to 375 pixels. Reset recovery waits for you, Viewer status is clearer, emote management is easier to find, composer recall is visible, and the companion follows English, Spanish, or Portuguese.',
     defaults: Object.freeze([]),

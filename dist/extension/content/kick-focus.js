@@ -1,11 +1,15 @@
-/* Kick Focus 1.41.0 — generated from src/. Edit the source, not this file. */
+/* Kick Focus 1.42.0 — generated from src/. Edit the source, not this file. */
 (() => {
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.41.0';
+const VERSION = '1.42.0';
 const SETTINGS_SCHEMA = 5;
 const VERSION_NOTES = Object.freeze({
+'1.42.0': Object.freeze({
+summary: 'Settings and the companion now use clearer status colors with consistent corners. Compact layouts keep controls reachable. Blank multi-stream boards stay unsavable, and Commands returns you to the setting you were editing.',
+defaults: Object.freeze([]),
+}),
 '1.41.0': Object.freeze({
 summary: 'Settings now opens reliably and stays inside the viewport down to 375 pixels. Reset recovery waits for you, Viewer status is clearer, emote management is easier to find, composer recall is visible, and the companion follows English, Spanish, or Portuguese.',
 defaults: Object.freeze([]),
@@ -7119,7 +7123,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              855635') || 0;
+const BUNDLE_BYTES = Number('              856420') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -9332,6 +9336,17 @@ const row = followingPreviewRowFromEvent(event) || state.followingPreviewRow;
 if (!row || row !== state.followingPreviewRow || (event.relatedTarget && row.contains(event.relatedTarget))) return;
 hideFollowingPreview();
 }
+function onFollowingPreviewScroll() {
+const row = state.followingPreviewRow;
+const active = document.activeElement;
+const keepForFocus = row?.isConnected && (active === row || row.contains?.(active));
+hideFollowingPreview();
+if (!keepForFocus) return;
+requestAnimationFrame(() => {
+const current = document.activeElement;
+if (row.isConnected && (current === row || row.contains?.(current))) showFollowingPreview(row);
+});
+}
 function onFollowingPreviewKeydown(event) {
 if (event.key !== 'Escape' || event.defaultPrevented
 || state.followingPreview?.dataset.kfOpen !== 'true') return;
@@ -9347,7 +9362,8 @@ document.addEventListener('focusin', guard('following preview', onFollowingPrevi
 document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
 document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
 document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
-for (const type of ['scroll', 'wheel']) document.addEventListener(type, hideFollowingPreview, true);
+document.addEventListener('scroll', guard('following preview scroll', onFollowingPreviewScroll), true);
+document.addEventListener('wheel', hideFollowingPreview, true);
 window.addEventListener('resize', hideFollowingPreview);
 window.addEventListener('blur', hideFollowingPreview);
 const root = document.getElementById('kick-focus-root');
