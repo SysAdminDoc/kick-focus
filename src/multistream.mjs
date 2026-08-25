@@ -851,6 +851,17 @@ export function createMultistream(host) {
       ...state.multistream.layouts.flatMap((layout) => layout.streams),
     ].map((slug) => slug.toLowerCase()))];
     if (!slugs.length) return;
+    // Neither map had a delete anywhere, so removing a channel from the grid
+    // left its id and its live flag behind and this poll walked every channel
+    // the tab had ever shown. Pruned to what is still referenced, which is the
+    // set this function just built.
+    const referenced = new Set(slugs);
+    for (const slug of state.multistreamIds.keys()) {
+      if (!referenced.has(slug)) {
+        state.multistreamIds.delete(slug);
+        state.multistreamLive.delete(slug);
+      }
+    }
     // The endpoint keys on livestream id, so only channels known to have one are
     // asked about; a channel with none is already known to be offline.
     const ids = slugs.map((slug) => state.multistreamIds.get(slug)).filter(Boolean);

@@ -5405,6 +5405,13 @@ const slugs = [...new Set([
 ...state.multistream.layouts.flatMap((layout) => layout.streams),
 ].map((slug) => slug.toLowerCase()))];
 if (!slugs.length) return;
+const referenced = new Set(slugs);
+for (const slug of state.multistreamIds.keys()) {
+if (!referenced.has(slug)) {
+state.multistreamIds.delete(slug);
+state.multistreamLive.delete(slug);
+}
+}
 const ids = slugs.map((slug) => state.multistreamIds.get(slug)).filter(Boolean);
 if (!ids.length) return;
 const response = await kickFetchJson(endpoints.currentViewers(ids));
@@ -7013,7 +7020,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              843346') || 0;
+const BUNDLE_BYTES = Number('              843580') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -9708,7 +9715,8 @@ const rawId = options.id
 || '';
 const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
 const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Emote';
-const src = rawSrc;
+const src = cleanStickerAssetUrl(rawSrc);
+if (!src) return null;
   const key = platformStickerKey((id ? `id:${id}` : `name:${name.toLowerCase()}|src:${src}`).slice(0, 320));
 return { key, id, name, src };
 }

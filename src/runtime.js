@@ -4322,7 +4322,13 @@ function stickerImageInfo(image, options = {}) {
     || '';
   const id = String(rawId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
   const name = String(alt).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Emote';
-  const src = rawSrc;
+  // Cleaned here, not only on persist. The library card renders this string as
+  // an href, and escapeHtml does not stop a scheme, so a value carrying
+  // /emotes/ inside a javascript: URL used to survive in memory until the next
+  // reload and give the Open artwork link script execution in kick.com's own
+  // origin. Same rule the persist and import paths already applied.
+  const src = cleanStickerAssetUrl(rawSrc);
+  if (!src) return null;
   // Prefixed at the point of creation, not only on persist: the library is
   // keyed by this string, so a raw key here would miss every stored entry and
   // record a duplicate beside it.

@@ -554,6 +554,18 @@ test('emote organization has a direct route, visible search, and batch controls'
     'Enter must commit a group rename directly');
 });
 
+test('an emote observed in the page is cleaned before it can become an href', { tag: 'artifact' }, async () => {
+  const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  // The library card renders sticker.src as an href and escapeHtml does not stop
+  // a scheme, so the persist-time cleaner has to run at the moment the value is
+  // read out of Kick's DOM, not only on the way to storage.
+  const info = runtime.slice(runtime.indexOf('function stickerImageInfo'), runtime.indexOf('function stickerButtonInfo'));
+  assert.ok(info.length > 200, 'stickerImageInfo was not found in the artifact');
+  assert.match(info, /const src = cleanStickerAssetUrl\(rawSrc\)/,
+    'stickerImageInfo stores the raw DOM value rather than a cleaned URL');
+  assert.match(info, /if \(!src\) return null/, 'a rejected URL must drop the observation, not record an empty one');
+});
+
 test('the chat emote harvest queue is capped at its only push site', { tag: 'artifact' }, async () => {
   const runtime = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
   // A stalled key never reaches the negative set, so every later sighting

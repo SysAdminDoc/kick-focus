@@ -316,12 +316,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P1
 
-- [ ] P1 — R-132: Collapse the two locale maps into one keyed map
-  Why: `TRANSLATIONS` stores every English key twice, once under `es` and once under `pt`. Measured on 2026-08-25: 1,650 entries carrying 65,586 bytes of keys, so one copy is worth about 32,800 bytes. This is the largest single saving available in the artifact, and it matters now: the localization work in this audit took the injection footprint from 903,838 to 924,717 bytes against a 925,000 byte gate. There are 283 bytes of headroom. The next feature that adds a toast fails the build.
-  Where: src/runtime.js TRANSLATIONS and tr(); test/i18n.test.js and test/i18n-coverage.test.js both parse the literal line by line and would need the new shape
-  Acceptance: One map keyed by the English string, valued by a per-locale array or record; `tr()` and `trf()` behave identically; both i18n parsers read the new shape; the artifact drops by at least 25,000 bytes; the reserve below the 1,000,000 byte ceiling exceeds 100,000 bytes.
-  Complexity: M
-
 - [ ] P1 — R-133: Prove the Firefox package on v1.39.0
   Why: both Chromium viewports were re-run on 2026-08-25 against the shipped build and pass 96/96 with 15 skips at 1440x900 and at 1920x1080, and README says so. `npm run verify:firefox` was not repeated, so the Firefox result on record is still the v1.34.0 one (8/8 with one documented popup skip), and `npm run release:check` runs both engines so it cannot be green until that half is.
   Where: scripts/verify-firefox.mjs; scripts/release-checklist.mjs; README.md
@@ -362,26 +356,8 @@ Found during a full-repository audit. Everything the audit fixed is in
   Acceptance: Each literal has one named source, each comment's number matches the code beside it, and the slug regex sites that load after api.mjs call `isValidSlug`.
   Complexity: S
 
-- [ ] P3 — R-140: Bound the two multi-stream maps to the current grid
-  Why: `multistreamIds` and `multistreamLive` in src/multistream.mjs:298-299 have no `delete` or `clear` anywhere. Removing a channel from the grid does not evict it, and `refreshMultistreamLive` walks the whole accumulated set on each poll, so poll cost grows with every channel the tab has ever shown. Bounded by a session rather than unbounded, and small, which is why it is P3 and not P1.
-  Where: src/multistream.mjs:298-299 and refreshMultistreamLive around 860
-  Acceptance: Both maps are pruned to the current slug set at the top of each refresh, with a test that adds and removes a channel and asserts the maps shrink.
-  Complexity: S
-
-- [ ] P3 — R-141: Take the tab id from the sender, not the message
-  Why: src/extension/background.js:167 and 205-207 read `message.tabId` on a path a Kick content script can reach. Sender verification is correct, so this is not an escalation, but a content script on any Kick tab can read or reset another Kick tab's blocked counter and clear its badge. The popup is the only caller that legitimately names a tab other than its own.
-  Where: src/extension/background.js:167, 205-207; the same shape in background.firefox.js
-  Acceptance: The Kick-page path uses `sender.tab?.id`; `message.tabId` is honoured only for the extension-page path.
-  Complexity: S
-
-- [ ] P3 — R-142: Clean the emote library URL at observation, not only at persist
-  Why: `cleanStickerAssetUrl` enforces https and a kick.com host on the persist and import paths, but `mergeStickerLibrary` stores the raw DOM value, and the library card renders `sticker.src` as an `href`. `escapeHtml` does not stop a scheme, so a `javascript:` value carrying `/emotes/` in its path would survive until the next reload and give the "Open artwork" link script execution in the kick.com origin. Placing that node already requires HTML injection on kick.com, so it is not standalone-exploitable, but it violates the module's own stated invariant.
-  Where: src/runtime.js stickerImageInfo around 4238 and mergeStickerLibrary around 4371; src/settings.mjs:435; src/core.mjs cleanStickerAssetUrl around 2729
-  Acceptance: `stickerImageInfo` returns a cleaned URL or nothing, with a test that feeds it a `javascript:` src containing `/emotes/`.
-  Complexity: S
-
 - [ ] P3 — R-143: Close the two remaining settings-coverage gaps
-  Why: test/core.test.js catches a settings key that `normalizeSettings` forgets, and nothing catches a key that normalizes correctly and has no control, which is a setting a user can never reach. Separately, `isSeedPartial` in src/storage.mjs is exported and tested and has no production caller, which the file-granularity coverage gate structurally cannot see.
-  Where: test/core.test.js settings schema tests; src/settings.mjs `data-set` attributes; src/storage.mjs isSeedPartial
+  Why: test/core.test.js catches a settings key that `normalizeSettings` forgets, and nothing catches a key that normalizes correctly and has no control, which is a setting a user can never reach. Three exports with no caller outside their own tests shipped in the artifact until this audit removed them, and the coverage gate is file-granular so it could not see any of them.
+  Where: test/core.test.js settings schema tests; src/settings.mjs `data-set` attributes; scripts/check.mjs
   Acceptance: A test extracts every `data-set` path from settings.mjs and diffs it against DEFAULT_SETTINGS, allowlisting `schema` and `lastSeenVersion`; a symbol-level export-reachability check in scripts/check.mjs names any export nothing outside tests reads.
   Complexity: S

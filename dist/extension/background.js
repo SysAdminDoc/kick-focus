@@ -64,6 +64,18 @@ const fromKickPage = (sender) => fromThisExtension(sender) && KICK_ORIGINS.has(s
 const fromOwnPage = (sender) => fromThisExtension(sender) && /^chrome-extension:\/\//.test(String(sender?.url || ''));
 const fromKickPageOrOwnUi = (sender) => fromKickPage(sender) || fromOwnPage(sender);
 
+/**
+ * Which tab a message is allowed to be about.
+ *
+ * A Kick page speaks for itself and nothing else: it used to pass `tabId` in the
+ * body, so a content script on any Kick tab could read or reset another Kick
+ * tab's blocked counter and clear its badge. The popup is the only caller that
+ * legitimately names a tab other than its own, and it is not a Kick page.
+ */
+const tabIdFor = (message, sender) => (fromKickPage(sender)
+  ? sender?.tab?.id
+  : message?.tabId);
+
 // Must answer exactly as core.mjs `normalizeBlocklistUrl` does, including the
 // length cap; scripts/check.mjs runs both over one corpus and compares.
 function normalizeBlocklistUrl(raw) {
@@ -174,7 +186,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({
         version: chrome.runtime.getManifest().version,
         rulesets,
-        blocked: blockedByTab.get(message.tabId) || 0,
+        blocked: blockedByTab.get(tabIdFor(message, sender)) || 0,
         // Reported so the popup can show whether the counter is trustworthy:
         // onRuleMatchedDebug only exists for unpacked installs.
         countsAvailable: Boolean(chrome.declarativeNetRequest.onRuleMatchedDebug),
@@ -211,8 +223,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === 'kick-focus:reset-count') {
     if (!fromKickPageOrOwnUi(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
-    blockedByTab.delete(message.tabId);
-    paintBadge(message.tabId);
+    blockedByTab.delete(tabIdFor(message, sender));
+    paintBadge(tabIdFor(message, sender));
     sendResponse({ ok: true });
     return true;
   }
