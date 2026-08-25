@@ -16,7 +16,7 @@ The primary opportunity is to turn the picker from a compact catalog into a depe
 
 The rest of the product is healthy enough to improve rather than replace. On 2026-08-23, the offline suite passed 399 of 399 tests. The verification command passed 194 checks and fired 81 intended red probes. Instrumented coverage was 89.84% for lines, 85.25% for branches, and 87.65% for functions. The fresh Chromium journey passed 89 of 96 checks, while Firefox passed 8 of 8 narrower checks (`package.json`, `scripts/verify-extension.mjs`, `scripts/verify-firefox.mjs`).
 
-Two release risks should land before large additions. The userscript plus maximum synchronous seed consumes 995,215 UTF-8 bytes, leaving 4,785 bytes below Violentmonkey's approximate 1 MB alternative-injection boundary. The build and seed guards currently use JavaScript string length, so their displayed count is 1,703 bytes low for the present artifact (`scripts/build.mjs`, `scripts/check.mjs`, `src/storage.mjs`, [Violentmonkey 2.46.0](https://github.com/violentmonkey/violentmonkey/releases/tag/v2.46.0)). The Chromium journey also has seven current failures in previews, Viewer Hub cards, chat pause geometry, and watch-clock ownership (`scripts/verify-extension.mjs`, `CLAUDE.md`).
+Size is the standing release risk. Every guard now measures UTF-8 bytes, and the seed budget dropped to 50,000, so the userscript plus its maximum synchronous seed is 924,717 bytes against a 925,000 byte gate and 75,283 bytes of reserve below Violentmonkey's approximate 1 MB alternative-injection boundary (`scripts/build.mjs`, `scripts/check.mjs`, `src/storage.mjs`, [Violentmonkey 2.46.0](https://github.com/violentmonkey/violentmonkey/releases/tag/v2.46.0), measured 2026-08-25). That is 283 bytes of headroom, and the largest saving available is collapsing the two locale maps into one keyed map, worth about 32,800 bytes. The Chromium journey also has seven current failures in previews, Viewer Hub cards, chat pause geometry, and watch-clock ownership (`scripts/verify-extension.mjs`, `CLAUDE.md`).
 
 Recommended order:
 
@@ -151,7 +151,7 @@ Diagnostics should report sanitized counts and state, never emote names or comme
 
 ### Injection and package limits
 
-The userscript filesystem size is 845,215 UTF-8 bytes and the maximum synchronous seed is 150,000 bytes. Their total is 995,215 bytes. Build output reports 843,512 because it uses string length. Seed planning uses the same faulty unit, so multibyte emote names can exceed the advertised limit (`scripts/build.mjs`, `scripts/check.mjs`, `src/storage.mjs`). R-102 should make all guards byte-accurate and reserve at least 75,000 bytes.
+Corrected 2026-08-25, after R-102 shipped. The userscript is 874,717 UTF-8 bytes and the maximum synchronous seed is 50,000, for a total of 924,717 against the 925,000 byte gate and 75,283 bytes of reserve. Build output, the tests and the About panel all report the same byte count, and seed planning uses `TextEncoder` rather than string length, so a library of multibyte emote names is trimmed against real bytes. The remaining consequence is that the byte budget, not the 400-entry count, is what bounds a realistic library: about 240 records of Kick's usual shape fit, and the rest arrive from IndexedDB a frame or two later (`src/storage.mjs`, `test/storage.test.js`).
 
 ### Privacy baseline
 
@@ -318,4 +318,4 @@ The category review is complete. Security and response-bound handling map to R-1
 
 1. **Needs live validation.** Does the current signed-in profile comment and reply composer retain the same button ownership, draft model, and focus behavior after client-side route changes?
 2. **Needs live validation.** How do subscriber, gifted, follower-only, and unavailable emotes appear in the first-party comment surface, and which states can be observed without inferring entitlement?
-3. **Needs live validation.** What is the real userscript-manager overhead once the 150,000-byte synchronous seed is embedded, escaped, and injected under current Violentmonkey and Tampermonkey modes?
+3. **Needs live validation.** What is the real userscript-manager overhead once the 50,000-byte synchronous seed is embedded, escaped, and injected under current Violentmonkey and Tampermonkey modes?

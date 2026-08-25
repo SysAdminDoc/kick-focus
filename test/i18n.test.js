@@ -19,26 +19,31 @@ async function readLocales() {
   const start = source.indexOf('const TRANSLATIONS = {');
   assert.notEqual(start, -1, 'TRANSLATIONS literal not found');
 
-  const locales = new Map();
-  let locale = null;
+  const names = source.match(/const LOCALES = \[([^\]]*)\]/);
+  assert.ok(names, 'LOCALES list not found');
+  const order = [...names[1].matchAll(/'(\w+)'/g)].map((match) => match[1]);
+  assert.ok(order.length >= 2, `expected at least two locales, found ${order.join(', ')}`);
+
+  // One row per string now, so a key can only be declared once per row and the
+  // per-locale lists are built by position rather than by block. A duplicate
+  // key is still legal JavaScript with the later value silently winning, which
+  // is why this parses the literal instead of importing it.
+  const locales = new Map(order.map((name) => [name, []]));
   for (const line of source.slice(start).split('\n')) {
-    const localeMatch = line.match(/^ {2}(\w+): \{/);
-    if (localeMatch) {
-      locale = localeMatch[1];
-      locales.set(locale, []);
-      continue;
-    }
-    if (locale && /^ {2}\},?\s*$/.test(line)) {
-      locale = null;
-      continue;
-    }
-    if (!locale && /^\};/.test(line)) break;
-    if (!locale) continue;
-    const entry = line.match(/^ {4}'((?:[^'\\]|\\.)*)':/);
-    if (entry) locales.get(locale).push(entry[1]);
+    if (/^\};/.test(line)) break;
+    const entry = line.match(/^ {2}'((?:[^'\\]|\\.)*)': \[(.*)\],$/);
+    if (!entry) continue;
+    const values = [...entry[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((match) => match[1]);
+    assert.equal(values.length, order.length,
+      `${entry[1]} carries ${values.length} translations for ${order.length} locales`);
+    order.forEach((name, index) => {
+      // An empty string is no translation at all, and would render as blank
+      // rather than falling back to English.
+      assert.notEqual(values[index], '', `${name} has an empty translation for ${entry[1]}`);
+      locales.get(name).push(entry[1]);
+    });
   }
 
-  assert.ok(locales.size >= 2, `expected at least two locales, found ${[...locales.keys()].join(', ')}`);
   for (const [locale, keys] of locales) {
     assert.ok(keys.length > 20, `${locale} parsed only ${keys.length} keys — the parser, not the dictionary, is probably wrong`);
   }
@@ -81,7 +86,7 @@ test('the translator is forward-only and never renames a language', { tag: 'unit
   // use, not easier. Endonyms must appear the same in every locale.
   for (const endonym of ['English', 'Español', 'Português']) {
     assert.equal(
-      source.includes(`    '${endonym}': '`),
+      source.includes(`  '${endonym}': [`),
       false,
       `a locale translates the language name ${endonym}; language names stay as endonyms`,
     );
@@ -109,11 +114,10 @@ test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
   // written turned out to be the correct wording that the visible UI had
   // drifted away from, which is the more expensive half of the problem.
   const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
-  const esStart = source.indexOf('  es: {');
-  const ptStart = source.indexOf('  pt: {');
-  assert.ok(esStart > 0 && ptStart > esStart, 'locale blocks not found');
-  const ptEnd = source.indexOf('\n  },\n};', ptStart);
-  assert.ok(ptEnd > ptStart, 'end of the pt block not found');
+  const start = source.indexOf('const TRANSLATIONS = {');
+  assert.ok(start > 0, 'TRANSLATIONS literal not found');
+  const end = source.indexOf('\n};', start);
+  assert.ok(end > start, 'end of the dictionary not found');
 
   // Everything that can name a key: the rest of runtime plus every other module
   // whose constants are looked up by value.
@@ -122,9 +126,9 @@ test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
     'src/api.mjs', 'src/live.mjs', 'src/storage.mjs', 'src/compatibility.mjs',
     'test/i18n-coverage.test.js',
   ].map((file) => readFile(resolve(root, file), 'utf8')));
-  const usage = source.slice(0, esStart) + source.slice(ptEnd) + others.join('\n');
+  const usage = source.slice(0, start) + source.slice(end) + others.join('\n');
 
-  const keys = [...source.slice(esStart, ptStart).matchAll(/^ {4}'((?:[^'\\]|\\.)*)':/gm)]
+  const keys = [...source.slice(start, end).matchAll(/^ {2}'((?:[^'\\]|\\.)*)': \[/gm)]
     .map((match) => match[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\'));
   assert.ok(keys.length > 100, `parsed only ${keys.length} keys — suspect the parser, not the dictionary`);
 
@@ -148,4 +152,48 @@ test('no locale carries a key nothing renders', { tag: 'unit' }, async () => {
   const dead = keys.filter((key) => !live(key));
   assert.deepEqual(dead, [],
     `${dead.length} dictionary key(s) have no call site, starting with: ${dead.slice(0, 5).map((k) => JSON.stringify(k)).join(' | ')}`);
+});
+
+test('the shipped dictionary resolves, in the shape the translator reads', { tag: 'artifact' }, async () => {
+  // Evaluated from the artifact rather than imported, because the shape and the
+  // lookup have to agree in the file a user actually installs. When the two
+  // per-locale maps were collapsed into one row per string, a parser that only
+  // read the source would have gone on passing over an artifact that resolved
+  // nothing.
+  const src = await readFile(resolve(root, 'dist/kick-focus.user.js'), 'utf8');
+  const localesAt = src.indexOf('const LOCALES = [');
+  const dictAt = src.indexOf('const TRANSLATIONS = {');
+  assert.ok(localesAt > 0 && dictAt > localesAt, 'the dictionary literal is not in the artifact');
+  const literal = src.slice(localesAt, src.indexOf('\n};', dictAt) + 3);
+  // eslint-disable-next-line no-new-func
+  const { LOCALES, TRANSLATIONS } = new Function(`${literal}; return { LOCALES, TRANSLATIONS };`)();
+
+  const tr = (value, locale) => {
+    const source = String(value);
+    const index = LOCALES.indexOf(locale);
+    return (index === -1 ? '' : TRANSLATIONS[source]?.[index]) || source;
+  };
+
+  assert.ok(LOCALES.length >= 2, `only ${LOCALES.length} locale(s) shipped`);
+  assert.ok(Object.keys(TRANSLATIONS).length > 500, 'the shipped dictionary is far smaller than the source');
+
+  // Every row carries one non-empty value per locale. A blank would render as
+  // nothing rather than falling back to English, which is the failure mode a
+  // positional array introduces and a per-locale map could not have.
+  for (const [key, row] of Object.entries(TRANSLATIONS)) {
+    assert.ok(Array.isArray(row) && row.length === LOCALES.length,
+      `${JSON.stringify(key)} carries ${row?.length} values for ${LOCALES.length} locales`);
+    row.forEach((value, index) => {
+      assert.ok(typeof value === 'string' && value.trim(),
+        `${JSON.stringify(key)} has no ${LOCALES[index]} translation`);
+    });
+  }
+
+  assert.equal(tr('Home', 'es'), 'Inicio');
+  assert.equal(tr('Home', 'pt'), 'Início');
+  // English is not a row: it is the key, so it falls through unchanged.
+  assert.equal(tr('Home', 'en'), 'Home');
+  assert.equal(tr('Not a key at all', 'es'), 'Not a key at all');
+  // A locale nobody ships falls through rather than resolving by position.
+  assert.equal(tr('Home', 'fr'), 'Home');
 });

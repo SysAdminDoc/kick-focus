@@ -111,14 +111,17 @@ async function collect(override = null) {
   assert.notEqual(start, -1, 'TRANSLATIONS literal not found');
   const block = src.slice(start, src.indexOf('\n};', start));
 
-  const locales = {};
-  let current = null;
+  // One row per string, keyed by the English original and valued by one entry
+  // per language in LOCALES order, so every locale covers the same keys by
+  // construction. The per-locale sets are kept because the assertions below
+  // report which language is short of what.
+  const names = src.match(/const LOCALES = \[([^\]]*)\]/);
+  assert.ok(names, 'LOCALES list not found');
+  const order = [...names[1].matchAll(/'(\w+)'/g)].map((match) => match[1]);
+  const locales = Object.fromEntries(order.map((name) => [name, new Set()]));
   for (const line of block.split('\n')) {
-    const localeMatch = line.match(/^ {2}(\w+): \{/);
-    if (localeMatch) { current = localeMatch[1]; locales[current] = new Set(); continue; }
-    if (!current) continue;
-    const keyMatch = line.match(/^ {4}'((?:[^'\\]|\\.)*)':/);
-    if (keyMatch) locales[current].add(keyMatch[1]);
+    const keyMatch = line.match(/^ {2}'((?:[^'\\]|\\.)*)': \[/);
+    if (keyMatch) for (const name of order) locales[name].add(keyMatch[1]);
   }
 
   // Copy that reaches the screen from core.mjs rather than from the interface sources.

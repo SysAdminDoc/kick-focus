@@ -1,4 +1,4 @@
-export const VERSION = '1.38.0';
+export const VERSION = '1.39.0';
 export const SETTINGS_SCHEMA = 5;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 5;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.39.0': Object.freeze({
+    summary: 'Reduce motion, Large touch targets, High-contrast controls and Always show focus outlines now work at any window width, every settings control answers to the label you can see, and the interface is translated where it had quietly stayed English.',
+    defaults: Object.freeze([]),
+  }),
   '1.38.0': Object.freeze({
     summary: 'The profile comment-box emote picker now handles favorites, recent emotes, custom groups, batch moves, removal, recovery, and normal emote insertion in place.',
     defaults: Object.freeze([]),

@@ -4,9 +4,35 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.39.0, 2026-08-25
+
 ### Security
 
+- A settings file can no longer switch on a blocklist subscription by itself. Importing one that carries an unfamiliar HTTPS feed keeps the address, leaves the subscription off, and names the host in an import note, so nothing starts calling out to a stranger's server on the strength of a file somebody shared. Importing your own export is unchanged, and Undo restores what you had.
+- All six copies of the blocklist URL rule now answer the same. Two of them used to accept a URL carrying a username and password, which on a userscript-only install meant those credentials went out to that host on every refresh. Credentials are refused everywhere and the fragment is dropped.
 - Remote blocklist feeds in the companion require approval from its popup. The extension stores one exact HTTPS URL, asks for that origin only, and refuses redirects, non-JSON responses, bodies over 512 KiB, and requests that run longer than eight seconds.
+
+### Fixed
+
+- Four accessibility settings did nothing below a 1024 pixel window. Large touch targets, High-contrast text, High-contrast controls and Always show focus outlines all sat inside the desktop layout rules, so they switched themselves off on a half-screen window, which is where a bigger target and a visible outline matter more. High-contrast controls is on by default, so most people were seeing control edges at a fifth of the contrast the setting promises.
+- Reduce motion now reduces motion. The rule that stops animation was being overridden by the rules it was meant to stop, so the card actions, the chat pause button, the emote save button and the injected header control kept sliding and lifting with the setting on. The page also follows your operating system's motion preference on its own, the way the settings panel always has.
+- Every settings control answers to the label printed beside it. Sliders and segmented controls used to announce an internal name instead, so the row headed "Refresh interval" was called "Blocklist Refresh Hours" and "Corner radius" was called "Radius". Six switches had the same mismatch by hand.
+- Around a hundred strings that had quietly stayed English are translated in Spanish and Portuguese: the spoken announcements for Focus, Theater, chat and the sidebar, the multi-stream play and mute controls, the chat pause button, and most of the descriptive copy across the settings pages.
+- Emote harvesting no longer stops for the session when an image never finishes loading. Four stalled requests used to be enough to wedge it silently, and the queue behind them grew without limit.
+- The panic switch cleans up after itself. It was leaving a one-second timer running for the life of the tab, plus the uptime and recording-countdown chips it exists to remove.
+- Three collections that only ever grew are bounded: the cross-tab roll-call answers, the realtime subscription list, and the emote harvest queue.
+- The player overlay chips follow the theme instead of painting a green-black block over the Slate palette, and they respect the Corner radius setting.
+- The storage panel says how many emotes the first paint is holding when the library is larger than the synchronous seed. That number was measured and thrown away on every save.
+- Creating an emote group reports the same refusal on both surfaces. At the ceiling, one of them used to say the name was taken, which reads as "pick another name" for a state where no name would have worked.
+- Smaller ones: the settings search box pointed at an element that did not exist, the save indicator was not announced, the pop-out chat failure announced politely instead of as an alert, and the companion popup's revoke button stayed dead after a failed revoke until the popup was reopened.
+
+### Changed
+
+- The synchronous emote seed is bounded at 50 KB rather than 150 KB, which keeps a 75 KB reserve below the injection ceiling a userscript manager enforces. A library larger than that still loads in full a moment later from the database, and the storage panel now says when that is happening.
+
+### Removed
+
+- Three exported helpers that no shipped code called.
 
 ### Fixed
 

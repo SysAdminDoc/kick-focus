@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { execFile } from 'node:child_process';
 import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTelemetryHosts, STORAGE_STORES, buildSettingsExport, normalizeBlocklistUrl, VERSION } from '../src/core.mjs';
 import { LIBRARY_SEED_BYTES } from '../src/storage.mjs';
 import { ONLY_ACCOUNT_WRITE, SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
@@ -825,7 +826,36 @@ const unguardedMotion = motionSheets.flatMap(([name, css]) => {
   return [];
 });
 
+/**
+ * Is every source file valid JavaScript on its own?
+ *
+ * `npm run check` syntax-checks the built artifact and nothing else, and the
+ * build strips CSS comments out of the `*_CSS` templates on the way. So a
+ * backtick written inside one of those comments ends the template literal in
+ * `src/runtime.js`, leaves the artifact perfectly valid because the comment is
+ * gone by then, and every gate stays green over a source file that no longer
+ * parses. That happened on 2026-08-21 and again on 2026-08-25.
+ *
+ * runtime.js is never imported — it has no imports or exports and is only ever
+ * concatenated — so nothing else would ever have noticed.
+ */
+const syntaxFailures = (await Promise.all(
+  [...moduleFiles, 'src/runtime.js', 'src/extension/background.js', 'src/extension/background.firefox.js',
+    'src/extension/bridge.js', 'src/extension/bridge.firefox.js', 'src/extension/popup.js'].map((name) => (
+    // `node --check` parses without running, and reads the file as a module, so
+    // real imports and exports are handled rather than stripped by a regex that
+    // would have to understand them.
+    new Promise((done) => {
+      execFile(process.execPath, ['--check', resolve(name)], (error) => {
+        done(error ? `${name}: ${String(error.message).split('\n').find((line) => /Error/.test(line)) || 'did not parse'}` : '');
+      });
+    })
+  )),
+)).filter(Boolean);
+
 const checks = [
+  [`every source file is valid JavaScript before the build touches it${syntaxFailures.length ? `: ${syntaxFailures[0]}` : ''}`,
+    syntaxFailures.length === 0],
   [`every stylesheet that animates guards motion, after the rules it overrides${unguardedMotion.length ? `: ${unguardedMotion.join('; ')}` : ''}`,
     unguardedMotion.length === 0 && motionSheets.length >= 4],
   [`every copy of the blocklist URL rule answers the same${blocklistUrlDisagreements.length ? `: ${blocklistUrlDisagreements[0]}` : ''}`,

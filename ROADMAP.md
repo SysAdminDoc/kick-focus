@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-23**
+Updated: **2026-08-25**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 
@@ -90,19 +90,7 @@ Added from the exhaustive repository, live-browser, competitor, standards, and s
 
 ### P0
 
-- [ ] P0 — R-101: Exclude hidden preload video from the local watch clock
-  Why: The current live check records a hidden preload advancing the timer while the visible player is paused.
-  Evidence: scripts/verify-extension.mjs fresh 2026-08-23 run; src/runtime.js session watch-time functions
-  Touches: src/runtime.js playback-owner selection and session timer, src/core.mjs pure eligibility helper, test/core.test.js, scripts/verify-extension.mjs
-  Acceptance: Time accrues only when the visible, active channel player is playing in a visible document; paused, hidden, preload, preview, muted-background, and detached non-owner videos add zero; ownership changes do not double-count; unit and live assertions pass.
-  Complexity: S
-
-- [ ] P0 — R-102: Enforce the userscript injection budget in UTF-8 bytes with 75 KB reserve
-  Why: String length understates the shipped bytes and the userscript plus maximum seed currently totals 987,722 bytes, leaving only 12,278 bytes below Violentmonkey’s approximate 1 MB ceiling.
-  Evidence: scripts/build.mjs:80; scripts/check.mjs size budgets; src/storage.mjs LIBRARY_SEED_BYTES; https://github.com/violentmonkey/violentmonkey/releases/tag/v2.46.0
-  Touches: scripts/build.mjs, scripts/check.mjs, src/storage.mjs, test/storage.test.js, package scripts, userscript source size
-  Acceptance: Browser code uses TextEncoder byteLength and build code uses Buffer.byteLength for UTF-8; npm run check fails when userscript plus the maximum synchronous seed exceeds 925,000 bytes; the readable unminified artifact passes with at least 75,000 bytes of reserve and reports the same byte count in build, tests, and About.
-  Complexity: M
+None open.
 
 ### P1
 
@@ -319,4 +307,87 @@ Added from the exhaustive repository, live-browser, competitor, standards, and s
   Evidence: src/extension/background.js fetchApprovedBlocklist; src/extension/background.firefox.js fetchApprovedBlocklist; test/companion.test.js streamed-body cases; https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultReader/read
   Touches: both companion background fetchers, shared transport tests, built extension artifacts
   Acceptance: Both backgrounds read response chunks, cancel the reader as soon as cumulative bytes exceed 512 KiB, and decode valid UTF-8 only after the bounded read succeeds; the existing Content-Length precheck remains; a test with an endless or oversized chunk source proves consumption stops no later than the first chunk beyond the limit; timeout, MIME, redirect, and exact-URL behavior stay unchanged.
+  Complexity: S
+
+## Audit, 2026-08-25
+
+Found during a full-repository audit. Everything the audit fixed is in
+[CHANGELOG.md](CHANGELOG.md); these are the items it did not.
+
+### P1
+
+- [ ] P1 — R-132: Collapse the two locale maps into one keyed map
+  Why: `TRANSLATIONS` stores every English key twice, once under `es` and once under `pt`. Measured on 2026-08-25: 1,650 entries carrying 65,586 bytes of keys, so one copy is worth about 32,800 bytes. This is the largest single saving available in the artifact, and it matters now: the localization work in this audit took the injection footprint from 903,838 to 924,717 bytes against a 925,000 byte gate. There are 283 bytes of headroom. The next feature that adds a toast fails the build.
+  Where: src/runtime.js TRANSLATIONS and tr(); test/i18n.test.js and test/i18n-coverage.test.js both parse the literal line by line and would need the new shape
+  Acceptance: One map keyed by the English string, valued by a per-locale array or record; `tr()` and `trf()` behave identically; both i18n parsers read the new shape; the artifact drops by at least 25,000 bytes; the reserve below the 1,000,000 byte ceiling exceeds 100,000 bytes.
+  Complexity: M
+
+- [ ] P1 — R-133: Re-run the live gate and put a current number in README
+  Why: README.md:197 advertises "95/95 live checks pass at 1440x900 (2026-08-21)". scripts/verify-extension.mjs has changed repeatedly since, and this audit changed the settings markup, the accessible names, the motion rules and the blocklist URL rule, all of which that gate reads. A published proof that no longer corresponds to a build is worse than no proof.
+  Where: scripts/verify-extension.mjs; README.md:197; scripts/release-checklist.mjs, which refuses to ship on a partial claim
+  Acceptance: A fresh off-screen Chromium run at 1440x900 and 1920x1080 against the current head, its real pass/skip counts written into README, and the date updated.
+  Complexity: S
+
+### P2
+
+- [ ] P2 — R-134: Extract one shared companion module for the duplicated policy
+  Why: `fetchApprovedBlocklist` is about 33 byte-identical lines in src/extension/background.js and src/extension/background.firefox.js, and `sanitizeSettings` is byte-identical in src/extension/bridge.js and bridge.firefox.js. Both carry security decisions: the redirect refusal, the post-fetch URL recheck, the JSON MIME gate, the size checks, the abort timeout, and the forged-event trust boundary. The blocklist URL rule in the same files had already drifted from core and shipped that way, which is what this audit fixed and gated. The remaining pairs have the same exposure and only a presence check protecting them.
+  Where: src/extension/background.js:121-152, background.firefox.js:151-182, bridge.js:44-74, bridge.firefox.js:57-86; scripts/check.mjs, which asserts only that each file contains the function name
+  Acceptance: One source of record per rule, copied into both engine bundles by the build rather than by hand, or a behavioural parity gate of the shape added for normalizeBlocklistUrl on 2026-08-25.
+  Complexity: M
+
+- [ ] P2 — R-135: Give the command palette and the emote autocomplete honest ARIA
+  Why: The palette input has no `role="combobox"`, no `aria-expanded`, and no `aria-activedescendant`; its options hard-code `aria-selected="${index === 0}"`, so assistive technology always reports the first item as selected no matter where the user has tabbed, and Enter always runs the first match. The emote autocomplete declares `role="listbox"` with `role="option"` children while `acceptEmoteCompletion` has exactly one caller, a click handler. Mouse-only acceptance there is deliberate and documented, so the fix is the ARIA, not the behaviour: advertising a listbox a keyboard user can never operate is worse than exposing a plain list.
+  Where: src/runtime.js command palette markup and onCommandKeydown; src/runtime.js emote completion markup around the `role="listbox"` host
+  Acceptance: The palette is a real combobox with arrow-key navigation and a moving `aria-activedescendant`, or it drops the listbox roles; the autocomplete drops `role="listbox"`/`role="option"` unless a keyboard path to accept exists.
+  Complexity: M
+
+- [ ] P2 — R-136: Regenerate the panel's literal token fallbacks from the palette
+  Why: Thirteen of sixteen `var(--kf-*, #literal)` fallbacks in src/runtime.js and src/multistream.mjs are from a palette that no longer ships. Inside the page this is harmless because SITE_CSS always defines the tokens, with one exception: the multi-stream chat pop-out at src/multistream.mjs:531-537 is a separate document whose comment explicitly designs the fallback path for "the case where the page has not painted yet". All five of that sheet's fallbacks are wrong, so the designed path paints a palette that ships nowhere.
+  Where: src/runtime.js:7159-7197 (the panel token re-export) and 12572-12638; src/multistream.mjs:531-549
+  Acceptance: Every literal fallback equals its token's `:root` value, or the fallbacks are dropped and the pop-out relies on `copyThemeTokens` alone; a gate compares the two sets.
+  Complexity: S
+
+- [ ] P2 — R-137: Normalize the control geometry the panel renders
+  Why: Controls that sit in the same `.kf-control` column are 32, 36, 38 and 40 pixels tall (`.kf-switch`, `.kf-select`, `.kf-icon-button`, `.kf-button`), which reads as jitter down the right edge of every settings page. Eight radius literals bypass the Corner radius setting: `.kf-toast` and `.kf-toast-action` at 4px, `.kf-icon-button` at 5px, the About panel at 4px, the emote completion list and rows at 9px and 6px, and the two injected header buttons at 5px and 8px. Those two buttons also disagree on height, weight and font size while sitting in the same Kick chrome. Two focus treatments coexist: `outline: var(--focus-ring)` on the nav search, and `outline: 0` plus a box-shadow ring on `.kf-text`, `.kf-textarea`, `.kf-select`, and both multi-stream inputs.
+  Where: src/runtime.js UI_CSS around 7289-7500, 7769, 7819-7831, 11555-11573, 12598-12645
+  Acceptance: One control height scale, every radius through `--kf-radius` or a token derived from it, one focus treatment, and the two injected buttons sharing a declaration.
+  Complexity: M
+
+- [ ] P2 — R-138: Add the forgotten inputs to the forced-colors focus list
+  Why: src/runtime.js:7897 enumerates every shadow-based `:focus` that needs a fallback under Windows High Contrast, which drops `box-shadow`. The two multi-stream inputs at 8031 use the identical shadow-only pattern and are not in the list, so they have no visible focus in forced-colors mode.
+  Where: src/runtime.js:7897 selector list; the `.kf-ms-head input` / `.kf-ms-foot input` rules near 8031
+  Acceptance: Both selectors are in the forced-colors block and show a visible outline with a forced-colors emulation active.
+  Complexity: S
+
+### P3
+
+- [ ] P3 — R-139: Retire the remaining bare literals and stale counts
+  Why: The audit named a shared limit for the emote groups and left the same shape elsewhere. `512 KiB` is written into four error strings beside `BLOCKLIST_MAX_BYTES` plus a fifth raw `512 * 1024` in runtime, so changing the constant makes the message lie. `2400` is a bare literal twice beside `STICKER_LIBRARY_LIMIT`. `#FF5CA8` is written four times. The Kick slug regex is inlined nine times although `isValidSlug` exists in api.mjs with tests pinning its edge cases. Several comments carry counts the code has outgrown: two say the settings panel renders five pages and it renders seven, one says "the other five still render" seven lines above a comment saying "the seven cards", one in check.mjs says the dictionary holds 252 entries and it holds 825 per locale, and one in core.mjs names a field `resetAt` that no longer exists.
+  Where: src/extension/background.js and background.firefox.js size messages; src/runtime.js:6624; src/core.mjs:2688 and 2784; src/core.mjs:204 and 504, src/extension/bridge.js:65, bridge.firefox.js:77; the nine slug-regex sites; src/core.mjs:1030 and 1215; src/settings.mjs:839; src/runtime.js:11151; scripts/check.mjs:1212
+  Acceptance: Each literal has one named source, each comment's number matches the code beside it, and the slug regex sites that load after api.mjs call `isValidSlug`.
+  Complexity: S
+
+- [ ] P3 — R-140: Bound the two multi-stream maps to the current grid
+  Why: `multistreamIds` and `multistreamLive` in src/multistream.mjs:298-299 have no `delete` or `clear` anywhere. Removing a channel from the grid does not evict it, and `refreshMultistreamLive` walks the whole accumulated set on each poll, so poll cost grows with every channel the tab has ever shown. Bounded by a session rather than unbounded, and small, which is why it is P3 and not P1.
+  Where: src/multistream.mjs:298-299 and refreshMultistreamLive around 860
+  Acceptance: Both maps are pruned to the current slug set at the top of each refresh, with a test that adds and removes a channel and asserts the maps shrink.
+  Complexity: S
+
+- [ ] P3 — R-141: Take the tab id from the sender, not the message
+  Why: src/extension/background.js:167 and 205-207 read `message.tabId` on a path a Kick content script can reach. Sender verification is correct, so this is not an escalation, but a content script on any Kick tab can read or reset another Kick tab's blocked counter and clear its badge. The popup is the only caller that legitimately names a tab other than its own.
+  Where: src/extension/background.js:167, 205-207; the same shape in background.firefox.js
+  Acceptance: The Kick-page path uses `sender.tab?.id`; `message.tabId` is honoured only for the extension-page path.
+  Complexity: S
+
+- [ ] P3 — R-142: Clean the emote library URL at observation, not only at persist
+  Why: `cleanStickerAssetUrl` enforces https and a kick.com host on the persist and import paths, but `mergeStickerLibrary` stores the raw DOM value, and the library card renders `sticker.src` as an `href`. `escapeHtml` does not stop a scheme, so a `javascript:` value carrying `/emotes/` in its path would survive until the next reload and give the "Open artwork" link script execution in the kick.com origin. Placing that node already requires HTML injection on kick.com, so it is not standalone-exploitable, but it violates the module's own stated invariant.
+  Where: src/runtime.js stickerImageInfo around 4238 and mergeStickerLibrary around 4371; src/settings.mjs:435; src/core.mjs cleanStickerAssetUrl around 2729
+  Acceptance: `stickerImageInfo` returns a cleaned URL or nothing, with a test that feeds it a `javascript:` src containing `/emotes/`.
+  Complexity: S
+
+- [ ] P3 — R-143: Close the two remaining settings-coverage gaps
+  Why: test/core.test.js catches a settings key that `normalizeSettings` forgets, and nothing catches a key that normalizes correctly and has no control, which is a setting a user can never reach. Separately, `isSeedPartial` in src/storage.mjs is exported and tested and has no production caller, which the file-granularity coverage gate structurally cannot see.
+  Where: test/core.test.js settings schema tests; src/settings.mjs `data-set` attributes; src/storage.mjs isSeedPartial
+  Acceptance: A test extracts every `data-set` path from settings.mjs and diffs it against DEFAULT_SETTINGS, allowlisting `schema` and `lastSeenVersion`; a symbol-level export-reachability check in scripts/check.mjs names any export nothing outside tests reads.
   Complexity: S
