@@ -7955,6 +7955,8 @@ const UI_CSS = `
     .kf-text:focus,
     .kf-textarea:focus,
     .kf-command-head input:focus,
+    .kf-ms-head input:focus,
+    .kf-ms-foot input:focus,
     .kf-select:focus,
     input:focus-visible,
     select:focus-visible,

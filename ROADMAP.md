@@ -354,12 +354,6 @@ Found during a full-repository audit. Everything the audit fixed is in
   Acceptance: One control height scale, every radius through `--kf-radius` or a token derived from it, one focus treatment, and the two injected buttons sharing a declaration.
   Complexity: M
 
-- [ ] P2 — R-138: Add the forgotten inputs to the forced-colors focus list
-  Why: src/runtime.js:7897 enumerates every shadow-based `:focus` that needs a fallback under Windows High Contrast, which drops `box-shadow`. The two multi-stream inputs at 8031 use the identical shadow-only pattern and are not in the list, so they have no visible focus in forced-colors mode.
-  Where: src/runtime.js:7897 selector list; the `.kf-ms-head input` / `.kf-ms-foot input` rules near 8031
-  Acceptance: Both selectors are in the forced-colors block and show a visible outline with a forced-colors emulation active.
-  Complexity: S
-
 ### P3
 
 - [ ] P3 — R-139: Retire the remaining bare literals and stale counts

@@ -7028,7 +7028,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              844313') || 0;
+const BUNDLE_BYTES = Number('              844371') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -12735,6 +12735,8 @@ const UI_CSS = `
     .kf-text:focus,
     .kf-textarea:focus,
     .kf-command-head input:focus,
+    .kf-ms-head input:focus,
+    .kf-ms-foot input:focus,
     .kf-select:focus,
     input:focus-visible,
     select:focus-visible,
