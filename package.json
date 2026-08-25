@@ -11,6 +11,7 @@
     "test:unit": "node --test --experimental-test-tag-filter=unit",
     "test:artifact": "npm run build && node --test --experimental-test-tag-filter=artifact",
     "coverage": "npm run build && node --test --experimental-test-coverage",
+    "coverage:floors": "npm run build && node scripts/coverage-floors.mjs",
     "verify": "npm run check && npm test",
     "verify:extension": "node scripts/verify-extension.mjs",
     "verify:firefox": "node scripts/verify-firefox.mjs",

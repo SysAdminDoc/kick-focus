@@ -211,6 +211,7 @@ npm run build              # userscript + dist/extension/ + shareable zip
 npm run verify             # offline: artifact checks + core tests
 npm run verify:extension   # live: loads the extension in Chromium against Kick
 npm run verify:firefox     # live: loads the Manifest V2 package in Firefox against Kick
+npm run coverage:floors    # offline: the suite, then fail if coverage fell
 npm run release:check      # offline gate + live 1440×900 and 1920×1080 checks
 ```
 

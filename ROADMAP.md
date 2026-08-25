@@ -94,13 +94,6 @@ None open.
 
 ### P1
 
-- [ ] P1 — R-104: Cover all seven settings pages behaviorally and enforce coverage floors
-  Why: test/settings.test.js has two direct tests and src/settings.mjs is only 36.36% line-covered and 11.63% function-covered despite owning the main control surface.
-  Evidence: src/settings.mjs; test/settings.test.js; package.json coverage script; https://nodejs.org/api/cli.html
-  Touches: test/settings.test.js, settings fixtures, package.json, src/settings.mjs only for test seams
-  Acceptance: Layout, Appearance, Content & Ads, Emotes, Accessibility, Viewer, and About each have render, action, empty/error, persistence, and localization contracts; a settings-focused command enforces at least 80% lines, 75% branches, and 70% functions; global floors start at 88% lines, 85% branches, and 86% functions.
-  Complexity: L
-
 - [ ] P1 — R-105: Gate route and theme parity with deterministic visual diffs
   Why: Current screenshots cover the visual overhaul, but release QA still depends on manual comparison and cannot catch spacing, overflow, or theme regressions automatically.
   Evidence: design/mockups, design/screenshots, design/qa, scripts/release-checklist.mjs; https://playwright.dev/docs/next/test-snapshots
