@@ -1,5 +1,5 @@
-export const VERSION = '1.42.0';
-export const SETTINGS_SCHEMA = 5;
+export const VERSION = '1.43.0';
+export const SETTINGS_SCHEMA = 6;
 
 /**
  * What changed, per version, for the notice shown after an update.
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 5;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.43.0': Object.freeze({
+    summary: 'The emote picker now fits more into the chat rail without crowding its controls. Choose Compact, Balanced, or Roomy emotes, then set a Short, Medium, or Tall shelf in Content & Ads.',
+    defaults: Object.freeze([]),
+  }),
   '1.42.0': Object.freeze({
     summary: 'Settings and the companion now use clearer status colors with consistent corners. Compact layouts keep controls reachable. Blank multi-stream boards stay unsavable, and Commands returns you to the setting you were editing.',
     defaults: Object.freeze([]),
@@ -280,6 +284,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // tab's last five sends in memory and a reload drops them.
     chatComposerRecall: false,
     organizeChatStickers: true,
+    // Compact keeps the composer useful while the picker is open. The other
+    // presets retain the existing geometry or trade more rows for larger art.
+    emotePickerDensity: 'compact',
+    emotePickerHeight: 'medium',
     clickChatEmotes: true,
     // Off by default: this one types into Kick's chat input. Copying a name to
     // the clipboard needs no permission and always ships; putting characters in
@@ -2284,6 +2292,8 @@ export function normalizeSettings(input) {
       chatHistory: bool(content.chatHistory, defaults.content.chatHistory),
       chatComposerRecall: bool(content.chatComposerRecall, defaults.content.chatComposerRecall),
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
+      emotePickerDensity: enumValue(content.emotePickerDensity, ['compact', 'balanced', 'roomy'], defaults.content.emotePickerDensity),
+      emotePickerHeight: enumValue(content.emotePickerHeight, ['short', 'medium', 'tall'], defaults.content.emotePickerHeight),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
     emoteAutocomplete: bool(content.emoteAutocomplete, defaults.content.emoteAutocomplete),

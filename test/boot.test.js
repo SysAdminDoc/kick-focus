@@ -601,8 +601,8 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
   const cssDepth = (beforeOrganizer.match(/\{/g) || []).length - (beforeOrganizer.match(/\}/g) || []).length;
   assert.equal(cssDepth, 0,
     'composer emote styles must not be trapped inside the desktop-only media query');
-  assert.match(site, /@media \(max-width: 1023px\)[\s\S]*\[data-kf-sticker-batch\] \{ grid-template-columns: 1fr/,
-    'the composer batch actions must stack when the chat rail is narrow');
+  assert.match(site, /container-type: inline-size[\s\S]*@container kf-sticker \(max-width: 500px\)[\s\S]*\[data-kf-sticker-batch\] \{ grid-template-columns: 1fr/,
+    'the composer batch actions must respond to the chat rail width, not the viewport');
   assert.match(site, /\[data-kf-sticker-grid\][\s\S]*overflow-x: hidden !important/,
     'the compact emote grid must never expose a horizontal scrollbar');
   assert.match(site, /\[data-kf-sticker-scroll\][^}]*overflow-x: hidden !important/,
@@ -613,8 +613,10 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
     'normal emote management targets must meet the 24px floor');
   assert.match(site, /data-kf-large-targets="true"\]\s+\[data-kf-sticker-tools\] button[^}]*width:\s*40px !important[^}]*height:\s*40px !important/,
     'Larger targets must give emote management controls a 40px target');
-  assert.match(source, /function stickerGridMetrics\(\)[\s\S]*state\.settings\.accessibility\.largeTargets[\s\S]*STICKER_LARGE_TILE_HEIGHT[\s\S]*STICKER_LARGE_TILE_MIN_WIDTH/,
-    'large emote targets need matching virtual-grid geometry');
+  assert.match(source, /const STICKER_GRID_METRICS[\s\S]*compact:[\s\S]*balanced:[\s\S]*roomy:[\s\S]*large:/,
+    'every visual density needs explicit virtual-grid geometry');
+  assert.match(source, /function stickerGridMetrics\(\)[\s\S]*state\.settings\.accessibility\.largeTargets[\s\S]*STICKER_GRID_METRICS\.large[\s\S]*emotePickerDensity/,
+    'large targets and picker density must resolve through the same grid metrics');
 
   // The tile markup and the rule that styles it must agree on the selector.
   assert.match(source, /<button type="button" data-kf-sticker-action="send"[^>]*data-kf-sticker-proxy/,
@@ -638,6 +640,13 @@ test('emote organization has a direct route, visible search, and batch controls'
   for (const control of ['data-kf-sticker-organize', 'data-kf-sticker-group-create', 'data-kf-sticker-batch-move', 'data-kf-sticker-batch-remove']) {
     assert.ok(runtime.includes(control), `${control} is missing from the composer picker`);
   }
+  for (const setting of ['content.emotePickerDensity', 'content.emotePickerHeight']) {
+    assert.ok(settings.includes(setting), `${setting} is missing from settings`);
+  }
+  assert.match(runtime, /root\.dataset\.kfEmoteDensity = content\.emotePickerDensity/,
+    'the density choice must reach the light-DOM emote picker');
+  assert.match(runtime, /root\.dataset\.kfEmoteHeight = content\.emotePickerHeight/,
+    'the height choice must reach the light-DOM emote picker');
   for (const flow of ['savePickerStickerGroup', 'deletePickerStickerGroup', 'editPickerStickerSelection']) {
     assert.ok(runtime.includes(`function ${flow}`), `${flow} is missing from the composer picker`);
   }

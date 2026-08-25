@@ -69,14 +69,15 @@ const AD_SHELL_SELECTORS = [
 // short enough that the grid still feels attached to the keyboard.
 const STICKER_SEARCH_DEBOUNCE_MS = 120;
 const STICKER_USAGE_SECTION_LIMIT = 24;
-// Must match the organizer grid CSS: tiles are a fixed row height in a
-// minmax(50px, 1fr) auto-fill grid, which is what lets a spacer stand in for a
-// known number of rows without measuring every one of them.
-const STICKER_TILE_HEIGHT = 62;
-const STICKER_GRID_GAP = 7;
-const STICKER_TILE_MIN_WIDTH = 50;
-const STICKER_LARGE_TILE_HEIGHT = 88;
-const STICKER_LARGE_TILE_MIN_WIDTH = 84;
+// Must match the organizer grid CSS. Fixed rows let a spacer stand in for a
+// known number of rows without measuring every tile. Density changes all three
+// values together so virtualization and the rendered grid never disagree.
+const STICKER_GRID_METRICS = Object.freeze({
+  compact: Object.freeze({ tileHeight: 54, tileMinWidth: 44, gap: 5 }),
+  balanced: Object.freeze({ tileHeight: 62, tileMinWidth: 50, gap: 7 }),
+  roomy: Object.freeze({ tileHeight: 74, tileMinWidth: 60, gap: 8 }),
+  large: Object.freeze({ tileHeight: 88, tileMinWidth: 84, gap: 7 }),
+});
 // How close the viewport may get to the rendered window's edge before the
 // window moves. Four rows of slack keeps a slow scroll from re-rendering
 // continuously while never letting the viewer reach an unrendered gap.
@@ -1913,14 +1914,69 @@ const SITE_CSS = `
     [data-kf-drops-steps] small { margin-top: 4px !important; color: var(--kf-text-muted) !important; font-size: 13px !important; line-height: 1.4 !important; }
   }
 
-  [data-kf-sticker-organizer] {
+    #chat-emotes-picker-panel {
+      --kf-emote-tile-height: 54px;
+      --kf-emote-tile-min-width: 44px;
+      --kf-emote-grid-gap: 5px;
+      --kf-emote-tile-padding: 5px;
+      --kf-emote-shell-padding: 6px;
+      --kf-emote-section-gap: 5px;
+      --kf-emote-control-height: 28px;
+      --kf-emote-control-padding: 7px;
+      --kf-emote-tab-height: 28px;
+      --kf-emote-tab-padding: 6px;
+      --kf-emote-search-height: 36px;
+      --kf-emote-grid-height: 280px;
+    }
+    html[data-kf-emote-density="balanced"] #chat-emotes-picker-panel {
+      --kf-emote-tile-height: 62px;
+      --kf-emote-tile-min-width: 50px;
+      --kf-emote-grid-gap: 7px;
+      --kf-emote-tile-padding: 7px;
+      --kf-emote-shell-padding: 8px;
+      --kf-emote-section-gap: 7px;
+      --kf-emote-control-height: 30px;
+      --kf-emote-control-padding: 8px;
+      --kf-emote-tab-height: 32px;
+      --kf-emote-tab-padding: 8px;
+      --kf-emote-search-height: 40px;
+    }
+    html[data-kf-emote-density="roomy"] #chat-emotes-picker-panel {
+      --kf-emote-tile-height: 74px;
+      --kf-emote-tile-min-width: 60px;
+      --kf-emote-grid-gap: 8px;
+      --kf-emote-tile-padding: 9px;
+      --kf-emote-shell-padding: 10px;
+      --kf-emote-section-gap: 9px;
+      --kf-emote-control-height: 34px;
+      --kf-emote-control-padding: 10px;
+      --kf-emote-tab-height: 36px;
+      --kf-emote-tab-padding: 10px;
+      --kf-emote-search-height: 44px;
+    }
+    html[data-kf-emote-height="short"] #chat-emotes-picker-panel { --kf-emote-grid-height: 180px; }
+    html[data-kf-emote-height="medium"] #chat-emotes-picker-panel { --kf-emote-grid-height: 280px; }
+    html[data-kf-emote-height="tall"] #chat-emotes-picker-panel { --kf-emote-grid-height: 420px; }
+    html[data-kf-large-targets="true"] #chat-emotes-picker-panel {
+      --kf-emote-tile-height: 88px;
+      --kf-emote-tile-min-width: 84px;
+      --kf-emote-grid-gap: 7px;
+      --kf-emote-tile-padding: 8px;
+      --kf-emote-control-height: 40px;
+      --kf-emote-tab-height: 40px;
+      --kf-emote-search-height: 40px;
+    }
+
+    [data-kf-sticker-organizer] {
       margin: 2px 8px 8px !important;
-      padding: 8px 0 0 !important;
+      padding: var(--kf-emote-shell-padding) 0 0 !important;
       border: 0 !important;
       border-top: 1px solid var(--kf-border) !important;
       border-radius: 0 !important;
       background: transparent !important;
-      color: #f7f9fa !important;
+      color: var(--kf-text) !important;
+      container-name: kf-sticker !important;
+      container-type: inline-size !important;
     }
 
     #chat-emotes-picker-panel > div[style]:not([style*="max-height: 0"]) {
@@ -1957,7 +2013,7 @@ const SITE_CSS = `
     [data-kf-sticker-native-shell] > * { min-width: 0 !important; max-width: 100% !important; }
 
     #chat-emotes-picker-panel #search-emotes-input {
-      min-height: 40px !important;
+      min-height: var(--kf-emote-search-height) !important;
       border-color: var(--kf-border-strong) !important;
       border-radius: 8px !important;
       background: var(--kf-canvas) !important;
@@ -1967,24 +2023,24 @@ const SITE_CSS = `
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
-      gap: 10px !important;
-      margin-bottom: 7px !important;
+      gap: 8px !important;
+      margin-bottom: var(--kf-emote-section-gap) !important;
     }
-    [data-kf-sticker-heading] { min-width: 0 !important; }
-    [data-kf-sticker-heading] strong { display: block !important; color: var(--kf-text) !important; font-size: 14px !important; line-height: 1.15 !important; }
-    [data-kf-sticker-heading] span { display: block !important; margin-top: 2px !important; color: var(--kf-text-muted) !important; font-size: 11px !important; line-height: 1.25 !important; }
-    [data-kf-sticker-top-actions] { display: flex !important; align-items: center !important; gap: 5px !important; }
+    [data-kf-sticker-heading] { display: flex !important; min-width: 0 !important; flex: 1 1 auto !important; align-items: baseline !important; gap: 6px !important; }
+    [data-kf-sticker-heading] strong { display: block !important; flex: 0 0 auto !important; color: var(--kf-text) !important; font-size: 13px !important; line-height: 1.15 !important; white-space: nowrap !important; }
+    [data-kf-sticker-heading] span { display: block !important; min-width: 0 !important; margin: 0 !important; color: var(--kf-text-muted) !important; font-size: 10px !important; line-height: 1.25 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+    [data-kf-sticker-top-actions] { display: flex !important; flex: 0 0 auto !important; align-items: center !important; gap: 4px !important; }
     [data-kf-sticker-top-actions] button,
     [data-kf-sticker-group-create],
     [data-kf-sticker-group-actions] button,
     [data-kf-sticker-editor-actions] button,
     [data-kf-sticker-batch] button {
       display: inline-flex !important;
-      min-height: 30px !important;
+      min-height: var(--kf-emote-control-height) !important;
       align-items: center !important;
       justify-content: center !important;
       gap: 5px !important;
-      padding: 0 8px !important;
+      padding: 0 var(--kf-emote-control-padding) !important;
       border: 1px solid var(--kf-border) !important;
       border-radius: 6px !important;
       background: transparent !important;
@@ -2011,7 +2067,7 @@ const SITE_CSS = `
       align-items: stretch !important;
       gap: 2px !important;
       margin: 0 -2px !important;
-      padding: 0 2px 7px !important;
+      padding: 0 2px var(--kf-emote-section-gap) !important;
       border-bottom: 1px solid var(--kf-border) !important;
       overflow-x: auto !important;
       scrollbar-width: none !important;
@@ -2019,17 +2075,17 @@ const SITE_CSS = `
     [data-kf-sticker-tabs]::-webkit-scrollbar { display: none !important; }
     [data-kf-sticker-tabs] button {
       display: inline-flex !important;
-      min-height: 32px !important;
+      min-height: var(--kf-emote-tab-height) !important;
       flex: 0 0 auto !important;
       align-items: center !important;
       gap: 4px !important;
-      padding: 0 8px !important;
+      padding: 0 var(--kf-emote-tab-padding) !important;
       border: 0 !important;
       border-radius: 6px !important;
       background: transparent !important;
       color: var(--kf-text-muted) !important;
       cursor: pointer !important;
-      font-size: 12px !important;
+      font-size: 11px !important;
       font-weight: 720 !important;
     }
     [data-kf-sticker-tabs] button span { color: inherit !important; font-size: 10px !important; font-variant-numeric: tabular-nums !important; opacity: .72 !important; }
@@ -2038,8 +2094,8 @@ const SITE_CSS = `
     [data-kf-sticker-tabs] button[data-active="true"] { background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; }
 
     [data-kf-sticker-group-panel] {
-      margin: 8px 0 0 !important;
-      padding: 8px !important;
+      margin: var(--kf-emote-section-gap) 0 0 !important;
+      padding: var(--kf-emote-shell-padding) !important;
       border: 1px solid var(--kf-border) !important;
       border-radius: 8px !important;
       background: rgba(255,255,255,.025) !important;
@@ -2062,48 +2118,56 @@ const SITE_CSS = `
     [data-kf-sticker-group-summary] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; margin-top: 7px !important; padding-top: 7px !important; border-top: 1px solid var(--kf-border) !important; }
     [data-kf-sticker-group-summary] > span { min-width: 0 !important; color: var(--kf-text-muted) !important; font-size: 11px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
     [data-kf-sticker-group-actions] { display: flex !important; flex: 0 0 auto !important; gap: 4px !important; }
-    [data-kf-sticker-group-actions] button { min-height: 27px !important; padding-inline: 6px !important; }
+    [data-kf-sticker-group-actions] button { min-height: max(27px, var(--kf-emote-control-height)) !important; padding-inline: 6px !important; }
     [data-kf-sticker-group-actions] button[data-kf-sticker-group-delete] { color: var(--kf-danger) !important; }
     [data-kf-sticker-group-editor] { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px !important; margin-top: 7px !important; }
-    [data-kf-sticker-group-editor] input { min-width: 0 !important; min-height: 34px !important; padding: 0 9px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 12px !important; }
+    [data-kf-sticker-group-editor] input { min-width: 0 !important; min-height: max(34px, var(--kf-emote-control-height)) !important; padding: 0 9px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 12px !important; }
     [data-kf-sticker-editor-actions] { display: flex !important; gap: 4px !important; }
     [data-kf-sticker-editor-actions] button[data-kf-sticker-group-save] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; }
 
     [data-kf-sticker-batch] {
       display: grid !important;
       grid-template-columns: minmax(0, 1fr) auto !important;
-      gap: 7px !important;
-      margin-top: 8px !important;
-      padding: 8px !important;
+      align-items: center !important;
+      gap: var(--kf-emote-section-gap) !important;
+      margin-top: var(--kf-emote-section-gap) !important;
+      padding: var(--kf-emote-shell-padding) !important;
       border: 1px solid rgba(var(--kf-accent-rgb), .35) !important;
       border-radius: 8px !important;
       background: rgba(var(--kf-accent-rgb), .065) !important;
     }
-    [data-kf-sticker-batch-summary] { display: flex !important; min-width: 0 !important; align-items: center !important; flex-wrap: wrap !important; gap: 4px 7px !important; }
-    [data-kf-sticker-batch-summary] strong { color: var(--kf-text) !important; font-size: 12px !important; }
-    [data-kf-sticker-batch-summary] button { min-height: 26px !important; padding-inline: 5px !important; border: 0 !important; color: var(--kf-accent) !important; }
-    [data-kf-sticker-batch-actions] { display: flex !important; align-items: center !important; gap: 4px !important; }
-    [data-kf-sticker-batch] select { min-height: 30px !important; max-width: 128px !important; padding: 0 24px 0 8px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 11px !important; }
+    [data-kf-sticker-batch-summary] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 4px 7px !important; }
+    [data-kf-sticker-batch-summary] strong { min-width: 0 !important; flex: 1 1 auto !important; color: var(--kf-text) !important; font-size: 11px !important; white-space: nowrap !important; }
+    [data-kf-sticker-batch-summary] button { padding-inline: 5px !important; border: 0 !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-batch][data-kf-has-selection="false"] [data-kf-sticker-clear-selection],
+    [data-kf-sticker-batch][data-kf-can-reorder="false"] [data-kf-sticker-batch-reorder-group] { display: none !important; }
+    [data-kf-sticker-batch-actions],
+    [data-kf-sticker-batch-move-group],
+    [data-kf-sticker-batch-reorder-group] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 4px !important; }
+    [data-kf-sticker-batch-actions] { justify-content: flex-end !important; }
+    [data-kf-sticker-batch-move-group] { flex: 1 1 152px !important; }
+    [data-kf-sticker-batch-reorder-group] { flex: 0 0 auto !important; }
+    [data-kf-sticker-batch] select { min-width: 88px !important; min-height: var(--kf-emote-control-height) !important; max-width: 128px !important; flex: 1 1 112px !important; padding: 0 24px 0 8px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 11px !important; }
     [data-kf-sticker-batch] button:disabled { cursor: not-allowed !important; opacity: .42 !important; }
     [data-kf-sticker-batch] button[data-kf-sticker-batch-remove] { color: var(--kf-danger) !important; }
 
     [data-kf-sticker-grid] {
       display: grid !important;
-      grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)) !important;
+      grid-template-columns: repeat(auto-fill, minmax(var(--kf-emote-tile-min-width), 1fr)) !important;
       /* Fixed rows are what let one spacer stand in for a known number of them.
-         The values here are mirrored by STICKER_TILE_HEIGHT/STICKER_GRID_GAP. */
-      grid-auto-rows: 62px !important;
-      gap: 7px !important;
-      max-height: min(350px, 40vh) !important;
+         These values are mirrored by STICKER_GRID_METRICS. */
+      grid-auto-rows: var(--kf-emote-tile-height) !important;
+      gap: var(--kf-emote-grid-gap) !important;
+      max-height: min(var(--kf-emote-grid-height), calc(100vh - 240px)) !important;
       overflow-x: hidden !important;
       overflow-y: auto !important;
       scrollbar-gutter: stable !important;
-      padding: 8px 2px 5px !important;
+      padding: var(--kf-emote-shell-padding) 2px 5px !important;
     }
     /* The picker grid scrolls inside a capped height and can hold hundreds of
        tiles. Skipping layout and paint for the off-screen ones is what keeps
        opening it cheap; the intrinsic size holds the scroll height steady. */
-    [data-kf-sticker-item] { position: relative !important; min-width: 0 !important; min-height: 62px !important; text-align: center !important; content-visibility: auto !important; contain-intrinsic-size: auto 62px !important; }
+    [data-kf-sticker-item] { position: relative !important; min-width: 0 !important; min-height: var(--kf-emote-tile-height) !important; text-align: center !important; content-visibility: auto !important; contain-intrinsic-size: auto var(--kf-emote-tile-height) !important; }
     /* Stands in for the rows outside the rendered window, so the scrollbar
        still describes the whole library. Spans every column, draws nothing. */
     [data-kf-sticker-spacer] { grid-column: 1 / -1 !important; pointer-events: none !important; }
@@ -2113,8 +2177,8 @@ const SITE_CSS = `
       justify-content: center !important;
       width: 100% !important;
       height: 100% !important;
-      min-height: 58px !important;
-      padding: 7px !important;
+      min-height: calc(var(--kf-emote-tile-height) - 4px) !important;
+      padding: var(--kf-emote-tile-padding) !important;
       border: 1px solid transparent !important;
       border-radius: 7px !important;
       background: rgba(255,255,255,.045) !important;
@@ -2165,15 +2229,14 @@ const SITE_CSS = `
     [data-kf-sticker-empty] { display: grid !important; min-height: 112px !important; place-items: center !important; padding: 18px !important; color: var(--kf-text-muted) !important; font-size: 12px !important; line-height: 1.45 !important; text-align: center !important; }
     [data-kf-sticker-empty] strong { display: block !important; margin-bottom: 3px !important; color: var(--kf-text) !important; font-size: 13px !important; }
 
-    @media (max-width: 1023px) {
+    @container kf-sticker (max-width: 500px) {
       [data-kf-sticker-batch] { grid-template-columns: 1fr !important; }
       [data-kf-sticker-batch-actions] { justify-content: flex-start !important; }
-      [data-kf-sticker-group-summary] { align-items: flex-start !important; flex-direction: column !important; }
     }
-    @media (max-width: 430px) {
-      [data-kf-sticker-topline] { align-items: stretch !important; flex-wrap: wrap !important; }
-      [data-kf-sticker-top-actions] { width: 100% !important; }
-      [data-kf-sticker-top-actions] button { flex: 1 1 0 !important; }
+    @container kf-sticker (max-width: 360px) {
+      [data-kf-sticker-batch-actions] { flex-wrap: wrap !important; }
+      [data-kf-sticker-batch-move-group] { flex-basis: 100% !important; }
+      [data-kf-sticker-heading] span { display: none !important; }
     }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
@@ -2491,6 +2554,8 @@ function applySettingsAttributes() {
   // preference turns it on regardless of the switch.
   root.dataset.kfStaticEmotes = String(content.staticEmotes
     || (accessibility.reduceMotion && matchMedia('(prefers-reduced-motion: reduce)').matches));
+  root.dataset.kfEmoteDensity = content.emotePickerDensity;
+  root.dataset.kfEmoteHeight = content.emotePickerHeight;
   root.dataset.kfFocusVisible = String(accessibility.focusVisible);
   root.dataset.kfLargeTargets = String(accessibility.largeTargets);
   // The mod's own chrome lives in a shadow root, where a selector rooted at
@@ -5224,9 +5289,9 @@ function pickerStickerBatchMarkup() {
     ? state.runtime.stickerPickerBulkGroup
     : '';
   const options = [`<option value=""${bulkGroup ? '' : ' selected'}>${escapeHtml(tr('Ungrouped'))}</option>`, ...state.stickerPreferences.groups.map((group) => `<option value="${escapeHtml(group.id)}"${bulkGroup === group.id ? ' selected' : ''}>${escapeHtml(group.name)}</option>`)].join('');
-  return `<div data-kf-sticker-batch>
+  return `<div data-kf-sticker-batch data-kf-has-selection="${Boolean(count)}" data-kf-can-reorder="${count === 1}">
     <div data-kf-sticker-batch-summary><strong data-kf-sticker-selected-count aria-live="polite">${escapeHtml(trf(count === 1 ? '{count} selected emote' : '{count} selected emotes', { count }))}</strong><button type="button" data-kf-sticker-select-shown>${escapeHtml(tr('Select shown'))}</button><button type="button" data-kf-sticker-clear-selection${disabled}>${escapeHtml(tr('Clear'))}</button></div>
-    <div data-kf-sticker-batch-actions>${state.stickerPreferences.view === 'pinned' ? `<button type="button" data-kf-sticker-batch-reorder="up"${reorderDisabled}>${escapeHtml(tr('Earlier'))}</button><button type="button" data-kf-sticker-batch-reorder="down"${reorderDisabled}>${escapeHtml(tr('Later'))}</button>` : ''}<select data-kf-sticker-bulk-group aria-label="${escapeHtml(tr('Move selected emotes to group'))}">${options}</select><button type="button" data-kf-sticker-batch-move${disabled}>${escapeHtml(tr('Move'))}</button><button type="button" data-kf-sticker-batch-remove${disabled}>${escapeHtml(tr('Remove'))}</button></div>
+    <div data-kf-sticker-batch-actions><span data-kf-sticker-batch-move-group><select data-kf-sticker-bulk-group aria-label="${escapeHtml(tr('Move selected emotes to group'))}">${options}</select><button type="button" data-kf-sticker-batch-move${disabled}>${escapeHtml(tr('Move'))}</button></span>${state.stickerPreferences.view === 'pinned' ? `<span data-kf-sticker-batch-reorder-group><button type="button" data-kf-sticker-batch-reorder="up"${reorderDisabled}>${escapeHtml(tr('Earlier'))}</button><button type="button" data-kf-sticker-batch-reorder="down"${reorderDisabled}>${escapeHtml(tr('Later'))}</button></span>` : ''}<button type="button" data-kf-sticker-batch-remove${disabled}>${escapeHtml(tr('Remove'))}</button></div>
   </div>`;
 }
 
@@ -5422,7 +5487,7 @@ function renderStickerOrganizer() {
   const groupTab = `<button type="button" data-kf-sticker-view="group"${groupTarget ? ` data-kf-sticker-group="${escapeHtml(groupTarget)}"` : ''} data-active="${view === 'group'}" aria-pressed="${view === 'group'}">${escapeHtml(tr('Groups'))} <span>${state.stickerPreferences.groups.length}</span></button>`;
   setMarkup(chrome, `
     <div data-kf-sticker-topline>
-      <div data-kf-sticker-heading><strong>${escapeHtml(tr('Your emotes'))}</strong><span data-kf-sticker-count>${escapeHtml(countLabel + lockedLabel)}</span></div>
+      <div data-kf-sticker-heading><strong>${escapeHtml(tr('Your emotes'))}</strong><span data-kf-sticker-count title="${escapeHtml(countLabel + lockedLabel)}">${escapeHtml(countLabel + lockedLabel)}</span></div>
       <div data-kf-sticker-top-actions><button type="button" data-kf-sticker-organize aria-pressed="${state.runtime.stickerPickerOrganizing}">${uiIcon('check')}<span>${escapeHtml(tr(state.runtime.stickerPickerOrganizing ? 'Done' : 'Organize'))}</span></button><button type="button" data-kf-sticker-manage="true">${uiIcon('folder')}<span>${escapeHtml(tr('Library'))}</span></button></div>
     </div>
     <div data-kf-sticker-tabs role="group" aria-label="${escapeHtml(tr('Emote views'))}">
@@ -5441,17 +5506,16 @@ function renderStickerOrganizer() {
 }
 
 function stickerGridMetrics() {
-  return state.settings.accessibility.largeTargets
-    ? { tileHeight: STICKER_LARGE_TILE_HEIGHT, tileMinWidth: STICKER_LARGE_TILE_MIN_WIDTH }
-    : { tileHeight: STICKER_TILE_HEIGHT, tileMinWidth: STICKER_TILE_MIN_WIDTH };
+  if (state.settings.accessibility.largeTargets) return STICKER_GRID_METRICS.large;
+  return STICKER_GRID_METRICS[state.settings.content.emotePickerDensity] || STICKER_GRID_METRICS.compact;
 }
 
 /** How many columns the auto-fill grid resolves to at its current width. */
 function stickerGridColumns(grid) {
   const width = grid?.clientWidth || 0;
   if (!width) return 1;
-  const { tileMinWidth } = stickerGridMetrics();
-  return Math.max(1, Math.floor((width + STICKER_GRID_GAP) / (tileMinWidth + STICKER_GRID_GAP)));
+  const { tileMinWidth, gap } = stickerGridMetrics();
+  return Math.max(1, Math.floor((width + gap) / (tileMinWidth + gap)));
 }
 
 /**
@@ -5463,8 +5527,8 @@ function stickerGridColumns(grid) {
 function stickerSpacerMarkup(count, columns, side) {
   const rows = Math.ceil(Math.max(0, count) / Math.max(1, columns));
   if (rows <= 0) return '';
-  const { tileHeight } = stickerGridMetrics();
-  const height = rows * tileHeight + (rows - 1) * STICKER_GRID_GAP;
+  const { tileHeight, gap } = stickerGridMetrics();
+  const height = rows * tileHeight + (rows - 1) * gap;
   return `<div data-kf-sticker-spacer="${side}" aria-hidden="true" style="height:${height}px"></div>`;
 }
 
@@ -5500,7 +5564,7 @@ function renderStickerGrid(gridHost, visible, view) {
   const grid = gridHost.querySelector('[data-kf-sticker-grid]');
   const columns = stickerGridColumns(grid);
   const slice = visibleWindow(visible, state.runtime.stickerGridAnchor);
-  const signature = [activeLocale(), view, String(state.settings.accessibility.largeTargets), String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end),
+  const signature = [activeLocale(), view, String(state.settings.accessibility.largeTargets), state.settings.content.emotePickerDensity, state.settings.content.emotePickerHeight, String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end),
     slice.items.map((descriptor) => descriptor.key).join(',')].join('\u0001');
   if (gridHost.dataset.kfStickerGridSignature === signature) {
     // Same tiles, possibly different state on one of them.
@@ -5546,6 +5610,11 @@ function patchStickerSelection(organizer) {
     proxy.title = trf(organizing ? 'Select {name}' : 'Use {name}', { name });
   }
   const count = selected.size;
+  const batch = organizer.querySelector('[data-kf-sticker-batch]');
+  if (batch) {
+    batch.dataset.kfHasSelection = String(count > 0);
+    batch.dataset.kfCanReorder = String(count === 1);
+  }
   const status = organizer.querySelector('[data-kf-sticker-selected-count]');
   if (status) status.textContent = trf(count === 1 ? '{count} selected emote' : '{count} selected emotes', { count });
   for (const control of organizer.querySelectorAll('[data-kf-sticker-clear-selection], [data-kf-sticker-batch-move], [data-kf-sticker-batch-remove]')) {
@@ -5612,7 +5681,8 @@ function bindStickerGridScroll(gridHost) {
     const [start, end] = String(gridHost.dataset.kfStickerWindow || '0-0').split('-').map(Number);
     if (end - start >= total) return; // everything is rendered; nothing to move
     const columns = stickerGridColumns(grid);
-    const rowHeight = stickerGridMetrics().tileHeight + STICKER_GRID_GAP;
+    const metrics = stickerGridMetrics();
+    const rowHeight = metrics.tileHeight + metrics.gap;
     const first = Math.floor(grid.scrollTop / rowHeight) * columns;
     const last = first + (Math.ceil(grid.clientHeight / rowHeight) + 1) * columns;
     const guard = STICKER_WINDOW_GUARD_ROWS * columns;
@@ -9231,6 +9301,16 @@ const TRANSLATIONS = {
   'Chat updates resumed': ['Actualizaciones del chat reanudadas', 'Atualizações do chat retomadas'],
   'Organize chat emotes': ['Organizar los emotes del chat', 'Organizar os emotes do chat'],
   'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': ['Registra continuamente los emotes del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.', 'Registra continuamente os emotes do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.'],
+  'Emote picker density': ['Densidad del selector de emotes', 'Densidade do seletor de emotes'],
+  'Choose how many emotes fit in each row. Compact shows more, while Roomy gives each emote more space.': ['Elige cuántos emotes caben en cada fila. Compacta muestra más, mientras que Espaciosa da más espacio a cada emote.', 'Escolha quantos emotes cabem em cada linha. Compacta mostra mais, enquanto Espaçosa dá mais espaço a cada emote.'],
+  'Compact': ['Compacta', 'Compacta'],
+  'Balanced': ['Equilibrada', 'Equilibrada'],
+  'Roomy': ['Espaciosa', 'Espaçosa'],
+  'Emote picker height': ['Altura del selector de emotes', 'Altura do seletor de emotes'],
+  'Choose how much of the library stays visible before it scrolls.': ['Elige qué parte de la biblioteca permanece visible antes de desplazarse.', 'Escolha quanto da biblioteca fica visível antes de rolar.'],
+  'Short': ['Baja', 'Baixa'],
+  'Medium': ['Media', 'Média'],
+  'Tall': ['Alta', 'Alta'],
   'Click chat emotes to save': ['Haz clic en los emotes del chat para guardarlos', 'Clique nos emotes do chat para salvar'],
   'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.': ['Haz clic en cualquier emote del chat para añadirlo a tus favoritos. Si Kick lo marca explícitamente como restringido a seguidores, el mismo clic sigue su canal de origen; el acceso de suscriptor nunca se omite.', 'Clique em qualquer emote do chat para adicioná-lo aos favoritos. Se o Kick o marcar explicitamente como restrito a seguidores, o mesmo clique segue o canal de origem; o acesso de assinante nunca é contornado.'],
   'Highlight chat keywords': ['Resaltar palabras clave del chat', 'Destacar palavras-chave do chat'],

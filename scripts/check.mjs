@@ -205,14 +205,32 @@ const organizerWindows = (bundle) => /visibleWindow\(visible,/.test(bundle)
   && bundle.includes('data-kf-sticker-spacer')
   && bundle.includes('stickerSpacerMarkup');
 const spacerMathMatchesCss = (bundle) => {
-  const height = /const STICKER_TILE_HEIGHT = (\d+);/.exec(bundle)?.[1];
-  const gap = /const STICKER_GRID_GAP = (\d+);/.exec(bundle)?.[1];
-  const minWidth = /const STICKER_TILE_MIN_WIDTH = (\d+);/.exec(bundle)?.[1];
-  if (!height || !gap || !minWidth) return false;
-  return new RegExp(`grid-auto-rows: ${height}px`).test(bundle)
-    && new RegExp(`\\[data-kf-sticker-grid\\][\\s\\S]{0,400}?gap: ${gap}px`).test(bundle)
-    && new RegExp(`\\[data-kf-sticker-grid\\][\\s\\S]{0,400}?minmax\\(${minWidth}px, 1fr\\)`).test(bundle);
+  const metrics = [...bundle.matchAll(/(?:compact|balanced|roomy|large): Object\.freeze\(\{ tileHeight: (\d+), tileMinWidth: (\d+), gap: (\d+) \}\)/g)]
+    .map((match) => match.slice(1).join(':'));
+  const cssMetrics = [...bundle.matchAll(/--kf-emote-tile-height: (\d+)px;[\s\S]{0,120}?--kf-emote-tile-min-width: (\d+)px;[\s\S]{0,120}?--kf-emote-grid-gap: (\d+)px;/g)]
+    .map((match) => match.slice(1).join(':'));
+  return metrics.length === 4
+    && metrics.every((metric) => cssMetrics.includes(metric))
+    && /grid-auto-rows: var\(--kf-emote-tile-height\)/.test(bundle)
+    && /grid-template-columns: repeat\(auto-fill, minmax\(var\(--kf-emote-tile-min-width\)/.test(bundle)
+    && /gap: var\(--kf-emote-grid-gap\)/.test(bundle)
+    && /const \{ tileHeight, gap \} = stickerGridMetrics\(\);[\s\S]{0,100}?rows \* tileHeight \+ \(rows - 1\) \* gap/.test(bundle);
 };
+const SPACER_MATH_SAMPLE = `
+const STICKER_GRID_METRICS = Object.freeze({
+  compact: Object.freeze({ tileHeight: 54, tileMinWidth: 44, gap: 5 }),
+  balanced: Object.freeze({ tileHeight: 62, tileMinWidth: 50, gap: 7 }),
+  roomy: Object.freeze({ tileHeight: 74, tileMinWidth: 60, gap: 8 }),
+  large: Object.freeze({ tileHeight: 88, tileMinWidth: 84, gap: 7 }),
+});
+#picker { --kf-emote-tile-height: 54px; --kf-emote-tile-min-width: 44px; --kf-emote-grid-gap: 5px; }
+#picker { --kf-emote-tile-height: 62px; --kf-emote-tile-min-width: 50px; --kf-emote-grid-gap: 7px; }
+#picker { --kf-emote-tile-height: 74px; --kf-emote-tile-min-width: 60px; --kf-emote-grid-gap: 8px; }
+#picker { --kf-emote-tile-height: 88px; --kf-emote-tile-min-width: 84px; --kf-emote-grid-gap: 7px; }
+[data-kf-sticker-grid] { grid-auto-rows: var(--kf-emote-tile-height); gap: var(--kf-emote-grid-gap); grid-template-columns: repeat(auto-fill, minmax(var(--kf-emote-tile-min-width), 1fr)); }
+const { tileHeight, gap } = stickerGridMetrics();
+const height = rows * tileHeight + (rows - 1) * gap;
+`;
 /** Typing must be one render, not one per keystroke. */
 const organizerDebouncesSearch = (bundle) =>
   /addEventListener\('input'[\s\S]{0,400}?STICKER_SEARCH_DEBOUNCE_MS/.test(bundle);
@@ -2072,9 +2090,9 @@ const redProbes = [
   ['window gate would reject an organizer that renders the whole list',
     !organizerWindows("gridHost.innerHTML = trustedHTML(visible.map(stickerProxyMarkup).join(''));")],
   ['spacer-math gate would catch CSS drifting from the constants',
-    !spacerMathMatchesCss('const STICKER_TILE_HEIGHT = 62;\nconst STICKER_GRID_GAP = 7;\nconst STICKER_TILE_MIN_WIDTH = 50;\n[data-kf-sticker-grid] { grid-auto-rows: 80px; gap: 7px; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }')],
+    !spacerMathMatchesCss(SPACER_MATH_SAMPLE.replace('--kf-emote-tile-height: 54px', '--kf-emote-tile-height: 80px'))],
   ['spacer-math gate accepts constants that match the CSS',
-    spacerMathMatchesCss('const STICKER_TILE_HEIGHT = 62;\nconst STICKER_GRID_GAP = 7;\nconst STICKER_TILE_MIN_WIDTH = 50;\n[data-kf-sticker-grid] { grid-auto-rows: 62px; gap: 7px; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }')],
+    spacerMathMatchesCss(SPACER_MATH_SAMPLE)],
   ['debounce gate would catch a search that re-renders on every keystroke',
     !organizerDebouncesSearch("search.addEventListener('input', () => renderStickerOrganizer());")],
   ['in-place gate would catch a toggle that rebuilds the grid',

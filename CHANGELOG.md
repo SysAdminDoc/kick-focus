@@ -4,6 +4,23 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.43.0, 2026-08-25
+
+### Added
+
+- Content & Ads now offers three emote picker densities and three shelf heights. The choices save with the rest of the profile and apply as soon as they are pressed.
+- The new picker controls are translated in English, Spanish, and Portuguese.
+
+### Changed
+
+- Compact is the new picker baseline. It fits eight emotes across the standard chat rail, reduces the search and tab chrome, and keeps the full count available on hover when the line is clipped.
+- Emote grid virtualization now reads the same tile height, width, and gap as each density preset. Larger pointer targets still take precedence.
+
+### Fixed
+
+- Organize mode responds to the chat rail itself instead of the whole browser window. Selection, move, reorder, and remove controls stay readable at the 320 to 520 pixel chat widths.
+- Reorder controls appear only when one favorite is selected, and Clear stays out of the way until there is a selection.
+
 ## 1.42.0, 2026-08-25
 
 ### Fixed

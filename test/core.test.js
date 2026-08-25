@@ -1260,12 +1260,24 @@ test('normalization clamps values and keeps core ad defense enabled', { tags: ['
   assert.equal(value.content.rememberVolume, true);
   assert.equal(value.content.rememberVodPosition, true);
   assert.equal(value.content.organizeChatStickers, true);
+  assert.equal(value.content.emotePickerDensity, 'compact');
+  assert.equal(value.content.emotePickerHeight, 'medium');
   assert.equal(value.layout.playerContainVideo, true);
   assert.equal(value.appearance.language, 'auto');
   assert.equal(normalizeSettings({ appearance: { language: 'xx' } }).appearance.language, 'auto');
   assert.equal(value.accessibility.captionOpacity, 0);
   assert.equal(normalizeSettings({ layout: { chat: 'left' } }).layout.chat, 'left');
   assert.equal(normalizeSettings({ layout: { chat: 'upside-down' } }).layout.chat, 'right');
+});
+
+test('emote picker sizing accepts only the shipped presets', { tags: ['unit'] }, () => {
+  const customized = normalizeSettings({ content: { emotePickerDensity: 'roomy', emotePickerHeight: 'tall' } });
+  assert.equal(customized.content.emotePickerDensity, 'roomy');
+  assert.equal(customized.content.emotePickerHeight, 'tall');
+
+  const rejected = normalizeSettings({ content: { emotePickerDensity: 'tiny', emotePickerHeight: 'endless' } });
+  assert.equal(rejected.content.emotePickerDensity, DEFAULT_SETTINGS.content.emotePickerDensity);
+  assert.equal(rejected.content.emotePickerHeight, DEFAULT_SETTINGS.content.emotePickerHeight);
 });
 
 test('chat separator drag grows away from the player on either side', { tags: ['unit'] }, () => {

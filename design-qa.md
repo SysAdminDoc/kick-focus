@@ -38,7 +38,7 @@ The implementation is exercised through `test/fixtures/settings-preview.html` at
 - `design/screenshots/emote-library.png`
 - `design/screenshots/profile-stats-button.png`
 
-The retained QA comparisons contain the normalized target and browser implementation in the same frame. The files under `design/screenshots` are final standalone captures from the verified v1.42.0 bundle.
+The retained QA comparisons contain the normalized target and browser implementation in the same frame. The files under `design/screenshots` are final standalone captures from the verified v1.43.0 bundle.
 
 ## Focused evidence
 
@@ -194,6 +194,31 @@ One route-specific target was created for each main Kick surface. The shared dir
 - Live Chromium gate: 88 of 88 checks passed at 1440 × 900 after the layout change. The packaged v1.31.0 extension passed 88 of 88 again at 1920 × 1080. Nine account-only journeys were skipped because the throwaway profile was anonymous.
 - Chat resize proof: the 410-pixel chat owner and 409-pixel inner surface moved together to 480 pixels with no row overflow.
 - The final live capture has no document-level horizontal overflow, no surviving ad shell, and no actionable P0, P1, or P2 visual mismatch in the implemented theme system.
+
+final result: passed
+
+## Emote picker density and rail layout, v1.43.0
+
+### Comparison setup
+
+- The v1.42.0 reference and v1.43.0 browser capture were rendered from the same `sticker-scroll.html` fixture at 1280 by 720, then placed together in one comparison frame.
+- The fixture kept the same 430-pixel chat rail, 143-emote catalog, selected theme, composer, and page content on both sides.
+
+### Findings
+
+- P1: Organize mode responded to the browser viewport, not the chat rail. A 430-pixel rail inside a wide page kept the two-column batch toolbar and broke its labels into narrow fragments. The organizer is now a size container, and its controls stack against the rail width itself.
+- P2: Search, the two-line summary, and the five tabs used too much vertical space before the first emote. The summary is now one clipped line with its full value available on hover, controls use the selected density, and Compact fits eight emotes across instead of seven.
+- P2: One fixed tile size and one grid cap forced the same tradeoff on every viewer. Content & Ads now exposes Compact, Balanced, and Roomy density plus Short, Medium, and Tall height independently.
+- P2: Favorite ordering controls occupied space while they could do nothing. They now appear only for one selected favorite, while Clear appears after the first selection.
+
+### Verification
+
+- Exercised All, Favorites, Groups, Organize, empty, disabled, one-selected, and favorite-order states in the in-app browser.
+- Switched between Studio, OLED, and Slate. The same hierarchy, borders, selected states, and focus treatment remained visible in each theme.
+- Changed from Compact and Medium to Roomy and Tall through the rendered settings controls, closed Settings, and confirmed the picker updated without a reload.
+- The default release screenshot at `design/screenshots/emote-picker.png` was recaptured from the v1.43.0 bundle. The paired comparison showed less picker chrome, one additional column, and no lost action.
+- `npm test` passed all 464 tests after the settings schema, grid geometry, container behavior, localization, and rendering checks were updated.
+- The packaged v1.43.0 companions passed 97 of 97 asserted Chromium checks at both 1440 by 900 and 1920 by 1080 with 15 documented skips. Firefox passed 8 of 8 with one documented popup-navigation skip.
 
 final result: passed
 
