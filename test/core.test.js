@@ -75,6 +75,7 @@ import {
   chatWidthAfterKey,
   createPageInertManager,
   videoIsBackground,
+  nextActiveIndex,
   readUndoSlot,
   undoSlotLabel,
   CHAT_WIDTH_MIN,
@@ -1529,6 +1530,42 @@ test('with Kick\u2019s selector working, the rule is the one the live gate prove
   assert.deepEqual(differing, [
     { markedBackground: false, muted: true, channelPlayer: false, genericPlayer: true },
   ], 'the drift rescue changed more than the one case it exists for');
+});
+
+test('a listbox moves its active option, wraps, and refuses to invent one', { tag: 'unit' }, () => {
+  // The command palette hard-coded aria-selected on the first option, so a
+  // reader was told the first match was selected wherever the user had
+  // arrowed, and Enter always ran that one.
+  assert.equal(nextActiveIndex(0, 5, 'ArrowDown'), 1);
+  assert.equal(nextActiveIndex(3, 5, 'ArrowUp'), 2);
+  assert.equal(nextActiveIndex(2, 5, 'Home'), 0);
+  assert.equal(nextActiveIndex(2, 5, 'End'), 4);
+
+  // A short list is faster to cycle than to reverse.
+  assert.equal(nextActiveIndex(4, 5, 'ArrowDown'), 0);
+  assert.equal(nextActiveIndex(0, 5, 'ArrowUp'), 4);
+  assert.equal(nextActiveIndex(0, 1, 'ArrowDown'), 0);
+  assert.equal(nextActiveIndex(0, 1, 'ArrowUp'), 0);
+
+  // An empty list has no active option at all, and must not report index 0:
+  // pointing aria-activedescendant at an option that is not there is worse
+  // than pointing at nothing.
+  for (const key of ['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter']) {
+    assert.equal(nextActiveIndex(0, 0, key), -1, key);
+  }
+  assert.equal(nextActiveIndex(0, -1, 'ArrowDown'), -1);
+  assert.equal(nextActiveIndex(0, NaN, 'ArrowDown'), -1);
+
+  // A position left over from a longer list is clamped rather than trusted,
+  // which is what happens when a query narrows the results under the cursor.
+  assert.equal(nextActiveIndex(9, 3, 'ArrowDown'), 1);
+  assert.equal(nextActiveIndex(-4, 3, 'ArrowDown'), 1);
+
+  // Every other key is typing. Returning the current index is how the caller
+  // tells "did not move" from "not mine" and leaves the event alone.
+  for (const key of ['a', 'Enter', 'Escape', 'Tab', ' ', 'PageDown', '']) {
+    assert.equal(nextActiveIndex(2, 5, key), 2, key);
+  }
 });
 
 test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {

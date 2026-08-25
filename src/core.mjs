@@ -1989,6 +1989,32 @@ export function videoIsBackground({
   return !(channelPlayerMissing && genericPlayer);
 }
 
+/**
+ * Where the active option goes when a key is pressed in a listbox.
+ *
+ * The command palette advertised `role="listbox"` with `role="option"`
+ * children and hard-coded `aria-selected` on the first one, so a screen reader
+ * reported the first match as selected no matter what, arrow keys did nothing,
+ * and Enter always ran the first item. A listbox nobody can operate is worse
+ * than a plain list, so this is the half that makes it a real one.
+ *
+ * Returns the current index for a key the widget does not own, so the caller
+ * can tell "no movement" from "not mine" by comparing before deciding whether
+ * to swallow the event.
+ */
+export function nextActiveIndex(current, count, key) {
+  if (!Number.isFinite(count) || count <= 0) return -1;
+  const index = Number.isFinite(current) && current >= 0 && current < count ? Math.floor(current) : 0;
+  switch (key) {
+    // Wrapping, because a list this short is faster to cycle than to reverse.
+    case 'ArrowDown': return (index + 1) % count;
+    case 'ArrowUp': return (index - 1 + count) % count;
+    case 'Home': return 0;
+    case 'End': return count - 1;
+    default: return index;
+  }
+}
+
 export function createPageInertManager(getBody, isOwn) {
   let snapshot = null;
 

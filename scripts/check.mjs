@@ -950,6 +950,37 @@ const checks = [
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
+  ['a listbox this build ships is one a keyboard can actually operate', (() => {
+    // Two surfaces claimed the role and neither honoured it. The palette
+    // hard-coded aria-selected on the first option, so a reader was told the
+    // first match was selected wherever the user had arrowed, and Enter always
+    // ran that one. The emote autocomplete declared listbox and option around
+    // a list whose only acceptance path is a click.
+    const keydown = extractFunction(source, 'onCommandKeydown');
+    const palette = Boolean(keydown)
+      && source.includes('role="combobox"')
+      && source.includes('aria-controls="kf-command-list"')
+      && source.includes('id="kf-command-option-${index}"')
+      // Selection follows state, never the index.
+      && source.includes('aria-selected="${index === state.commandActive}"')
+      && !source.includes('aria-selected="${index === 0}"')
+      && keydown.includes('nextActiveIndex(state.commandActive')
+      && keydown.includes("'ArrowDown', 'ArrowUp', 'Home', 'End'")
+      // Enter runs the active option, not whichever happens to be first.
+      && keydown.includes('options[state.commandActive] || options[0]')
+      && extractFunction(source, 'syncCommandActiveDescendant').includes("setAttribute('aria-activedescendant'");
+
+    // And the autocomplete does not advertise what it cannot do. If a keyboard
+    // acceptance path is ever added, the roles may come back — this asks for
+    // the two to move together rather than for the roles never to return.
+    const completionHost = extractFunction(source, 'emoteCompletionHost');
+    const keyboardAcceptance = /addEventListener\('keydown'[^)]*\)[\s\S]{0,400}acceptEmoteCompletion/.test(completionHost);
+    const autocomplete = keyboardAcceptance
+      ? completionHost.includes("setAttribute('role', 'listbox')")
+      : completionHost.includes("setAttribute('role', 'list')") && !completionHost.includes("'listbox'");
+
+    return palette && autocomplete;
+  })()],
   ['the security rules both companions share are one rule, not two copies', (() => {
     // Each of these carries a decision that keeps the companion safe: the
     // redirect refusal and the post-fetch URL recheck, the JSON MIME gate, the

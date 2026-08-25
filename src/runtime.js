@@ -120,6 +120,7 @@ const state = {
   command: null,
   commandInput: null,
   commandList: null,
+  commandActive: 0,
   quickButton: null,
   headerControlHost: null,
   headerControlButton: null,
@@ -9478,8 +9479,8 @@ function buildInterface() {
     </div>
     <div class="kf-backdrop" data-kf-command-backdrop hidden>
       <section class="kf-command-shell" role="dialog" aria-modal="true" aria-label="Kick Focus command menu">
-        <div class="kf-command-head"><label for="kf-command-input">Find a command</label><input id="kf-command-input" data-kf-command-input type="search" autocomplete="off" placeholder="Type an action or setting…" aria-describedby="kf-command-count"><span id="kf-command-count" data-kf-command-count aria-live="polite" data-kf-no-translate></span></div>
-        <div class="kf-command-list" data-kf-command-list role="listbox" aria-label="Available commands"></div>
+        <div class="kf-command-head"><label for="kf-command-input">Find a command</label><input id="kf-command-input" data-kf-command-input type="search" autocomplete="off" placeholder="Type an action or setting…" aria-describedby="kf-command-count" role="combobox" aria-expanded="true" aria-controls="kf-command-list" aria-autocomplete="list"><span id="kf-command-count" data-kf-command-count aria-live="polite" data-kf-no-translate></span></div>
+        <div class="kf-command-list" id="kf-command-list" data-kf-command-list role="listbox" aria-label="Available commands"></div>
       </section>
     </div>
     <div class="kf-backdrop kf-ms-backdrop" data-kf-multistream-backdrop hidden>
@@ -9545,7 +9546,12 @@ function buildInterface() {
   shadow.addEventListener('change', guard('settings change', onInterfaceChange));
   shadow.addEventListener('input', guard('settings input', onInterfaceInput));
   shadow.addEventListener('keydown', guard('settings keydown', onInterfaceKeydown));
-  state.commandInput.addEventListener('input', renderCommands);
+  state.commandInput.addEventListener('input', () => {
+    // A new result set makes the old position meaningless, so it goes back to
+    // the top rather than pointing at whatever now sits at that index.
+    state.commandActive = 0;
+    renderCommands();
+  });
   state.commandInput.addEventListener('keydown', onCommandKeydown);
   shadow.querySelector('[data-kf-import]').addEventListener('change', onImportFile);
   // Enter is how anyone actually adds a channel; the button is the backup.
@@ -11136,7 +11142,11 @@ function emoteCompletionHost() {
   adoptStyles(shadow, EMOTE_COMPLETION_CSS);
   const list = document.createElement('div');
   list.dataset.kfCompleteList = 'true';
-  list.setAttribute('role', 'listbox');
+  // Deliberately a list, not a listbox. Acceptance here is click-only, on
+  // purpose and documented below, and a listbox a keyboard user can never
+  // operate is worse than a plain list: it advertises arrow navigation and
+  // selection that do not exist. The roles go back the day a key path does.
+  list.setAttribute('role', 'list');
   list.setAttribute('aria-label', tr('Emote suggestions'));
   // Click, never key: bound inside the shadow root so accepting cannot depend
   // on anything the page might stop from bubbling.
@@ -11203,7 +11213,7 @@ function updateEmoteCompletion() {
   const host = emoteCompletionHost();
   const list = host.shadowRoot.querySelector('[data-kf-complete-list]');
   setMarkup(list, matches.map((sticker) => `
-    <button type="button" role="option" aria-selected="false" data-kf-complete-key="${escapeHtml(sticker.key)}" title="${escapeHtml(trf('Insert {name}', { name: sticker.name }))}">
+    <button type="button" data-kf-complete-key="${escapeHtml(sticker.key)}" title="${escapeHtml(trf('Insert {name}', { name: sticker.name }))}" aria-label="${escapeHtml(trf('Insert {name}', { name: sticker.name }))}">
       <img src="${escapeHtml(sticker.src)}" alt="" loading="lazy">
       <span>${escapeHtml(sticker.name)}</span>
     </button>`).join(''));
@@ -11915,9 +11925,14 @@ function renderCommands() {
   // English on first render and every later pass rewrites the translated form
   // back from that recorded source.
   if (count) count.textContent = `${commands.length} ${plural(commands.length, 'command available', 'commands available')}`;
+  // The active option is state, not the first one. It used to be hard-coded to
+  // index 0, so a reader was told the first match was selected wherever the
+  // user actually was, and Enter ran that one.
+  state.commandActive = commands.length ? Math.min(Math.max(0, state.commandActive), commands.length - 1) : -1;
   setMarkup(state.commandList, commands.length
-    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" aria-selected="${index === 0}" data-action="command:${command.id}" data-active="${index === 0}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div></button>`).join('')
+    ? commands.map((command, index) => `<button type="button" class="kf-command-item" role="option" id="kf-command-option-${index}" aria-selected="${index === state.commandActive}" data-action="command:${command.id}" data-active="${index === state.commandActive}"><div><strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.description)}</span></div></button>`).join('')
     : '<div class="kf-command-empty"><strong>No matching commands</strong><span>Try “chat”, “layout”, “casino”, or “settings”.</span></div>');
+  syncCommandActiveDescendant();
   localizeInterface();
 }
 
@@ -11930,6 +11945,7 @@ function openCommandMenu() {
   state.commandOpener = opener;
   state.command.hidden = false;
   syncPageInert();
+  state.commandActive = 0;
   state.commandInput.value = '';
   renderCommands();
   requestAnimationFrame(() => state.commandInput.focus());
@@ -11988,17 +12004,56 @@ function executeCommand(id) {
   scheduleApply(0);
 }
 
+/**
+ * Point the combobox at whichever option is active.
+ *
+ * A listbox that never moves `aria-activedescendant` reports the same option
+ * however far the user has arrowed, which is the defect this pairs with. The
+ * option is scrolled into view too, because an active option below the fold is
+ * only nominally active.
+ */
+function syncCommandActiveDescendant() {
+  if (!state.commandInput || !state.commandList) return;
+  const options = [...state.commandList.querySelectorAll('[data-action^="command:"]')];
+  const active = options[state.commandActive] || null;
+  if (active) {
+    state.commandInput.setAttribute('aria-activedescendant', active.id);
+    active.scrollIntoView?.({ block: 'nearest' });
+  } else {
+    state.commandInput.removeAttribute('aria-activedescendant');
+  }
+  state.commandInput.setAttribute('aria-expanded', String(options.length > 0));
+}
+
 function onCommandKeydown(event) {
   if (event.key === 'Escape') {
     event.preventDefault();
     closeCommandMenu();
-  } else if (event.key === 'Enter') {
-    const first = state.commandList.querySelector('[data-action^="command:"]');
-    if (first) {
-      event.preventDefault();
-      executeCommand(first.dataset.action.slice(8));
-    }
+    return;
   }
+  const options = [...state.commandList.querySelectorAll('[data-action^="command:"]')];
+  if (event.key === 'Enter') {
+    const active = options[state.commandActive] || options[0];
+    if (active) {
+      event.preventDefault();
+      executeCommand(active.dataset.action.slice(8));
+    }
+    return;
+  }
+  // Arrows, Home and End belong to the listbox while it has focus. Anything
+  // else is typing and is left alone, including the modified forms: Ctrl+Home
+  // in a text field is the caret, not the list.
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const moved = nextActiveIndex(state.commandActive, options.length, event.key);
+  if (moved === state.commandActive || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  state.commandActive = moved;
+  for (const [index, option] of options.entries()) {
+    const selected = String(index === moved);
+    option.setAttribute('aria-selected', selected);
+    option.dataset.active = selected;
+  }
+  syncCommandActiveDescendant();
 }
 
 /**

@@ -257,12 +257,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P2
 
-- [ ] P2 — R-135: Give the command palette and the emote autocomplete honest ARIA
-  Why: The palette input has no `role="combobox"`, no `aria-expanded`, and no `aria-activedescendant`; its options hard-code `aria-selected="${index === 0}"`, so assistive technology always reports the first item as selected no matter where the user has tabbed, and Enter always runs the first match. The emote autocomplete declares `role="listbox"` with `role="option"` children while `acceptEmoteCompletion` has exactly one caller, a click handler. Mouse-only acceptance there is deliberate and documented, so the fix is the ARIA, not the behaviour: advertising a listbox a keyboard user can never operate is worse than exposing a plain list.
-  Where: src/runtime.js command palette markup and onCommandKeydown; src/runtime.js emote completion markup around the `role="listbox"` host
-  Acceptance: The palette is a real combobox with arrow-key navigation and a moving `aria-activedescendant`, or it drops the listbox roles; the autocomplete drops `role="listbox"`/`role="option"` unless a keyboard path to accept exists.
-  Complexity: M
-
 - [ ] P2 — R-136: Regenerate the panel's literal token fallbacks from the palette
   Why: Thirteen of sixteen `var(--kf-*, #literal)` fallbacks in src/runtime.js and src/multistream.mjs are from a palette that no longer ships. Inside the page this is harmless because SITE_CSS always defines the tokens, with one exception: the multi-stream chat pop-out at src/multistream.mjs:531-537 is a separate document whose comment explicitly designs the fallback path for "the case where the page has not painted yet". All five of that sheet's fallbacks are wrong, so the designed path paints a palette that ships nowhere.
   Where: src/runtime.js:7159-7197 (the panel token re-export) and 12572-12638; src/multistream.mjs:531-549

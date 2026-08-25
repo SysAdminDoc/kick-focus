@@ -6,6 +6,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- The command menu answers the arrow keys. It called itself a list of options and then marked the first one as selected no matter where you were, so a screen reader always announced the first match and Enter always ran it. Up, Down, Home and End move the selection now, it wraps, and the reading follows it. The emote suggestions above the chat box have stopped calling themselves a list of options, because they can only be clicked.
 - A blocklist feed can no longer make the companion allocate more than 512 KiB. The size limit was checked after the whole body had already been read, so a feed that declares no length could hand over an arbitrarily large response and be refused only afterwards. It is read in chunks now and the read stops at the first chunk past the limit.
 - Watching muted keeps the watch clock the day Kick renames its player. Muting was treated as a sign a video is decorative, and only Kick's channel-player selectors rescued it, so a single markup change would have taken the session clock, the uptime chip and the recording countdown away from every muted viewer at once, silently. If those selectors ever stop matching anything at all, the player container rescues it instead, and the compatibility report says the selectors have drifted rather than letting it pass unnoticed.
 
