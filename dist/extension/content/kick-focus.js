@@ -1129,6 +1129,17 @@ const OVERLAY_LAYERS = [
 ['command', '.kf-command-shell'],
 ['settings', '[data-kf-settings-shell]'],
 ];
+function videoIsBackground({
+markedBackground = false,
+muted = false,
+channelPlayer = false,
+genericPlayer = false,
+channelPlayerMissing = false,
+} = {}) {
+if (markedBackground) return true;
+if (!muted || channelPlayer) return false;
+return !(channelPlayerMissing && genericPlayer);
+}
 function createPageInertManager(getBody, isOwn) {
 let snapshot = null;
 function release() {
@@ -3694,6 +3705,19 @@ judge: (value, source) => Boolean(value)
 && value !== source
 && typeof value.contains === 'function'
 && value.contains(source),
+}),
+Object.freeze({
+id: 'channelPlayer',
+probe: 'video',
+claim: 'a video inside a player container is claimed by the channel-player selectors',
+sample: (owner) => {
+try {
+return [...owner.querySelectorAll('video')].slice(0, 12);
+} catch {
+return [];
+}
+},
+judge: (value) => value === 'channel' || value === 'none',
 }),
 Object.freeze({
 id: 'qualityHeight',
@@ -7040,7 +7064,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              840032') || 0;
+const BUNDLE_BYTES = Number('              841245') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -9419,6 +9443,9 @@ function compatibilityDerivers() {
 return {
 cardSlug: (card) => cardSlugFromPath(cardPath(card)),
 playerContainer: (video) => playerContainerFor(video),
+channelPlayer: (video) => (videoClosest(video, VIDEO_CHANNEL_PLAYER_SELECTOR)
+? 'channel'
+: videoClosest(video, VIDEO_PLAYER_SELECTOR) ? 'generic' : 'none'),
 qualityHeight: (control) => (qualityOptionGated(control)
 ? 0
 : Number(qualitySessionValue(qualityControlLabel(control)))),
@@ -11461,6 +11488,16 @@ function videoClosest(video, selector) {
 try { return video?.closest?.(selector) || null; }
 catch { return null; }
 }
+let channelPlayerMissingMemo;
+function channelPlayerSelectorMissing() {
+if (channelPlayerMissingMemo === undefined) {
+let found = null;
+try { found = document.querySelector(VIDEO_CHANNEL_PLAYER_SELECTOR); }
+catch { found = null; }
+channelPlayerMissingMemo = state.route === 'channel' && !found;
+}
+return channelPlayerMissingMemo;
+}
 function sessionWatchVideoCandidate(video) {
 let box;
 try { box = video?.getBoundingClientRect?.(); }
@@ -11487,7 +11524,13 @@ playerSurface,
 playerPriority: channelPlayer ? 2 : 1,
 preview,
 preload,
-background: markedBackground || (muted && !channelPlayer),
+background: videoIsBackground({
+markedBackground,
+muted,
+channelPlayer,
+genericPlayer,
+channelPlayerMissing: channelPlayerSelectorMissing(),
+}),
 muted,
 playing: Boolean(video && !video.paused && !video.ended && video.readyState >= 3),
 width,
@@ -11497,6 +11540,7 @@ current: state.viewerHub.watchVideo === video,
 }
 let sessionWatchOwnerMemo = null;
 function invalidateSessionWatchOwner() {
+channelPlayerMissingMemo = undefined;
 sessionWatchOwnerMemo = null;
 }
 function sessionWatchOwnerCandidate() {

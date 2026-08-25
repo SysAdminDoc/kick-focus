@@ -257,16 +257,41 @@ test('a probe that resolves while its derived value does not is reported as brok
   const healthy = derivedSnapshot(root, {
     cardSlug: () => 'somestreamer',
     playerContainer: (node) => (node === video ? container : null),
+    channelPlayer: () => 'channel',
     qualityHeight: (node) => (rows.includes(node) ? 720 : NaN),
   });
   assert.deepEqual(healthy.map((entry) => [entry.id, entry.outcome]), [
-    ['cardSlug', 'ok'], ['playerContainer', 'ok'], ['qualityHeight', 'ok'],
+    ['cardSlug', 'ok'], ['playerContainer', 'ok'], ['channelPlayer', 'ok'], ['qualityHeight', 'ok'],
   ]);
+
+  // The drift this was added for: Kick still renders a player, and the
+  // channel-player selectors no longer claim it. Nothing else notices, because
+  // the only symptom is that a muted viewer's watch clock quietly stops.
+  const drifted = derivedSnapshot(root, {
+    cardSlug: () => 'somestreamer',
+    playerContainer: () => container,
+    channelPlayer: () => 'generic',
+    qualityHeight: () => 720,
+  });
+  const player = drifted.find((entry) => entry.id === 'channelPlayer');
+  assert.equal(player.outcome, 'broken');
+  assert.equal(player.probe, 'video');
+
+  // A preview that is in no player at all is the ordinary state of a discovery
+  // route, not a defect.
+  const previews = derivedSnapshot(root, {
+    cardSlug: () => 'somestreamer',
+    playerContainer: () => container,
+    channelPlayer: () => 'none',
+    qualityHeight: () => 720,
+  });
+  assert.equal(previews.find((entry) => entry.id === 'channelPlayer').outcome, 'ok');
 
   // R-38's exact shape: the card resolves, the slug does not.
   const brokenSlug = derivedSnapshot(root, {
     cardSlug: () => '',
     playerContainer: () => container,
+    channelPlayer: () => 'channel',
     qualityHeight: () => 720,
   });
   const slug = brokenSlug.find((entry) => entry.id === 'cardSlug');
@@ -316,7 +341,7 @@ test('an implausible quality height fails, and Auto does not', { tag: 'unit' }, 
 
 test('nothing to derive from is absent, and no deriver is unchecked — neither is a defect', { tag: 'unit' }, () => {
   const empty = new FakeNode();
-  const absent = derivedSnapshot(empty, { cardSlug: () => '', playerContainer: () => null, qualityHeight: () => NaN });
+  const absent = derivedSnapshot(empty, { cardSlug: () => '', playerContainer: () => null, channelPlayer: () => 'generic', qualityHeight: () => NaN });
   assert.deepEqual([...new Set(absent.map((entry) => entry.outcome))], ['absent'],
     'a route that renders none of these must not be reported as broken');
 
@@ -329,11 +354,11 @@ test('the summary names both the probe and the derived value', { tag: 'unit' }, 
   const { root, container } = derivedRoot();
   const withBreak = compatibilitySnapshot(root, {
     expectedChat: false,
-    derive: { cardSlug: () => '', playerContainer: () => container, qualityHeight: () => 720 },
+    derive: { cardSlug: () => '', playerContainer: () => container, channelPlayer: () => 'channel', qualityHeight: () => 720 },
   });
   const withoutBreak = compatibilitySnapshot(root, {
     expectedChat: false,
-    derive: { cardSlug: () => 'somestreamer', playerContainer: () => container, qualityHeight: () => 720 },
+    derive: { cardSlug: () => 'somestreamer', playerContainer: () => container, channelPlayer: () => 'channel', qualityHeight: () => 720 },
   });
   // The invariant, asserted as a comparison rather than a fixed value: `healthy`
   // has always meant "the shell hooks are present" and a broken derived value

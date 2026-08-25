@@ -49,7 +49,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
       chatPanel: 'chat-messages-owner',
       card: 'card-testid',
     }),
-    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', qualityHeight: 'absent' }),
+    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
     markers: Object.freeze(['id="main-container"', 'id="sidebar-wrapper"', 'livestream-results-card']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({
@@ -70,7 +70,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
     shell: Object.freeze({
       main: 'main-id', sidebar: 'sidebar-id', chatSeparator: null, chatPanel: null, card: 'card-testid',
     }),
-    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', qualityHeight: 'absent' }),
+    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
     markers: Object.freeze(['id="main-container"', 'id="sidebar-wrapper"', 'livestream-results-card', '/category/slots']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({
@@ -89,7 +89,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
     shell: Object.freeze({
       main: 'main-id', sidebar: 'sidebar-id', chatSeparator: null, chatPanel: null, card: 'card-testid',
     }),
-    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', qualityHeight: 'absent' }),
+    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
     markers: Object.freeze(['id="main-container"', 'id="sidebar-wrapper"', 'livestream-results-card', 'category/just-chatting']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({}),
@@ -106,7 +106,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
     shell: Object.freeze({
       main: 'main-id', sidebar: 'sidebar-id', chatSeparator: null, chatPanel: null, card: 'card-testid',
     }),
-    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', qualityHeight: 'absent' }),
+    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
     markers: Object.freeze(['id="main-container"', 'id="sidebar-wrapper"', 'data-testid="search"', 'livestream-results-card']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({
@@ -148,7 +148,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
      * a looser selector picking up something else.
      */
     optional: Object.freeze(['card']),
-    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'ok', qualityHeight: 'absent' }),
+    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'ok', channelPlayer: 'ok', qualityHeight: 'absent' }),
     markers: Object.freeze(['id="sidebar-wrapper"', 'channel-chatroom', 'chatroom-messages', 'aria-valuemin']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({
@@ -172,7 +172,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
       chatPanel: 'chat-panel-id',
       card: null,
     }),
-    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'absent', qualityHeight: 'absent' }),
+    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
     markers: Object.freeze(['id="sidebar-wrapper"', 'channel-chatroom', 'chatroom-messages', 'aria-valuemin']),
     synthetic: Object.freeze({
       'fixture=/emotes/7001': 'a chat emote with a known id, so the harvest path has something to read',
@@ -192,7 +192,7 @@ export const FIXTURE_CONTRACT = Object.freeze({
     shell: Object.freeze({
       main: 'main-element', sidebar: 'sidebar-id', chatSeparator: null, chatPanel: null, card: null,
     }),
-    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'absent', qualityHeight: 'absent' }),
+    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
     markers: Object.freeze(['data-testid="sidebar-drops"', 'Drops &amp; rewards', 'data-testid="empty-state-root"', '/drops/coming-soon']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({}),

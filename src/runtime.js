@@ -3892,6 +3892,9 @@ function compatibilityDerivers() {
   return {
     cardSlug: (card) => cardSlugFromPath(cardPath(card)),
     playerContainer: (video) => playerContainerFor(video),
+    channelPlayer: (video) => (videoClosest(video, VIDEO_CHANNEL_PLAYER_SELECTOR)
+      ? 'channel'
+      : videoClosest(video, VIDEO_PLAYER_SELECTOR) ? 'generic' : 'none'),
     // A gated rung is one this session cannot pick — Kick offers it and refuses
     // it — so it has no height to yield and 0 is the honest answer rather than
     // a failure. Auto is 0 too, and the judge accepts it.
@@ -6496,6 +6499,25 @@ function videoClosest(video, selector) {
   catch { return null; }
 }
 
+/**
+ * Has Kick's channel-player selector stopped matching anything at all?
+ *
+ * Memoised per apply cycle beside the playback owner, because it is read once
+ * per video and the answer cannot change inside one cycle. Only meaningful on a
+ * channel route: everywhere else there is no channel player to be missing.
+ */
+let channelPlayerMissingMemo;
+
+function channelPlayerSelectorMissing() {
+  if (channelPlayerMissingMemo === undefined) {
+    let found = null;
+    try { found = document.querySelector(VIDEO_CHANNEL_PLAYER_SELECTOR); }
+    catch { found = null; }
+    channelPlayerMissingMemo = state.route === 'channel' && !found;
+  }
+  return channelPlayerMissingMemo;
+}
+
 /** Measure the facts used by the pure watch-owner gate. */
 function sessionWatchVideoCandidate(video) {
   let box;
@@ -6523,14 +6545,16 @@ function sessionWatchVideoCandidate(video) {
     playerPriority: channelPlayer ? 2 : 1,
     preview,
     preload,
-    // Muted demotes a video that Kick's channel-player selectors do not claim.
-    // Two attempts to loosen this in the 2026-08-25 audit both regressed the
-    // live gate: keying on `playerSurface` let a large muted decorative video
-    // on a real channel page outrank the player, and allowing `genericPlayer`
-    // did the same for one inside a player-ish container. The drift risk this
-    // was trying to address is real and is tracked as a roadmap item; widening
-    // the rule on a guess is not the way to close it.
-    background: markedBackground || (muted && !channelPlayer),
+    // Decided in core, where it is tested. While Kick's channel-player selector
+    // still matches something, this is byte-for-byte the rule the live gate
+    // proves; the looser rescue only exists for the day it matches nothing.
+    background: videoIsBackground({
+      markedBackground,
+      muted,
+      channelPlayer,
+      genericPlayer,
+      channelPlayerMissing: channelPlayerSelectorMissing(),
+    }),
     muted,
     playing: Boolean(video && !video.paused && !video.ended && video.readyState >= 3),
     width,
@@ -6557,6 +6581,7 @@ function sessionWatchVideoCandidate(video) {
 let sessionWatchOwnerMemo = null;
 
 function invalidateSessionWatchOwner() {
+  channelPlayerMissingMemo = undefined;
   sessionWatchOwnerMemo = null;
 }
 

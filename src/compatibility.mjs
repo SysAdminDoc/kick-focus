@@ -417,6 +417,28 @@ export const DERIVED_EXPECTATIONS = Object.freeze([
       && value.contains(source),
   }),
   Object.freeze({
+    id: 'channelPlayer',
+    probe: 'video',
+    claim: 'a video inside a player container is claimed by the channel-player selectors',
+    // Every video on the page, bounded. A page usually has one or two; a
+    // discovery route can have a rail of previews, and those are supposed to
+    // answer 'none'.
+    sample: (owner) => {
+      try {
+        return [...owner.querySelectorAll('video')].slice(0, 12);
+      } catch {
+        return [];
+      }
+    },
+    // Three answers, because two would make a preview look like a defect.
+    // 'none' is a video that is not in a player at all, which is most of them.
+    // 'generic' is the one that matters: something Kick renders as a player,
+    // that the channel-player selectors no longer claim. That is the drift, and
+    // it is silent everywhere else — the watch clock simply stops counting for
+    // anyone watching muted.
+    judge: (value) => value === 'channel' || value === 'none',
+  }),
+  Object.freeze({
     id: 'qualityHeight',
     probe: 'qualityOption',
     claim: 'a quality row yields a plausible height',

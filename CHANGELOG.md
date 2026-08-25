@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Fixed
+
+- Watching muted keeps the watch clock the day Kick renames its player. Muting was treated as a sign a video is decorative, and only Kick's channel-player selectors rescued it, so a single markup change would have taken the session clock, the uptime chip and the recording countdown away from every muted viewer at once, silently. If those selectors ever stop matching anything at all, the player container rescues it instead, and the compatibility report says the selectors have drifted rather than letting it pass unnoticed.
+
 ### Changed
 
 - The Firefox companion no longer depends on Kick allowing inline scripts. It carried its whole page bundle inside the content bridge and injected it as an inline script, which would have stopped working the day Kick shipped a `script-src`. Firefox injects it directly into the page now, from a declared `world: "MAIN"` content script, so nothing about the extension reaches the page and the page's policy has nothing to refuse. This needs Firefox 128 or newer.

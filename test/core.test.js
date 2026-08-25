@@ -74,6 +74,7 @@ import {
   chatWidthAfterDrag,
   chatWidthAfterKey,
   createPageInertManager,
+  videoIsBackground,
   readUndoSlot,
   undoSlotLabel,
   CHAT_WIDTH_MIN,
@@ -1436,6 +1437,98 @@ test('an inner overlay closing does not uncover the page under the outer one', {
   // And a name the ladder does not carry cannot hold the page inert on its own.
   assert.equal(anyOpen({ resetConfirm: true }), false);
   assert.equal(anyOpen({}), false);
+});
+
+test('muting cannot demote the player, and cannot rescue scenery either', { tag: 'unit' }, () => {
+  const bg = (over) => videoIsBackground(over);
+
+  // Marked background is the end of it, whatever else is true.
+  assert.equal(bg({ markedBackground: true, channelPlayer: true, muted: false }), true);
+
+  // Unmuted is never scenery on this rule.
+  assert.equal(bg({ muted: false }), false);
+  assert.equal(bg({ muted: false, genericPlayer: true }), false);
+
+  // The main player, muted, while Kick's selectors still work: kept, because a
+  // great many people watch muted and browsers autoplay that way.
+  assert.equal(bg({ muted: true, channelPlayer: true }), false);
+
+  // A muted decorative video on a working page: demoted. This is the case that
+  // broke the live gate twice when the rule was widened unconditionally, so it
+  // holds under every combination that does not involve drift.
+  assert.equal(bg({ muted: true, genericPlayer: true }), true);
+  assert.equal(bg({ muted: true, genericPlayer: false }), true);
+  assert.equal(bg({ muted: true, genericPlayer: true, channelPlayerMissing: false }), true);
+
+  // Drift: the channel-player selector matches nothing on the page any more, so
+  // every video is "not the channel player" at once. Now the looser player
+  // container is allowed to rescue a muted video, because the alternative is
+  // that every muted viewer silently loses the watch clock.
+  assert.equal(bg({ muted: true, genericPlayer: true, channelPlayerMissing: true }), false);
+
+  // But drift is not a licence for anything muted anywhere. A muted video in no
+  // player container at all is still scenery.
+  assert.equal(bg({ muted: true, genericPlayer: false, channelPlayerMissing: true }), true);
+  // And marked background still wins over the rescue.
+  assert.equal(bg({ markedBackground: true, muted: true, genericPlayer: true, channelPlayerMissing: true }), true);
+
+  // No arguments at all is not scenery: the default has to be the safe answer,
+  // because a missing fact must not silently stop somebody's clock.
+  assert.equal(videoIsBackground(), false);
+  assert.equal(videoIsBackground(undefined), false);
+});
+
+test('with Kick\u2019s selector working, the rule is the one the live gate proved', { tag: 'unit' }, () => {
+  // This is the load-bearing assertion of the change, and the reason it is safe
+  // to make at all. Two earlier attempts to widen the muted rule passed every
+  // offline test and failed the live gate identically, because both changed
+  // behaviour on a page where Kick's channel-player selector was working
+  // perfectly well. This one cannot: the rescue is gated on that selector
+  // having stopped matching.
+  //
+  // So the property is exhaustively enumerated rather than sampled. For every
+  // combination of the other four facts, with channelPlayerMissing false, the
+  // answer must equal the shipped rule character for character.
+  const shipped = ({ markedBackground, muted, channelPlayer }) =>
+    Boolean(markedBackground || (muted && !channelPlayer));
+
+  let checked = 0;
+  for (const markedBackground of [false, true]) {
+    for (const muted of [false, true]) {
+      for (const channelPlayer of [false, true]) {
+        for (const genericPlayer of [false, true]) {
+          const facts = { markedBackground, muted, channelPlayer, genericPlayer };
+          assert.equal(
+            videoIsBackground({ ...facts, channelPlayerMissing: false }),
+            shipped(facts),
+            `drifted from the proven rule at ${JSON.stringify(facts)}`,
+          );
+          checked += 1;
+        }
+      }
+    }
+  }
+  assert.equal(checked, 16, 'the enumeration stopped short, so it proved less than it says');
+
+  // And the new behaviour exists: exactly one combination differs once the
+  // selector has stopped matching, which is the muted video inside a player
+  // container that nothing else would rescue.
+  const differing = [];
+  for (const markedBackground of [false, true]) {
+    for (const muted of [false, true]) {
+      for (const channelPlayer of [false, true]) {
+        for (const genericPlayer of [false, true]) {
+          const facts = { markedBackground, muted, channelPlayer, genericPlayer };
+          if (videoIsBackground({ ...facts, channelPlayerMissing: true }) !== shipped(facts)) {
+            differing.push(facts);
+          }
+        }
+      }
+    }
+  }
+  assert.deepEqual(differing, [
+    { markedBackground: false, muted: true, channelPlayer: false, genericPlayer: true },
+  ], 'the drift rescue changed more than the one case it exists for');
 });
 
 test('custom accents stay visible across every dark theme surface', { tag: 'unit' }, () => {

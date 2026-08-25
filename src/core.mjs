@@ -1955,6 +1955,40 @@ export const OVERLAY_LAYERS = [
  * nest, close the inner one, close the outer one, and check that a sibling
  * which arrived inert is handed back inert.
  */
+/**
+ * Whether a video is scenery rather than the thing being watched.
+ *
+ * `muted` is a hint, not a fact. Browsers autoplay muted and plenty of people
+ * watch that way, so muting cannot be allowed to demote the main player. The
+ * rule that shipped keyed the rescue on Kick's channel-player selectors alone,
+ * which meant the day `#injected-channel-player` is renamed, every video on the
+ * page stops being the channel player at once and every muted viewer silently
+ * loses the watch clock, the uptime chip and the recording countdown together.
+ *
+ * Two attempts to widen it were reverted on 2026-08-25 because both regressed
+ * the live gate: keying on the player *surface* let a large muted decorative
+ * video outrank the real player on a real channel page, and so did accepting
+ * any `[id*="player"]` container. Both fired while the channel-player selector
+ * was working perfectly well, which is when there is nothing to fix.
+ *
+ * So the widening is conditional on the failure it exists for. While the
+ * channel-player selector still matches something on the page, this is exactly
+ * the rule the live gate proves. Only once it matches nothing does the looser
+ * player container get to rescue a muted video, and by then the alternative is
+ * losing the clock outright.
+ */
+export function videoIsBackground({
+  markedBackground = false,
+  muted = false,
+  channelPlayer = false,
+  genericPlayer = false,
+  channelPlayerMissing = false,
+} = {}) {
+  if (markedBackground) return true;
+  if (!muted || channelPlayer) return false;
+  return !(channelPlayerMissing && genericPlayer);
+}
+
 export function createPageInertManager(getBody, isOwn) {
   let snapshot = null;
 

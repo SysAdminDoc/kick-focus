@@ -397,6 +397,14 @@ const DERIVERS = {
     if (!start) return null;
     return start.closest('[data-testid*="player" i], [data-player], [id*="player" i]') || start;
   },
+  // Mirrors the runtime deriver: 'channel' when Kick's channel-player
+  // selectors claim the video, 'generic' when only the loose player container
+  // does — which is the drift this exists to report — and 'none' for a video
+  // that is not in a player at all, such as a discovery preview.
+  channelPlayer: (video) => {
+    if (video.closest('#injected-channel-player, #injected-embedded-channel-player-video, [data-testid*="channel-player" i], [data-channel-player]')) return 'channel';
+    return video.closest('[data-testid*="player" i], [data-player], [id*="player" i]') ? 'generic' : 'none';
+  },
   qualityHeight: (control) => (qualityOptionGated(control)
     ? 0
     : Number(qualitySessionValue(qualityControlLabel(control)))),

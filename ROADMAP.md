@@ -274,13 +274,6 @@ Found during a full-repository audit. Everything the audit fixed is in
 
 ### P1
 
-- [ ] P1 — R-144: Stop muting a video from demoting the player it belongs to
-  Why: `sessionWatchVideoCandidate` treats `muted` as evidence a video is decorative, and rescues only what Kick's four channel-player selectors claim. Browsers autoplay muted and plenty of people watch that way, so the day `#injected-channel-player` is renamed, every muted viewer loses the session watch clock, the uptime chip and the recording countdown together, silently.
-  Where: src/runtime.js `sessionWatchVideoCandidate` (the `background` field) and `VIDEO_CHANNEL_PLAYER_SELECTOR`; scripts/verify-extension.mjs session-watch probe; src/compatibility.mjs, which is where Kick's selector drift is already tracked
-  Tried and reverted on 2026-08-25, both caught by the live gate rather than by a unit test: keying the rescue on `playerSurface` let a large muted decorative video on a real channel page outrank the player, and allowing `genericPlayer` (`[id*="player" i]`) did the same for one inside a player-ish container. The rule as it stands is the one the live gate proves; do not widen it on a guess.
-  Acceptance: A muted main player keeps ownership with the channel-player selectors removed, no other video on a real channel page takes ownership from it, the derivation is covered by a unit test rather than only by the browser gate, and a compatibility probe reports when the channel-player selector stops matching so the drift is visible before it is silent.
-  Complexity: M
-
 
 ### P2
 
