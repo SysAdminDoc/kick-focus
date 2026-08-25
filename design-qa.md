@@ -123,6 +123,7 @@ No actionable P0, P1, or P2 visual differences remain.
 - Verified emote Favorite visibility, Remove reachability, 24-pixel normal controls, and 40-pixel Larger pointer targets. Compared Studio, OLED, and Slate at 1440, 900, and 680 pixels.
 - Enabled composer recall, verified its disabled empty state, recorded two public sends, cycled both from the visible control, and checked the focused control at 1440 and 680 pixels.
 - Scrolled the About page to the destructive section and verified the reset explanation, action alignment, wrapping, and separation from the storage table.
+- Ran all seven settings pages at 1440 × 900, 900 × 800, 680 × 760, and 375 × 812. The second pass found a fixed Appearance control column and an oversized protection log at 375 pixels. Appearance now stacks those controls, long request paths wrap inside a fixed table, and the repeated matrix has no clipped page control or page-level horizontal overflow.
 - Browser console inspection after the final build returned no warnings or errors.
 
 ## Main Kick theme, v1.31.0

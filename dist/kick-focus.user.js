@@ -7127,7 +7127,7 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              854345') || 0;
+const BUNDLE_BYTES = Number('              854995') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
 const INJECTION_BYTE_BUDGET = 925000;
 const SITE_CSS = `
@@ -13330,6 +13330,14 @@ const UI_CSS = `
     .kf-page-header p { font-size: 12px; }
     .kf-row { gap: 12px; padding-block: 13px; }
     .kf-row p { font-size: 11px; }
+    .kf-appearance-controls .kf-row:has(.kf-control) { grid-template-columns: minmax(0, 1fr); }
+    .kf-appearance-controls .kf-control { width: 100%; }
+    [data-kf-current-page="content"] .kf-table { min-width: 0; table-layout: fixed; }
+    [data-kf-current-page="content"] .kf-table th,
+    [data-kf-current-page="content"] .kf-table td { min-width: 0; overflow-wrap: anywhere; }
+    [data-kf-current-page="content"] .kf-table :is(th, td):nth-child(1) { width: 62px; }
+    [data-kf-current-page="content"] .kf-table :is(th, td):nth-child(2) { width: 52px; }
+    [data-kf-current-page="content"] .kf-table :is(th, td):nth-child(4) { width: 64px; }
     .kf-footer-left .kf-button { padding-inline: 10px; }
     .kf-footer [data-action="reset-page"] .kf-button-label { display: none; }
     .kf-command-shell { width: calc(100vw - 24px); }

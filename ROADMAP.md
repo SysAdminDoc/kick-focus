@@ -279,6 +279,13 @@ Acceptance: Either the reward record travels with the export payload, so import,
 Shipped 2026-08-25: Full reset now leaves the local reward-check record untouched. The About page explains that the record prevents reset from making a handled reward appear due again, while settings, notes, filters, channel lists, usage, layouts, and boards still reset and remain covered by Undo.
 Complexity: S
 
+- [x] P2: R-150: Keep every settings page inside the 375-pixel phone viewport
+  Why: The second responsive audit measured two gaps that spot screenshots missed. Appearance kept its desktop control column and the Content protection log let long request paths widen its table, so both pages clipped their right edge.
+  Where: src/runtime.js narrow settings rules; test/boot.test.js artifact contracts; design-qa.md responsive matrix
+  Acceptance: Every settings page has zero document overflow and no control outside its page at 375 by 812 pixels. Appearance stacks its control column, protection-log paths wrap inside a fixed table, and the same checks stay clean at 680, 900, and 1440 pixels.
+  Shipped 2026-08-25: Appearance now stacks the affected rows below 430 pixels. Content keeps all four protection-log columns inside the page and wraps long matches. A full seven-page matrix passed at 1440, 900, 680, and 375 pixels.
+  Complexity: S
+
 - [x] P2: R-137: Normalize the control geometry the panel renders
   Why: Controls that sit in the same `.kf-control` column are 32, 36, 38 and 40 pixels tall (`.kf-switch`, `.kf-select`, `.kf-icon-button`, `.kf-button`), which reads as jitter down the right edge of every settings page. Eight radius literals bypass the Corner radius setting: `.kf-toast` and `.kf-toast-action` at 4px, `.kf-icon-button` at 5px, the About panel at 4px, the emote completion list and rows at 9px and 6px, and the two injected header buttons at 5px and 8px. Those two buttons also disagree on height, weight and font size while sitting in the same Kick chrome. Two focus treatments coexist: `outline: var(--focus-ring)` on the nav search, and `outline: 0` plus a box-shadow ring on `.kf-text`, `.kf-textarea`, `.kf-select`, and both multi-stream inputs.
   Where: src/runtime.js UI_CSS around 7289-7500, 7769, 7819-7831, 11555-11573, 12598-12645

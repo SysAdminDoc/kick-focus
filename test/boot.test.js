@@ -512,6 +512,14 @@ test('settings controls share one geometry scale and injected header actions sha
     .filter(([, line]) => !/border-radius:\s*(?:var\(--radius|inherit)/.test(line));
   assert.deepEqual(fixedRadii, [],
     `settings chrome still bypasses the shared radius scale: ${fixedRadii.map(([n, line]) => `${n}: ${line.trim()}`).join(' | ')}`);
+
+  const phoneRules = ui.slice(ui.lastIndexOf('@media (max-width: 430px)'));
+  assert.match(phoneRules, /\.kf-appearance-controls \.kf-row:has\(\.kf-control\) \{ grid-template-columns: minmax\(0, 1fr\); \}/,
+    'phone-width Appearance controls must stack instead of clipping their fixed control column');
+  assert.match(phoneRules, /\[data-kf-current-page="content"\] \.kf-table \{ min-width: 0; table-layout: fixed; \}/,
+    'the phone-width protection log must fit its settings page');
+  assert.match(phoneRules, /\[data-kf-current-page="content"\] \.kf-table td \{ min-width: 0; overflow-wrap: anywhere; \}/,
+    'long protection-log matches must wrap rather than widening the table');
 });
 
 test('reset recovery persists without a timer and the page keyboard stays with Kick', { tags: ['artifact'] }, async () => {

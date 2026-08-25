@@ -8,6 +8,7 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - Settings opens reliably again. The runtime now supplies the section-composition helper that was missed when the renderer moved into its own module, and a host-contract test protects that wiring.
 - The settings search state no longer leaves the previous page highlighted or lets Reset act on a hidden page. Narrow screens keep the active tab in view, fit the header and footer inside 375 pixels, and avoid horizontal clipping.
+- Appearance controls now stack inside the 375-pixel settings page. The protection log uses a fixed narrow table with wrapping matches, so long request paths no longer disappear beyond the right edge.
 - Viewer cards distinguish a reading that was not attempted from one that failed. Neutral states no longer carry a green success stripe.
 - Full reset no longer deletes the local reward-check record that its Undo snapshot cannot restore. The record stays so reset cannot reopen a reward this browser already handled, and the reset description now states that boundary.
 
