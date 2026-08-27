@@ -625,6 +625,35 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
     'nothing styles that class; the attribute is what SITE_CSS keys on');
 });
 
+test('compact shell modes reclaim both rails without removing their controls', { tags: ['artifact'] }, async () => {
+  const runtime = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const settings = await readFile(resolve(root, 'src/settings.mjs'), 'utf8');
+
+  for (const setting of ['layout.sidebar', 'layout.chat', 'layout.chatWidth', 'layout.headerDensity', 'layout.headerActions']) {
+    assert.ok(settings.includes(setting), `${setting} is missing from Layout settings`);
+  }
+  assert.match(settings, /range\('layout\.chatWidth', value\.chatWidth, 280, 520/,
+    'the chat width must retain Kick own 280px compact option');
+  assert.match(runtime, /data-kf-sidebar="autohide"[\s\S]*#sidebar-wrapper[\s\S]*translateX\(calc\(-100% \+ var\(--kf-auto-hide-edge\)\)\)/,
+    'sidebar auto-hide must leave a measurable edge target');
+  assert.match(runtime, /data-kf-chat="autohide"[\s\S]*data-kf-chat-panel[\s\S]*translateX\(calc\(100% - var\(--kf-auto-hide-edge\)\)\)/,
+    'chat auto-hide must leave a measurable edge target');
+  assert.match(runtime, /data-kf-chat="autohide"[\s\S]*data-kf-chat-panel[\s\S]*z-index: 400 !important/,
+    'revealed chat must stay above Kick channel actions');
+  assert.match(runtime, /data-kf-sidebar="autohide"[\s\S]*#sidebar-wrapper[\s\S]*z-index: 400 !important/,
+    'revealed sidebar must stay above Kick channel content');
+  assert.match(runtime, /data-kf-chat="autohide"[\s\S]*chat-emotes-picker-panel[\s\S]*max-height: 0/,
+    'an open emote picker must pin auto-hidden chat in view');
+  assert.match(runtime, /data-kf-reduce-motion="true"[\s\S]*data-kf-chat="autohide"[\s\S]*transition: none !important/,
+    'auto-hide movement must stop when reduced motion is enabled');
+  assert.match(runtime, /data-kf-header-actions="essential"[\s\S]*data-kf-header-multi[\s\S]*display: none !important/,
+    'the essential header must remove duplicate multi-stream actions');
+  assert.match(runtime, /data-kf-density="compact"[\s\S]*:has\(> #injected-channel-player\)[\s\S]*var\(--kf-header-height\)[\s\S]*104px/,
+    'compact channel density must return measured vertical space to the player');
+  assert.match(runtime, /data-kf-density="compact"[\s\S]*#channel-content[\s\S]*& > :first-child[\s\S]*gap: 24px !important/,
+    'compact channel density must tighten the channel information row');
+});
+
 test('emote organization has a direct route, visible search, and batch controls', { tags: ['artifact'] }, async () => {
   const runtime = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
   const settings = await readFile(resolve(root, 'src/settings.mjs'), 'utf8');
@@ -640,13 +669,21 @@ test('emote organization has a direct route, visible search, and batch controls'
   for (const control of ['data-kf-sticker-organize', 'data-kf-sticker-group-create', 'data-kf-sticker-batch-move', 'data-kf-sticker-batch-remove']) {
     assert.ok(runtime.includes(control), `${control} is missing from the composer picker`);
   }
-  for (const setting of ['content.emotePickerDensity', 'content.emotePickerHeight']) {
+  for (const setting of ['content.emotePickerDensity', 'content.emotePickerHeight', 'content.quickEmoteBar', 'content.quickEmoteLimit']) {
     assert.ok(settings.includes(setting), `${setting} is missing from settings`);
   }
   assert.match(runtime, /root\.dataset\.kfEmoteDensity = content\.emotePickerDensity/,
     'the density choice must reach the light-DOM emote picker');
   assert.match(runtime, /root\.dataset\.kfEmoteHeight = content\.emotePickerHeight/,
     'the height choice must reach the light-DOM emote picker');
+  assert.match(runtime, /root\.dataset\.kfQuickEmoteBar = content\.quickEmoteBar/,
+    'the quick-strip density must reach Kick own chat footer');
+  assert.match(runtime, /root\.dataset\.kfQuickEmoteLimit = content\.quickEmoteLimit/,
+    'the quick-strip count must reach Kick own chat footer');
+  assert.match(runtime, /data-kf-quick-emote-bar="compact"[\s\S]*#quick-emotes-holder button[\s\S]*width:\s*24px !important/,
+    'compact quick emotes need a measured 24px control');
+  assert.match(runtime, /data-kf-quick-emote-limit="6"[\s\S]*#quick-emotes-holder > \* > :nth-child\(n \+ 7\)/,
+    'quick-emote limits must hide Kick wrapper items after the selected count');
   for (const flow of ['savePickerStickerGroup', 'deletePickerStickerGroup', 'editPickerStickerSelection']) {
     assert.ok(runtime.includes(`function ${flow}`), `${flow} is missing from the composer picker`);
   }

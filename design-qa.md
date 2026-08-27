@@ -1,5 +1,23 @@
 # Design QA, premium interface redesign
 
+## v1.44 live compact-shell pass
+
+The signed-in Kick channel page was compared at 1920 × 889 and 1440 × 900 in Chrome. Native Kick reserved 596 pixels for its fixed discovery and chat rails at 1920 pixels wide. Kick Focus leaves a 12-pixel reveal edge on each side, uses a 48-pixel header, and overlays either rail when it is needed. At 1920 × 889, the player grew from 1260 × 709 to 1310 × 737 pixels while the channel row dropped from 92 to 78 pixels. At 1440 × 900, the player remained 1330 × 748 pixels with no horizontal overflow.
+
+The emote pass verified six 24-pixel quick controls, eight 34-pixel compact columns at a 340-pixel chat width, and an open picker that keeps auto-hidden chat revealed. Layout and Content & Ads were also checked at 1440 × 900, along with Studio, OLED, Slate, Reduced Motion, and Larger pointer targets.
+
+The first compact-shell pass reclaimed both rails but left the player shorter than the available viewport. The second pass assigned that height to the player and tightened the channel metadata row. It also corrected the chat overlay layer, the wrapped quick-emote limit selector, and the picker-open pin.
+
+The followed-channel comparison uses the same viewport and row on both sides. The left half enlarges Kick's 75 × 75 sidebar thumbnail. The right half loads the matching 350 × 350 `fullsize.webp` profile asset, keeps the still-canvas path for Reduced Motion, and displays the clean channel name.
+
+- Full shell comparison: `design/qa/comparison-compact-shell-v1.44.png`
+- Followed preview comparison, thumbnail on the left and full-resolution asset on the right: `design/qa/comparison-following-preview-v1.44.png`
+- Final followed preview: `design/screenshots/following-preview.png`
+- Final channel capture: `design/screenshots/compact-channel-layout.png`
+- Layout settings: `design/screenshots/settings-layout.png`
+- Compact emote settings: `design/screenshots/settings-content-emotes.png`
+- Live emote picker: `design/screenshots/emote-picker.png`
+
 ## Source of truth
 
 The selected visual direction was continued into one target for every settings-menu page:
@@ -38,7 +56,7 @@ The implementation is exercised through `test/fixtures/settings-preview.html` at
 - `design/screenshots/emote-library.png`
 - `design/screenshots/profile-stats-button.png`
 
-The retained QA comparisons contain the normalized target and browser implementation in the same frame. The files under `design/screenshots` are final standalone captures from the verified v1.43.0 bundle.
+The retained QA comparisons contain the normalized target and browser implementation in the same frame. The current compact-shell, layout, and emote captures under `design/screenshots` come from the verified v1.44.0 bundle. Older feature captures remain tied to the release that introduced them.
 
 ## Focused evidence
 

@@ -982,7 +982,7 @@ const checks = [
   ['contains no remote code dependency', !/@require\s|@resource\s/i.test(source)],
   ['ships settings UI', source.includes('data-kf-settings-shell')],
   ['chat-left is a first-class setting with mirrored separator geometry',
-    source.includes("chat: enumValue(layout.chat, ['right', 'left', 'docked', 'hidden']")
+    source.includes("enumValue(layout.chat, ['right', 'left', 'autohide', 'docked', 'hidden']")
     && source.includes("['left','Left']")
     && source.includes('html[data-kf-chat="left"] [data-kf-chat-panel]')
     && source.includes('chatWidthAfterDrag(state.settings.layout.chat')],
@@ -1262,7 +1262,7 @@ const checks = [
       && !source.includes('Shift+Up')
       && !/gm(?:Set|Delete)|localStorage|sessionStorage/.test(region);
   })()],
-  ['followed-channel previews reuse existing images, clamp on-screen, and freeze under reduced motion', (() => {
+  ['followed-channel previews safely upgrade Kick thumbnails, clamp on-screen, and freeze under reduced motion', (() => {
     const start = source.indexOf('function followingPreviewOwner');
     const end = source.indexOf('function applySearchEnhancements', start);
     const region = start >= 0 && end > start ? source.slice(start, end) : '';
@@ -1271,16 +1271,23 @@ const checks = [
       && region.includes('function followingPreviewOwner')
       && region.includes("findAllProbe(sidebar, 'followingPreviewControl').elements")
       && region.includes("row.dataset.kfFollowingPreview = 'true'")
+      && region.includes("const channel = cardPath(row).split('/').filter(Boolean)[0]")
       && source.includes('if (followingPreviewMutation(mutations))')
       && source.includes("root.dataset.kfFollowingPreviewReady = 'true'")
       && region.includes('floatingPreviewPosition(')
       && region.includes("matchMedia('(prefers-reduced-motion: reduce)').matches")
-      && region.includes('snapshotFollowingThumbnail(source, canvas)')
+      && region.includes('kickProfileFullsizeUrl(thumbnail)')
+      && region.includes("host.dataset.kfSource = image.currentSrc === fullsize ? 'fullsize-profile'")
+      && region.includes('snapshotFollowingImage(image, canvas)')
       && region.includes("event.key !== 'Escape'")
       && source.includes("document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true)")
       && source.includes('#kick-focus-following-preview')
       && !/\bfetch\s*\(|GM_xmlhttpRequest|XMLHttpRequest/.test(region);
   })()],
+  ['paused chat accepts a new history position only after direct scroll intent', source.includes("messages.addEventListener('wheel', intentHandler")
+    && source.includes("messages.addEventListener('pointerdown', intentHandler")
+    && source.includes('movedUp && Date.now() < state.runtime.chatScrollIntentUntil')
+    && source.includes("removeEventListener('wheel', chatScrollIntentHandler)")],
   ['session watch time is tab-local, playback-gated, and never presented as a Kick level', (() => {
     const start = source.indexOf('const SESSION_WATCH_MEDIA_EVENTS');
     const end = source.indexOf('function readNumber', start);
@@ -1836,9 +1843,9 @@ const checks = [
   ['multi-stream embeds only Kick origins', source.includes('https://player.kick.com/')
     && !/https:\/\/(?!(?:player\.|web\.|files\.|ext\.cdn\.)?kick\.com\/)[a-z0-9.-]+\/(?:popout|embed)\//i.test(source)],
 
-  ['offers a hover-expanding dropdown sidebar mode', source.includes('data-kf-sidebar="dropdown"')
+  ['offers a hover-expanding auto-hide sidebar mode', source.includes('data-kf-sidebar="autohide"')
     && source.includes('[aria-controls="sidebar-wrapper"]')
-    && source.includes('min-width: 1280px')
+    && source.includes('min-width: 1024px')
     // A panel that slides out under the pointer must honour reduced motion.
     && source.includes('prefers-reduced-motion: reduce')],
   ['multi-stream is reachable without opening settings', source.includes('data-kf-header-multi')

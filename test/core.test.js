@@ -17,6 +17,7 @@ import {
   dropChatMessage,
   formatChatTime,
   floatingPreviewPosition,
+  kickProfileFullsizeUrl,
   advanceSessionWatchTime,
   sessionWatchCandidateState,
   selectSessionWatchOwner,
@@ -1256,35 +1257,58 @@ test('normalization clamps values and keeps core ad defense enabled', { tags: ['
   });
   assert.equal(value.layout.chatWidth, 520);
   assert.equal(value.layout.sidebar, DEFAULT_SETTINGS.layout.sidebar);
+  assert.equal(value.layout.headerDensity, 'compact');
+  assert.equal(value.layout.headerActions, 'essential');
   assert.equal(value.content.blockAds, true);
   assert.equal(value.content.rememberVolume, true);
   assert.equal(value.content.rememberVodPosition, true);
   assert.equal(value.content.organizeChatStickers, true);
   assert.equal(value.content.emotePickerDensity, 'compact');
   assert.equal(value.content.emotePickerHeight, 'medium');
+  assert.equal(value.content.quickEmoteBar, 'compact');
+  assert.equal(value.content.quickEmoteLimit, '6');
   assert.equal(value.layout.playerContainVideo, true);
   assert.equal(value.appearance.language, 'auto');
   assert.equal(normalizeSettings({ appearance: { language: 'xx' } }).appearance.language, 'auto');
   assert.equal(value.accessibility.captionOpacity, 0);
   assert.equal(normalizeSettings({ layout: { chat: 'left' } }).layout.chat, 'left');
-  assert.equal(normalizeSettings({ layout: { chat: 'upside-down' } }).layout.chat, 'right');
+  assert.equal(normalizeSettings({ layout: { chat: 'autohide' } }).layout.chat, 'autohide');
+  assert.equal(normalizeSettings({ layout: { chat: 'upside-down' } }).layout.chat, DEFAULT_SETTINGS.layout.chat);
 });
 
-test('emote picker sizing accepts only the shipped presets', { tags: ['unit'] }, () => {
-  const customized = normalizeSettings({ content: { emotePickerDensity: 'roomy', emotePickerHeight: 'tall' } });
+test('emote workspace sizing accepts only the shipped presets', { tags: ['unit'] }, () => {
+  const customized = normalizeSettings({
+    content: {
+      emotePickerDensity: 'roomy',
+      emotePickerHeight: 'tall',
+      quickEmoteBar: 'hidden',
+      quickEmoteLimit: '10',
+    },
+  });
   assert.equal(customized.content.emotePickerDensity, 'roomy');
   assert.equal(customized.content.emotePickerHeight, 'tall');
+  assert.equal(customized.content.quickEmoteBar, 'hidden');
+  assert.equal(customized.content.quickEmoteLimit, '10');
 
-  const rejected = normalizeSettings({ content: { emotePickerDensity: 'tiny', emotePickerHeight: 'endless' } });
+  const rejected = normalizeSettings({
+    content: {
+      emotePickerDensity: 'tiny',
+      emotePickerHeight: 'endless',
+      quickEmoteBar: 'floating',
+      quickEmoteLimit: '200',
+    },
+  });
   assert.equal(rejected.content.emotePickerDensity, DEFAULT_SETTINGS.content.emotePickerDensity);
   assert.equal(rejected.content.emotePickerHeight, DEFAULT_SETTINGS.content.emotePickerHeight);
+  assert.equal(rejected.content.quickEmoteBar, DEFAULT_SETTINGS.content.quickEmoteBar);
+  assert.equal(rejected.content.quickEmoteLimit, DEFAULT_SETTINGS.content.quickEmoteLimit);
 });
 
 test('chat separator drag grows away from the player on either side', { tags: ['unit'] }, () => {
   assert.equal(chatWidthAfterDrag('right', 410, 900, 830), 480);
   assert.equal(chatWidthAfterDrag('left', 410, 340, 410), 480);
   assert.equal(chatWidthAfterDrag('right', 500, 900, 700), 520);
-  assert.equal(chatWidthAfterDrag('left', 340, 340, 200), 320);
+  assert.equal(chatWidthAfterDrag('left', 340, 340, 200), 280);
 });
 
 test('the separator moves the same way for an arrow key as for a drag', { tags: ['unit'] }, () => {
@@ -1654,17 +1678,36 @@ test('viewing presets change layout and style without touching content choices',
   assert.deepEqual(applyViewingPreset(starting, 'unknown'), starting);
 });
 
-test('v2 migrates the former desktop defaults without overwriting custom layout choices', { tags: ['unit'] }, () => {
+test('layout migrations replace old defaults without overwriting custom choices', { tags: ['unit'] }, () => {
   const migrated = normalizeSettings({ schema: 1, layout: { sidebar: 'compact', chatWidth: 380 } });
   // Track the constant, not a literal: this assertion is about the migration,
   // and pinning the number makes every later schema bump look like a failure.
   assert.equal(migrated.schema, SETTINGS_SCHEMA);
-  assert.equal(migrated.layout.sidebar, 'auto');
-  assert.equal(migrated.layout.chatWidth, 410);
+  assert.equal(migrated.layout.sidebar, 'autohide');
+  assert.equal(migrated.layout.chat, 'autohide');
+  assert.equal(migrated.layout.chatWidth, 340);
+  assert.equal(migrated.layout.density, 'compact');
 
   const custom = normalizeSettings({ schema: 1, layout: { sidebar: 'hidden', chatWidth: 455 } });
   assert.equal(custom.layout.sidebar, 'hidden');
   assert.equal(custom.layout.chatWidth, 455);
+
+  const previousDesktop = normalizeSettings({
+    schema: 6,
+    layout: { sidebar: 'auto', chat: 'right', chatWidth: 410, density: 'comfortable' },
+  });
+  assert.equal(previousDesktop.layout.sidebar, 'autohide');
+  assert.equal(previousDesktop.layout.chat, 'autohide');
+  assert.equal(previousDesktop.layout.chatWidth, 340);
+  assert.equal(previousDesktop.layout.density, 'compact');
+
+  const previousCustom = normalizeSettings({
+    schema: 6,
+    layout: { sidebar: 'dropdown', chat: 'left', chatWidth: 455, density: 'compact' },
+  });
+  assert.equal(previousCustom.layout.sidebar, 'autohide');
+  assert.equal(previousCustom.layout.chat, 'left');
+  assert.equal(previousCustom.layout.chatWidth, 455);
 });
 
 test('Poor mode is opt-in and identifies only spending controls', { tags: ['unit'] }, () => {
@@ -2113,8 +2156,8 @@ test('settings import reports malformed and future schemas', { tags: ['unit'] },
   assert.match(future.error, /newer/);
   assert.equal(future.errorKey, 'Settings schema {schema} is newer than this build supports.');
   assert.deepEqual(future.errorValues, { schema: 99 });
-  assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').value.layout.chatWidth, 410);
-  assert.equal(validateImportedSettings('{"layout":{"chatWidth":410}}').settings.layout.chatWidth, 410);
+  assert.equal(validateImportedSettings('{"layout":{"chatWidth":455}}').value.layout.chatWidth, 455);
+  assert.equal(validateImportedSettings('{"layout":{"chatWidth":455}}').settings.layout.chatWidth, 455);
   assert.equal(validateImportedSettings('{}').ok, false);
   assert.match(validateImportedSettings('{}').error, /does not contain/);
   assert.equal(validateImportedSettings('{"schema":1}').ok, false);
@@ -3633,6 +3676,20 @@ test('following preview placement prefers the rail edge and clamps to the viewpo
   );
 });
 
+test('following previews upgrade only exact Kick profile conversions to full-size artwork', { tags: ['unit'] }, () => {
+  const base = 'https://files.kick.com/images/user/1329939/profile_image/conversion/2e5379d9-f81e-44a5-8b49-50a82666a5cd';
+  assert.equal(kickProfileFullsizeUrl(`${base}-thumb.webp`), `${base}-fullsize.webp`);
+  assert.equal(kickProfileFullsizeUrl(`${base}-medium.webp?cache=1#fragment`), `${base}-fullsize.webp`);
+  assert.equal(kickProfileFullsizeUrl(`${base}-fullsize.webp`), `${base}-fullsize.webp`);
+  for (const unsafe of [
+    `http://files.kick.com${new URL(base).pathname}-thumb.webp`,
+    `https://files.kick.com.evil.example${new URL(base).pathname}-thumb.webp`,
+    `https://user@files.kick.com${new URL(base).pathname}-thumb.webp`,
+    'data:image/webp;base64,AAAA',
+    'https://files.kick.com/images/user/not-a-number/profile_image/conversion/not-a-uuid-thumb.webp',
+  ]) assert.equal(kickProfileFullsizeUrl(unsafe), '');
+});
+
 test('a whisper, an unidentifiable message, and a repeat are all refused', { tags: ['unit'] }, () => {
   const now = 1000;
   let rows = [];
@@ -3787,7 +3844,7 @@ test('stored layouts are cleaned by type, de-duplicated, and capped', { tags: ['
 });
 
 test('applying a layout moves only what differs, and says what it moved', { tags: ['unit'] }, () => {
-  const settings = normalizeSettings({});
+  const settings = normalizeSettings({ schema: SETTINGS_SCHEMA, layout: { density: 'comfortable' } });
   const layout = { name: 'dense', routes: ['browse'], values: { 'layout.density': 'compact', 'content.hideCasino': true } };
 
   const changed = applyDiscoveryLayout(settings, layout);

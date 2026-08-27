@@ -61,6 +61,10 @@ const bundledMultistream = bundled(multistream)
 const bundledSettings = bundled(settings)
   .replaceAll('__KICK_FOCUS_PREVIEW__', previewData);
 const bundledRuntime = stripComments(runtime)
+  // CSS remains readable in source but ships without thousands of indentation
+  // bytes that otherwise consume the userscript's seeded-library headroom.
+  .replace(/(const SITE_CSS = `)([\s\S]*?)(`;)/, (_, open, css, close) =>
+    `${open}${css.replace(/\s*\n\s*/g, ' ')}${close}`)
   .replaceAll('__KICK_FOCUS_ICON__', iconData)
   .replaceAll('__KICK_FOCUS_PREVIEW__', previewData);
 // Concat order is the dependency order: everything a module imports must have

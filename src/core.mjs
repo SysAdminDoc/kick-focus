@@ -1,5 +1,5 @@
-export const VERSION = '1.43.0';
-export const SETTINGS_SCHEMA = 6;
+export const VERSION = '1.44.0';
+export const SETTINGS_SCHEMA = 7;
 
 /**
  * What changed, per version, for the notice shown after an update.
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 6;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.44.0': Object.freeze({
+    summary: 'Both side rails now auto-hide by default, the header is 48 pixels tall, and chat has denser emote controls. Layout and Content & Ads keep every part adjustable.',
+    defaults: Object.freeze(['Sidebar mode', 'Chat layout', 'Chat width', 'Content density', 'Header height', 'Header actions', 'Quick emote strip']),
+  }),
   '1.43.0': Object.freeze({
     summary: 'The emote picker now fits more into the chat rail without crowding its controls. Choose Compact, Balanced, or Roomy emotes, then set a Short, Medium, or Tall shelf in Content & Ads.',
     defaults: Object.freeze([]),
@@ -218,10 +222,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // and claiming otherwise would announce an update that never happened.
   lastSeenVersion: '',
   layout: Object.freeze({
-    sidebar: 'auto',
-    chat: 'right',
-    chatWidth: 410,
-    density: 'comfortable',
+    sidebar: 'autohide',
+    chat: 'autohide',
+    chatWidth: 340,
+    density: 'compact',
+    headerDensity: 'compact',
+    headerActions: 'essential',
     streamStart: 'standard',
     rememberPerChannel: true,
     wideGrid: true,
@@ -288,6 +294,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // presets retain the existing geometry or trade more rows for larger art.
     emotePickerDensity: 'compact',
     emotePickerHeight: 'medium',
+    quickEmoteBar: 'compact',
+    quickEmoteLimit: '6',
     clickChatEmotes: true,
     // Off by default: this one types into Kick's chat input. Copying a name to
     // the clipboard needs no permission and always ships; putting characters in
@@ -336,7 +344,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 
 export const VIEWING_PRESETS = Object.freeze({
   calm: Object.freeze({
-    layout: Object.freeze({ sidebar: 'compact', chat: 'right', chatWidth: 410, density: 'comfortable', streamStart: 'standard', wideGrid: true }),
+    layout: Object.freeze({ sidebar: 'compact', chat: 'right', chatWidth: 340, density: 'comfortable', headerDensity: 'compact', streamStart: 'standard', wideGrid: true }),
     appearance: Object.freeze({ theme: 'studio', accent: 'cyan', radius: 'balanced', thumbnail: 34, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: false }),
   }),
   cinema: Object.freeze({
@@ -344,11 +352,11 @@ export const VIEWING_PRESETS = Object.freeze({
     appearance: Object.freeze({ theme: 'oled', accent: 'gold', radius: 'subtle', thumbnail: 50, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: true }),
   }),
   chat: Object.freeze({
-    layout: Object.freeze({ sidebar: 'compact', chat: 'docked', chatWidth: 480, density: 'compact', streamStart: 'standard', wideGrid: false }),
+    layout: Object.freeze({ sidebar: 'compact', chat: 'docked', chatWidth: 420, density: 'compact', headerDensity: 'compact', streamStart: 'standard', wideGrid: false }),
     appearance: Object.freeze({ theme: 'slate', accent: 'violet', radius: 'balanced', thumbnail: 46, interfaceScale: 100, dimWatched: false, strongContrast: true, colorizeLive: true }),
   }),
   discovery: Object.freeze({
-    layout: Object.freeze({ sidebar: 'auto', chat: 'right', chatWidth: 380, density: 'compact', streamStart: 'standard', wideGrid: true, showFollowingRail: true, showRecommendedRail: true }),
+    layout: Object.freeze({ sidebar: 'autohide', chat: 'autohide', chatWidth: 340, density: 'compact', headerDensity: 'compact', streamStart: 'standard', wideGrid: true, showFollowingRail: true, showRecommendedRail: true }),
     appearance: Object.freeze({ theme: 'studio', accent: 'kick', radius: 'balanced', thumbnail: 70, interfaceScale: 100, dimWatched: true, strongContrast: true, colorizeLive: true }),
   }),
 });
@@ -1585,6 +1593,21 @@ export function floatingPreviewPosition(anchor = {}, preview = {}, viewport = {}
   });
 }
 
+/** Upgrade only Kick's known profile conversion URLs to their full-size asset. */
+export function kickProfileFullsizeUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const conversion = /^\/images\/user\/\d+\/profile_image\/conversion\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}-(?:thumb|thumbnail|small|medium|fullsize)\.webp$/i;
+    if (url.origin !== 'https://files.kick.com' || url.username || url.password || !conversion.test(url.pathname)) return '';
+    url.pathname = url.pathname.replace(/-(?:thumb|thumbnail|small|medium|fullsize)\.webp$/i, '-fullsize.webp');
+    url.search = '';
+    url.hash = '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
 /**
  * The history as a file the reader asked for, and nothing they did not.
  *
@@ -2224,21 +2247,34 @@ export function normalizeSettings(input) {
   // v2 aligns the effective defaults with the site redesign. Preserve any
   // clearly intentional custom value, while moving the two old defaults to
   // the new readable desktop baseline for existing installations.
-  const sidebar = sourceSchema < 2 && (layout.sidebar == null || layout.sidebar === 'compact')
+  const storedSidebar = layout.sidebar === 'dropdown' ? 'autohide' : layout.sidebar;
+  const sidebarWasDefault = (sourceSchema < 2 && storedSidebar === 'compact')
+    || (sourceSchema < 7 && (storedSidebar == null || storedSidebar === 'auto'));
+  const sidebar = sidebarWasDefault
     ? defaults.layout.sidebar
-    : enumValue(layout.sidebar, ['auto', 'compact', 'dropdown', 'hidden'], defaults.layout.sidebar);
-  const chatWidth = sourceSchema < 2 && (layout.chatWidth == null || Number(layout.chatWidth) === 380)
+    : enumValue(storedSidebar, ['auto', 'compact', 'autohide', 'hidden'], defaults.layout.sidebar);
+  const chat = sourceSchema < 7 && (layout.chat == null || layout.chat === 'right')
+    ? defaults.layout.chat
+    : enumValue(layout.chat, ['right', 'left', 'autohide', 'docked', 'hidden'], defaults.layout.chat);
+  const chatWidthWasDefault = (sourceSchema < 2 && Number(layout.chatWidth) === 380)
+    || (sourceSchema < 7 && Number(layout.chatWidth) === 410);
+  const chatWidth = layout.chatWidth == null || chatWidthWasDefault
     ? defaults.layout.chatWidth
-    : Math.round(clamp(layout.chatWidth, 320, 520, defaults.layout.chatWidth));
+    : Math.round(clamp(layout.chatWidth, 280, 520, defaults.layout.chatWidth));
+  const density = sourceSchema < 7 && (layout.density == null || layout.density === 'comfortable')
+    ? defaults.layout.density
+    : enumValue(layout.density, ['comfortable', 'compact'], defaults.layout.density);
 
   return {
     schema: SETTINGS_SCHEMA,
     lastSeenVersion: normalizeVersion(source.lastSeenVersion),
     layout: {
       sidebar,
-      chat: enumValue(layout.chat, ['right', 'left', 'docked', 'hidden'], defaults.layout.chat),
+      chat,
       chatWidth,
-      density: enumValue(layout.density, ['comfortable', 'compact'], defaults.layout.density),
+      density,
+      headerDensity: enumValue(layout.headerDensity, ['compact', 'standard'], defaults.layout.headerDensity),
+      headerActions: enumValue(layout.headerActions, ['essential', 'all'], defaults.layout.headerActions),
       streamStart: enumValue(layout.streamStart, ['standard', 'theater', 'focus'], defaults.layout.streamStart),
       rememberPerChannel: bool(layout.rememberPerChannel, defaults.layout.rememberPerChannel),
       wideGrid: bool(layout.wideGrid, defaults.layout.wideGrid),
@@ -2294,6 +2330,8 @@ export function normalizeSettings(input) {
       organizeChatStickers: bool(content.organizeChatStickers, defaults.content.organizeChatStickers),
       emotePickerDensity: enumValue(content.emotePickerDensity, ['compact', 'balanced', 'roomy'], defaults.content.emotePickerDensity),
       emotePickerHeight: enumValue(content.emotePickerHeight, ['short', 'medium', 'tall'], defaults.content.emotePickerHeight),
+      quickEmoteBar: enumValue(content.quickEmoteBar, ['hidden', 'compact', 'standard'], defaults.content.quickEmoteBar),
+      quickEmoteLimit: enumValue(String(content.quickEmoteLimit ?? ''), ['4', '6', '8', '10', 'all'], defaults.content.quickEmoteLimit),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
     emoteAutocomplete: bool(content.emoteAutocomplete, defaults.content.emoteAutocomplete),
@@ -2341,7 +2379,7 @@ export function normalizeSettings(input) {
 }
 
 /** Convert a horizontal separator drag into a bounded chat-column width. */
-export const CHAT_WIDTH_MIN = 320;
+export const CHAT_WIDTH_MIN = 280;
 export const CHAT_WIDTH_MAX = 520;
 
 export function chatWidthAfterDrag(side, startWidth, startX, currentX) {

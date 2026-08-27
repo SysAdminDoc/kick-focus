@@ -276,10 +276,12 @@ export function createSettings(host) {
     return `
       ${pageHeader('Layout', 'Control how Kick is arranged across your desktop.', 'Current setup', `${value.sidebar} sidebar · ${value.chat} chat`)}
       <section class="kf-panel">
-        ${row('Sidebar mode', 'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.', segmented('layout.sidebar', value.sidebar, [['auto','Auto'],['compact','Compact'],['dropdown','Dropdown'],['hidden','Hidden']]))}
-        ${row('Chat layout', 'Place chat on either side, float it as a dock, or hide it.', segmented('layout.chat', value.chat, [['right','Right'],['left','Left'],['docked','Docked'],['hidden','Hidden']]))}
-        ${row('Chat width', 'Set the width of the live chat column.', range('layout.chatWidth', value.chatWidth, 320, 520, '320 px', '520 px', ' px'), { wide: true })}
+        ${row('Sidebar mode', 'Auto-hide leaves a slim edge target, then opens the rail on hover or focus.', segmented('layout.sidebar', value.sidebar, [['auto','Kick'],['compact','Compact'],['autohide','Auto-hide'],['hidden','Hidden']]))}
+        ${row('Chat layout', 'Keep chat fixed, reveal it from the edge, dock it, or hide it.', segmented('layout.chat', value.chat, [['right','Right'],['left','Left'],['autohide','Auto-hide'],['docked','Docked'],['hidden','Hidden']]))}
+        ${row('Chat width', 'Set fixed, docked, and revealed chat width.', range('layout.chatWidth', value.chatWidth, 280, 520, '280 px', '520 px', ' px'), { wide: true })}
         ${row('Content density', 'Adjust spacing and padding across discovery pages.', segmented('layout.density', value.density, [['comfortable','Comfortable'],['compact','Compact']]))}
+        ${row('Header height', 'Compact keeps search and account controls while freeing stream space.', segmented('layout.headerDensity', value.headerDensity, [['compact','Compact'],['standard','Standard']]))}
+        ${row('Header actions', 'Essential keeps Focus and Menu. Multi-stream stays in Menu; All shows every header button.', segmented('layout.headerActions', value.headerActions, [['essential','Essential'],['all','All']]))}
         ${row('Stream start behavior', 'Choose how each channel opens.', segmented('layout.streamStart', value.streamStart, [['standard','Standard'],['theater','Theater'],['focus','Focus']]))}
         ${row('Remember per-channel layout', 'Keep the last runtime layout for each channel.', toggle('layout.rememberPerChannel', value.rememberPerChannel, { label: 'Remember per-channel layout' }))}
         ${row('Widen browse grids', 'Use reclaimed sidebar space for larger, calmer stream cards.', toggle('layout.wideGrid', value.wideGrid, { label: 'Widen browse grids' }))}
@@ -653,8 +655,10 @@ export function createSettings(host) {
             </div>
           </div>` : ''}
           ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
-          ${row('Emote picker density', 'Choose how many emotes fit in each row. Compact shows more, while Roomy gives each emote more space.', segmented('content.emotePickerDensity', value.emotePickerDensity, [['compact', 'Compact'], ['balanced', 'Balanced'], ['roomy', 'Roomy']]))}
+          ${row('Emote picker density', 'Compact fits eight emotes per row at 340 px. Roomy makes each emote larger.', segmented('content.emotePickerDensity', value.emotePickerDensity, [['compact', 'Compact'], ['balanced', 'Balanced'], ['roomy', 'Roomy']]))}
           ${row('Emote picker height', 'Choose how much of the library stays visible before it scrolls.', segmented('content.emotePickerHeight', value.emotePickerHeight, [['short', 'Short'], ['medium', 'Medium'], ['tall', 'Tall']]))}
+          ${row('Quick emote strip', 'Hide it, use 24 pixel controls, or keep Kick’s size.', segmented('content.quickEmoteBar', value.quickEmoteBar, [['hidden', 'Hidden'], ['compact', 'Compact'], ['standard', 'Standard']]))}
+          ${row('Quick emotes shown', 'Limit the strip without changing saved choices.', segmented('content.quickEmoteLimit', value.quickEmoteLimit, [['4', '4'], ['6', '6'], ['8', '8'], ['10', '10'], ['all', 'All']]))}
           ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
           ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops. Never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
           ${row('Suggest emotes as you type', 'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured, and it never sends the message.', toggle('content.emoteAutocomplete', value.emoteAutocomplete, { label: 'Suggest emotes as you type' }))}

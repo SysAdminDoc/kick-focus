@@ -486,7 +486,10 @@ try {
     const onScreen = Boolean(hoverBox)
       && hoverBox.left >= 0 && hoverBox.top >= 0
       && hoverBox.right <= innerWidth && hoverBox.bottom <= innerHeight;
-    const sourceExisting = host?.dataset.kfSource === 'existing-image';
+    if (!synthetic) await __kfWait(() => host?.dataset.kfSource === 'fullsize-profile', { timeout: 5000 });
+    const sourceResolved = synthetic
+      ? host?.dataset.kfSource === 'existing-image'
+      : host?.dataset.kfSource === 'fullsize-profile';
     row.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
     row.focus();
     row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
@@ -506,7 +509,8 @@ try {
       escapePrevented: escape.defaultPrevented,
       escapeClosed: host?.hidden === true && host?.dataset.kfOpen !== 'true',
       onScreen,
-      sourceExisting,
+      sourceResolved,
+      source: host?.dataset.kfSource || '',
       width: Math.round(hoverBox?.width || 0),
       height: Math.round(hoverBox?.height || 0),
     };
@@ -517,18 +521,17 @@ try {
       && followingPreview.hoverOpen === true && followingPreview.focusOpen === true
       && followingPreview.focusReturned === true
       && followingPreview.escapePrevented === true && followingPreview.escapeClosed === true
-      && followingPreview.onScreen === true && followingPreview.sourceExisting === true
+      && followingPreview.onScreen === true && followingPreview.sourceResolved === true
       && followingPreview.width > 0 && followingPreview.height > 0,
     followingPreview.ok
-      ? `${followingPreview.synthetic ? 'synthetic empty-rail fallback' : `${followingPreview.nativeMarkers} native row(s)`}, tagged=${followingPreview.tagged}, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, focus returned=${followingPreview.focusReturned}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
+      ? `${followingPreview.synthetic ? 'synthetic empty-rail fallback' : `${followingPreview.nativeMarkers} native row(s)`}, source=${followingPreview.source}, tagged=${followingPreview.tagged}, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, focus returned=${followingPreview.focusReturned}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
       : followingPreview.why);
 
   if (!followingPreview.skip) {
     await pageClient.send('Emulation.setEmulatedMedia', { features: [] });
     const ordinaryFollowingPreviewProbe = await evaluate(pageClient, `(async () => {
       const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
-      const row = document.querySelector('[data-kf-live-preview-probe], [data-kf-following-preview="true"]');
-      if (!shadow || !row) return { ok: false, why: 'the preview controls disappeared before the motion-preference pass' };
+      if (!shadow) return { ok: false, why: 'the preview controls disappeared before the motion-preference pass' };
       const settle = (ms = 160) => new Promise((done) => setTimeout(done, ms));
       shadow.querySelector('[data-kf-quick]')?.click();
       await settle();
@@ -539,6 +542,11 @@ try {
       const restoreReducedMotion = control.getAttribute('aria-checked') === 'true';
       if (restoreReducedMotion) { control.click(); await settle(450); }
       shadow.querySelector('[data-action="close-settings"]')?.click();
+      await settle(80);
+      // Opening Accessibility can rerender Kick's followed rail. Reacquire the
+      // live row instead of focusing a detached node retained from before it.
+      const row = document.querySelector('[data-kf-live-preview-probe], [data-kf-following-preview="true"]');
+      if (!row) return { ok: false, why: 'the followed row disappeared before the ordinary-image pass' };
       row.focus();
       row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
       await __kfWait(() => document.getElementById('kick-focus-following-preview')?.dataset.kfOpen === 'true', { timeout: 1600 });

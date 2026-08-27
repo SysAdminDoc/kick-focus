@@ -4,6 +4,28 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.44.0, 2026-08-26
+
+### Added
+
+- Sidebar and chat now have independent Auto-hide modes. Each leaves a slim edge target, opens on hover or focus, and overlays the page without taking space from the player.
+- Layout settings now control header height and dedicated header actions. Content & Ads can hide or condense Kick's quick-emote strip and limit it to 4, 6, 8, 10, or every saved emote.
+
+### Changed
+
+- New and previously default profiles start with both rails auto-hidden, 340-pixel chat, Compact content density, a 48-pixel header, and Essential header actions. Existing custom rail and width choices are preserved.
+- Compact emote tiles now measure 40 by 34 pixels with a 2-pixel gap. Eight columns fit in the 340-pixel rail, while Balanced, Roomy, shelf height, and Larger pointer targets remain independent.
+- Compact channel pages give more height to the player and reduce the channel information row from 92 to 78 pixels at the verified desktop layout.
+- Chat width now reaches Kick's native 280-pixel compact option instead of stopping at 320 pixels.
+
+### Fixed
+
+- Revealed chat stays above Kick's channel actions, so Subscribe and Gift controls cannot cover or intercept the composer.
+- Opening the emote picker pins auto-hidden chat until the picker closes. Quick-emote limits now hide Kick's wrapper items instead of missing the nested buttons.
+- Reduced Motion removes both auto-hide transitions, and Larger pointer targets increase the edge targets and compact channel controls without depending on viewport width.
+- Followed-channel previews now replace Kick's 75-pixel sidebar thumbnail with the matching `fullsize.webp` profile asset. Reduced Motion freezes the full-resolution image, failed upgrades fall back to the loaded thumbnail, and the caption shows only the channel name.
+- Paused chat now distinguishes direct wheel or scrollbar intent from Kick's virtualizer corrections. Recycled rows can no longer ratchet the held reading position.
+
 ## 1.43.0, 2026-08-25
 
 ### Added

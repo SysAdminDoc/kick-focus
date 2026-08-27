@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-25**
+Updated: **2026-08-26**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 

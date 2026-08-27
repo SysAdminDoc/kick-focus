@@ -73,9 +73,9 @@ const STICKER_USAGE_SECTION_LIMIT = 24;
 // known number of rows without measuring every tile. Density changes all three
 // values together so virtualization and the rendered grid never disagree.
 const STICKER_GRID_METRICS = Object.freeze({
-  compact: Object.freeze({ tileHeight: 54, tileMinWidth: 44, gap: 5 }),
-  balanced: Object.freeze({ tileHeight: 62, tileMinWidth: 50, gap: 7 }),
-  roomy: Object.freeze({ tileHeight: 74, tileMinWidth: 60, gap: 8 }),
+  compact: Object.freeze({ tileHeight: 40, tileMinWidth: 34, gap: 2 }),
+  balanced: Object.freeze({ tileHeight: 54, tileMinWidth: 44, gap: 5 }),
+  roomy: Object.freeze({ tileHeight: 68, tileMinWidth: 56, gap: 8 }),
   large: Object.freeze({ tileHeight: 88, tileMinWidth: 84, gap: 7 }),
 });
 // How close the viewport may get to the rendered window's edge before the
@@ -156,6 +156,8 @@ const state = {
     // Kick's node the moment the setting goes off.
     chatScrollNode: null,
     chatScrollHandler: null,
+    chatScrollIntentHandler: null,
+    chatScrollIntentUntil: 0,
     chatScrollLastTop: 0,
     chatScrollTop: null,
     chatScrollAnchor: null,
@@ -1089,6 +1091,9 @@ const SITE_CSS = `
     --kf-warning: #f6b943;
     --kf-radius: 8px;
     --kf-chat-width: 410px;
+    --kf-header-height: 48px;
+    --kf-auto-hide-edge: 12px;
+    --kf-compact-channel-control: 32px;
     --kf-thumb-saturation: 1.03;
     --kf-caption-opacity: .72;
     --kf-text-scale: 1;
@@ -1127,6 +1132,9 @@ const SITE_CSS = `
   }
   html[data-kf-radius="subtle"] { --kf-radius: 6px; }
   html[data-kf-radius="rounded"] { --kf-radius: 12px; }
+  html[data-kf-header-density="compact"] { --kf-header-height: 48px; --navbar-height: 48px !important; }
+  html[data-kf-header-density="standard"] { --kf-header-height: 60px; --navbar-height: 60px !important; }
+  html[data-kf-large-targets="true"] { --kf-auto-hide-edge: 20px; --kf-compact-channel-control: 44px; }
   html[data-kf-theme="oled"] {
     --kf-canvas: #000;
     --kf-panel: #030404;
@@ -1173,7 +1181,8 @@ const SITE_CSS = `
     body > [data-sidebar][data-chat] { background: var(--kf-canvas) !important; }
 
     nav {
-      min-height: 56px !important;
+      height: var(--kf-header-height) !important;
+      min-height: var(--kf-header-height) !important;
       border-bottom: 1px solid var(--kf-border) !important;
       background: var(--kf-canvas) !important;
       box-shadow: none !important;
@@ -1524,6 +1533,36 @@ const SITE_CSS = `
       background: var(--kf-canvas) !important;
     }
 
+    @media (min-width: 1024px) {
+      html[data-kf-route="channel"][data-kf-density="compact"]:not([data-kf-theater="true"]):not([data-kf-focus="true"])
+      main > :has(> #injected-channel-player) {
+        height: calc(100vh - var(--kf-header-height) - 104px) !important;
+        max-height: calc(100vh - var(--kf-header-height) - 104px) !important;
+      }
+      html[data-kf-route="channel"][data-kf-density="compact"] #channel-content {
+        gap: 8px !important;
+        padding: 8px 16px 20px !important;
+        & > :first-child {
+          gap: 24px !important;
+          & > :first-child > :last-child {
+            gap: 0 !important;
+            & > :first-child {
+              height: var(--kf-compact-channel-control) !important;
+              min-height: var(--kf-compact-channel-control) !important;
+            }
+          }
+          & > :last-child {
+            gap: 2px !important;
+            & > :last-child {
+              height: var(--kf-compact-channel-control) !important;
+              min-height: var(--kf-compact-channel-control) !important;
+              padding-block: 0 !important;
+            }
+          }
+        }
+      }
+    }
+
     html[data-kf-route="channel"] #injected-channel-player {
       border: 0 !important;
       border-radius: 6px !important;
@@ -1622,7 +1661,7 @@ const SITE_CSS = `
     html[data-kf-chat="left"] [data-kf-chat-panel] {
       flex: 0 0 var(--kf-chat-width) !important;
       width: var(--kf-chat-width) !important;
-      min-width: 320px !important;
+      min-width: 280px !important;
       max-width: 520px !important;
     }
 
@@ -1645,6 +1684,53 @@ const SITE_CSS = `
     }
 
     html[data-kf-theater="true"] [data-kf-channel-row] > :not([data-kf-chat-panel]) {
+      max-width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    html[data-kf-chat="autohide"] [data-kf-chat-separator] { display: none !important; }
+    html[data-kf-chat="autohide"] [data-kf-chat-panel] {
+      position: fixed !important;
+      inset: var(--kf-header-height) 0 0 auto !important;
+      z-index: 400 !important;
+      width: var(--kf-chat-width) !important;
+      min-width: 280px !important;
+      max-width: 520px !important;
+      height: calc(100vh - var(--kf-header-height)) !important;
+      flex: 0 0 var(--kf-chat-width) !important;
+      overflow: hidden !important;
+      border: 0 !important;
+      border-left: 1px solid var(--kf-border) !important;
+      border-radius: 0 !important;
+      background: var(--kf-panel) !important;
+      box-shadow: none !important;
+      transform: translateX(calc(100% - var(--kf-auto-hide-edge))) !important;
+      transition: transform 180ms ease, box-shadow 180ms ease !important;
+    }
+    html[data-kf-chat="autohide"] [data-kf-chat-panel]::before {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 auto 0 0 !important;
+      z-index: 4 !important;
+      width: var(--kf-auto-hide-edge) !important;
+      border-right: 1px solid rgba(var(--kf-accent-rgb), .34) !important;
+      background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .15), var(--kf-panel) 24%, var(--kf-panel) 76%, rgba(var(--kf-accent-rgb), .10)) !important;
+      pointer-events: none !important;
+      transition: opacity 140ms ease !important;
+    }
+    html[data-kf-chat="autohide"] [data-kf-chat-panel]:is(:hover, :focus-within),
+    html[data-kf-chat="autohide"] [data-kf-chat-panel]:has(
+      #chat-emotes-picker-panel > [style*="max-height:"]:not([style*="max-height: 0"])
+    ) {
+      transform: translateX(0) !important;
+      box-shadow: -22px 0 54px rgba(0,0,0,.46) !important;
+    }
+    html[data-kf-chat="autohide"] [data-kf-chat-panel]:is(:hover, :focus-within)::before,
+    html[data-kf-chat="autohide"] [data-kf-chat-panel]:has(
+      #chat-emotes-picker-panel > [style*="max-height:"]:not([style*="max-height: 0"])
+    )::before { opacity: 0 !important; }
+    html[data-kf-chat="autohide"] [data-kf-channel-row] > :not([data-kf-chat-panel]) {
+      width: 100% !important;
       max-width: 100% !important;
       min-width: 0 !important;
     }
@@ -1681,7 +1767,7 @@ const SITE_CSS = `
     html[data-kf-density="compact"] :is(main, #main-container) [class*="group/grid"] { gap: 12px !important; }
 
     html[data-kf-sticky="true"] nav {
-      min-height: 56px !important;
+      min-height: var(--kf-header-height) !important;
       backdrop-filter: none !important;
       background: var(--kf-surface-inset) !important;
       border-bottom: 1px solid var(--kf-border) !important;
@@ -1914,7 +2000,55 @@ const SITE_CSS = `
     [data-kf-drops-steps] small { margin-top: 4px !important; color: var(--kf-text-muted) !important; font-size: 13px !important; line-height: 1.4 !important; }
   }
 
+    html[data-kf-quick-emote-bar="hidden"] #quick-emotes-holder { display: none !important; }
+    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder {
+      height: 24px !important;
+      max-height: 24px !important;
+      padding-bottom: 0 !important;
+    }
+    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * {
+      height: 24px !important;
+      max-height: 24px !important;
+      justify-content: flex-start !important;
+      gap: 2px !important;
+    }
+    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button {
+      width: 24px !important;
+      min-width: 24px !important;
+      height: 24px !important;
+      min-height: 24px !important;
+      padding: 2px !important;
+      border-radius: 4px !important;
+    }
+    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button img {
+      width: 20px !important;
+      max-width: 20px !important;
+      height: 20px !important;
+      max-height: 20px !important;
+    }
+    html[data-kf-quick-emote-limit="4"] #quick-emotes-holder > * > :nth-child(n + 5),
+    html[data-kf-quick-emote-limit="6"] #quick-emotes-holder > * > :nth-child(n + 7),
+    html[data-kf-quick-emote-limit="8"] #quick-emotes-holder > * > :nth-child(n + 9),
+    html[data-kf-quick-emote-limit="10"] #quick-emotes-holder > * > :nth-child(n + 11) { display: none !important; }
+    html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder,
+    html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * { height: 40px !important; max-height: 40px !important; }
+    html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder button { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; }
+
     #chat-emotes-picker-panel {
+      --kf-emote-tile-height: 40px;
+      --kf-emote-tile-min-width: 34px;
+      --kf-emote-grid-gap: 2px;
+      --kf-emote-tile-padding: 3px;
+      --kf-emote-shell-padding: 4px;
+      --kf-emote-section-gap: 4px;
+      --kf-emote-control-height: 26px;
+      --kf-emote-control-padding: 6px;
+      --kf-emote-tab-height: 26px;
+      --kf-emote-tab-padding: 5px;
+      --kf-emote-search-height: 34px;
+      --kf-emote-grid-height: 240px;
+    }
+    html[data-kf-emote-density="balanced"] #chat-emotes-picker-panel {
       --kf-emote-tile-height: 54px;
       --kf-emote-tile-min-width: 44px;
       --kf-emote-grid-gap: 5px;
@@ -1926,37 +2060,23 @@ const SITE_CSS = `
       --kf-emote-tab-height: 28px;
       --kf-emote-tab-padding: 6px;
       --kf-emote-search-height: 36px;
-      --kf-emote-grid-height: 280px;
-    }
-    html[data-kf-emote-density="balanced"] #chat-emotes-picker-panel {
-      --kf-emote-tile-height: 62px;
-      --kf-emote-tile-min-width: 50px;
-      --kf-emote-grid-gap: 7px;
-      --kf-emote-tile-padding: 7px;
-      --kf-emote-shell-padding: 8px;
-      --kf-emote-section-gap: 7px;
-      --kf-emote-control-height: 30px;
-      --kf-emote-control-padding: 8px;
-      --kf-emote-tab-height: 32px;
-      --kf-emote-tab-padding: 8px;
-      --kf-emote-search-height: 40px;
     }
     html[data-kf-emote-density="roomy"] #chat-emotes-picker-panel {
-      --kf-emote-tile-height: 74px;
-      --kf-emote-tile-min-width: 60px;
+      --kf-emote-tile-height: 68px;
+      --kf-emote-tile-min-width: 56px;
       --kf-emote-grid-gap: 8px;
-      --kf-emote-tile-padding: 9px;
-      --kf-emote-shell-padding: 10px;
-      --kf-emote-section-gap: 9px;
+      --kf-emote-tile-padding: 8px;
+      --kf-emote-shell-padding: 9px;
+      --kf-emote-section-gap: 8px;
       --kf-emote-control-height: 34px;
       --kf-emote-control-padding: 10px;
       --kf-emote-tab-height: 36px;
       --kf-emote-tab-padding: 10px;
-      --kf-emote-search-height: 44px;
+      --kf-emote-search-height: 42px;
     }
-    html[data-kf-emote-height="short"] #chat-emotes-picker-panel { --kf-emote-grid-height: 180px; }
-    html[data-kf-emote-height="medium"] #chat-emotes-picker-panel { --kf-emote-grid-height: 280px; }
-    html[data-kf-emote-height="tall"] #chat-emotes-picker-panel { --kf-emote-grid-height: 420px; }
+    html[data-kf-emote-height="short"] #chat-emotes-picker-panel { --kf-emote-grid-height: 160px; }
+    html[data-kf-emote-height="medium"] #chat-emotes-picker-panel { --kf-emote-grid-height: 240px; }
+    html[data-kf-emote-height="tall"] #chat-emotes-picker-panel { --kf-emote-grid-height: 360px; }
     html[data-kf-large-targets="true"] #chat-emotes-picker-panel {
       --kf-emote-tile-height: 88px;
       --kf-emote-tile-min-width: 84px;
@@ -2316,57 +2436,60 @@ const SITE_CSS = `
 
   video::cue { background: rgba(0, 0, 0, var(--kf-caption-opacity)); }
 
-  /* Sidebar "dropdown" mode: the discovery rail collapses to a labelled tab and
+  /* Sidebar auto-hide: the discovery rail rests behind a narrow edge target and
      expands over the page on hover or keyboard focus, so the grid keeps the
-     full width without losing one-move access to channels.
+     full width without losing direct access to channels.
 
      Concept from the MIT-licensed "KICK Dropdown" userstyle by IamKoeda
      (userstyles.world/style/29036), rebuilt here on this project's own tokens
      and wired to the existing sidebar setting.
 
-     Desktop-only by design: below 1280px the expanded panel would cover the
-     content it is meant to navigate. */
-  @media (min-width: 1280px) {
-    html[data-kf-sidebar="dropdown"] #sidebar-wrapper {
-      position: absolute;
-      z-index: 60;
-      width: var(--kf-sidebar-dropdown-width, 240px);
-      max-width: 88vw;
-      overflow: hidden;
-      border: 1px solid var(--kf-border);
-      border-radius: var(--kf-radius);
-      background: var(--kf-panel);
-      box-shadow: 0 18px 46px rgba(0,0,0,.55);
-      transform: translateX(calc(-100% + var(--kf-sidebar-dropdown-tab, 34px)));
-      transition: transform .28s ease, border-color .28s ease;
+     Desktop-only by design: narrow Kick layouts already use their own drawer. */
+  @media (min-width: 1024px) {
+    html[data-kf-sidebar="autohide"] #sidebar-wrapper {
+      position: fixed !important;
+      inset: var(--kf-header-height) auto 0 0 !important;
+      z-index: 400 !important;
+      width: var(--kf-sidebar-autohide-width, 256px) !important;
+      max-width: 88vw !important;
+      height: calc(100vh - var(--kf-header-height)) !important;
+      overflow: hidden !important;
+      border: 0 !important;
+      border-right: 1px solid var(--kf-border) !important;
+      border-radius: 0 8px 8px 0 !important;
+      background: var(--kf-panel) !important;
+      box-shadow: none !important;
+      transform: translateX(calc(-100% + var(--kf-auto-hide-edge))) !important;
+      transition: transform 180ms ease, box-shadow 180ms ease !important;
     }
-    html[data-kf-sidebar="dropdown"] #sidebar-wrapper::after {
-      content: "";
-      position: absolute;
-      inset-block: 0;
-      right: 0;
-      width: var(--kf-sidebar-dropdown-tab, 34px);
-      border-left: 1px solid var(--kf-border);
-      background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .10), transparent);
-      pointer-events: none;
+    html[data-kf-sidebar="autohide"] #sidebar-wrapper::after {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 0 0 auto !important;
+      z-index: 4 !important;
+      width: var(--kf-auto-hide-edge) !important;
+      border-left: 1px solid rgba(var(--kf-accent-rgb), .34) !important;
+      background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .15), var(--kf-panel) 24%, var(--kf-panel) 76%, rgba(var(--kf-accent-rgb), .10)) !important;
+      pointer-events: none !important;
+      transition: opacity 140ms ease !important;
     }
-    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:hover,
-    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:focus-within {
-      transform: translateX(0);
-      border-color: rgba(var(--kf-accent-rgb), .45);
+    html[data-kf-sidebar="autohide"] #sidebar-wrapper:is(:hover, :focus-within) {
+      transform: translateX(0) !important;
+      box-shadow: 22px 0 54px rgba(0,0,0,.46) !important;
     }
-    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:hover::after,
-    html[data-kf-sidebar="dropdown"] #sidebar-wrapper:focus-within::after { opacity: 0; }
+    html[data-kf-sidebar="autohide"] #sidebar-wrapper:is(:hover, :focus-within)::after { opacity: 0 !important; }
     /* Kick's own collapse control would fight this mode. */
-    html[data-kf-sidebar="dropdown"] [aria-controls="sidebar-wrapper"] { display: none !important; }
+    html[data-kf-sidebar="autohide"] [aria-controls="sidebar-wrapper"] { display: none !important; }
     /* Reclaim the space the rail no longer occupies. */
-    html[data-kf-sidebar="dropdown"] :is(main, #main-container) { margin-left: var(--kf-sidebar-dropdown-tab, 34px); }
+    html[data-kf-sidebar="autohide"] :is(main, #main-container) { margin-left: 0 !important; }
     /* A panel that slides out under the pointer is exactly what reduced-motion
        is asking us not to animate. It still expands — it just does it at once. */
-    html[data-kf-sidebar="dropdown"][data-kf-reduce-motion="true"] #sidebar-wrapper { transition: none; }
+    html[data-kf-sidebar="autohide"][data-kf-reduce-motion="true"] #sidebar-wrapper,
+    html[data-kf-chat="autohide"][data-kf-reduce-motion="true"] [data-kf-chat-panel] { transition: none !important; }
   }
   @media (prefers-reduced-motion: reduce) {
-    html[data-kf-sidebar="dropdown"] #sidebar-wrapper { transition: none; }
+    html[data-kf-sidebar="autohide"] #sidebar-wrapper,
+    html[data-kf-chat="autohide"] [data-kf-chat-panel] { transition: none !important; }
     #kick-focus-following-preview { transition: none !important; transform: none !important; }
   }
 
@@ -2515,6 +2638,7 @@ function applySettingsAttributes() {
   root.dataset.kfSidebar = state.runtime.sidebarHidden ? 'hidden' : layout.sidebar;
   root.dataset.kfChat = state.runtime.chatHidden ? 'hidden' : layout.chat;
   root.dataset.kfDensity = layout.density;
+  root.dataset.kfHeaderDensity = layout.headerDensity;
   root.dataset.kfSticky = String(layout.stickyTopbar);
   root.dataset.kfWideGrid = String(layout.wideGrid);
   root.dataset.kfFollowingRail = String(layout.showFollowingRail);
@@ -2556,6 +2680,8 @@ function applySettingsAttributes() {
     || (accessibility.reduceMotion && matchMedia('(prefers-reduced-motion: reduce)').matches));
   root.dataset.kfEmoteDensity = content.emotePickerDensity;
   root.dataset.kfEmoteHeight = content.emotePickerHeight;
+  root.dataset.kfQuickEmoteBar = content.quickEmoteBar;
+  root.dataset.kfQuickEmoteLimit = content.quickEmoteLimit;
   root.dataset.kfFocusVisible = String(accessibility.focusVisible);
   root.dataset.kfLargeTargets = String(accessibility.largeTargets);
   // The mod's own chrome lives in a shadow root, where a selector rooted at
@@ -3514,7 +3640,7 @@ function followingPreviewSource(row) {
 
 /**
  * Mark only live followed-channel controls that already carry a thumbnail.
- * The preview never invents a URL or asks Kick for a richer record.
+ * A preview may upgrade that exact Kick conversion URL to its full-size form.
  */
 function tagFollowingPreviewRows() {
   if (state.runtime.sidebarHidden || state.runtime.focus || state.runtime.theater
@@ -3584,13 +3710,15 @@ function ensureFollowingPreview() {
 }
 
 function followingPreviewLabel(row) {
+  const channel = cardPath(row).split('/').filter(Boolean)[0];
+  if (channel) return channel.slice(0, 80);
   const ownLabel = row.getAttribute?.('aria-label') || row.getAttribute?.('title') || row.textContent || '';
   const text = ownLabel.replace(/\s+/g, ' ').trim();
   if (text) return text.slice(0, 80);
-  return cardPath(row).replace(/^\//, '') || tr('Following');
+  return tr('Following');
 }
 
-function snapshotFollowingThumbnail(source, canvas) {
+function snapshotFollowingImage(source, canvas) {
   if (!source?.complete || !source.naturalWidth || !source.naturalHeight) return false;
   const targetWidth = canvas.width;
   const targetHeight = canvas.height;
@@ -3625,30 +3753,39 @@ function showFollowingPreview(row) {
   const host = ensureFollowingPreview();
   const image = host.querySelector('img');
   const canvas = host.querySelector('canvas');
-  if (reducedMotion) {
-    if (!snapshotFollowingThumbnail(source, canvas)) {
-      hideFollowingPreview();
-      state.followingPreviewRow = row;
-      source.addEventListener('load', () => {
-        if (state.followingPreviewRow === row) showFollowingPreview(row);
-      }, { once: true });
-      return;
-    }
-    image.hidden = true;
-    canvas.hidden = false;
-  } else {
-    image.src = source.currentSrc || source.getAttribute('src');
-    image.hidden = false;
-    canvas.hidden = true;
-  }
+  const thumbnail = source.currentSrc || source.getAttribute('src');
+  const fullsize = kickProfileFullsizeUrl(thumbnail);
   const label = followingPreviewLabel(row);
   host.querySelector('[data-kf-following-preview-name]').textContent = label;
   host.querySelector('[data-kf-following-preview-context]').textContent = tr('Following');
   host.dataset.kfStatic = String(reducedMotion);
-  host.dataset.kfSource = 'existing-image';
   host.hidden = false;
   host.style.visibility = 'hidden';
   host.dataset.kfOpen = 'true';
+  if (state.followingPreviewRow !== row) setFollowingPreviewDescription(state.followingPreviewRow, false);
+  state.followingPreviewRow = row;
+  setFollowingPreviewDescription(row, true);
+  if (reducedMotion && !snapshotFollowingImage(source, canvas)) {
+    hideFollowingPreview();
+    state.followingPreviewRow = row;
+    source.addEventListener('load', () => {
+      if (state.followingPreviewRow === row) showFollowingPreview(row);
+    }, { once: true });
+    return;
+  }
+  image.hidden = reducedMotion;
+  canvas.hidden = !reducedMotion;
+  host.dataset.kfSource = fullsize ? 'fullsize-profile-loading' : 'existing-image';
+  image.onload = () => {
+    if (state.followingPreviewRow !== row) return;
+    if (reducedMotion) snapshotFollowingImage(image, canvas);
+    host.dataset.kfSource = image.currentSrc === fullsize ? 'fullsize-profile' : fullsize ? 'thumbnail-fallback' : 'existing-image';
+  };
+  image.onerror = () => {
+    if (state.followingPreviewRow === row && fullsize && image.src !== thumbnail) image.src = thumbnail;
+  };
+  image.src = fullsize || thumbnail;
+  if (image.complete && image.naturalWidth) image.onload();
   const position = floatingPreviewPosition(
     row.getBoundingClientRect(),
     host.getBoundingClientRect(),
@@ -3658,9 +3795,6 @@ function showFollowingPreview(row) {
   host.style.top = `${position.top}px`;
   host.dataset.kfSide = position.side;
   host.style.visibility = 'visible';
-  if (state.followingPreviewRow !== row) setFollowingPreviewDescription(state.followingPreviewRow, false);
-  state.followingPreviewRow = row;
-  setFollowingPreviewDescription(row, true);
 }
 
 function hideFollowingPreview() {
@@ -4354,6 +4488,9 @@ function schedulePausedChatRestore(messages) {
 function armChatScrollPause(messages) {
   if (state.runtime.chatScrollNode === messages) return;
   releaseChatScrollPause();
+  const intentHandler = () => { state.runtime.chatScrollIntentUntil = Date.now() + 300; };
+  messages.addEventListener('wheel', intentHandler, { passive: true });
+  messages.addEventListener('pointerdown', intentHandler, { passive: true });
   state.runtime.chatScrollLastTop = messages.scrollTop;
   const handler = () => {
     // Two conditions, and the direction is the one that matters. Distance from
@@ -4377,16 +4514,18 @@ function armChatScrollPause(messages) {
     // scrolling back on a page they just opened.
     const movedUp = top < previousTop - 2;
 
-    // An upward movement while paused is the reader continuing farther into
-    // history, so it becomes the new anchor instead of being undone. Downward
+    // A recent wheel or scrollbar press makes an upward movement the reader
+    // continuing farther into history, so it becomes the new anchor. Kick's
+    // virtualiser also moves scrollTop upward while recycling rows; without
+    // that intent boundary the runtime mistakes its 40-pixel correction for a
+    // reader action and ratchets the paused view toward live chat. Every other
     // movement schedules the coalesced post-render restore below. Correcting it
-    // synchronously from this event creates a feedback loop with Kick's own
-    // virtualiser on busy channels.
+    // synchronously creates a feedback loop with the virtualiser.
     if (state.runtime.chatPaused) {
-      if (movedUp) {
+      if (movedUp && Date.now() < state.runtime.chatScrollIntentUntil) {
         state.runtime.chatScrollTop = top;
         state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
-      } else if (top > previousTop + 2) {
+      } else if (Math.abs(top - previousTop) > 2) {
         schedulePausedChatRestore(messages);
       }
       state.runtime.chatScrollLastTop = top;
@@ -4416,13 +4555,20 @@ function armChatScrollPause(messages) {
   messages.addEventListener('scroll', handler, { passive: true });
   state.runtime.chatScrollNode = messages;
   state.runtime.chatScrollHandler = handler;
+  state.runtime.chatScrollIntentHandler = intentHandler;
 }
 
 function releaseChatScrollPause() {
-  const { chatScrollNode, chatScrollHandler } = state.runtime;
+  const { chatScrollNode, chatScrollHandler, chatScrollIntentHandler } = state.runtime;
   if (chatScrollNode && chatScrollHandler) chatScrollNode.removeEventListener('scroll', chatScrollHandler);
+  if (chatScrollNode && chatScrollIntentHandler) {
+    chatScrollNode.removeEventListener('wheel', chatScrollIntentHandler);
+    chatScrollNode.removeEventListener('pointerdown', chatScrollIntentHandler);
+  }
   state.runtime.chatScrollNode = null;
   state.runtime.chatScrollHandler = null;
+  state.runtime.chatScrollIntentHandler = null;
+  state.runtime.chatScrollIntentUntil = 0;
   state.runtime.chatScrollIgnoreUntil = 0;
 }
 
@@ -9092,10 +9238,15 @@ const TRANSLATIONS = {
   'Filter clearly labeled casino streams': ['Filtra streams marcados claramente como casino', 'Filtra transmissões claramente marcadas como cassino'],
   'Open Kick Focus settings': ['Abrir configuración de Kick Focus', 'Abrir configurações do Kick Focus'],
   'Customize layout, appearance, content, and access': ['Personaliza el diseño, la apariencia, el contenido y el acceso', 'Personalize layout, aparência, conteúdo e acesso'],
-  'Choose how the left discovery rail behaves. Dropdown collapses it to a tab that expands on hover, giving the grid full width. Desktop widths only.': ['Elige cómo se comporta la barra de descubrimiento izquierda. Desplegable la reduce a una pestaña que se expande al pasar el cursor, dando a la cuadrícula todo el ancho. Solo en anchos de escritorio.', 'Escolha como a barra lateral de descoberta se comporta. Suspensa reduz a barra a uma aba que se expande ao passar o cursor, dando à grade toda a largura. Apenas em larguras de desktop.'],
-  'Place chat on either side, float it as a dock, or hide it.': ['Coloca el chat a cualquier lado, como panel flotante, u ocúltalo.', 'Coloque o chat em qualquer lado, como painel flutuante, ou oculte-o.'],
-  'Set the width of the live chat column.': ['Define el ancho de la columna del chat en vivo.', 'Defina a largura da coluna do chat ao vivo.'],
+  'Auto-hide leaves a slim edge target, then opens the rail on hover or focus.': ['Ocultar automáticamente deja un borde estrecho y abre la barra al pasar el cursor o enfocarla.', 'Ocultar automaticamente deixa uma borda estreita e abre a barra ao passar o cursor ou focá-la.'],
+  'Keep chat fixed, reveal it from the edge, dock it, or hide it.': ['Mantén el chat fijo, muéstralo desde el borde, déjalo flotante u ocúltalo.', 'Mantenha o chat fixo, mostre-o pela borda, deixe-o flutuante ou oculte-o.'],
+  'Set fixed, docked, and revealed chat width.': ['Define el ancho del chat fijo, flotante y desplegado.', 'Defina a largura do chat fixo, flutuante e revelado.'],
   'Adjust spacing and padding across discovery pages.': ['Ajusta el espaciado y el relleno en las páginas de descubrimiento.', 'Ajuste o espaçamento e o preenchimento nas páginas de descoberta.'],
+  'Header height': ['Altura de la cabecera', 'Altura do cabeçalho'],
+  'Compact keeps search and account controls while freeing stream space.': ['Compacta conserva la búsqueda y los controles de cuenta y libera espacio para el directo.', 'Compacta mantém a busca e os controles da conta e libera espaço para a transmissão.'],
+  'Header actions': ['Acciones de la cabecera', 'Ações do cabeçalho'],
+  'Essential keeps Focus and Menu. Multi-stream stays in Menu; All shows every header button.': ['Esenciales conserva Focus y Menú. Multitransmisión queda en Menú; Todas muestra cada botón.', 'Essenciais mantém Focus e Menu. Multitransmissão fica no Menu; Todas mostra cada botão.'],
+  'Essential': ['Esenciales', 'Essenciais'],
   'Choose how each channel opens.': ['Elige cómo se abre cada canal.', 'Escolha como cada canal abre.'],
   'Keep the last runtime layout for each channel.': ['Conserva el último diseño usado en cada canal.', 'Mantenha o último layout usado em cada canal.'],
   'Use reclaimed sidebar space for larger, calmer stream cards.': ['Usa el espacio recuperado de la barra lateral para tarjetas de directo más grandes y tranquilas.', 'Use o espaço recuperado da barra lateral para cartões de transmissão maiores e mais calmos.'],
@@ -9302,7 +9453,7 @@ const TRANSLATIONS = {
   'Organize chat emotes': ['Organizar los emotes del chat', 'Organizar os emotes do chat'],
   'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': ['Registra continuamente los emotes del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.', 'Registra continuamente os emotes do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.'],
   'Emote picker density': ['Densidad del selector de emotes', 'Densidade do seletor de emotes'],
-  'Choose how many emotes fit in each row. Compact shows more, while Roomy gives each emote more space.': ['Elige cuántos emotes caben en cada fila. Compacta muestra más, mientras que Espaciosa da más espacio a cada emote.', 'Escolha quantos emotes cabem em cada linha. Compacta mostra mais, enquanto Espaçosa dá mais espaço a cada emote.'],
+  'Compact fits eight emotes per row at 340 px. Roomy makes each emote larger.': ['Compacta muestra ocho emotes por fila a 340 px. Espaciosa agranda cada emote.', 'Compacta mostra oito emotes por linha a 340 px. Espaçosa aumenta cada emote.'],
   'Compact': ['Compacta', 'Compacta'],
   'Balanced': ['Equilibrada', 'Equilibrada'],
   'Roomy': ['Espaciosa', 'Espaçosa'],
@@ -9311,6 +9462,10 @@ const TRANSLATIONS = {
   'Short': ['Baja', 'Baixa'],
   'Medium': ['Media', 'Média'],
   'Tall': ['Alta', 'Alta'],
+  'Quick emote strip': ['Barra de emotes rápidos', 'Faixa de emotes rápidos'],
+  'Hide it, use 24 pixel controls, or keep Kick’s size.': ['Ocúltala, usa controles de 24 píxeles o conserva el tamaño de Kick.', 'Oculte, use controles de 24 pixels ou mantenha o tamanho do Kick.'],
+  'Quick emotes shown': ['Emotes rápidos visibles', 'Emotes rápidos exibidos'],
+  'Limit the strip without changing saved choices.': ['Limita la barra sin cambiar las opciones guardadas.', 'Limite a faixa sem mudar as escolhas salvas.'],
   'Click chat emotes to save': ['Haz clic en los emotes del chat para guardarlos', 'Clique nos emotes do chat para salvar'],
   'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.': ['Haz clic en cualquier emote del chat para añadirlo a tus favoritos. Si Kick lo marca explícitamente como restringido a seguidores, el mismo clic sigue su canal de origen; el acceso de suscriptor nunca se omite.', 'Clique em qualquer emote do chat para adicioná-lo aos favoritos. Se o Kick o marcar explicitamente como restrito a seguidores, o mesmo clique segue o canal de origem; o acesso de assinante nunca é contornado.'],
   'Highlight chat keywords': ['Resaltar palabras clave del chat', 'Destacar palavras-chave do chat'],
@@ -12461,6 +12616,7 @@ const HEADER_CONTROL_CSS = `
   :host { display: inline-flex; flex: 0 0 auto; gap: 6px; color-scheme: dark; }
   * { box-sizing: border-box; }
   ${HEADER_BUTTON_BASE_CSS}
+  :host([data-kf-header-actions="essential"]) :is([data-kf-header-multi], [data-kf-header-add-multi]) { display: none !important; }
   /* Repeats the settings panel's earned marker inside Kick's own header. The
      status itself is in the button's accessible name; this is the glance. */
   [data-kf-earned="reward-ready"] { position: relative; }
@@ -12654,6 +12810,7 @@ function ensureHeaderQuickControl() {
   if (state.headerControlHost.parentElement !== owner || state.headerControlHost.nextElementSibling !== target) {
     owner.insertBefore(state.headerControlHost, target);
   }
+  state.headerControlHost.dataset.kfHeaderActions = state.settings.layout.headerActions;
   syncHeaderMultiState();
   return state.headerControlHost.isConnected;
 }
