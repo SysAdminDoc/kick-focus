@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-26**
+Updated: **2026-08-27**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 
@@ -181,8 +181,8 @@ None open.
   Complexity: M
 
 - [ ] P1: R-122: Make the full profile comment emote journey a browser release contract
-  Why: Current live coverage checks windowing and one favorite update but not the group, recovery, focus, return, or safe-insertion paths that define the feature.
-  Evidence: scripts/verify-extension.mjs:3265-3362; test/boot.test.js:516-549; design/qa/emote-picker-all-v1.38.png; design/qa/emote-picker-narrow-v1.38.png
+  Why: Current live coverage checks windowing, the outboard action menu, one favorite update, and drag-to-reorder, but not the full group, recovery, focus, return, or safe-insertion paths that define the feature.
+  Evidence: scripts/verify-extension.mjs organizer journey; test/boot.test.js emote shelf contracts; design/qa/sticker-drag-marker-v1.45.png; design/qa/emote-picker-narrow-v1.38.png
   Touches: scripts/verify-extension.mjs, shared Firefox journey work from R-111, deterministic profile fixtures, release checklist, design references
   Acceptance: Automated journeys cover open and close, create, rename, delete and Undo, favorite and reorder, Select shown, move, remove, individual restore, empty search recovery, Library return, insert without submit, outside click, route change, and reduced motion; the suite runs desktop and narrow states at 1440, 900, and 680 pixels; every state asserts focus, accessible name, persisted result, draft preservation, and zero submit events; supported signed-in live checks run when account state is available.
   Complexity: L

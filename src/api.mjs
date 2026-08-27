@@ -722,6 +722,24 @@ export function applyAccountEntitlement(catalog, { slug = '', authenticated = fa
 }
 
 /**
+ * Current subscription entitlement for one source in an account catalog.
+ *
+ * Authenticated `/emotes/{slug}` responses include the requested channel plus
+ * every channel set the account currently owns. A previously saved source that
+ * is absent from that complete answer is therefore an expired subscription.
+ * Anonymous and incomplete answers remain unknown so they never hide an emote.
+ */
+export function catalogSubscriptionEntitlement(catalog, sourceSlug) {
+  const source = String(sourceSlug || '').trim().toLowerCase();
+  if (!catalog?.account?.authenticated || !isValidSlug(source) || !Array.isArray(catalog.emotes)) return 'unknown';
+  const matches = catalog.emotes.filter((emote) => emote?.subscribersOnly === true
+    && String(emote.sourceSlug || '').toLowerCase() === source);
+  if (matches.some((emote) => emote.entitlement === 'granted')) return 'granted';
+  if (matches.some((emote) => emote.entitlement === 'denied')) return 'denied';
+  return matches.length ? 'unknown' : 'denied';
+}
+
+/**
  * Return only the requested channel's own set from a normalized response.
  * The response also carries Global/Emoji sets (and may eventually carry other
  * account sets), none of which an arbitrary-channel import should duplicate.

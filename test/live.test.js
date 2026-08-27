@@ -31,6 +31,7 @@ function makeNode(overrides = {}) {
 function makeHost(overrides = {}) {
   const written = [];
   const merged = [];
+  const reconciled = [];
   const state = {
     shadow: null,
     currentPage: 'content',
@@ -67,11 +68,13 @@ function makeHost(overrides = {}) {
     currentVodId: () => host.__vodId,
     plural: (count, one, other) => (count === 1 ? one : other),
     mergeStickerLibrary: (observed) => merged.push(observed),
+    reconcileStickerSubscriptions: (catalog) => reconciled.push(catalog),
+    renderStickerOrganizer: () => {},
     __slug: 'alpha',
     __vodId: '',
   };
   Object.assign(host, overrides);
-  return { host, state, written, merged };
+  return { host, state, written, merged, reconciled };
 }
 
 /**
@@ -290,6 +293,71 @@ test('a channel whose payload changed shape falls back and says so', { tags: ['u
   assert.equal(state.live.channel, null, 'nothing is invented from an unrecognised payload');
   assert.match(state.live.catalogError, /no longer has the expected shape/);
   assert.deepEqual(state.live.apiDrift.map((entry) => [entry.endpoint, entry.reason]), [['channel', 'shape-changed']]);
+});
+
+test('collectible rarity refreshes an already-rendered emote tray', { tags: ['unit'] }, async () => {
+  let trayRefreshes = 0;
+  const { host, state } = makeHost({
+    renderStickerOrganizer: () => { trayRefreshes += 1; },
+    pageFetch: async (url) => {
+      const value = String(url);
+      if (value.includes('/gamification/collectibles')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ data: [{ id: 'card-1', card_url: 'https://files.kick.com/cards/444.webp', rarity: 'rare', owned: true }] }),
+        };
+      }
+      if (value.includes('/emotes/')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify([{ id: 9, name: 'Collectibles', slug: 'collectibles', emotes: [{ id: 444, name: 'collectiblesTest' }] }]),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 7, slug: 'alpha', chatroom: { id: 42 } }),
+      };
+    },
+  });
+  state.settings.content.liveChatEvents = false;
+  state.settings.content.showEmoteRarity = true;
+
+  await createLive(host).refreshLiveChannel();
+
+  assert.equal(state.live.rarity?.matched[0]?.rarity, 'rare');
+  assert.equal(trayRefreshes, 2, 'catalog access and the later rarity result must each repaint the open tray');
+});
+
+test('an authenticated catalog reconciles expired subscription emotes before repainting the tray', { tags: ['unit'] }, async () => {
+  let trayRefreshes = 0;
+  const { host, state, reconciled } = makeHost({
+    renderStickerOrganizer: () => { trayRefreshes += 1; },
+    pageFetch: async (url) => {
+      const value = String(url);
+      if (value.includes('/channels/alpha/me')) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ subscription: null }) };
+      }
+      if (value.includes('/emotes/')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify([{ id: 7, name: 'alpha', slug: 'alpha', emotes: [{ id: 44, name: 'alphaSub', subscribers_only: true }] }]),
+        };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ id: 7, slug: 'alpha', chatroom: { id: 42 } }) };
+    },
+  });
+  state.settings.content.liveChatEvents = false;
+
+  await createLive(host).refreshLiveChannel();
+
+  assert.equal(reconciled.length, 1);
+  assert.equal(reconciled[0].account.authenticated, true);
+  assert.equal(reconciled[0].emotes[0].entitlement, 'denied');
+  assert.equal(trayRefreshes, 1, 'the access reconciliation must repaint even when rarity is off');
 });
 
 test('with both live settings off, the channel read is never made', { tags: ['unit'] }, async () => {

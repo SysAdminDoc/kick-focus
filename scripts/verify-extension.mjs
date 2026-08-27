@@ -35,6 +35,8 @@ import { inlineScriptVerdict } from './csp.mjs';
 import { CAPTURABLE, FIXTURE_CONTRACT } from './fixture-contract.mjs';
 import { SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 
+const DAILY_REWARD_CAPTURE = JSON.parse(await readFile(resolve('test/fixtures/daily-reward-live.json'), 'utf8'));
+
 async function findChromium() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const cacheRoots = [
@@ -1393,7 +1395,7 @@ try {
   // and pass on a quiet one. Both legacy entries must be there, and every key
   // in the store must carry the platform prefix, observations included.
   record('a backup from the previous build migrates to the platform-prefixed key space without loss',
-    m.ok === true && m.schema === 8
+    m.ok === true && m.schema === 10
       && m.names?.includes('LegacyOne') && m.names?.includes('LegacyTwo')
       && m.keys?.includes('kick:id:9001') && m.keys?.includes('kick:id:9002')
       && prefixed(m.keys) && prefixed(m.favorites) && prefixed(m.hidden) && prefixed(m.assignments)
@@ -2585,6 +2587,10 @@ try {
       signature: rowSignature(chosen),
       offset: chosen.getBoundingClientRect().top - viewport.top,
     } : null;
+    const rowSnapshot = rows.map((node) => ({
+      signature: rowSignature(node),
+      offset: node.getBoundingClientRect().top - viewport.top,
+    })).filter((entry) => entry.signature);
     const anchorRowCount = rows.length;
     const anchorSignature = anchor?.signature || '';
     const anchorStart = anchor?.offset ?? null;
@@ -2597,12 +2603,24 @@ try {
     const held = Math.round(messages.scrollTop);
     const pixelDrift = Math.round(Math.abs(held - after.top) * 10) / 10;
     const heldDistance = Math.round(messages.scrollHeight - messages.scrollTop - messages.clientHeight);
-    const anchorEnd = anchor?.node?.isConnected
-      ? anchor.node.getBoundingClientRect().top - messages.getBoundingClientRect().top
+    const finalRows = [...messages.querySelectorAll('[data-index], [data-message-id], [data-chat-entry], [role="listitem"], article, .group')];
+    const anchorReplacement = anchorSignature
+      ? finalRows.find((node) => rowSignature(node) === anchorSignature)
       : null;
-    const anchorEndSignature = anchor?.node?.isConnected ? rowSignature(anchor.node) : '';
+    const anchorEndNode = anchor?.node?.isConnected ? anchor.node : anchorReplacement;
+    const anchorEnd = anchorEndNode
+      ? anchorEndNode.getBoundingClientRect().top - messages.getBoundingClientRect().top
+      : null;
+    const anchorEndSignature = anchorEndNode ? rowSignature(anchorEndNode) : '';
     const anchorSame = Boolean(anchorSignature) && anchorEndSignature === anchorSignature;
     const anchorRecycled = Boolean(anchorSignature) && anchor?.node?.isConnected === false;
+    const anchorReacquired = anchorRecycled && Boolean(anchorReplacement);
+    const neighborDrift = rowSnapshot.reduce((best, entry) => {
+      const node = finalRows.find((candidate) => rowSignature(candidate) === entry.signature);
+      if (!node) return best;
+      const drift = Math.abs(node.getBoundingClientRect().top - messages.getBoundingClientRect().top - entry.offset);
+      return Math.min(best, drift);
+    }, Infinity);
     const anchorDrift = anchorStart === null || anchorEnd === null
       ? null
       : Math.round(Math.abs(anchorEnd - anchorStart) * 10) / 10;
@@ -2614,7 +2632,7 @@ try {
     const off = await setSwitch('content.stickyChatPause', false);
     await settle(400);
     const cleared = { button: Boolean(control()) };
-    return { ok: true, before, after, held, pixelDrift, heldDistance, landed: Math.round(landed), anchorRowCount, anchorSignature, anchorEndSignature, anchorSame, anchorRecycled, anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
+    return { ok: true, before, after, held, pixelDrift, heldDistance, landed: Math.round(landed), anchorRowCount, anchorSignature, anchorEndSignature, anchorSame, anchorRecycled, anchorReacquired, neighborDrift, anchorStart, anchorEnd, anchorDrift, resumed, off, cleared };
   })()`);
   const scroll = scrollPause.value || { why: scrollPause.error || 'the probe returned nothing' };
   recordProbe('scrolling chat up enters the paused state, and Resume leaves it',
@@ -2626,7 +2644,10 @@ try {
       && ((scroll.anchorSame === true
           && Number.isFinite(scroll.anchorDrift)
           && scroll.anchorDrift <= 8)
+        || (Number.isFinite(scroll.neighborDrift) && scroll.neighborDrift <= 8)
         || (scroll.anchorRecycled === true
+          && scroll.anchorReacquired !== true
+          && !Number.isFinite(scroll.neighborDrift)
           && Number.isFinite(scroll.pixelDrift)
           && scroll.pixelDrift <= 8))
       && scroll.heldDistance > 64
@@ -2634,7 +2655,7 @@ try {
       && /Pause chat/.test(scroll.resumed?.label || '')
       && scroll.cleared?.button === false,
     scroll.ok
-      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, ${scroll.anchorSame ? 'same message held' : scroll.anchorRecycled ? 'recycled row used stable-pixel fallback' : 'anchor lost'}, drift ${scroll.anchorDrift}px, pixel drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
+      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, ${scroll.anchorReacquired ? 'recycled message reacquired' : scroll.anchorSame ? 'same message held' : Number.isFinite(scroll.neighborDrift) ? 'neighbor message held' : scroll.anchorRecycled ? 'recycled row used stable-pixel fallback' : 'anchor lost'}, drift ${scroll.anchorDrift}px, neighbor drift ${scroll.neighborDrift}px, pixel drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
       : scroll.why);
 
   // R-76: a banned reader's way back into a chat, still on screen.
@@ -3425,7 +3446,7 @@ try {
     const TOTAL = 900;
     const panel = document.createElement('div');
     panel.id = 'chat-emotes-picker-panel';
-    panel.style.cssText = 'position:fixed;left:-4000px;top:0;width:360px;height:520px;overflow:hidden';
+    panel.style.cssText = 'position:fixed;left:40px;top:40px;width:360px;height:520px;overflow:hidden;opacity:.001;pointer-events:none';
     const scroll = document.createElement('div');
     scroll.className = 'overflow-y-auto';
     scroll.style.cssText = 'width:100%;height:100%';
@@ -3474,12 +3495,85 @@ try {
       if (!tile) return { skip: 'the settled window rendered no tile to favorite' };
       const key = tile.dataset.kfStickerKey;
       const before = { tile, grid: stableGrid, state: tile.dataset.kfStickerState };
+      const proxy = tile.querySelector('[data-kf-sticker-proxy]');
+      const tools = tile.querySelector('[data-kf-sticker-tools]');
+      const atRest = tools && getComputedStyle(tools).display === 'none';
+      proxy.focus();
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const anchorRect = proxy.getBoundingClientRect();
+      const toolsRect = tools.getBoundingClientRect();
+      const overlaps = !(
+        toolsRect.right <= anchorRect.left
+        || toolsRect.left >= anchorRect.right
+        || toolsRect.bottom <= anchorRect.top
+        || toolsRect.top >= anchorRect.bottom
+      );
+      const actionLabels = [...tools.querySelectorAll('button')].map((button) => button.textContent.trim());
+      const actionHeights = [...tools.querySelectorAll('button')].map((button) => button.getBoundingClientRect().height);
+      const actionSurface = {
+        atRest,
+        opened: tools.dataset.kfOpen === 'true',
+        topLayer: tools.matches(':popover-open'),
+        side: tools.dataset.kfSide,
+        overlaps,
+        onScreen: toolsRect.left >= 8 && toolsRect.right <= innerWidth - 8
+          && toolsRect.top >= 8 && toolsRect.bottom <= innerHeight - 8,
+        actionLabels,
+        actionHeights,
+      };
       tile.querySelector('[data-kf-sticker-action="pin"]').click();
       await settle();
       const afterGrid = panel.querySelector('[data-kf-sticker-grid]');
       const afterTile = afterGrid?.querySelector('[data-kf-sticker-key="' + CSS.escape(key) + '"]');
       const shelves = [...organizer.querySelectorAll('[data-kf-sticker-usage-shelf]')]
         .map((node) => node.getAttribute('data-kf-sticker-usage-shelf'));
+      const dragTiles = [...afterGrid.querySelectorAll('[data-kf-sticker-item]')].slice(0, 3);
+      let drag = { available: dragTiles.length >= 3 && typeof DataTransfer === 'function' && typeof DragEvent === 'function' };
+      if (drag.available) {
+        const sourceTile = dragTiles[0];
+        const targetTile = dragTiles[2];
+        const sourceKey = sourceTile.dataset.kfStickerKey;
+        const targetKey = targetTile.dataset.kfStickerKey;
+        let sends = 0;
+        const original = [...panel.querySelectorAll('button')].find((button) => button.dataset.kfStickerKey === sourceKey && !button.closest('[data-kf-sticker-organizer]'));
+        original?.addEventListener('click', () => { sends += 1; });
+        const transfer = new DataTransfer();
+        sourceTile.querySelector('[data-kf-sticker-proxy]').dispatchEvent(new DragEvent('dragstart', {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: transfer,
+        }));
+        const targetRect = targetTile.getBoundingClientRect();
+        targetTile.querySelector('[data-kf-sticker-proxy]').dispatchEvent(new DragEvent('dragover', {
+          bubbles: true,
+          cancelable: true,
+          clientX: targetRect.right - 1,
+          clientY: targetRect.top + (targetRect.height / 2),
+          dataTransfer: transfer,
+        }));
+        const marker = targetTile.dataset.kfStickerDrop;
+        targetTile.querySelector('[data-kf-sticker-proxy]').dispatchEvent(new DragEvent('drop', {
+          bubbles: true,
+          cancelable: true,
+          clientX: targetRect.right - 1,
+          clientY: targetRect.top + (targetRect.height / 2),
+          dataTransfer: transfer,
+        }));
+        await settle();
+        const draggedGrid = panel.querySelector('[data-kf-sticker-grid]');
+        const order = [...draggedGrid.querySelectorAll('[data-kf-sticker-item]')].map((node) => node.dataset.kfStickerKey);
+        draggedGrid.querySelector('[data-kf-sticker-key="' + CSS.escape(sourceKey) + '"] [data-kf-sticker-proxy]')?.click();
+        await new Promise((done) => setTimeout(done, 80));
+        drag = {
+          available: true,
+          sourceKey,
+          targetKey,
+          marker,
+          sourceIndex: order.indexOf(sourceKey),
+          targetIndex: order.indexOf(targetKey),
+          sends,
+        };
+      }
       return {
         ok: true,
         total,
@@ -3490,6 +3584,8 @@ try {
         stateChanged: afterTile?.dataset.kfStickerState !== before.state,
         pinned: afterTile?.dataset.kfStickerState,
         shelves,
+        actionSurface,
+        drag,
       };
     } finally {
       panel.remove();
@@ -3516,6 +3612,27 @@ try {
       && String(organizerResult.pinned).startsWith('true'),
     organizerResult.ok
       ? `grid reused=${organizerResult.sameGrid} tile reused=${organizerResult.sameTile} state now ${organizerResult.pinned}`
+      : organizerResult.why);
+  recordProbe('emote management opens outboard with labelled Favorite and Remove actions', organizerResult,
+    organizerResult.ok === true
+      && organizerResult.actionSurface?.atRest === true
+      && organizerResult.actionSurface?.opened === true
+      && organizerResult.actionSurface?.topLayer === true
+      && organizerResult.actionSurface?.overlaps === false
+      && organizerResult.actionSurface?.onScreen === true
+      && ['Favorite', 'Remove'].every((label) => organizerResult.actionSurface?.actionLabels?.includes(label))
+      && organizerResult.actionSurface?.actionHeights?.every((height) => height >= 30),
+    organizerResult.ok
+      ? `${organizerResult.actionSurface?.side} side; rows ${JSON.stringify(organizerResult.actionSurface?.actionLabels)}; heights ${JSON.stringify(organizerResult.actionSurface?.actionHeights?.map(Math.round))}`
+      : organizerResult.why);
+  recordProbe('dragging an emote moves it after the marked tile without sending it', organizerResult,
+    organizerResult.ok === true
+      && organizerResult.drag?.available === true
+      && organizerResult.drag?.marker === 'after'
+      && organizerResult.drag?.sourceIndex === organizerResult.drag?.targetIndex + 1
+      && organizerResult.drag?.sends === 0,
+    organizerResult.ok
+      ? `marker=${organizerResult.drag?.marker} target=${organizerResult.drag?.targetIndex} source=${organizerResult.drag?.sourceIndex} sends=${organizerResult.drag?.sends}`
       : organizerResult.why);
 
   // Import now commits every store as one sized transaction instead of ten
@@ -3736,18 +3853,18 @@ try {
     c.close();
     return r.result.targetId;
   })();
-  // The daily-reward auto-claim, against a reproduction of Kick's own dialog.
+  // The daily-reward auto-claim, against the sanitized one-shot live capture.
   //
   // The real trigger only exists for a signed-in account and this gate runs
-  // logged out, so the markup below is rebuilt from a capture of the live
-  // dialog: the nested `<div class="contents">Claim</div>`, the button carrying
-  // BOTH `disabled` and `aria-disabled="true"` until ready, and the sibling
-  // "Watch N more minutes to claim". What that proves is the whole mechanism —
-  // that a disabled reward is left alone, that a ready one is clicked exactly
-  // once, and that a claim is not chased again afterwards. What it cannot prove
-  // is that Kick's markup still matches the capture; only a signed-in run can.
+  // logged out. `daily-reward-live.json` records the current trigger, controlled
+  // Radix dialog, 83 ms asynchronous mount, unrelated privacy dialog, disabled
+  // Claim transition, Share confirmation and printed reset boundary. The gate
+  // reproduces those relationships with shorter animation delays. What it cannot
+  // prove is that Kick's markup still matches the capture; only a signed-in run
+  // can do that.
   const rewardProbe = await evaluate(pageClient, `(async () => {
     const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+    const capture = ${JSON.stringify(DAILY_REWARD_CAPTURE)};
     const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     // This runs last, after other checks have moved the panel around, so put it
@@ -3770,35 +3887,107 @@ try {
     const reopenPanel = () => document.dispatchEvent(new CustomEvent('kick-focus:open-settings'));
 
     let clicks = 0;
-    const mount = (ready) => {
+    const mount = (ready, claimed = false) => {
+      const dialogId = 'kf-reward-live-dialog-' + Math.random().toString(36).slice(2);
       const trigger = document.createElement('button');
       trigger.setAttribute('aria-label', 'Claim Your Daily Reward');
       trigger.setAttribute('aria-haspopup', 'dialog');
       trigger.setAttribute('aria-expanded', 'false');
+      trigger.setAttribute('aria-controls', dialogId);
+      trigger.setAttribute('data-state', 'closed');
       trigger.style.cssText = 'position:fixed;left:-3000px;top:0';
+      if (ready && !claimed) {
+        const available = document.createElement('video');
+        available.src = capture.trigger.availableMedia;
+        available.preload = 'none';
+        trigger.append(available);
+      }
+
+      // This is the trap seen in the live page: a role=dialog unrelated to the
+      // reward is already present and appears first in document order.
+      const privacy = document.createElement('div');
+      privacy.setAttribute('role', 'dialog');
+      privacy.textContent = 'Your Privacy Choices';
+      privacy.style.cssText = 'position:fixed;left:-4000px;top:0';
+
       const dialog = document.createElement('div');
       dialog.setAttribute('role', 'dialog');
+      dialog.id = dialogId;
+      dialog.setAttribute('data-state', 'closed');
+      const titleId = dialogId + '-title';
+      dialog.setAttribute('aria-labelledby', titleId);
       dialog.style.cssText = 'position:fixed;left:-3000px;top:60px';
       dialog.hidden = true;
+      const title = document.createElement('h2');
+      title.id = titleId;
+      title.textContent = capture.dialog.identity['aria-labelledbyText'];
+      const description = document.createElement('p');
+      description.textContent = 'Claim your daily reward for a chance to win big! Emotes and badges are up for grabs.';
       const action = document.createElement('button');
-      // Exactly as captured: the label is nested, not a direct text child.
-      action.innerHTML = '<div class="contents">Claim</div>';
-      if (!ready) { action.disabled = true; action.setAttribute('aria-disabled', 'true'); }
-      action.addEventListener('click', () => { clicks += 1; });
+      action.textContent = claimed ? capture.dialog.claimed.action : capture.dialog.ready.action;
+      if (!ready && !claimed) { action.disabled = true; action.setAttribute('aria-disabled', 'true'); }
+      const reset = new Date();
+      reset.setHours(20, 0, 0, 0);
+      if (reset.getTime() <= Date.now()) reset.setDate(reset.getDate() + 1);
+      const boundary = reset.toLocaleString('en-US', {
+        month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
+      });
       const note = document.createElement('p');
-      note.textContent = ready ? '' : 'Watch 54 more minutes to claim';
+      note.textContent = claimed ? 'Daily Reward resets at ' + boundary : (ready ? '' : 'Watch 54 more minutes to claim');
       const close = document.createElement('button');
-      close.setAttribute('aria-label', 'Close');
-      dialog.append(action, note, close);
+      const closeText = document.createElement('span');
+      closeText.className = 'sr-only';
+      closeText.textContent = 'Close';
+      close.append(closeText);
+      dialog.append(title, description, action, note, close);
+
+      let transitionTimer = 0;
+      const closeDialog = () => {
+        clearTimeout(transitionTimer);
+        transitionTimer = window.setTimeout(() => {
+          trigger.setAttribute('aria-expanded', 'false');
+          trigger.setAttribute('data-state', 'closed');
+          dialog.setAttribute('data-state', 'closed');
+          dialog.hidden = true;
+        }, capture.trigger.mountDelayMs);
+      };
       trigger.addEventListener('click', () => {
         const open = trigger.getAttribute('aria-expanded') === 'true';
-        trigger.setAttribute('aria-expanded', String(!open));
-        dialog.hidden = open;
+        if (open) {
+          closeDialog();
+          return;
+        }
+        clearTimeout(transitionTimer);
+        transitionTimer = window.setTimeout(() => {
+          trigger.setAttribute('aria-expanded', 'true');
+          trigger.setAttribute('data-state', 'open');
+          dialog.setAttribute('data-state', 'open');
+          dialog.hidden = false;
+        }, capture.trigger.mountDelayMs);
       });
-      document.body.append(trigger, dialog);
-      return { trigger, dialog };
+      close.addEventListener('click', closeDialog);
+      action.addEventListener('click', () => {
+        clicks += 1;
+        if (!ready || claimed) return;
+        action.disabled = true;
+        action.setAttribute('aria-disabled', 'true');
+        window.setTimeout(() => trigger.querySelector('video')?.remove(), 8);
+        window.setTimeout(() => {
+          action.disabled = false;
+          action.removeAttribute('aria-disabled');
+          action.textContent = capture.dialog.claimed.action;
+          note.textContent = 'Daily Reward resets at ' + boundary;
+        }, 35);
+      });
+      document.body.append(privacy, trigger, dialog);
+      return { trigger, dialog, privacy, action, stop: () => clearTimeout(transitionTimer) };
     };
-    const teardown = (parts) => { parts.trigger.remove(); parts.dialog.remove(); };
+    const teardown = (parts) => {
+      parts.stop?.();
+      parts.privacy.remove();
+      parts.trigger.remove();
+      parts.dialog.remove();
+    };
     const cycle = async () => {
       // Two cycles: one opens the dialog, the next acts on it.
       // The apply cycle coalesces route changes, so "two dispatches" is not
@@ -3837,7 +4026,11 @@ try {
       // 108 minutes on one 2026-08-18 run against 55 on another, same build.
       await __kfWait(() => (parts.dialog.textContent.includes('54 more minutes') ? true : null), { timeout: 5000 });
       await cycle();
-      const notReady = { clicks, reached: parts.dialog.dataset.kfRewardDialog === 'true' || parts.trigger.dataset.kfSeen === 'true' };
+      const notReady = {
+        clicks,
+        reached: parts.dialog.dataset.kfRewardDialog === 'true' || parts.trigger.dataset.kfSeen === 'true',
+        unrelatedTouched: parts.privacy.dataset.kfRewardDialog === 'true',
+      };
       // Proof the mechanism actually ran rather than being skipped: the record
       // only exists if the claim opened Kick's dialog.
       // The schedule is the point: "Watch 54 more minutes" has to buy roughly
@@ -3856,7 +4049,22 @@ try {
       localStorage.removeItem('kick-focus:reward-claims');
       await settle();
 
-      // 2. Ready: exactly one click, and the claim is recorded.
+      // 2. Already claimed by hand: Share is never clicked and no automatic
+      // claim is invented in local history.
+      clicks = 0;
+      parts = mount(false, true);
+      await cycle();
+      const manual = {
+        clicks,
+        stored: JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null'),
+        finalAction: parts.action.textContent,
+      };
+      manual.nextHour = manual.stored?.nextCheckAt ? new Date(manual.stored.nextCheckAt).getHours() : null;
+      teardown(parts);
+      localStorage.removeItem('kick-focus:reward-claims');
+      await settle();
+
+      // 3. Ready: exactly one click, and the claim is recorded.
       //
       // Not a plain cycle(). The claim needs two passes — one to open Kick's
       // dialog and one to act on it — and the *open* pass arms a ten-minute
@@ -3877,17 +4085,24 @@ try {
         window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
         await settle(450);
       }
-      const ready = { clicks, passes: readyPasses, stored: JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null') };
+      const ready = {
+        clicks,
+        passes: readyPasses,
+        stored: JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null'),
+        finalAction: parts.action.textContent,
+        unrelatedTouched: parts.privacy.dataset.kfRewardDialog === 'true',
+        availableMedia: Boolean(parts.trigger.querySelector('video')),
+      };
       // A claim sleeps to the nightly rollover, whatever hour the run happens at.
       ready.nextHour = ready.stored?.nextCheckAt ? new Date(ready.stored.nextCheckAt).getHours() : null;
 
-      // 3. Already claimed: the backoff must stop a second claim.
+      // 4. Already claimed: the backoff must stop a second claim.
       clicks = 0;
       await cycle();
       const again = { clicks };
       teardown(parts);
 
-      // 4. Off: a ready reward is left completely alone. Re-query rather than
+      // 5. Off: a ready reward is left completely alone. Re-query rather than
       // reusing the captured node — changing a setting re-renders the page, so
       // the original is detached and clicking it changes nothing.
       liveToggle()?.click();
@@ -3901,7 +4116,7 @@ try {
       const off = { clicks, opened: parts.trigger.getAttribute('aria-expanded') };
       teardown(parts);
 
-      return { ok: true, diag, notReady, ready, again, off };
+      return { ok: true, diag, notReady, manual, ready, again, off };
     } finally {
       localStorage.removeItem('kick-focus:reward-claims');
       for (const node of document.querySelectorAll('[aria-label="Claim Your Daily Reward"]')) node.remove();
@@ -3917,8 +4132,19 @@ try {
   // Kick's countdown is not, because the schedule is capped at the nightly
   // rollover and within an hour of it both branches give the same answer.
   record('a reward Kick has not unlocked is never clicked',
-    reward.ok === true && reward.notReady?.clicks === 0 && reward.notReady?.attempted === true,
-    reward.ok ? `dialog opened=${reward.notReady?.attempted}, clicked ${reward.notReady?.clicks} times` : reward.why);
+    reward.ok === true && reward.notReady?.clicks === 0 && reward.notReady?.attempted === true
+      && reward.notReady?.unrelatedTouched === false,
+    reward.ok ? `dialog opened=${reward.notReady?.attempted}, clicked ${reward.notReady?.clicks} times, unrelated dialog touched=${reward.notReady?.unrelatedTouched}` : reward.why);
+  record('the reward trigger owns only its aria-controls dialog after the asynchronous mount',
+    reward.ok === true && reward.notReady?.unrelatedTouched === false && reward.ready?.unrelatedTouched === false,
+    reward.ok ? `unrelated dialog touched while waiting=${reward.notReady?.unrelatedTouched}, while ready=${reward.ready?.unrelatedTouched}` : reward.why);
+  record('a reward already collected by hand is observed without inventing an automatic claim',
+    reward.ok === true && reward.manual?.clicks === 0 && reward.manual?.finalAction === 'Share'
+      && Number(reward.manual?.stored?.lastClaimAt) === 0
+      && Number(reward.manual?.stored?.claimStartedAt) === 0
+      && Number(reward.manual?.stored?.claimClickedAt) === 0
+      && reward.manual?.nextHour === 20,
+    reward.ok ? `clicks=${reward.manual?.clicks}, action=${reward.manual?.finalAction}, last claim=${reward.manual?.stored?.lastClaimAt}, pending=${reward.manual?.stored?.claimStartedAt}/${reward.manual?.stored?.claimClickedAt}, next hour=${reward.manual?.nextHour}` : reward.why);
   const capped = Number(reward.notReady?.minutesToReset) <= 60;
   recordProbe('the countdown Kick shows sets the next look, not the fallback interval',
     capped
@@ -3928,8 +4154,11 @@ try {
     reward.ok ? `next look in ${reward.notReady?.waitMinutes} min, rollover in ${reward.notReady?.minutesToReset} min` : reward.why);
   record('a ready reward is claimed once and then sleeps to the nightly rollover',
     reward.ok === true && reward.ready?.clicks === 1 && Number(reward.ready?.stored?.lastClaimAt) > 0
+      && Number(reward.ready?.stored?.claimStartedAt) === 0
+      && Number(reward.ready?.stored?.claimClickedAt) === 0
+      && reward.ready?.finalAction === 'Share' && reward.ready?.availableMedia === false
       && reward.ready?.nextHour === 20 && reward.again?.clicks === 0,
-    reward.ok ? `claimed on pass ${reward.ready?.passes} of 8: clicks=${reward.ready?.clicks}, stored claims=${reward.ready?.stored?.claims}, next check at hour ${reward.ready?.nextHour}; second pass clicked ${reward.again?.clicks}` : reward.why);
+    reward.ok ? `claimed on pass ${reward.ready?.passes} of 8: clicks=${reward.ready?.clicks}, final action=${reward.ready?.finalAction}, pending=${reward.ready?.stored?.claimStartedAt}/${reward.ready?.stored?.claimClickedAt}, stored claims=${reward.ready?.stored?.claims}, next check at hour ${reward.ready?.nextHour}; second pass clicked ${reward.again?.clicks}` : reward.why);
   record('a reward already claimed is not chased again',
     reward.ok === true && reward.again?.clicks === 0,
     reward.ok ? `second pass clicked ${reward.again?.clicks} times` : reward.why);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Focus
 // @namespace    https://github.com/SysAdminDoc/kick-focus
-// @version      1.44.0
+// @version      1.45.0
 // @description  A desktop-first premium layout, control center, accessibility layer, and best-effort ad defense for Kick.
 // @author       SysAdminDoc
 // @match        https://kick.com/*
@@ -23,99 +23,11 @@
 'use strict';
 if (window.__kickFocusBooted) return;
 window.__kickFocusBooted = true;
-const VERSION = '1.44.0';
+const VERSION = '1.45.0';
 const SETTINGS_SCHEMA = 7;
 const VERSION_NOTES = Object.freeze({
-'1.44.0': Object.freeze({
-summary: 'Both side rails now auto-hide by default, the header is 48 pixels tall, and chat has denser emote controls. Layout and Content & Ads keep every part adjustable.',
-defaults: Object.freeze(['Sidebar mode', 'Chat layout', 'Chat width', 'Content density', 'Header height', 'Header actions', 'Quick emote strip']),
-}),
-'1.43.0': Object.freeze({
-summary: 'The emote picker now fits more into the chat rail without crowding its controls. Choose Compact, Balanced, or Roomy emotes, then set a Short, Medium, or Tall shelf in Content & Ads.',
-defaults: Object.freeze([]),
-}),
-'1.42.0': Object.freeze({
-summary: 'Settings and the companion now use clearer status colors with consistent corners. Compact layouts keep controls reachable. Blank multi-stream boards stay unsavable, and Commands returns you to the setting you were editing.',
-defaults: Object.freeze([]),
-}),
-'1.41.0': Object.freeze({
-summary: 'Settings now opens reliably and stays inside the viewport down to 375 pixels. Reset recovery waits for you, Viewer status is clearer, emote management is easier to find, composer recall is visible, and the companion follows English, Spanish, or Portuguese.',
-defaults: Object.freeze([]),
-}),
-'1.40.0': Object.freeze({
-summary: 'Kick keeps its own keyboard: the six configurable shortcuts are gone and every action they reached is on the command menu, which now has a button in the header and one in Settings. Resetting acts straight away and offers one step of Undo instead of asking first, the page behind a dialog is properly out of reach, and the chat separator can be moved with the arrow keys.',
-defaults: Object.freeze([]),
-}),
-'1.39.0': Object.freeze({
-summary: 'Reduce motion, Large touch targets, High-contrast controls and Always show focus outlines now work at any window width, every settings control answers to the label you can see, and the interface is translated where it had quietly stayed English.',
-defaults: Object.freeze([]),
-}),
-'1.38.0': Object.freeze({
-summary: 'The profile comment-box emote picker now handles favorites, recent emotes, custom groups, batch moves, removal, recovery, and normal emote insertion in place.',
-defaults: Object.freeze([]),
-}),
-'1.37.0': Object.freeze({
-summary: 'Emotes now have a dedicated workspace, visible picker search, and batch controls for creating groups, moving selections, removing entries, and restoring them.',
-defaults: Object.freeze([]),
-}),
-'1.21.0': Object.freeze({
-summary: 'The live gate waits for what it asserts, the Firefox package no longer leaks a per-install identifier to Kick, and the interface declares the language it is written in.',
-defaults: Object.freeze([]),
-}),
-'1.22.0': Object.freeze({
-summary: 'Markup reaches the page through one checked path, and this notice exists, so an update no longer changes how Kick Focus behaves without saying so.',
-defaults: Object.freeze([]),
-}),
-'1.23.0': Object.freeze({
-summary: 'A recording now says how long Kick will keep it, and the emote card and completion list render above everything instead of competing with Kick for stacking order.',
-defaults: Object.freeze(['Show how long Kick keeps this recording']),
-}),
-'1.24.0': Object.freeze({
-summary: 'Drift detection now checks what a hook is for, not only that it matched. A stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
-defaults: Object.freeze([]),
-}),
-'1.25.0': Object.freeze({
-summary: 'The grid can merge every channel into one chat or float the focused one in an always-on-top window, and the emote suggestions stop offering emotes Kick would refuse.',
-defaults: Object.freeze([]),
-}),
-'1.27.0': Object.freeze({
-summary: 'Viewing presets, a protected custom accent, My Emotes, calmer signed-in pages, and honest points guidance make Kick easier to personalize without changing the account.',
-defaults: Object.freeze([]),
-}),
-'1.28.0': Object.freeze({
-summary: 'Every channel profile now has a StreamerStats action that opens that channel’s current analytics in a compact popup window.',
-defaults: Object.freeze([]),
-}),
-'1.29.0': Object.freeze({
-summary: 'A read-only Viewer page, five chat comfort switches, and saved discovery views: the daily reward and channel points in one place, message times and a bounded session chat search, and a named layout applied to the pages you choose.',
-defaults: Object.freeze([]),
-}),
-'1.30.0': Object.freeze({
-summary: 'Studio, OLED, and Slate now change the full surface hierarchy. Settings boards, multi-stream, and the companion popup have clearer structure and less visual noise.',
-defaults: Object.freeze([]),
-}),
-'1.32.0': Object.freeze({
-summary: 'Hidden channels, favorites, and volume now match Kick card links that carry a trailing slash. A stickers-only import no longer resets the rest of the profile. Copied diagnostics include a settings diff without channel names.',
-defaults: Object.freeze([]),
-}),
-'1.33.0': Object.freeze({
-summary: 'Scrolling chat up freezes it, every settings page offers help in the same place, and the build is 200 KB smaller so a userscript manager still injects it at page start.',
-defaults: Object.freeze([]),
-}),
-'1.34.0': Object.freeze({
-summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
-defaults: Object.freeze([]),
-}),
-'1.36.0': Object.freeze({
-summary: 'Interface scale resizes the controls it names, every toast and accessible name is translated, keyboard focus looks the same everywhere, and the build stopped shipping 12 KB of stylesheet comments.',
-defaults: Object.freeze([]),
-}),
-'1.35.0': Object.freeze({
-summary: 'High-contrast controls now raise every border, the accent reaches the header buttons and the emote popover, and an imported emote library can no longer point its artwork at an outside origin.',
-defaults: Object.freeze([]),
-}),
-'1.31.0': Object.freeze({
-summary: 'The main Kick theme now uses clearer type, quieter borders, tighter spacing, flatter content cards, and more compact route controls.',
+'1.45.0': Object.freeze({
+summary: 'Emote management is clearer and draggable. Daily reward auto-claim now waits for Kick to confirm success.',
 defaults: Object.freeze([]),
 }),
 });
@@ -594,9 +506,42 @@ at.setHours(resetHour, 0, 0, 0);
 if (at.getTime() <= now) at.setDate(at.getDate() + 1);
 return at.getTime();
 }
+function previousClaimResetAt(now, resetHour = CLAIM_RESET_HOUR) {
+const at = new Date(nextClaimResetAt(now, resetHour));
+at.setDate(at.getDate() - 1);
+return at.getTime();
+}
+const REWARD_MONTHS = 'janfebmaraprmayjunjulaugsepoctnovdec';
+const REWARD_BOUNDARY = /(?:claim\s+before|daily\s+reward\s+resets?\s+at)\s+([a-z]{3})\s+(\d{1,2}),\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/i;
+function parseRewardBoundaryAt(text, now = Date.now()) {
+const match = REWARD_BOUNDARY.exec(String(text ?? ''));
+if (!match) return null;
+const monthOffset = REWARD_MONTHS.indexOf(match[1].toLowerCase());
+const month = monthOffset / 3;
+const day = Number(match[2]);
+let hour = Number(match[3]) % 12;
+const minute = Number(match[4]);
+if (match[5].toLowerCase() === 'pm') hour += 12;
+if (monthOffset < 0 || !Number.isInteger(month) || day < 1 || day > 31 || minute < 0 || minute > 59) return null;
+const base = new Date(now);
+const at = new Date(base.getFullYear(), month, day, hour, minute, 0, 0);
+if (at.getMonth() !== month || at.getDate() !== day) return null;
+if (at.getTime() < now - 31 * 24 * 60 * 60 * 1000) at.setFullYear(at.getFullYear() + 1);
+return at.getTime();
+}
 function nextRewardCheckAt(facts = {}) {
-const { outcome, now = 0, minutesRemaining = null, dialogText = '', resetHour = CLAIM_RESET_HOUR } = facts;
-const reset = nextClaimResetAt(now, resetHour);
+const {
+outcome,
+now = 0,
+minutesRemaining = null,
+dialogText = '',
+resetAt = null,
+resetHour = CLAIM_RESET_HOUR,
+} = facts;
+const observedReset = Number(resetAt);
+const reset = Number.isFinite(observedReset) && observedReset > now
+? observedReset
+: nextClaimResetAt(now, resetHour);
 if (outcome === 'claimed') return reset;
 if (Number.isFinite(minutesRemaining) && minutesRemaining > 0) {
 return Math.min(now + (minutesRemaining + 1) * 60_000, reset);
@@ -614,15 +559,21 @@ function decideRewardClaim(facts = {}) {
 const {
 enabled = false,
 hasTrigger = false,
+triggerReady = false,
 dialogOpen = false,
 hasAction = false,
 actionDisabled = true,
+claimedSinceReset = false,
+claimPending = false,
 now = 0,
 nextCheckAt = 0,
 } = facts;
 if (!enabled) return { action: 'absent', reason: 'off' };
 if (!hasTrigger) return { action: 'absent', reason: 'no-trigger' };
 if (!dialogOpen) {
+if (claimPending) return { action: 'cooling', reason: 'claim-pending' };
+if (claimedSinceReset) return { action: 'cooling', reason: 'already-claimed' };
+if (triggerReady) return { action: 'open', reason: 'ready-signal' };
 if (nextCheckAt > now) return { action: 'cooling', reason: 'not-due' };
 return { action: 'open', reason: 'due' };
 }
@@ -1578,6 +1529,11 @@ const incoming = Object.hasOwn(accessRank, incomingAccess) ? incomingAccess : 'l
 if (!Object.hasOwn(accessRank, existingAccess)) return incoming;
 return accessRank[existingAccess] >= accessRank[incoming] ? existingAccess : incoming;
 }
+function stickerSubscriptionLocked(entry) {
+return isRecord(entry)
+&& entry.subscribersOnly === true
+&& entry.entitlement === 'denied';
+}
 function recordStickerObservation(existing, observed, now) {
 const at = cleanCaptureTime(now);
 if (!existing) {
@@ -1736,7 +1692,7 @@ if (/^(?:get|buy|purchase) kicks?$/.test(label)) return 'currency';
 if (label === 'expand leaderboard' || label === 'gift leaderboard') return 'leaderboard';
 return '';
 }
-const STICKER_PREFERENCES_SCHEMA = 8;
+const STICKER_PREFERENCES_SCHEMA = 10;
 const PLATFORM_ID = 'kick';
 const UNPREFIXED_STICKER_KEY = /^(?:id|name):/;
 function platformStickerKey(key, platformId = PLATFORM_ID) {
@@ -1764,6 +1720,26 @@ values.push(value);
 if (values.length >= limit) break;
 }
 return values;
+}
+function orderedStickerKeys(keys, order) {
+const base = cleanStickerKeys(keys);
+const available = new Set(base);
+const preferred = cleanStickerKeys(order).filter((key) => available.has(key));
+const seen = new Set(preferred);
+return [...preferred, ...base.filter((key) => !seen.has(key))];
+}
+function moveStickerOrder(order, key, targetKey, after = false, fallbackKeys = []) {
+const source = cleanStickerKeys([key], 1)[0];
+const target = cleanStickerKeys([targetKey], 1)[0];
+const baseline = cleanStickerKeys([
+...(Array.isArray(order) ? order : []),
+...(Array.isArray(fallbackKeys) ? fallbackKeys : []),
+]);
+if (!source || !target || source === target || !baseline.includes(source) || !baseline.includes(target)) return baseline;
+const next = baseline.filter((entry) => entry !== source);
+const targetIndex = next.indexOf(target);
+next.splice(targetIndex + (after ? 1 : 0), 0, source);
+return next;
 }
 function cleanStickerText(value, maximum = 80) {
 if (typeof value !== 'string') return '';
@@ -1883,6 +1859,7 @@ sourceSlug: favoriteScope(raw.sourceSlug),
 requiresFollow: raw.requiresFollow === true,
 followed: raw.followed === true,
 subscribersOnly: raw.subscribersOnly === true,
+entitlement: enumValue(raw.entitlement, ['unknown', 'granted', 'denied'], 'unknown'),
 firstSeen: cleanCaptureTime(raw.firstSeen),
 lastSeen: cleanCaptureTime(raw.lastSeen),
 };
@@ -1973,6 +1950,22 @@ const reordered = [...inScope];
 const rest = list.filter((entry) => entry.channel !== scope);
 return renumberFavorites([...rest, ...reordered.map((entry, order) => ({ ...entry, order }))]);
 }
+function placeStickerFavorite(favorites, key, channel, targetKey, after = false) {
+const list = Array.isArray(favorites) ? favorites : [];
+const scope = favoriteScope(channel);
+const inScope = list
+.filter((entry) => entry.channel === scope)
+.sort((left, right) => left.order - right.order);
+const sourceIndex = inScope.findIndex((entry) => entry.key === key);
+const targetIndex = inScope.findIndex((entry) => entry.key === targetKey);
+if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return renumberFavorites(list);
+const source = inScope[sourceIndex];
+const reordered = inScope.filter((entry) => entry !== source);
+const insertion = reordered.findIndex((entry) => entry.key === targetKey) + (after ? 1 : 0);
+reordered.splice(insertion, 0, source);
+const rest = list.filter((entry) => entry.channel !== scope);
+return renumberFavorites([...rest, ...reordered.map((entry, order) => ({ ...entry, order }))]);
+}
 function renumberFavorites(list) {
 return cleanStickerFavorites(list, [], new Set());
 }
@@ -1983,11 +1976,13 @@ const hiddenSet = new Set(hidden);
 const groups = cleanStickerGroups(source.groups);
 const groupIds = new Set(groups.map((group) => group.id));
 const activeGroup = groupIds.has(source.activeGroup) ? source.activeGroup : '';
-const view = enumValue(source.view, ['all', 'pinned', 'recent', 'native', 'group'], 'all');
+const view = enumValue(source.view, ['all', 'pinned', 'recent', 'native', 'group', 'locked'], 'all');
 const favorites = cleanStickerFavorites(source.favorites, source.pinned, hiddenSet);
+const order = cleanStickerKeys(source.order).filter((key) => !hiddenSet.has(key));
 const assignments = cleanStickerAssignments(source.assignments, groupIds);
 const protectedKeys = new Set([
 ...favorites.map((favorite) => favorite.key),
+...order,
 ...assignments.map((assignment) => assignment.key),
 ]);
 const library = evictStickerLibrary(
@@ -1998,6 +1993,7 @@ protectedKeys,
 return {
 schema: STICKER_PREFERENCES_SCHEMA,
 favorites,
+order,
 hidden,
 view: view === 'group' && !activeGroup ? 'all' : view,
 showHidden: bool(source.showHidden, false),
@@ -2309,7 +2305,7 @@ key,
 );
 }
 }
-for (const field of ['favorites', 'hidden', 'groups', 'assignments']) {
+for (const field of ['favorites', 'order', 'hidden', 'groups', 'assignments']) {
 if (Array.isArray(parsed.stickers[field]) && parsed.stickers[field].length !== stickers[field].length) {
 addNote(
           `Adjusted emote ${field} to supported entries.`,
@@ -3218,6 +3214,15 @@ emotes,
 account: { authenticated: true, ownedSets: [...ownedSets].sort(), ownedEmotes },
 };
 }
+function catalogSubscriptionEntitlement(catalog, sourceSlug) {
+const source = String(sourceSlug || '').trim().toLowerCase();
+if (!catalog?.account?.authenticated || !isValidSlug(source) || !Array.isArray(catalog.emotes)) return 'unknown';
+const matches = catalog.emotes.filter((emote) => emote?.subscribersOnly === true
+&& String(emote.sourceSlug || '').toLowerCase() === source);
+if (matches.some((emote) => emote.entitlement === 'granted')) return 'granted';
+if (matches.some((emote) => emote.entitlement === 'denied')) return 'denied';
+return matches.length ? 'unknown' : 'denied';
+}
 function channelCatalogEmotes(catalog, slug) {
 if (!catalog?.ok || !Array.isArray(catalog.sets) || !isValidSlug(slug)) return [];
 const wanted = String(slug).toLowerCase();
@@ -4124,6 +4129,8 @@ currentChannelSlug,
 currentVodId,
 plural,
 mergeStickerLibrary,
+reconcileStickerSubscriptions = () => false,
+renderStickerOrganizer = () => {},
 } = host;
 function kickBearerToken() {
 const raw = document.cookie.split(';')
@@ -4347,9 +4354,12 @@ sourceSlug: emote.sourceSlug,
 requiresFollow: emote.requiresFollow,
 followed: emote.followed,
 subscribersOnly: emote.subscribersOnly,
+entitlement: emote.entitlement,
 usableEverywhere: emote.usableEverywhere,
 usableHere: emote.usableHere,
 })));
+reconcileStickerSubscriptions(catalog);
+renderStickerOrganizer();
 if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);
 refreshLiveDiagnostics();
 }
@@ -4364,6 +4374,7 @@ const join = joinCollectibleRarity(cards, state.live.catalog.emotes);
 state.live.rarity = join.usable ? join : null;
 const inventory = summarizeCollectibleInventory(cards);
 state.live.inventory = inventory.ok ? inventory : null;
+renderStickerOrganizer();
 refreshLiveDiagnostics();
 }
 async function readCollectibleInventory() {
@@ -5758,6 +5769,7 @@ folder: '<path d="M3 5h6l2 2h10v12H3z"></path>',
 edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"></path>',
 plus: '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>',
 arrowRight: '<line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline>',
+externalLink: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>',
 });
 function uiIcon(name) {
     return `<svg class="kf-icon" aria-hidden="true" viewBox="0 0 24 24">${FEATHER_ICONS[name] || FEATHER_ICONS.info}</svg>`;
@@ -6545,6 +6557,7 @@ chatScrollLastTop: 0,
 chatScrollTop: null,
 chatScrollAnchor: null,
 chatScrollIgnoreUntil: 0,
+chatScrollHoldTimer: 0,
 chatPauseNode: null,
 suspended: false,
 routeSource: '',
@@ -6569,6 +6582,13 @@ stickerPickerVisibleKeys: [],
 stickerPickerBulkGroup: '',
 stickerPickerOrganizing: false,
 stickerPickerGroupEditor: '',
+stickerActionTools: null,
+stickerActionHideTimer: 0,
+stickerDragKey: '',
+stickerDragTarget: null,
+stickerDragAfter: false,
+stickerDragSuppressKey: '',
+stickerDragSuppressClickUntil: 0,
 emoteCatalogSlug: '',
 emoteCatalogStatus: '',
 emoteCatalogError: false,
@@ -6649,19 +6669,14 @@ apiDrift: [],
 },
 emoteUsage: readEmoteUsage(),
 multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
-reward: (() => {
-const stored = gmGet(REWARD_STATE_KEY, null);
-const record = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
-return {
-lastClaimAt: Number(record.lastClaimAt) || 0,
-claims: Number(record.claims) || 0,
-lastAttemptAt: 0,
-minutesRemaining: null,
+reward: {
 lastMessage: '',
-decision: '',
 restoreFocusTo: null,
-};
-})(),
+dialogId: '',
+phase: 'idle',
+phaseDeadline: 0,
+timer: 0,
+},
 multistreamError: '',
 multistreamIds: new Map(),
 multistreamLive: new Map(),
@@ -7196,10 +7211,10 @@ return HIDEABLE_ELEMENTS
     .map((entry) => `html[data-kf-hidden~="${entry.id}"] [data-kf-element="${entry.id}"] { display: none !important; }`)
 .join('\n    ');
 }
-const BUNDLE_BYTES = Number('              869793') || 0;
+const BUNDLE_BYTES = Number('              894510') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
-const INJECTION_BYTE_BUDGET = 925000;
-const SITE_CSS = ` :root { --kf-focus-ring: 3px solid var(--kf-accent); --kf-focus-offset: 2px; --kf-accent: #7cff2b; --kf-accent-rgb: 124, 255, 43; --kf-canvas: #070a08; --kf-panel: #0b100d; --kf-panel-raised: #111713; --kf-panel-high: #18201b; --kf-border: #202a23; --kf-border-strong: #38463d; --kf-text: #f5f8f6; --kf-text-muted: #aab4ae; --kf-text-secondary: #d0d7d3; --kf-surface-inset: #070b08; --kf-surface-hover: #171f1a; --kf-surface-selected: #111d14; --kf-on-accent: #071004; --kf-danger: #ff6258; --kf-warning: #f6b943; --kf-radius: 8px; --kf-chat-width: 410px; --kf-header-height: 48px; --kf-auto-hide-edge: 12px; --kf-compact-channel-control: 32px; --kf-thumb-saturation: 1.03; --kf-caption-opacity: .72; --kf-text-scale: 1; } html[data-kf-accent="cyan"] { --kf-accent: #38d7d0; --kf-accent-rgb: 56, 215, 208; } html[data-kf-accent="violet"] { --kf-accent: #9667ff; --kf-accent-rgb: 150, 103, 255; } html[data-kf-accent="gold"] { --kf-accent: #ffbe2e; --kf-accent-rgb: 255, 190, 46; } html[data-kf-theme="slate"][data-kf-accent="violet"] { --kf-accent: #ad88ff; --kf-accent-rgb: 173, 136, 255; } @supports (color: contrast-color(#000)) { :root { --kf-on-accent: contrast-color(var(--kf-accent)); } } html[data-kf-radius="subtle"] { --kf-radius: 6px; } html[data-kf-radius="rounded"] { --kf-radius: 12px; } html[data-kf-header-density="compact"] { --kf-header-height: 48px; --navbar-height: 48px !important; } html[data-kf-header-density="standard"] { --kf-header-height: 60px; --navbar-height: 60px !important; } html[data-kf-large-targets="true"] { --kf-auto-hide-edge: 20px; --kf-compact-channel-control: 44px; } html[data-kf-theme="oled"] { --kf-canvas: #000; --kf-panel: #030404; --kf-panel-raised: #080a09; --kf-panel-high: #0e1110; --kf-border: #191f1b; --kf-border-strong: #38423c; --kf-text: #f8faf9; --kf-text-muted: #a9b0ac; --kf-text-secondary: #d2d7d4; --kf-surface-inset: #000; --kf-surface-hover: #111613; --kf-surface-selected: #0b170e; } html[data-kf-theme="slate"] { --kf-canvas: #090e13; --kf-panel: #0f161d; --kf-panel-raised: #151f28; --kf-panel-high: #1c2934; --kf-border: #253541; --kf-border-strong: #496072; --kf-text: #f3f7fa; --kf-text-muted: #a6b5c2; --kf-text-secondary: #cbd6df; --kf-surface-inset: #0a1118; --kf-surface-hover: #263544; --kf-surface-selected: #1b2d29; } body { background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; font-size: 15px !important; line-height: 1.45 !important; text-rendering: optimizeLegibility; } @media (min-width: 1024px) { body > [class~="group/main"], body > [data-sidebar][data-chat] { background: var(--kf-canvas) !important; } nav { height: var(--kf-header-height) !important; min-height: var(--kf-header-height) !important; border-bottom: 1px solid var(--kf-border) !important; background: var(--kf-canvas) !important; box-shadow: none !important; } nav form > div > div, nav [data-testid="search"]:is(input) { border-color: var(--kf-border-strong) !important; background: var(--kf-surface-inset) !important; } nav form > div > div { min-height: 36px !important; border-radius: 6px !important; box-shadow: none !important; } nav form > div > div:focus-within { border-color: rgba(var(--kf-accent-rgb), .72) !important; box-shadow: 0 0 0 3px rgba(var(--kf-accent-rgb), .12) !important; } main, #main-container { background: var(--kf-canvas) !important; } main > div:first-child:not(#channel-content) { width: min(100%, 1600px) !important; margin-inline: auto !important; } main h1, main h2, main h3 { color: var(--kf-text) !important; line-height: 1.2 !important; letter-spacing: -.024em !important; } main h1 { font-size: clamp(26px, 2.2vw, 30px) !important; font-weight: 760 !important; } main h2 { font-size: clamp(20px, 1.8vw, 24px) !important; font-weight: 740 !important; } main h3 { font-size: 17px !important; font-weight: 720 !important; } #sidebar-wrapper { border-right: 1px solid var(--kf-border) !important; background: var(--kf-canvas) !important; box-shadow: none !important; } #sidebar-wrapper > ul { gap: 0 !important; padding: 6px 8px 10px !important; } #sidebar-wrapper a[data-testid^="sidebar-"] { min-height: 40px !important; border: 0 !important; border-radius: 5px !important; color: var(--kf-text-secondary) !important; font-size: 14px !important; } #sidebar-wrapper a[data-testid^="sidebar-"][data-state="active"] { background: rgba(var(--kf-accent-rgb), .065) !important; color: var(--kf-accent) !important; box-shadow: inset 2px 0 0 rgba(var(--kf-accent-rgb), .78) !important; } #sidebar-wrapper a[data-testid^="sidebar-"]:hover { background: rgba(255,255,255,.045) !important; } #kick-focus-following-preview { position: fixed !important; z-index: 2147483000 !important; width: min(320px, calc(100vw - 24px)) !important; margin: 0 !important; overflow: hidden !important; border: 1px solid rgba(255,255,255,.12) !important; border-radius: 10px !important; background: var(--kf-panel, #0b100d) !important; box-shadow: 0 20px 54px rgba(0,0,0,.58), 0 2px 12px rgba(0,0,0,.3) !important; color: var(--kf-text, #f5f8f6) !important; opacity: 0 !important; transform: translateX(-4px) scale(.985) !important; transform-origin: center left !important; pointer-events: none !important; transition: opacity 120ms ease, transform 120ms ease !important; } #kick-focus-following-preview[hidden] { display: none !important; } #kick-focus-following-preview[data-kf-open="true"] { opacity: 1 !important; transform: translateX(0) scale(1) !important; } #kick-focus-following-preview[data-kf-side="left"] { transform-origin: center right !important; } #kick-focus-following-preview > :is(img, canvas) { display: block !important; width: 100% !important; aspect-ratio: 16 / 9 !important; object-fit: cover !important; background: var(--kf-panel-raised, #111713) !important; } #kick-focus-following-preview > :is(img, canvas)[hidden] { display: none !important; } #kick-focus-following-preview figcaption { display: flex !important; min-height: 42px !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; padding: 9px 11px 10px !important; border-top: 1px solid rgba(255,255,255,.08) !important; background: var(--kf-surface-hover, #171f1a) !important; font: 500 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; } #kick-focus-following-preview strong { min-width: 0 !important; overflow: hidden !important; color: #f7f9f8 !important; font-size: 14px !important; font-weight: 720 !important; letter-spacing: -.012em !important; text-overflow: ellipsis !important; white-space: nowrap !important; } #kick-focus-following-preview figcaption span { flex: 0 0 auto !important; color: rgba(247,249,248,.56) !important; font-size: 11px !important; letter-spacing: .02em !important; } #sidebar-wrapper :is(button, a):focus-visible, main :is(button, a, input, select, textarea):focus-visible { outline: var(--kf-focus-ring) !important; outline-offset: 2px !important; } main [data-testid="livestream-results-card"] { gap: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; overflow: visible !important; box-shadow: none !important; } main [data-testid="livestream-results-card"]:hover, main [data-testid="livestream-results-card"]:focus-within { background: transparent !important; box-shadow: none !important; } main [data-testid="media-card-thumbnail"] { border: 0 !important; border-radius: var(--kf-radius) !important; background: var(--kf-surface-inset) !important; overflow: hidden !important; box-shadow: 0 0 0 1px rgba(255,255,255,.045) !important; transition: box-shadow 150ms ease, filter 150ms ease !important; } main [data-testid="livestream-results-card"]:is(:hover, :focus-within) [data-testid="media-card-thumbnail"] { box-shadow: 0 0 0 1px rgba(var(--kf-accent-rgb), .46) !important; filter: brightness(1.035) !important; } main [data-testid="media-card-thumbnail"] > :is(div, img) { border-radius: inherit !important; } main [data-testid="media-card-thumbnail"] [class*="top-1.5"], main [data-testid="media-card-thumbnail"] [class*="bottom-1.5"] { border: 0 !important; border-radius: 4px !important; background: rgba(4,7,5,.9) !important; box-shadow: none !important; font-size: 12px !important; } main section[class*="grid"] { column-gap: 18px !important; row-gap: 24px !important; } main [data-testid^="tab-"] { min-height: 38px !important; padding-inline: 2px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; font-size: 14px !important; font-weight: 680 !important; } main [data-testid^="tab-"][data-state="active"], main a[data-state="active"][href*="/following"], main a[data-state="active"][href*="/drops"], main a[data-state="active"][href*="/category"] { color: var(--kf-accent) !important; border-color: transparent !important; } main [data-testid^="tab-"][data-state="active"] > div, main a[data-state="active"] > div[class*="bottom-"] { background: var(--kf-accent) !important; } main :is([role="combobox"], select) { min-height: 36px !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; box-shadow: none !important; font-size: 14px !important; } main button:not([data-kf-card-action]):not([data-kf-sticker-action]) { border-radius: 6px !important; } html[data-kf-route="category"] main > div:first-child, html[data-kf-route="categories"] main > div:first-child, html[data-kf-route="browse"] main > div:first-child, html[data-kf-route="following"] main > div:first-child, html[data-kf-route="drops"] main > div:first-child, html[data-kf-route="search"] main > div:first-child { padding-top: 18px !important; } html[data-kf-route="settings"] main, html[data-kf-route="collectibles"] main, html[data-kf-route="subscriptions"] main { width: min(1180px, calc(100% - 48px)) !important; margin-inline: auto !important; padding: 28px 0 64px !important; } html[data-kf-route="settings"] main > h1, html[data-kf-route="collectibles"] main > h1, html[data-kf-route="subscriptions"] main > h1 { margin: 0 0 18px !important; color: var(--kf-text) !important; font-size: clamp(26px, 3vw, 36px) !important; letter-spacing: -.025em !important; } html[data-kf-route="settings"] main [data-kf-settings-tab="true"] { display: inline-flex !important; align-items: center !important; min-height: 40px !important; margin: 0 5px 18px 0 !important; padding: 0 12px !important; border: 1px solid transparent !important; border-radius: 8px !important; color: var(--kf-text-muted) !important; font-size: 13px !important; font-weight: 700 !important; text-decoration: none !important; } html[data-kf-route="settings"] main [data-kf-settings-tab="true"]:is(:hover, :focus-visible) { border-color: var(--kf-border-strong) !important; background: var(--kf-surface-hover) !important; color: var(--kf-text) !important; } html[data-kf-route="settings"] main [data-kf-settings-active="true"] { border-color: rgba(var(--kf-accent-rgb), .45) !important; background: rgba(var(--kf-accent-rgb), .09) !important; color: var(--kf-accent) !important; box-shadow: inset 0 -2px 0 var(--kf-accent) !important; } html[data-kf-route="settings"] main :is(h2, h3), html[data-kf-route="collectibles"] main :is(h2, h3), html[data-kf-route="subscriptions"] main :is(h2, h3) { color: var(--kf-text) !important; letter-spacing: -.012em !important; } html[data-kf-route="settings"] main :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select, [role="combobox"]), html[data-kf-route="collectibles"] main :is(select, [role="combobox"]), html[data-kf-route="subscriptions"] main :is(input, select, [role="combobox"]) { border: 1px solid var(--kf-border-strong) !important; border-radius: 8px !important; background: var(--kf-surface-inset) !important; color: var(--kf-text) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important; } html[data-kf-route="settings"] main :is(input, textarea, select, [role="combobox"]):focus-visible, html[data-kf-route="collectibles"] main :is(select, [role="combobox"]):focus-visible, html[data-kf-route="subscriptions"] main :is(input, select, [role="combobox"]):focus-visible { border-color: var(--kf-accent) !important; outline: var(--kf-focus-ring) !important; outline-offset: 2px !important; box-shadow: 0 0 0 4px rgba(var(--kf-accent-rgb), .12) !important; } html[data-kf-route="settings"] main button, html[data-kf-route="collectibles"] main button, html[data-kf-route="subscriptions"] main button { min-height: 38px !important; transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease !important; } html[data-kf-route="settings"] main button:not(:disabled):hover, html[data-kf-route="collectibles"] main button:not(:disabled):hover, html[data-kf-route="subscriptions"] main button:not(:disabled):hover { border-color: var(--kf-border-strong) !important; transform: translateY(-1px) !important; } html[data-kf-route="settings"] main button:disabled, html[data-kf-route="subscriptions"] main button:disabled { opacity: .52 !important; transform: none !important; } html[data-kf-route="settings"] main img, html[data-kf-route="collectibles"] main img { border-radius: 8px !important; } html[data-kf-route="collectibles"] main > h1 + p, html[data-kf-route="subscriptions"] main > h1 + p { max-width: 760px !important; margin-bottom: 24px !important; color: var(--kf-text-muted) !important; font-size: 14px !important; line-height: 1.65 !important; } html[data-kf-route="collectibles"] main button:has(img) { border: 1px solid var(--kf-border) !important; background: var(--kf-panel) !important; box-shadow: 0 8px 20px rgba(0,0,0,.18) !important; } html[data-kf-route="collectibles"] main button:has(img):is(:hover, :focus-visible) { border-color: rgba(var(--kf-accent-rgb), .55) !important; background: var(--kf-panel-raised) !important; box-shadow: 0 12px 26px rgba(0,0,0,.28), 0 0 0 3px rgba(var(--kf-accent-rgb), .08) !important; } html[data-kf-route="channel"] #channel-content { gap: 12px !important; padding: 12px 16px 24px !important; background: var(--kf-canvas) !important; } @media (min-width: 1024px) { html[data-kf-route="channel"][data-kf-density="compact"]:not([data-kf-theater="true"]):not([data-kf-focus="true"]) main > :has(> #injected-channel-player) { height: calc(100vh - var(--kf-header-height) - 104px) !important; max-height: calc(100vh - var(--kf-header-height) - 104px) !important; } html[data-kf-route="channel"][data-kf-density="compact"] #channel-content { gap: 8px !important; padding: 8px 16px 20px !important; & > :first-child { gap: 24px !important; & > :first-child > :last-child { gap: 0 !important; & > :first-child { height: var(--kf-compact-channel-control) !important; min-height: var(--kf-compact-channel-control) !important; } } & > :last-child { gap: 2px !important; & > :last-child { height: var(--kf-compact-channel-control) !important; min-height: var(--kf-compact-channel-control) !important; padding-block: 0 !important; } } } } } html[data-kf-route="channel"] #injected-channel-player { border: 0 !important; border-radius: 6px !important; box-shadow: none !important; overflow: hidden !important; } html[data-kf-route="channel"] #channel-content > :is(div, section, article) { border-color: transparent !important; } [data-kf-chat-panel], #channel-chatroom { border: 0 !important; border-left: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: var(--kf-panel) !important; box-shadow: none !important; } [data-kf-chat-panel] button[aria-label="Hide chat"], [data-kf-chat-panel] button[aria-label="Show chat"] { min-height: 40px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; backdrop-filter: none !important; font-size: 16px !important; } #channel-chatroom > div > div:first-child { padding: 8px 12px !important; border-radius: 0 !important; border-bottom-color: var(--kf-border) !important; background: var(--kf-panel) !important; } #channel-chatroom [data-testid="pinned-message-modal"] > div { border: 0 !important; border-left: 2px solid rgba(var(--kf-accent-rgb), .5) !important; border-radius: 3px !important; background: var(--kf-surface-inset) !important; } #channel-chatroom :is(textarea, input, [contenteditable="true"]) { border-radius: 6px !important; border-color: var(--kf-border) !important; background: var(--kf-surface-inset) !important; font-size: 14px !important; } html[data-kf-route="home"] main [class*="backdrop-blur"] { border: 0 !important; border-radius: 6px !important; background: rgba(7,10,8,.9) !important; box-shadow: none !important; backdrop-filter: none !important; } [data-kf-chat-panel], #channel-chatroom { border-left-color: var(--kf-border) !important; background: var(--kf-panel) !important; } html[data-kf-sidebar="hidden"] #sidebar-wrapper, html[data-kf-focus="true"] #sidebar-wrapper, html[data-kf-theater="true"] #sidebar-wrapper { display: none !important; } html[data-kf-chat="hidden"] [data-kf-chat-panel], html[data-kf-chat="hidden"] [data-kf-chat-separator], html[data-kf-focus="true"] [data-kf-chat-panel], html[data-kf-focus="true"] [data-kf-chat-separator] { display: none !important; } html[data-kf-chat="left"] [data-kf-chat-panel] { order: -1 !important; border-left: 0 !important; border-right: 1px solid var(--kf-border) !important; } html[data-kf-chat="left"] #channel-chatroom { border-left: 0 !important; border-right: 1px solid var(--kf-border) !important; } html[data-kf-chat="left"] [data-kf-chat-split] { display: flex !important; flex-direction: row-reverse !important; width: 100% !important; min-width: 0 !important; } html[data-kf-chat="left"] [data-kf-chat-split] > :is(#channel-chatroom, [data-testid="chatroom"]) { flex: 1 1 auto !important; min-width: 0 !important; } html[data-kf-chat="right"] [data-kf-chat-panel], html[data-kf-chat="left"] [data-kf-chat-panel] { flex: 0 0 var(--kf-chat-width) !important; width: var(--kf-chat-width) !important; min-width: 280px !important; max-width: 520px !important; } [data-kf-chat-panel] :is(#channel-chatroom, [data-testid="chatroom"]) { width: 100% !important; min-width: 0 !important; max-width: 100% !important; } html[data-kf-chat="right"] [data-kf-chat-panel][data-kf-chat-resizing="true"], html[data-kf-chat="left"] [data-kf-chat-panel][data-kf-chat-resizing="true"] { transition: none !important; } html[data-kf-theater="true"] [data-kf-channel-row] { width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: hidden !important; } html[data-kf-theater="true"] [data-kf-channel-row] > :not([data-kf-chat-panel]) { max-width: 100% !important; min-width: 0 !important; } html[data-kf-chat="autohide"] [data-kf-chat-separator] { display: none !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel] { position: fixed !important; inset: var(--kf-header-height) 0 0 auto !important; z-index: 400 !important; width: var(--kf-chat-width) !important; min-width: 280px !important; max-width: 520px !important; height: calc(100vh - var(--kf-header-height)) !important; flex: 0 0 var(--kf-chat-width) !important; overflow: hidden !important; border: 0 !important; border-left: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: var(--kf-panel) !important; box-shadow: none !important; transform: translateX(calc(100% - var(--kf-auto-hide-edge))) !important; transition: transform 180ms ease, box-shadow 180ms ease !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel]::before { content: "" !important; position: absolute !important; inset: 0 auto 0 0 !important; z-index: 4 !important; width: var(--kf-auto-hide-edge) !important; border-right: 1px solid rgba(var(--kf-accent-rgb), .34) !important; background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .15), var(--kf-panel) 24%, var(--kf-panel) 76%, rgba(var(--kf-accent-rgb), .10)) !important; pointer-events: none !important; transition: opacity 140ms ease !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel]:is(:hover, :focus-within), html[data-kf-chat="autohide"] [data-kf-chat-panel]:has( #chat-emotes-picker-panel > [style*="max-height:"]:not([style*="max-height: 0"]) ) { transform: translateX(0) !important; box-shadow: -22px 0 54px rgba(0,0,0,.46) !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel]:is(:hover, :focus-within)::before, html[data-kf-chat="autohide"] [data-kf-chat-panel]:has( #chat-emotes-picker-panel > [style*="max-height:"]:not([style*="max-height: 0"]) )::before { opacity: 0 !important; } html[data-kf-chat="autohide"] [data-kf-channel-row] > :not([data-kf-chat-panel]) { width: 100% !important; max-width: 100% !important; min-width: 0 !important; } html[data-kf-chat="docked"] [data-kf-chat-separator] { display: none !important; } html[data-kf-chat="docked"] [data-kf-chat-panel] { position: fixed !important; right: 22px !important; bottom: 22px !important; z-index: 80 !important; width: var(--kf-chat-width) !important; height: min(620px, calc(100vh - 104px)) !important; border: 1px solid var(--kf-border) !important; border-radius: var(--kf-radius) !important; box-shadow: 0 24px 70px rgba(0,0,0,.56) !important; overflow: hidden !important; background: var(--kf-panel) !important; } html[data-kf-wide-grid="true"] :is(main, #main-container) section[class*="grid"], html[data-kf-wide-grid="true"] :is(main, #main-container) [class*="group/grid"] { grid-template-columns: repeat(auto-fit, minmax(min(272px, 100%), 1fr)) !important; gap: 20px !important; } html[data-kf-following-rail="false"] :is(main, #main-container) [data-testid*="following" i], html[data-kf-following-rail="false"] :is(main, #main-container) [data-kf-following-rail], html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-testid*="recommended" i], html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-kf-recommended-rail] { display: none !important; } ${hiddenElementCss()} html[data-kf-density="compact"] :is(main, #main-container) section[class*="grid"], html[data-kf-density="compact"] :is(main, #main-container) [class*="group/grid"] { gap: 12px !important; } html[data-kf-sticky="true"] nav { min-height: var(--kf-header-height) !important; backdrop-filter: none !important; background: var(--kf-surface-inset) !important; border-bottom: 1px solid var(--kf-border) !important; } :is(main, #main-container) { font-size: calc(1rem * var(--kf-text-scale)); } :is(main, #main-container) [class*="group/card"] { border-radius: var(--kf-radius) !important; outline: 0 !important; transition: filter 150ms ease !important; } :is(main, #main-container) [class*="group/card"]:hover, :is(main, #main-container) [class*="group/card"]:focus-within { outline: 0 !important; } :is(main, #main-container) [class*="group/card"] img { filter: saturate(var(--kf-thumb-saturation)); transition: filter 160ms ease, opacity 160ms ease !important; } html[data-kf-dim-watched="true"] :is(main, #main-container) [data-kf-watched="true"] { opacity: .64; filter: grayscale(.14); } html[data-kf-live-color="true"] :is(main, #main-container) [data-kf-live-card="true"] { box-shadow: none !important; } html[data-kf-mature-blur="true"] [data-kf-mature="true"] img { filter: blur(13px) saturate(.72) !important; opacity: .72 !important; } html[data-kf-mature-blur="true"] [data-kf-mature="true"]:is(:hover,:focus-within) img { filter: saturate(var(--kf-thumb-saturation)) !important; opacity: 1 !important; } [data-kf-filtered="true"], [data-kf-dismissed="true"], [data-kf-ad-shell="true"] { display: none !important; } html[data-kf-poor-mode="true"] [data-kf-monetization] { display: none !important; } [data-kf-chat-priority="true"] { border-left: 2px solid var(--kf-accent); padding-left: 6px; } [data-kf-chat-hidden="true"] > * { display: none !important; } [data-kf-chat-hidden="true"]::after { content: attr(data-kf-hidden-note); display: block; padding: 4px 8px; color: #9aa4a0; font-size: 12px; font-style: italic; } [data-kf-chat-hide] { float: right; margin-left: 6px; padding: 0 5px; color: #9aa4a0; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: transparent; font-size: 12px; line-height: 1.5; cursor: pointer; } [data-kf-chat-hide]:hover, [data-kf-chat-hide]:focus-visible { color: #fff; border-color: var(--kf-accent); } [data-kf-card-actions] { position: absolute !important; top: 8px !important; right: 8px !important; z-index: 6 !important; display: flex !important; gap: 5px !important; opacity: 0 !important; transition: opacity 120ms ease !important; } [class*="group/card"]:hover [data-kf-card-actions], [class*="group/card"]:focus-within [data-kf-card-actions], [data-testid="livestream-results-card"]:hover [data-kf-card-actions], [data-testid="livestream-results-card"]:focus-within [data-kf-card-actions], [data-testid="stream-card"]:hover [data-kf-card-actions], [data-testid="stream-card"]:focus-within [data-kf-card-actions] { opacity: 1 !important; } [data-kf-card-actions] button { min-width: 30px !important; min-height: 30px !important; padding: 0 7px !important; border: 1px solid rgba(255,255,255,.24) !important; border-radius: 4px !important; background: var(--kf-panel) !important; color: var(--kf-text) !important; cursor: pointer !important; font-size: 12px !important; font-weight: 760 !important; } [data-kf-card-actions] button:hover, [data-kf-card-actions] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; } [data-kf-card-uptime] { display: inline-flex !important; align-items: center !important; min-height: 18px !important; margin-left: 5px !important; padding: 0 5px !important; border: 0 !important; border-radius: 3px !important; background: rgba(10, 12, 11, .82) !important; color: #fff !important; font-size: 11px !important; font-weight: 720 !important; font-variant-numeric: tabular-nums !important; line-height: 18px !important; letter-spacing: .01em !important; white-space: nowrap !important; box-shadow: 0 1px 4px rgba(0, 0, 0, .28) !important; } [data-kf-highlighted="true"] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .07) !important; } ::highlight(kick-focus-keyword) { background-color: rgba(var(--kf-accent-rgb, 124, 255, 43), .32); color: inherit; } html[data-kf-mini-player-collision="true"] #injected-embedded-channel-player { bottom: 82px !important; } html[data-kf-player-contain="true"] #main-container video, html[data-kf-player-contain="true"] [data-kf-player] video { object-fit: contain !important; max-width: 100% !important; max-height: 100% !important; } [data-kf-chat-pause] { position: absolute !important; top: 8px !important; right: 8px !important; z-index: 7 !important; min-height: 30px !important; padding: 0 9px !important; border: 1px solid rgba(255,255,255,.25) !important; border-radius: 4px !important; background: var(--kf-panel) !important; color: var(--kf-text) !important; cursor: pointer !important; font-size: 12px !important; font-weight: 760 !important; } [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-uptime], [data-kf-vod-expiry] { position: absolute !important; z-index: 7 !important; border: 0 !important; border-radius: var(--kf-radius) !important; background: var(--kf-panel) !important; color: var(--kf-text) !important; font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace !important; } [data-kf-chat-status] { top: 44px !important; right: 8px !important; padding: 5px 8px !important; } [data-kf-playback-diagnostics] { right: 12px !important; bottom: 12px !important; padding: 6px 8px !important; pointer-events: none !important; } [data-kf-uptime] { top: 10px !important; left: 10px !important; padding: 4px 7px !important; background: rgba(13,16,14,.82) !important; pointer-events: none !important; font-variant-numeric: tabular-nums !important; letter-spacing: .02em !important; opacity: .92 !important; } [data-kf-vod-expiry] { top: 10px !important; left: 10px !important; padding: 4px 7px !important; background: rgba(13,16,14,.82) !important; pointer-events: none !important; font-variant-numeric: tabular-nums !important; letter-spacing: .02em !important; opacity: .92 !important; } [data-kf-uptime] ~ [data-kf-vod-expiry] { top: 40px !important; } [data-kf-search-meta] { box-sizing: border-box !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 18px !important; margin: 0 0 16px !important; padding: 2px 0 14px !important; border: 0 !important; border-bottom: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: transparent !important; width: 100% !important; max-width: 100% !important; } [data-kf-search-meta] > div { display: flex !important; align-items: baseline !important; flex-wrap: wrap !important; gap: 12px !important; } [data-kf-search-meta] strong { color: var(--kf-text) !important; font-size: 24px !important; line-height: 1.2 !important; letter-spacing: -.025em !important; } [data-kf-search-meta] span { color: var(--kf-text-muted) !important; font-size: 14px !important; font-weight: 560 !important; } [data-kf-search-meta] button { min-height: 32px !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: var(--kf-accent) !important; cursor: pointer !important; font-size: 14px !important; font-weight: 700 !important; } [data-kf-native-drops-empty="true"] > [data-testid="empty-state-root"] { display: none !important; } [data-kf-drops-empty] { display: grid !important; grid-template-columns: minmax(0, 1fr) 300px !important; gap: 0 !important; width: 100% !important; margin-top: 16px !important; } [data-kf-drops-primary], [data-kf-drops-activity], [data-kf-drops-steps] { border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; } [data-kf-drops-primary] { display: flex !important; min-height: 320px !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; padding: 42px 48px !important; text-align: center !important; } [data-kf-drops-eyebrow] { display: none !important; } [data-kf-drops-primary] h3 { margin: 0 !important; color: var(--kf-text) !important; font-size: 28px !important; letter-spacing: -.025em !important; } [data-kf-drops-primary] p { max-width: 520px !important; margin: 10px 0 22px !important; color: var(--kf-text-muted) !important; font-size: 15px !important; line-height: 1.5 !important; } [data-kf-drops-actions] { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; gap: 10px !important; } [data-kf-drops-actions] a { display: inline-flex !important; min-height: 42px !important; align-items: center !important; justify-content: center !important; padding: 0 16px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; color: var(--kf-text) !important; font-size: 14px !important; font-weight: 720 !important; text-decoration: none !important; } [data-kf-drops-actions] a:first-child { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-drops-activity] { grid-column: 2 !important; grid-row: 1 !important; align-self: stretch !important; padding: 28px 0 28px 38px !important; border-left: 1px solid var(--kf-border) !important; } [data-kf-drops-activity] > strong { display: block !important; margin-bottom: 14px !important; font-size: 17px !important; } [data-kf-drops-activity] dl { display: grid !important; gap: 0 !important; margin: 0 !important; } [data-kf-drops-activity] dl > div { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; min-height: 58px !important; border-bottom: 1px solid var(--kf-border) !important; } [data-kf-drops-activity] dt { color: var(--kf-text-muted) !important; font-size: 14px !important; } [data-kf-drops-activity] dd { margin: 0 !important; color: var(--kf-text) !important; font-size: 16px !important; font-weight: 760 !important; } [data-kf-drops-activity] a { color: var(--kf-accent) !important; text-decoration: none !important; } [data-kf-drops-steps] { display: grid !important; grid-column: 1 / -1 !important; grid-template-columns: repeat(3, minmax(0,1fr)) !important; gap: 0 !important; margin: 0 !important; padding: 24px 0 0 !important; border-top: 1px solid var(--kf-border) !important; list-style: none !important; } [data-kf-drops-steps] li { display: flex !important; align-items: flex-start !important; gap: 12px !important; min-height: 72px !important; padding: 4px 24px !important; border-right: 1px solid var(--kf-border) !important; } [data-kf-drops-steps] li:last-child { border-right: 0 !important; } [data-kf-drops-steps] li > span { display: grid !important; width: 25px !important; height: 25px !important; flex: 0 0 25px !important; place-items: center !important; border-radius: 6px !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; font-size: 12px !important; font-weight: 900 !important; } [data-kf-drops-steps] strong, [data-kf-drops-steps] small { display: block !important; } [data-kf-drops-steps] strong { color: var(--kf-text) !important; font-size: 14px !important; } [data-kf-drops-steps] small { margin-top: 4px !important; color: var(--kf-text-muted) !important; font-size: 13px !important; line-height: 1.4 !important; } } html[data-kf-quick-emote-bar="hidden"] #quick-emotes-holder { display: none !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder { height: 24px !important; max-height: 24px !important; padding-bottom: 0 !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * { height: 24px !important; max-height: 24px !important; justify-content: flex-start !important; gap: 2px !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button { width: 24px !important; min-width: 24px !important; height: 24px !important; min-height: 24px !important; padding: 2px !important; border-radius: 4px !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button img { width: 20px !important; max-width: 20px !important; height: 20px !important; max-height: 20px !important; } html[data-kf-quick-emote-limit="4"] #quick-emotes-holder > * > :nth-child(n + 5), html[data-kf-quick-emote-limit="6"] #quick-emotes-holder > * > :nth-child(n + 7), html[data-kf-quick-emote-limit="8"] #quick-emotes-holder > * > :nth-child(n + 9), html[data-kf-quick-emote-limit="10"] #quick-emotes-holder > * > :nth-child(n + 11) { display: none !important; } html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder, html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * { height: 40px !important; max-height: 40px !important; } html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder button { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; } #chat-emotes-picker-panel { --kf-emote-tile-height: 40px; --kf-emote-tile-min-width: 34px; --kf-emote-grid-gap: 2px; --kf-emote-tile-padding: 3px; --kf-emote-shell-padding: 4px; --kf-emote-section-gap: 4px; --kf-emote-control-height: 26px; --kf-emote-control-padding: 6px; --kf-emote-tab-height: 26px; --kf-emote-tab-padding: 5px; --kf-emote-search-height: 34px; --kf-emote-grid-height: 240px; } html[data-kf-emote-density="balanced"] #chat-emotes-picker-panel { --kf-emote-tile-height: 54px; --kf-emote-tile-min-width: 44px; --kf-emote-grid-gap: 5px; --kf-emote-tile-padding: 5px; --kf-emote-shell-padding: 6px; --kf-emote-section-gap: 5px; --kf-emote-control-height: 28px; --kf-emote-control-padding: 7px; --kf-emote-tab-height: 28px; --kf-emote-tab-padding: 6px; --kf-emote-search-height: 36px; } html[data-kf-emote-density="roomy"] #chat-emotes-picker-panel { --kf-emote-tile-height: 68px; --kf-emote-tile-min-width: 56px; --kf-emote-grid-gap: 8px; --kf-emote-tile-padding: 8px; --kf-emote-shell-padding: 9px; --kf-emote-section-gap: 8px; --kf-emote-control-height: 34px; --kf-emote-control-padding: 10px; --kf-emote-tab-height: 36px; --kf-emote-tab-padding: 10px; --kf-emote-search-height: 42px; } html[data-kf-emote-height="short"] #chat-emotes-picker-panel { --kf-emote-grid-height: 160px; } html[data-kf-emote-height="medium"] #chat-emotes-picker-panel { --kf-emote-grid-height: 240px; } html[data-kf-emote-height="tall"] #chat-emotes-picker-panel { --kf-emote-grid-height: 360px; } html[data-kf-large-targets="true"] #chat-emotes-picker-panel { --kf-emote-tile-height: 88px; --kf-emote-tile-min-width: 84px; --kf-emote-grid-gap: 7px; --kf-emote-tile-padding: 8px; --kf-emote-control-height: 40px; --kf-emote-tab-height: 40px; --kf-emote-search-height: 40px; } [data-kf-sticker-organizer] { margin: 2px 8px 8px !important; padding: var(--kf-emote-shell-padding) 0 0 !important; border: 0 !important; border-top: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: transparent !important; color: var(--kf-text) !important; container-name: kf-sticker !important; container-type: inline-size !important; } #chat-emotes-picker-panel > div[style]:not([style*="max-height: 0"]) { max-height: min(640px, calc(100vh - 132px)) !important; border-top: 1px solid var(--kf-border) !important; border-radius: 10px 10px 0 0 !important; background: var(--kf-panel) !important; box-shadow: 0 -18px 48px rgba(0,0,0,.42) !important; } [data-kf-composer-recall] { appearance: none !important; display: inline-flex !important; flex: 0 0 auto !important; min-height: 32px !important; align-items: center !important; justify-content: center !important; padding: 0 10px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; color: var(--kf-text-secondary) !important; font: 700 12px/1 var(--kf-font) !important; cursor: pointer !important; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease !important; } [data-kf-composer-recall]:hover:not(:disabled) { border-color: var(--kf-accent) !important; background: var(--kf-surface-hover) !important; color: var(--kf-text) !important; } [data-kf-composer-recall]:active:not(:disabled) { background: var(--kf-surface-selected) !important; } [data-kf-composer-recall]:disabled { opacity: .46 !important; cursor: not-allowed !important; } html[data-kf-large-targets="true"] [data-kf-composer-recall] { min-height: 40px !important; } [data-kf-sticker-scroll] { min-width: 0 !important; overflow-x: hidden !important; } [data-kf-sticker-native-shell] { min-width: 0 !important; width: 100% !important; grid-template-columns: minmax(0, 1fr) !important; } [data-kf-sticker-native-shell] > * { min-width: 0 !important; max-width: 100% !important; } #chat-emotes-picker-panel #search-emotes-input { min-height: var(--kf-emote-search-height) !important; border-color: var(--kf-border-strong) !important; border-radius: 8px !important; background: var(--kf-canvas) !important; } [data-kf-sticker-topline] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; margin-bottom: var(--kf-emote-section-gap) !important; } [data-kf-sticker-heading] { display: flex !important; min-width: 0 !important; flex: 1 1 auto !important; align-items: baseline !important; gap: 6px !important; } [data-kf-sticker-heading] strong { display: block !important; flex: 0 0 auto !important; color: var(--kf-text) !important; font-size: 13px !important; line-height: 1.15 !important; white-space: nowrap !important; } [data-kf-sticker-heading] span { display: block !important; min-width: 0 !important; margin: 0 !important; color: var(--kf-text-muted) !important; font-size: 10px !important; line-height: 1.25 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; } [data-kf-sticker-top-actions] { display: flex !important; flex: 0 0 auto !important; align-items: center !important; gap: 4px !important; } [data-kf-sticker-top-actions] button, [data-kf-sticker-group-create], [data-kf-sticker-group-actions] button, [data-kf-sticker-editor-actions] button, [data-kf-sticker-batch] button { display: inline-flex !important; min-height: var(--kf-emote-control-height) !important; align-items: center !important; justify-content: center !important; gap: 5px !important; padding: 0 var(--kf-emote-control-padding) !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: transparent !important; color: var(--kf-text-muted) !important; cursor: pointer !important; font-size: 11px !important; font-weight: 720 !important; } [data-kf-sticker-top-actions] button:hover, [data-kf-sticker-top-actions] button:focus-visible, [data-kf-sticker-group-create]:hover, [data-kf-sticker-group-create]:focus-visible, [data-kf-sticker-group-actions] button:hover, [data-kf-sticker-group-actions] button:focus-visible, [data-kf-sticker-editor-actions] button:hover, [data-kf-sticker-editor-actions] button:focus-visible, [data-kf-sticker-batch] button:hover, [data-kf-sticker-batch] button:focus-visible { border-color: var(--kf-border-strong) !important; color: var(--kf-text) !important; } [data-kf-sticker-top-actions] button[aria-pressed="true"] { border-color: rgba(var(--kf-accent-rgb), .55) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; } [data-kf-sticker-organizer] .kf-icon { width: 13px !important; height: 13px !important; flex: 0 0 13px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; stroke-linecap: round !important; stroke-linejoin: round !important; } [data-kf-sticker-tabs] { display: flex !important; align-items: stretch !important; gap: 2px !important; margin: 0 -2px !important; padding: 0 2px var(--kf-emote-section-gap) !important; border-bottom: 1px solid var(--kf-border) !important; overflow-x: auto !important; scrollbar-width: none !important; } [data-kf-sticker-tabs]::-webkit-scrollbar { display: none !important; } [data-kf-sticker-tabs] button { display: inline-flex !important; min-height: var(--kf-emote-tab-height) !important; flex: 0 0 auto !important; align-items: center !important; gap: 4px !important; padding: 0 var(--kf-emote-tab-padding) !important; border: 0 !important; border-radius: 6px !important; background: transparent !important; color: var(--kf-text-muted) !important; cursor: pointer !important; font-size: 11px !important; font-weight: 720 !important; } [data-kf-sticker-tabs] button span { color: inherit !important; font-size: 10px !important; font-variant-numeric: tabular-nums !important; opacity: .72 !important; } [data-kf-sticker-tabs] button:hover, [data-kf-sticker-tabs] button:focus-visible { background: rgba(255,255,255,.055) !important; color: var(--kf-text) !important; } [data-kf-sticker-tabs] button[data-active="true"] { background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-sticker-group-panel] { margin: var(--kf-emote-section-gap) 0 0 !important; padding: var(--kf-emote-shell-padding) !important; border: 1px solid var(--kf-border) !important; border-radius: 8px !important; background: rgba(255,255,255,.025) !important; } [data-kf-sticker-group-list] { display: flex !important; align-items: center !important; gap: 5px !important; overflow-x: auto !important; scrollbar-width: thin !important; } [data-kf-sticker-group-list] > button:not([data-kf-sticker-group-create]) { min-height: 30px !important; flex: 0 0 auto !important; padding: 0 9px !important; border: 1px solid transparent !important; border-radius: 6px !important; background: rgba(255,255,255,.05) !important; color: var(--kf-text-muted) !important; cursor: pointer !important; font-size: 11px !important; font-weight: 700 !important; } [data-kf-sticker-group-list] > button[data-active="true"] { border-color: rgba(var(--kf-accent-rgb), .5) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; } [data-kf-sticker-group-create] { flex: 0 0 auto !important; } [data-kf-sticker-group-summary] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; margin-top: 7px !important; padding-top: 7px !important; border-top: 1px solid var(--kf-border) !important; } [data-kf-sticker-group-summary] > span { min-width: 0 !important; color: var(--kf-text-muted) !important; font-size: 11px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; } [data-kf-sticker-group-actions] { display: flex !important; flex: 0 0 auto !important; gap: 4px !important; } [data-kf-sticker-group-actions] button { min-height: max(27px, var(--kf-emote-control-height)) !important; padding-inline: 6px !important; } [data-kf-sticker-group-actions] button[data-kf-sticker-group-delete] { color: var(--kf-danger) !important; } [data-kf-sticker-group-editor] { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px !important; margin-top: 7px !important; } [data-kf-sticker-group-editor] input { min-width: 0 !important; min-height: max(34px, var(--kf-emote-control-height)) !important; padding: 0 9px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 12px !important; } [data-kf-sticker-editor-actions] { display: flex !important; gap: 4px !important; } [data-kf-sticker-editor-actions] button[data-kf-sticker-group-save] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-sticker-batch] { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; align-items: center !important; gap: var(--kf-emote-section-gap) !important; margin-top: var(--kf-emote-section-gap) !important; padding: var(--kf-emote-shell-padding) !important; border: 1px solid rgba(var(--kf-accent-rgb), .35) !important; border-radius: 8px !important; background: rgba(var(--kf-accent-rgb), .065) !important; } [data-kf-sticker-batch-summary] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 4px 7px !important; } [data-kf-sticker-batch-summary] strong { min-width: 0 !important; flex: 1 1 auto !important; color: var(--kf-text) !important; font-size: 11px !important; white-space: nowrap !important; } [data-kf-sticker-batch-summary] button { padding-inline: 5px !important; border: 0 !important; color: var(--kf-accent) !important; } [data-kf-sticker-batch][data-kf-has-selection="false"] [data-kf-sticker-clear-selection], [data-kf-sticker-batch][data-kf-can-reorder="false"] [data-kf-sticker-batch-reorder-group] { display: none !important; } [data-kf-sticker-batch-actions], [data-kf-sticker-batch-move-group], [data-kf-sticker-batch-reorder-group] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 4px !important; } [data-kf-sticker-batch-actions] { justify-content: flex-end !important; } [data-kf-sticker-batch-move-group] { flex: 1 1 152px !important; } [data-kf-sticker-batch-reorder-group] { flex: 0 0 auto !important; } [data-kf-sticker-batch] select { min-width: 88px !important; min-height: var(--kf-emote-control-height) !important; max-width: 128px !important; flex: 1 1 112px !important; padding: 0 24px 0 8px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 11px !important; } [data-kf-sticker-batch] button:disabled { cursor: not-allowed !important; opacity: .42 !important; } [data-kf-sticker-batch] button[data-kf-sticker-batch-remove] { color: var(--kf-danger) !important; } [data-kf-sticker-grid] { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(var(--kf-emote-tile-min-width), 1fr)) !important; grid-auto-rows: var(--kf-emote-tile-height) !important; gap: var(--kf-emote-grid-gap) !important; max-height: min(var(--kf-emote-grid-height), calc(100vh - 240px)) !important; overflow-x: hidden !important; overflow-y: auto !important; scrollbar-gutter: stable !important; padding: var(--kf-emote-shell-padding) 2px 5px !important; } [data-kf-sticker-item] { position: relative !important; min-width: 0 !important; min-height: var(--kf-emote-tile-height) !important; text-align: center !important; content-visibility: auto !important; contain-intrinsic-size: auto var(--kf-emote-tile-height) !important; } [data-kf-sticker-spacer] { grid-column: 1 / -1 !important; pointer-events: none !important; } [data-kf-sticker-proxy] { display: grid !important; align-items: center !important; justify-content: center !important; width: 100% !important; height: 100% !important; min-height: calc(var(--kf-emote-tile-height) - 4px) !important; padding: var(--kf-emote-tile-padding) !important; border: 1px solid transparent !important; border-radius: 7px !important; background: rgba(255,255,255,.045) !important; cursor: pointer !important; } [data-kf-sticker-proxy]:hover, [data-kf-sticker-proxy]:focus-visible { border-color: rgba(var(--kf-accent-rgb), .42) !important; background: rgba(var(--kf-accent-rgb), .1) !important; } [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-proxy] { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .14) !important; box-shadow: inset 0 0 0 1px var(--kf-accent) !important; } [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy] { position: relative !important; box-shadow: inset 0 0 0 1px rgba(var(--kf-accent-rgb), .5) !important; } [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy]::after { content: "" !important; position: absolute !important; right: 0 !important; bottom: 0 !important; border-left: 7px solid transparent !important; border-bottom: 7px solid var(--kf-accent) !important; } [data-kf-sticker-proxy] img { width: 100% !important; height: 100% !important; object-fit: contain !important; } [data-kf-sticker-check] { display: none !important; position: absolute !important; top: 3px !important; left: 3px !important; z-index: 3 !important; width: 20px !important; height: 20px !important; place-items: center !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 4px !important; background: var(--kf-panel-raised) !important; color: transparent !important; pointer-events: none !important; } [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-check] { display: grid !important; } [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-check] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-sticker-tools] { display: flex !important; position: absolute !important; top: 3px !important; right: 3px !important; bottom: 3px !important; z-index: 3 !important; flex-direction: column !important; justify-content: space-between !important; pointer-events: none !important; } [data-kf-sticker-tools] button { display: grid !important; width: 24px !important; height: 24px !important; min-height: 24px !important; padding: 0 !important; place-items: center !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: rgba(8,12,9,.94) !important; color: var(--kf-text-muted) !important; cursor: pointer !important; opacity: 0 !important; pointer-events: auto !important; transition: opacity 100ms ease, border-color 100ms ease, color 100ms ease !important; } [data-kf-sticker-tools] [data-kf-sticker-action="pin"] { opacity: .68 !important; border-color: transparent !important; background: rgba(8,12,9,.72) !important; } [data-kf-sticker-item]:hover [data-kf-sticker-tools] button, [data-kf-sticker-item]:focus-within [data-kf-sticker-tools] button, [data-kf-sticker-item][data-kf-sticker-pinned="true"] [data-kf-sticker-action="pin"] { opacity: 1 !important; } [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-tools] { display: none !important; } [data-kf-sticker-tools] button:hover, [data-kf-sticker-tools] button:focus-visible { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; } [data-kf-sticker-tools] button[aria-pressed="true"] { border-color: rgba(var(--kf-accent-rgb), .58) !important; color: var(--kf-accent) !important; } [data-kf-sticker-tools] button[aria-pressed="true"] .kf-icon { fill: currentColor !important; } [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:hover, [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:focus-visible { border-color: var(--kf-danger) !important; color: var(--kf-danger) !important; } html[data-kf-large-targets="true"] [data-kf-sticker-grid] { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important; grid-auto-rows: 88px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-item] { min-height: 88px !important; contain-intrinsic-size: auto 88px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-proxy] { min-height: 84px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-tools] button { width: 40px !important; height: 40px !important; min-height: 40px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-tools] .kf-icon { width: 18px !important; height: 18px !important; } [data-kf-sticker-empty] { display: grid !important; min-height: 112px !important; place-items: center !important; padding: 18px !important; color: var(--kf-text-muted) !important; font-size: 12px !important; line-height: 1.45 !important; text-align: center !important; } [data-kf-sticker-empty] strong { display: block !important; margin-bottom: 3px !important; color: var(--kf-text) !important; font-size: 13px !important; } @container kf-sticker (max-width: 500px) { [data-kf-sticker-batch] { grid-template-columns: 1fr !important; } [data-kf-sticker-batch-actions] { justify-content: flex-start !important; } } @container kf-sticker (max-width: 360px) { [data-kf-sticker-batch-actions] { flex-wrap: wrap !important; } [data-kf-sticker-batch-move-group] { flex-basis: 100% !important; } [data-kf-sticker-heading] span { display: none !important; } } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"], html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"], html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"], html[data-kf-sticker-view="group"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-group], html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group], html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-group], html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-list], html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-list], html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-list], html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-list] { display: none !important; } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *, html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *, html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *, html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ * { display: none !important; } #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; } html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; } html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; } html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; } html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; } html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; } html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; } html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible { outline: var(--kf-focus-ring) !important; outline-offset: 3px !important; } @media (min-width: 1024px) { html[data-kf-focus="true"] :is(main, #main-container) { width: 100% !important; max-width: none !important; } html[data-kf-route="category"] :is(main, #main-container) > div:first-child { max-width: 1680px; margin-inline: auto; } } [id^="google_ads_"], [id^="div-gpt-ad"], [data-ad-slot], [data-ad-unit], [data-testid="ad-banner"], [data-testid*="advertisement"], [aria-label="Advertisement"], [aria-label="advertisement"], iframe[src*="doubleclick.net"], iframe[src*="googlesyndication.com"], iframe[src*="googleadservices.com"], script[src*="imasdk.googleapis.com"], script[src*="doubleclick.net"], script[src*="googlesyndication.com"], script[src*="googleadservices.com"] { display: none !important; } video::cue { background: rgba(0, 0, 0, var(--kf-caption-opacity)); } @media (min-width: 1024px) { html[data-kf-sidebar="autohide"] #sidebar-wrapper { position: fixed !important; inset: var(--kf-header-height) auto 0 0 !important; z-index: 400 !important; width: var(--kf-sidebar-autohide-width, 256px) !important; max-width: 88vw !important; height: calc(100vh - var(--kf-header-height)) !important; overflow: hidden !important; border: 0 !important; border-right: 1px solid var(--kf-border) !important; border-radius: 0 8px 8px 0 !important; background: var(--kf-panel) !important; box-shadow: none !important; transform: translateX(calc(-100% + var(--kf-auto-hide-edge))) !important; transition: transform 180ms ease, box-shadow 180ms ease !important; } html[data-kf-sidebar="autohide"] #sidebar-wrapper::after { content: "" !important; position: absolute !important; inset: 0 0 0 auto !important; z-index: 4 !important; width: var(--kf-auto-hide-edge) !important; border-left: 1px solid rgba(var(--kf-accent-rgb), .34) !important; background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .15), var(--kf-panel) 24%, var(--kf-panel) 76%, rgba(var(--kf-accent-rgb), .10)) !important; pointer-events: none !important; transition: opacity 140ms ease !important; } html[data-kf-sidebar="autohide"] #sidebar-wrapper:is(:hover, :focus-within) { transform: translateX(0) !important; box-shadow: 22px 0 54px rgba(0,0,0,.46) !important; } html[data-kf-sidebar="autohide"] #sidebar-wrapper:is(:hover, :focus-within)::after { opacity: 0 !important; } html[data-kf-sidebar="autohide"] [aria-controls="sidebar-wrapper"] { display: none !important; } html[data-kf-sidebar="autohide"] :is(main, #main-container) { margin-left: 0 !important; } html[data-kf-sidebar="autohide"][data-kf-reduce-motion="true"] #sidebar-wrapper, html[data-kf-chat="autohide"][data-kf-reduce-motion="true"] [data-kf-chat-panel] { transition: none !important; } } @media (prefers-reduced-motion: reduce) { html[data-kf-sidebar="autohide"] #sidebar-wrapper, html[data-kf-chat="autohide"] [data-kf-chat-panel] { transition: none !important; } #kick-focus-following-preview { transition: none !important; transform: none !important; } } .kf-chat-badges { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; vertical-align: text-bottom; } .kf-chat-badge { width: 18px; height: 18px; object-fit: contain; border-radius: 3px; } .kf-chat-badge-text { padding: 1px 5px; border: 1px solid var(--kf-border-strong); border-radius: 3px; color: var(--kf-text-muted); font-size: 10px; font-weight: 700; line-height: 1.4; text-transform: uppercase; white-space: nowrap; } .kf-deletion-note { margin-top: 4px; padding: 4px 8px; border-left: 3px solid var(--kf-border-strong); border-radius: 4px; background: rgba(255,255,255,.04); color: var(--kf-text-muted); font-size: 11px; font-style: italic; } [data-kf-ai-moderated="true"] .kf-deletion-note { border-left-color: #d98b3a; color: #e7b478; } img[data-kf-emote-aspect="wide"] { width: auto !important; aspect-ratio: 2 / 1; object-fit: contain; } html[data-kf-static-emotes="true"] img[src*="/emotes/" i], html[data-kf-static-emotes="true"] img[data-src*="/emotes/" i] { animation-play-state: paused !important; } @media (prefers-reduced-motion: reduce) { html[data-kf-reduce-motion="true"] img[src*="/emotes/" i] { animation-play-state: paused !important; } } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]) { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):hover { background: var(--kf-surface-hover) !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):active { transform: translateY(1px) !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):disabled { opacity: .48 !important; cursor: not-allowed !important; transform: none !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):focus-visible { outline: var(--kf-focus-ring) !important; outline-offset: 2px !important; } [data-kf-chat-emote-save] { border-radius: 4px !important; cursor: pointer !important; outline: 1px solid transparent; outline-offset: 2px; transition: filter 120ms ease, outline-color 120ms ease, transform 120ms ease !important; } [data-kf-chat-emote-save]:is(:hover, :focus-visible) { filter: brightness(1.14) saturate(1.08) !important; outline-color: var(--kf-accent) !important; transform: translateY(-1px) scale(1.05); } [data-kf-chat-emote-save]:active { transform: translateY(0) scale(1); } [data-kf-chat-emote-save][aria-busy="true"] { cursor: progress !important; opacity: .62; } html[data-kf-reduce-motion="true"] *, html[data-kf-reduce-motion="true"] *::before, html[data-kf-reduce-motion="true"] *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } @media (prefers-reduced-motion: reduce) { html[data-kf-route]:not([data-kf-reduce-motion="false"]) *, html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::before, html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } } `;
+const INJECTION_BYTE_BUDGET = 950000;
+const SITE_CSS = ` :root { --kf-focus-ring: 3px solid var(--kf-accent); --kf-focus-offset: 2px; --kf-accent: #7cff2b; --kf-accent-rgb: 124, 255, 43; --kf-canvas: #070a08; --kf-panel: #0b100d; --kf-panel-raised: #111713; --kf-panel-high: #18201b; --kf-border: #202a23; --kf-border-strong: #38463d; --kf-text: #f5f8f6; --kf-text-muted: #aab4ae; --kf-text-secondary: #d0d7d3; --kf-surface-inset: #070b08; --kf-surface-hover: #171f1a; --kf-surface-selected: #111d14; --kf-on-accent: #071004; --kf-danger: #ff6258; --kf-warning: #f6b943; --kf-radius: 8px; --kf-chat-width: 410px; --kf-header-height: 48px; --kf-auto-hide-edge: 12px; --kf-compact-channel-control: 32px; --kf-thumb-saturation: 1.03; --kf-caption-opacity: .72; --kf-text-scale: 1; } html[data-kf-accent="cyan"] { --kf-accent: #38d7d0; --kf-accent-rgb: 56, 215, 208; } html[data-kf-accent="violet"] { --kf-accent: #9667ff; --kf-accent-rgb: 150, 103, 255; } html[data-kf-accent="gold"] { --kf-accent: #ffbe2e; --kf-accent-rgb: 255, 190, 46; } html[data-kf-theme="slate"][data-kf-accent="violet"] { --kf-accent: #ad88ff; --kf-accent-rgb: 173, 136, 255; } @supports (color: contrast-color(#000)) { :root { --kf-on-accent: contrast-color(var(--kf-accent)); } } html[data-kf-radius="subtle"] { --kf-radius: 6px; } html[data-kf-radius="rounded"] { --kf-radius: 12px; } html[data-kf-header-density="compact"] { --kf-header-height: 48px; --navbar-height: 48px !important; } html[data-kf-header-density="standard"] { --kf-header-height: 60px; --navbar-height: 60px !important; } html[data-kf-large-targets="true"] { --kf-auto-hide-edge: 20px; --kf-compact-channel-control: 44px; } html[data-kf-theme="oled"] { --kf-canvas: #000; --kf-panel: #030404; --kf-panel-raised: #080a09; --kf-panel-high: #0e1110; --kf-border: #191f1b; --kf-border-strong: #38423c; --kf-text: #f8faf9; --kf-text-muted: #a9b0ac; --kf-text-secondary: #d2d7d4; --kf-surface-inset: #000; --kf-surface-hover: #111613; --kf-surface-selected: #0b170e; } html[data-kf-theme="slate"] { --kf-canvas: #090e13; --kf-panel: #0f161d; --kf-panel-raised: #151f28; --kf-panel-high: #1c2934; --kf-border: #253541; --kf-border-strong: #496072; --kf-text: #f3f7fa; --kf-text-muted: #a6b5c2; --kf-text-secondary: #cbd6df; --kf-surface-inset: #0a1118; --kf-surface-hover: #263544; --kf-surface-selected: #1b2d29; } body { background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; font-size: 15px !important; line-height: 1.45 !important; text-rendering: optimizeLegibility; } @media (min-width: 1024px) { body > [class~="group/main"], body > [data-sidebar][data-chat] { background: var(--kf-canvas) !important; } nav { height: var(--kf-header-height) !important; min-height: var(--kf-header-height) !important; border-bottom: 1px solid var(--kf-border) !important; background: var(--kf-canvas) !important; box-shadow: none !important; } nav form > div > div, nav [data-testid="search"]:is(input) { border-color: var(--kf-border-strong) !important; background: var(--kf-surface-inset) !important; } nav form > div > div { min-height: 36px !important; border-radius: 6px !important; box-shadow: none !important; } nav form > div > div:focus-within { border-color: rgba(var(--kf-accent-rgb), .72) !important; box-shadow: 0 0 0 3px rgba(var(--kf-accent-rgb), .12) !important; } main, #main-container { background: var(--kf-canvas) !important; } main > div:first-child:not(#channel-content) { width: min(100%, 1600px) !important; margin-inline: auto !important; } main h1, main h2, main h3 { color: var(--kf-text) !important; line-height: 1.2 !important; letter-spacing: -.024em !important; } main h1 { font-size: clamp(26px, 2.2vw, 30px) !important; font-weight: 760 !important; } main h2 { font-size: clamp(20px, 1.8vw, 24px) !important; font-weight: 740 !important; } main h3 { font-size: 17px !important; font-weight: 720 !important; } #sidebar-wrapper { border-right: 1px solid var(--kf-border) !important; background: var(--kf-canvas) !important; box-shadow: none !important; } #sidebar-wrapper > ul { gap: 0 !important; padding: 6px 8px 10px !important; } #sidebar-wrapper a[data-testid^="sidebar-"] { min-height: 40px !important; border: 0 !important; border-radius: 5px !important; color: var(--kf-text-secondary) !important; font-size: 14px !important; } #sidebar-wrapper a[data-testid^="sidebar-"][data-state="active"] { background: rgba(var(--kf-accent-rgb), .065) !important; color: var(--kf-accent) !important; box-shadow: inset 2px 0 0 rgba(var(--kf-accent-rgb), .78) !important; } #sidebar-wrapper a[data-testid^="sidebar-"]:hover { background: rgba(255,255,255,.045) !important; } #kick-focus-following-preview { position: fixed !important; z-index: 2147483000 !important; width: min(320px, calc(100vw - 24px)) !important; margin: 0 !important; overflow: hidden !important; border: 1px solid rgba(255,255,255,.12) !important; border-radius: 10px !important; background: var(--kf-panel, #0b100d) !important; box-shadow: 0 20px 54px rgba(0,0,0,.58), 0 2px 12px rgba(0,0,0,.3) !important; color: var(--kf-text, #f5f8f6) !important; opacity: 0 !important; transform: translateX(-4px) scale(.985) !important; transform-origin: center left !important; pointer-events: none !important; transition: opacity 120ms ease, transform 120ms ease !important; } #kick-focus-following-preview[hidden] { display: none !important; } #kick-focus-following-preview[data-kf-open="true"] { opacity: 1 !important; transform: translateX(0) scale(1) !important; } #kick-focus-following-preview[data-kf-side="left"] { transform-origin: center right !important; } #kick-focus-following-preview > :is(img, canvas) { display: block !important; width: 100% !important; aspect-ratio: 16 / 9 !important; object-fit: cover !important; background: var(--kf-panel-raised, #111713) !important; } #kick-focus-following-preview > :is(img, canvas)[hidden] { display: none !important; } #kick-focus-following-preview figcaption { display: flex !important; min-height: 42px !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; padding: 9px 11px 10px !important; border-top: 1px solid rgba(255,255,255,.08) !important; background: var(--kf-surface-hover, #171f1a) !important; font: 500 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; } #kick-focus-following-preview strong { min-width: 0 !important; overflow: hidden !important; color: #f7f9f8 !important; font-size: 14px !important; font-weight: 720 !important; letter-spacing: -.012em !important; text-overflow: ellipsis !important; white-space: nowrap !important; } #kick-focus-following-preview figcaption span { flex: 0 0 auto !important; color: rgba(247,249,248,.56) !important; font-size: 11px !important; letter-spacing: .02em !important; } #sidebar-wrapper :is(button, a):focus-visible, main :is(button, a, input, select, textarea):focus-visible { outline: var(--kf-focus-ring) !important; outline-offset: 2px !important; } main [data-testid="livestream-results-card"] { gap: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; overflow: visible !important; box-shadow: none !important; } main [data-testid="livestream-results-card"]:hover, main [data-testid="livestream-results-card"]:focus-within { background: transparent !important; box-shadow: none !important; } main [data-testid="media-card-thumbnail"] { border: 0 !important; border-radius: var(--kf-radius) !important; background: var(--kf-surface-inset) !important; overflow: hidden !important; box-shadow: 0 0 0 1px rgba(255,255,255,.045) !important; transition: box-shadow 150ms ease, filter 150ms ease !important; } main [data-testid="livestream-results-card"]:is(:hover, :focus-within) [data-testid="media-card-thumbnail"] { box-shadow: 0 0 0 1px rgba(var(--kf-accent-rgb), .46) !important; filter: brightness(1.035) !important; } main [data-testid="media-card-thumbnail"] > :is(div, img) { border-radius: inherit !important; } main [data-testid="media-card-thumbnail"] [class*="top-1.5"], main [data-testid="media-card-thumbnail"] [class*="bottom-1.5"] { border: 0 !important; border-radius: 4px !important; background: rgba(4,7,5,.9) !important; box-shadow: none !important; font-size: 12px !important; } main section[class*="grid"] { column-gap: 18px !important; row-gap: 24px !important; } main [data-testid^="tab-"] { min-height: 38px !important; padding-inline: 2px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; font-size: 14px !important; font-weight: 680 !important; } main [data-testid^="tab-"][data-state="active"], main a[data-state="active"][href*="/following"], main a[data-state="active"][href*="/drops"], main a[data-state="active"][href*="/category"] { color: var(--kf-accent) !important; border-color: transparent !important; } main [data-testid^="tab-"][data-state="active"] > div, main a[data-state="active"] > div[class*="bottom-"] { background: var(--kf-accent) !important; } main :is([role="combobox"], select) { min-height: 36px !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; box-shadow: none !important; font-size: 14px !important; } main button:not([data-kf-card-action]):not([data-kf-sticker-action]) { border-radius: 6px !important; } html[data-kf-route="category"] main > div:first-child, html[data-kf-route="categories"] main > div:first-child, html[data-kf-route="browse"] main > div:first-child, html[data-kf-route="following"] main > div:first-child, html[data-kf-route="drops"] main > div:first-child, html[data-kf-route="search"] main > div:first-child { padding-top: 18px !important; } html[data-kf-route="settings"] main, html[data-kf-route="collectibles"] main, html[data-kf-route="subscriptions"] main { width: min(1180px, calc(100% - 48px)) !important; margin-inline: auto !important; padding: 28px 0 64px !important; } html[data-kf-route="settings"] main > h1, html[data-kf-route="collectibles"] main > h1, html[data-kf-route="subscriptions"] main > h1 { margin: 0 0 18px !important; color: var(--kf-text) !important; font-size: clamp(26px, 3vw, 36px) !important; letter-spacing: -.025em !important; } html[data-kf-route="settings"] main [data-kf-settings-tab="true"] { display: inline-flex !important; align-items: center !important; min-height: 40px !important; margin: 0 5px 18px 0 !important; padding: 0 12px !important; border: 1px solid transparent !important; border-radius: 8px !important; color: var(--kf-text-muted) !important; font-size: 13px !important; font-weight: 700 !important; text-decoration: none !important; } html[data-kf-route="settings"] main [data-kf-settings-tab="true"]:is(:hover, :focus-visible) { border-color: var(--kf-border-strong) !important; background: var(--kf-surface-hover) !important; color: var(--kf-text) !important; } html[data-kf-route="settings"] main [data-kf-settings-active="true"] { border-color: rgba(var(--kf-accent-rgb), .45) !important; background: rgba(var(--kf-accent-rgb), .09) !important; color: var(--kf-accent) !important; box-shadow: inset 0 -2px 0 var(--kf-accent) !important; } html[data-kf-route="settings"] main :is(h2, h3), html[data-kf-route="collectibles"] main :is(h2, h3), html[data-kf-route="subscriptions"] main :is(h2, h3) { color: var(--kf-text) !important; letter-spacing: -.012em !important; } html[data-kf-route="settings"] main :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select, [role="combobox"]), html[data-kf-route="collectibles"] main :is(select, [role="combobox"]), html[data-kf-route="subscriptions"] main :is(input, select, [role="combobox"]) { border: 1px solid var(--kf-border-strong) !important; border-radius: 8px !important; background: var(--kf-surface-inset) !important; color: var(--kf-text) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important; } html[data-kf-route="settings"] main :is(input, textarea, select, [role="combobox"]):focus-visible, html[data-kf-route="collectibles"] main :is(select, [role="combobox"]):focus-visible, html[data-kf-route="subscriptions"] main :is(input, select, [role="combobox"]):focus-visible { border-color: var(--kf-accent) !important; outline: var(--kf-focus-ring) !important; outline-offset: 2px !important; box-shadow: 0 0 0 4px rgba(var(--kf-accent-rgb), .12) !important; } html[data-kf-route="settings"] main button, html[data-kf-route="collectibles"] main button, html[data-kf-route="subscriptions"] main button { min-height: 38px !important; transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease !important; } html[data-kf-route="settings"] main button:not(:disabled):hover, html[data-kf-route="collectibles"] main button:not(:disabled):hover, html[data-kf-route="subscriptions"] main button:not(:disabled):hover { border-color: var(--kf-border-strong) !important; transform: translateY(-1px) !important; } html[data-kf-route="settings"] main button:disabled, html[data-kf-route="subscriptions"] main button:disabled { opacity: .52 !important; transform: none !important; } html[data-kf-route="settings"] main img, html[data-kf-route="collectibles"] main img { border-radius: 8px !important; } html[data-kf-route="collectibles"] main > h1 + p, html[data-kf-route="subscriptions"] main > h1 + p { max-width: 760px !important; margin-bottom: 24px !important; color: var(--kf-text-muted) !important; font-size: 14px !important; line-height: 1.65 !important; } html[data-kf-route="collectibles"] main button:has(img) { border: 1px solid var(--kf-border) !important; background: var(--kf-panel) !important; box-shadow: 0 8px 20px rgba(0,0,0,.18) !important; } html[data-kf-route="collectibles"] main button:has(img):is(:hover, :focus-visible) { border-color: rgba(var(--kf-accent-rgb), .55) !important; background: var(--kf-panel-raised) !important; box-shadow: 0 12px 26px rgba(0,0,0,.28), 0 0 0 3px rgba(var(--kf-accent-rgb), .08) !important; } html[data-kf-route="channel"] #channel-content { gap: 12px !important; padding: 12px 16px 24px !important; background: var(--kf-canvas) !important; } @media (min-width: 1024px) { html[data-kf-route="channel"][data-kf-density="compact"]:not([data-kf-theater="true"]):not([data-kf-focus="true"]) main > :has(> #injected-channel-player) { height: calc(100vh - var(--kf-header-height) - 104px) !important; max-height: calc(100vh - var(--kf-header-height) - 104px) !important; } html[data-kf-route="channel"][data-kf-density="compact"] #channel-content { gap: 8px !important; padding: 8px 16px 20px !important; & > :first-child { gap: 24px !important; & > :first-child > :last-child { gap: 0 !important; & > :first-child { height: var(--kf-compact-channel-control) !important; min-height: var(--kf-compact-channel-control) !important; } } & > :last-child { gap: 2px !important; & > :last-child { height: var(--kf-compact-channel-control) !important; min-height: var(--kf-compact-channel-control) !important; padding-block: 0 !important; } } } } } html[data-kf-route="channel"] #injected-channel-player { border: 0 !important; border-radius: 6px !important; box-shadow: none !important; overflow: hidden !important; } html[data-kf-route="channel"] #channel-content > :is(div, section, article) { border-color: transparent !important; } [data-kf-chat-panel], #channel-chatroom { border: 0 !important; border-left: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: var(--kf-panel) !important; box-shadow: none !important; } [data-kf-chat-panel] button[aria-label="Hide chat"], [data-kf-chat-panel] button[aria-label="Show chat"] { min-height: 40px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; backdrop-filter: none !important; font-size: 16px !important; } #channel-chatroom > div > div:first-child { padding: 8px 12px !important; border-radius: 0 !important; border-bottom-color: var(--kf-border) !important; background: var(--kf-panel) !important; } #channel-chatroom [data-testid="pinned-message-modal"] > div { border: 0 !important; border-left: 2px solid rgba(var(--kf-accent-rgb), .5) !important; border-radius: 3px !important; background: var(--kf-surface-inset) !important; } #channel-chatroom :is(textarea, input, [contenteditable="true"]) { border-radius: 6px !important; border-color: var(--kf-border) !important; background: var(--kf-surface-inset) !important; font-size: 14px !important; } html[data-kf-route="home"] main [class*="backdrop-blur"] { border: 0 !important; border-radius: 6px !important; background: rgba(7,10,8,.9) !important; box-shadow: none !important; backdrop-filter: none !important; } [data-kf-chat-panel], #channel-chatroom { border-left-color: var(--kf-border) !important; background: var(--kf-panel) !important; } html[data-kf-sidebar="hidden"] #sidebar-wrapper, html[data-kf-focus="true"] #sidebar-wrapper, html[data-kf-theater="true"] #sidebar-wrapper { display: none !important; } html[data-kf-chat="hidden"] [data-kf-chat-panel], html[data-kf-chat="hidden"] [data-kf-chat-separator], html[data-kf-focus="true"] [data-kf-chat-panel], html[data-kf-focus="true"] [data-kf-chat-separator] { display: none !important; } html[data-kf-chat="left"] [data-kf-chat-panel] { order: -1 !important; border-left: 0 !important; border-right: 1px solid var(--kf-border) !important; } html[data-kf-chat="left"] #channel-chatroom { border-left: 0 !important; border-right: 1px solid var(--kf-border) !important; } html[data-kf-chat="left"] [data-kf-chat-split] { display: flex !important; flex-direction: row-reverse !important; width: 100% !important; min-width: 0 !important; } html[data-kf-chat="left"] [data-kf-chat-split] > :is(#channel-chatroom, [data-testid="chatroom"]) { flex: 1 1 auto !important; min-width: 0 !important; } html[data-kf-chat="right"] [data-kf-chat-panel], html[data-kf-chat="left"] [data-kf-chat-panel] { flex: 0 0 var(--kf-chat-width) !important; width: var(--kf-chat-width) !important; min-width: 280px !important; max-width: 520px !important; } [data-kf-chat-panel] :is(#channel-chatroom, [data-testid="chatroom"]) { width: 100% !important; min-width: 0 !important; max-width: 100% !important; } html[data-kf-chat="right"] [data-kf-chat-panel][data-kf-chat-resizing="true"], html[data-kf-chat="left"] [data-kf-chat-panel][data-kf-chat-resizing="true"] { transition: none !important; } html[data-kf-theater="true"] [data-kf-channel-row] { width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: hidden !important; } html[data-kf-theater="true"] [data-kf-channel-row] > :not([data-kf-chat-panel]) { max-width: 100% !important; min-width: 0 !important; } html[data-kf-chat="autohide"] [data-kf-chat-separator] { display: none !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel] { position: fixed !important; inset: var(--kf-header-height) 0 0 auto !important; z-index: 400 !important; width: var(--kf-chat-width) !important; min-width: 280px !important; max-width: 520px !important; height: calc(100vh - var(--kf-header-height)) !important; flex: 0 0 var(--kf-chat-width) !important; overflow: hidden !important; border: 0 !important; border-left: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: var(--kf-panel) !important; box-shadow: none !important; transform: translateX(calc(100% - var(--kf-auto-hide-edge))) !important; transition: transform 180ms ease, box-shadow 180ms ease !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel]::before { content: "" !important; position: absolute !important; inset: 0 auto 0 0 !important; z-index: 4 !important; width: var(--kf-auto-hide-edge) !important; border-right: 1px solid rgba(var(--kf-accent-rgb), .34) !important; background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .15), var(--kf-panel) 24%, var(--kf-panel) 76%, rgba(var(--kf-accent-rgb), .10)) !important; pointer-events: none !important; transition: opacity 140ms ease !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel]:is(:hover, :focus-within), html[data-kf-chat="autohide"] [data-kf-chat-panel]:has( #chat-emotes-picker-panel > [style*="max-height:"]:not([style*="max-height: 0"]) ) { transform: translateX(0) !important; box-shadow: -22px 0 54px rgba(0,0,0,.46) !important; } html[data-kf-chat="autohide"] [data-kf-chat-panel]:is(:hover, :focus-within)::before, html[data-kf-chat="autohide"] [data-kf-chat-panel]:has( #chat-emotes-picker-panel > [style*="max-height:"]:not([style*="max-height: 0"]) )::before { opacity: 0 !important; } html[data-kf-chat="autohide"] [data-kf-channel-row] > :not([data-kf-chat-panel]) { width: 100% !important; max-width: 100% !important; min-width: 0 !important; } html[data-kf-chat="docked"] [data-kf-chat-separator] { display: none !important; } html[data-kf-chat="docked"] [data-kf-chat-panel] { position: fixed !important; right: 22px !important; bottom: 22px !important; z-index: 80 !important; width: var(--kf-chat-width) !important; height: min(620px, calc(100vh - 104px)) !important; border: 1px solid var(--kf-border) !important; border-radius: var(--kf-radius) !important; box-shadow: 0 24px 70px rgba(0,0,0,.56) !important; overflow: hidden !important; background: var(--kf-panel) !important; } html[data-kf-wide-grid="true"] :is(main, #main-container) section[class*="grid"], html[data-kf-wide-grid="true"] :is(main, #main-container) [class*="group/grid"] { grid-template-columns: repeat(auto-fit, minmax(min(272px, 100%), 1fr)) !important; gap: 20px !important; } html[data-kf-following-rail="false"] :is(main, #main-container) [data-testid*="following" i], html[data-kf-following-rail="false"] :is(main, #main-container) [data-kf-following-rail], html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-testid*="recommended" i], html[data-kf-recommended-rail="false"] :is(main, #main-container) [data-kf-recommended-rail] { display: none !important; } ${hiddenElementCss()} html[data-kf-density="compact"] :is(main, #main-container) section[class*="grid"], html[data-kf-density="compact"] :is(main, #main-container) [class*="group/grid"] { gap: 12px !important; } html[data-kf-sticky="true"] nav { min-height: var(--kf-header-height) !important; backdrop-filter: none !important; background: var(--kf-surface-inset) !important; border-bottom: 1px solid var(--kf-border) !important; } :is(main, #main-container) { font-size: calc(1rem * var(--kf-text-scale)); } :is(main, #main-container) [class*="group/card"] { border-radius: var(--kf-radius) !important; outline: 0 !important; transition: filter 150ms ease !important; } :is(main, #main-container) [class*="group/card"]:hover, :is(main, #main-container) [class*="group/card"]:focus-within { outline: 0 !important; } :is(main, #main-container) [class*="group/card"] img { filter: saturate(var(--kf-thumb-saturation)); transition: filter 160ms ease, opacity 160ms ease !important; } html[data-kf-dim-watched="true"] :is(main, #main-container) [data-kf-watched="true"] { opacity: .64; filter: grayscale(.14); } html[data-kf-live-color="true"] :is(main, #main-container) [data-kf-live-card="true"] { box-shadow: none !important; } html[data-kf-mature-blur="true"] [data-kf-mature="true"] img { filter: blur(13px) saturate(.72) !important; opacity: .72 !important; } html[data-kf-mature-blur="true"] [data-kf-mature="true"]:is(:hover,:focus-within) img { filter: saturate(var(--kf-thumb-saturation)) !important; opacity: 1 !important; } [data-kf-filtered="true"], [data-kf-dismissed="true"], [data-kf-ad-shell="true"] { display: none !important; } html[data-kf-poor-mode="true"] [data-kf-monetization] { display: none !important; } [data-kf-chat-priority="true"] { border-left: 2px solid var(--kf-accent); padding-left: 6px; } [data-kf-chat-hidden="true"] > * { display: none !important; } [data-kf-chat-hidden="true"]::after { content: attr(data-kf-hidden-note); display: block; padding: 4px 8px; color: #9aa4a0; font-size: 12px; font-style: italic; } [data-kf-chat-hide] { float: right; margin-left: 6px; padding: 0 5px; color: #9aa4a0; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: transparent; font-size: 12px; line-height: 1.5; cursor: pointer; } [data-kf-chat-hide]:hover, [data-kf-chat-hide]:focus-visible { color: #fff; border-color: var(--kf-accent); } [data-kf-card-actions] { position: absolute !important; top: 8px !important; right: 8px !important; z-index: 6 !important; display: flex !important; gap: 5px !important; opacity: 0 !important; transition: opacity 120ms ease !important; } [class*="group/card"]:hover [data-kf-card-actions], [class*="group/card"]:focus-within [data-kf-card-actions], [data-testid="livestream-results-card"]:hover [data-kf-card-actions], [data-testid="livestream-results-card"]:focus-within [data-kf-card-actions], [data-testid="stream-card"]:hover [data-kf-card-actions], [data-testid="stream-card"]:focus-within [data-kf-card-actions] { opacity: 1 !important; } [data-kf-card-actions] button { min-width: 30px !important; min-height: 30px !important; padding: 0 7px !important; border: 1px solid rgba(255,255,255,.24) !important; border-radius: 4px !important; background: var(--kf-panel) !important; color: var(--kf-text) !important; cursor: pointer !important; font-size: 12px !important; font-weight: 760 !important; } [data-kf-card-actions] button:hover, [data-kf-card-actions] button[data-active="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; } [data-kf-card-uptime] { display: inline-flex !important; align-items: center !important; min-height: 18px !important; margin-left: 5px !important; padding: 0 5px !important; border: 0 !important; border-radius: 3px !important; background: rgba(10, 12, 11, .82) !important; color: #fff !important; font-size: 11px !important; font-weight: 720 !important; font-variant-numeric: tabular-nums !important; line-height: 18px !important; letter-spacing: .01em !important; white-space: nowrap !important; box-shadow: 0 1px 4px rgba(0, 0, 0, .28) !important; } [data-kf-highlighted="true"] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .07) !important; } ::highlight(kick-focus-keyword) { background-color: rgba(var(--kf-accent-rgb, 124, 255, 43), .32); color: inherit; } html[data-kf-mini-player-collision="true"] #injected-embedded-channel-player { bottom: 82px !important; } html[data-kf-player-contain="true"] #main-container video, html[data-kf-player-contain="true"] [data-kf-player] video { object-fit: contain !important; max-width: 100% !important; max-height: 100% !important; } [data-kf-chat-pause] { position: absolute !important; top: 8px !important; right: 8px !important; z-index: 7 !important; min-height: 30px !important; padding: 0 9px !important; border: 1px solid rgba(255,255,255,.25) !important; border-radius: 4px !important; background: var(--kf-panel) !important; color: var(--kf-text) !important; cursor: pointer !important; font-size: 12px !important; font-weight: 760 !important; } [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-uptime], [data-kf-vod-expiry] { position: absolute !important; z-index: 7 !important; border: 0 !important; border-radius: var(--kf-radius) !important; background: var(--kf-panel) !important; color: var(--kf-text) !important; font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace !important; } [data-kf-chat-status] { top: 44px !important; right: 8px !important; padding: 5px 8px !important; } [data-kf-playback-diagnostics] { right: 12px !important; bottom: 12px !important; padding: 6px 8px !important; pointer-events: none !important; } [data-kf-uptime] { top: 10px !important; left: 10px !important; padding: 4px 7px !important; background: rgba(13,16,14,.82) !important; pointer-events: none !important; font-variant-numeric: tabular-nums !important; letter-spacing: .02em !important; opacity: .92 !important; } [data-kf-vod-expiry] { top: 10px !important; left: 10px !important; padding: 4px 7px !important; background: rgba(13,16,14,.82) !important; pointer-events: none !important; font-variant-numeric: tabular-nums !important; letter-spacing: .02em !important; opacity: .92 !important; } [data-kf-uptime] ~ [data-kf-vod-expiry] { top: 40px !important; } [data-kf-search-meta] { box-sizing: border-box !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 18px !important; margin: 0 0 16px !important; padding: 2px 0 14px !important; border: 0 !important; border-bottom: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: transparent !important; width: 100% !important; max-width: 100% !important; } [data-kf-search-meta] > div { display: flex !important; align-items: baseline !important; flex-wrap: wrap !important; gap: 12px !important; } [data-kf-search-meta] strong { color: var(--kf-text) !important; font-size: 24px !important; line-height: 1.2 !important; letter-spacing: -.025em !important; } [data-kf-search-meta] span { color: var(--kf-text-muted) !important; font-size: 14px !important; font-weight: 560 !important; } [data-kf-search-meta] button { min-height: 32px !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: var(--kf-accent) !important; cursor: pointer !important; font-size: 14px !important; font-weight: 700 !important; } [data-kf-native-drops-empty="true"] > [data-testid="empty-state-root"] { display: none !important; } [data-kf-drops-empty] { display: grid !important; grid-template-columns: minmax(0, 1fr) 300px !important; gap: 0 !important; width: 100% !important; margin-top: 16px !important; } [data-kf-drops-primary], [data-kf-drops-activity], [data-kf-drops-steps] { border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; } [data-kf-drops-primary] { display: flex !important; min-height: 320px !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; padding: 42px 48px !important; text-align: center !important; } [data-kf-drops-eyebrow] { display: none !important; } [data-kf-drops-primary] h3 { margin: 0 !important; color: var(--kf-text) !important; font-size: 28px !important; letter-spacing: -.025em !important; } [data-kf-drops-primary] p { max-width: 520px !important; margin: 10px 0 22px !important; color: var(--kf-text-muted) !important; font-size: 15px !important; line-height: 1.5 !important; } [data-kf-drops-actions] { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; gap: 10px !important; } [data-kf-drops-actions] a { display: inline-flex !important; min-height: 42px !important; align-items: center !important; justify-content: center !important; padding: 0 16px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; color: var(--kf-text) !important; font-size: 14px !important; font-weight: 720 !important; text-decoration: none !important; } [data-kf-drops-actions] a:first-child { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-drops-activity] { grid-column: 2 !important; grid-row: 1 !important; align-self: stretch !important; padding: 28px 0 28px 38px !important; border-left: 1px solid var(--kf-border) !important; } [data-kf-drops-activity] > strong { display: block !important; margin-bottom: 14px !important; font-size: 17px !important; } [data-kf-drops-activity] dl { display: grid !important; gap: 0 !important; margin: 0 !important; } [data-kf-drops-activity] dl > div { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; min-height: 58px !important; border-bottom: 1px solid var(--kf-border) !important; } [data-kf-drops-activity] dt { color: var(--kf-text-muted) !important; font-size: 14px !important; } [data-kf-drops-activity] dd { margin: 0 !important; color: var(--kf-text) !important; font-size: 16px !important; font-weight: 760 !important; } [data-kf-drops-activity] a { color: var(--kf-accent) !important; text-decoration: none !important; } [data-kf-drops-steps] { display: grid !important; grid-column: 1 / -1 !important; grid-template-columns: repeat(3, minmax(0,1fr)) !important; gap: 0 !important; margin: 0 !important; padding: 24px 0 0 !important; border-top: 1px solid var(--kf-border) !important; list-style: none !important; } [data-kf-drops-steps] li { display: flex !important; align-items: flex-start !important; gap: 12px !important; min-height: 72px !important; padding: 4px 24px !important; border-right: 1px solid var(--kf-border) !important; } [data-kf-drops-steps] li:last-child { border-right: 0 !important; } [data-kf-drops-steps] li > span { display: grid !important; width: 25px !important; height: 25px !important; flex: 0 0 25px !important; place-items: center !important; border-radius: 6px !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; font-size: 12px !important; font-weight: 900 !important; } [data-kf-drops-steps] strong, [data-kf-drops-steps] small { display: block !important; } [data-kf-drops-steps] strong { color: var(--kf-text) !important; font-size: 14px !important; } [data-kf-drops-steps] small { margin-top: 4px !important; color: var(--kf-text-muted) !important; font-size: 13px !important; line-height: 1.4 !important; } } html[data-kf-quick-emote-bar="hidden"] #quick-emotes-holder { display: none !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder { height: 24px !important; max-height: 24px !important; padding-bottom: 0 !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * { height: 24px !important; max-height: 24px !important; justify-content: flex-start !important; gap: 2px !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button { width: 24px !important; min-width: 24px !important; height: 24px !important; min-height: 24px !important; padding: 2px !important; border-radius: 4px !important; } html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button img { width: 20px !important; max-width: 20px !important; height: 20px !important; max-height: 20px !important; } html[data-kf-quick-emote-limit="4"] #quick-emotes-holder > * > :nth-child(n + 5), html[data-kf-quick-emote-limit="6"] #quick-emotes-holder > * > :nth-child(n + 7), html[data-kf-quick-emote-limit="8"] #quick-emotes-holder > * > :nth-child(n + 9), html[data-kf-quick-emote-limit="10"] #quick-emotes-holder > * > :nth-child(n + 11) { display: none !important; } html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder, html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * { height: 40px !important; max-height: 40px !important; } html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder button { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; } #chat-emotes-picker-panel { --kf-emote-tile-height: 40px; --kf-emote-tile-min-width: 34px; --kf-emote-grid-gap: 2px; --kf-emote-tile-padding: 3px; --kf-emote-shell-padding: 4px; --kf-emote-section-gap: 4px; --kf-emote-control-height: 26px; --kf-emote-control-padding: 6px; --kf-emote-tab-height: 26px; --kf-emote-tab-padding: 4px; --kf-emote-search-height: 34px; --kf-emote-grid-height: 240px; } html[data-kf-emote-density="balanced"] #chat-emotes-picker-panel { --kf-emote-tile-height: 54px; --kf-emote-tile-min-width: 44px; --kf-emote-grid-gap: 5px; --kf-emote-tile-padding: 5px; --kf-emote-shell-padding: 6px; --kf-emote-section-gap: 5px; --kf-emote-control-height: 28px; --kf-emote-control-padding: 7px; --kf-emote-tab-height: 28px; --kf-emote-tab-padding: 6px; --kf-emote-search-height: 36px; } html[data-kf-emote-density="roomy"] #chat-emotes-picker-panel { --kf-emote-tile-height: 68px; --kf-emote-tile-min-width: 56px; --kf-emote-grid-gap: 8px; --kf-emote-tile-padding: 8px; --kf-emote-shell-padding: 9px; --kf-emote-section-gap: 8px; --kf-emote-control-height: 34px; --kf-emote-control-padding: 10px; --kf-emote-tab-height: 36px; --kf-emote-tab-padding: 10px; --kf-emote-search-height: 42px; } html[data-kf-emote-height="short"] #chat-emotes-picker-panel { --kf-emote-grid-height: 160px; } html[data-kf-emote-height="medium"] #chat-emotes-picker-panel { --kf-emote-grid-height: 240px; } html[data-kf-emote-height="tall"] #chat-emotes-picker-panel { --kf-emote-grid-height: 360px; } html[data-kf-large-targets="true"] #chat-emotes-picker-panel { --kf-emote-tile-height: 88px; --kf-emote-tile-min-width: 84px; --kf-emote-grid-gap: 7px; --kf-emote-tile-padding: 8px; --kf-emote-control-height: 40px; --kf-emote-tab-height: 40px; --kf-emote-search-height: 40px; } [data-kf-sticker-organizer] { margin: 2px 8px 8px !important; padding: var(--kf-emote-shell-padding) 0 0 !important; border: 0 !important; border-top: 1px solid var(--kf-border) !important; border-radius: 0 !important; background: transparent !important; color: var(--kf-text) !important; container-name: kf-sticker !important; container-type: inline-size !important; } #chat-emotes-picker-panel > div[style]:not([style*="max-height: 0"]) { max-height: min(640px, calc(100vh - 132px)) !important; border-top: 1px solid var(--kf-border) !important; border-radius: 10px 10px 0 0 !important; background: var(--kf-panel) !important; box-shadow: 0 -18px 48px rgba(0,0,0,.42) !important; } [data-kf-composer-recall] { appearance: none !important; display: inline-flex !important; flex: 0 0 auto !important; min-height: 32px !important; align-items: center !important; justify-content: center !important; padding: 0 10px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; color: var(--kf-text-secondary) !important; font: 700 12px/1 var(--kf-font) !important; cursor: pointer !important; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease !important; } [data-kf-composer-recall]:hover:not(:disabled) { border-color: var(--kf-accent) !important; background: var(--kf-surface-hover) !important; color: var(--kf-text) !important; } [data-kf-composer-recall]:active:not(:disabled) { background: var(--kf-surface-selected) !important; } [data-kf-composer-recall]:disabled { opacity: .46 !important; cursor: not-allowed !important; } html[data-kf-large-targets="true"] [data-kf-composer-recall] { min-height: 40px !important; } [data-kf-sticker-scroll] { min-width: 0 !important; overflow-x: hidden !important; } [data-kf-sticker-native-shell] { min-width: 0 !important; width: 100% !important; grid-template-columns: minmax(0, 1fr) !important; } [data-kf-sticker-native-shell] > * { min-width: 0 !important; max-width: 100% !important; } #chat-emotes-picker-panel #search-emotes-input { min-height: var(--kf-emote-search-height) !important; border-color: var(--kf-border-strong) !important; border-radius: 8px !important; background: var(--kf-canvas) !important; } [data-kf-sticker-topline] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; margin-bottom: var(--kf-emote-section-gap) !important; } [data-kf-sticker-heading] { display: flex !important; min-width: 0 !important; flex: 1 1 auto !important; align-items: baseline !important; gap: 6px !important; } [data-kf-sticker-heading] strong { display: block !important; flex: 0 0 auto !important; color: var(--kf-text) !important; font-size: 13px !important; line-height: 1.15 !important; white-space: nowrap !important; } [data-kf-sticker-heading] span { display: block !important; min-width: 0 !important; margin: 0 !important; color: var(--kf-text-muted) !important; font-size: 10px !important; line-height: 1.25 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; } [data-kf-sticker-top-actions] { display: flex !important; flex: 0 0 auto !important; align-items: center !important; gap: 4px !important; } [data-kf-sticker-top-actions] button, [data-kf-sticker-group-create], [data-kf-sticker-group-actions] button, [data-kf-sticker-editor-actions] button, [data-kf-sticker-batch] button { display: inline-flex !important; min-height: var(--kf-emote-control-height) !important; align-items: center !important; justify-content: center !important; gap: 5px !important; padding: 0 var(--kf-emote-control-padding) !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: transparent !important; color: var(--kf-text-muted) !important; cursor: pointer !important; font-size: 11px !important; font-weight: 720 !important; } [data-kf-sticker-top-actions] button:hover, [data-kf-sticker-top-actions] button:focus-visible, [data-kf-sticker-group-create]:hover, [data-kf-sticker-group-create]:focus-visible, [data-kf-sticker-group-actions] button:hover, [data-kf-sticker-group-actions] button:focus-visible, [data-kf-sticker-editor-actions] button:hover, [data-kf-sticker-editor-actions] button:focus-visible, [data-kf-sticker-batch] button:hover, [data-kf-sticker-batch] button:focus-visible { border-color: var(--kf-border-strong) !important; color: var(--kf-text) !important; } [data-kf-sticker-top-actions] button[aria-pressed="true"] { border-color: rgba(var(--kf-accent-rgb), .55) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; } [data-kf-sticker-organizer] .kf-icon { width: 13px !important; height: 13px !important; flex: 0 0 13px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; stroke-linecap: round !important; stroke-linejoin: round !important; } [data-kf-sticker-tabs] { display: flex !important; align-items: stretch !important; gap: 1px !important; margin: 0 -2px !important; padding: 0 2px var(--kf-emote-section-gap) !important; border-bottom: 1px solid var(--kf-border) !important; overflow-x: auto !important; scrollbar-width: none !important; } [data-kf-sticker-tabs]::-webkit-scrollbar { display: none !important; } [data-kf-sticker-tabs] button { display: inline-flex !important; min-height: var(--kf-emote-tab-height) !important; flex: 0 0 auto !important; align-items: center !important; gap: 4px !important; padding: 0 var(--kf-emote-tab-padding) !important; border: 0 !important; border-radius: 6px !important; background: transparent !important; color: var(--kf-text-muted) !important; cursor: pointer !important; font-size: 11px !important; font-weight: 720 !important; } [data-kf-sticker-tabs] button span { color: inherit !important; font-size: 10px !important; font-variant-numeric: tabular-nums !important; opacity: .72 !important; } [data-kf-sticker-tabs] button:hover, [data-kf-sticker-tabs] button:focus-visible { background: rgba(255,255,255,.055) !important; color: var(--kf-text) !important; } [data-kf-sticker-tabs] button[data-active="true"] { background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-sticker-group-panel] { margin: var(--kf-emote-section-gap) 0 0 !important; padding: var(--kf-emote-shell-padding) !important; border: 1px solid var(--kf-border) !important; border-radius: 8px !important; background: rgba(255,255,255,.025) !important; } [data-kf-sticker-group-list] { display: flex !important; align-items: center !important; gap: 5px !important; overflow-x: auto !important; scrollbar-width: thin !important; } [data-kf-sticker-group-list] > button:not([data-kf-sticker-group-create]) { min-height: 30px !important; flex: 0 0 auto !important; padding: 0 9px !important; border: 1px solid transparent !important; border-radius: 6px !important; background: rgba(255,255,255,.05) !important; color: var(--kf-text-muted) !important; cursor: pointer !important; font-size: 11px !important; font-weight: 700 !important; } [data-kf-sticker-group-list] > button[data-active="true"] { border-color: rgba(var(--kf-accent-rgb), .5) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; } [data-kf-sticker-group-create] { flex: 0 0 auto !important; } [data-kf-sticker-group-summary] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; margin-top: 7px !important; padding-top: 7px !important; border-top: 1px solid var(--kf-border) !important; } [data-kf-sticker-group-summary] > span { min-width: 0 !important; color: var(--kf-text-muted) !important; font-size: 11px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; } [data-kf-sticker-group-actions] { display: flex !important; flex: 0 0 auto !important; gap: 4px !important; } [data-kf-sticker-group-actions] button { min-height: max(27px, var(--kf-emote-control-height)) !important; padding-inline: 6px !important; } [data-kf-sticker-group-actions] button[data-kf-sticker-group-delete] { color: var(--kf-danger) !important; } [data-kf-sticker-group-editor] { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px !important; margin-top: 7px !important; } [data-kf-sticker-group-editor] input { min-width: 0 !important; min-height: max(34px, var(--kf-emote-control-height)) !important; padding: 0 9px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 12px !important; } [data-kf-sticker-editor-actions] { display: flex !important; gap: 4px !important; } [data-kf-sticker-editor-actions] button[data-kf-sticker-group-save] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-sticker-batch] { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; align-items: center !important; gap: var(--kf-emote-section-gap) !important; margin-top: var(--kf-emote-section-gap) !important; padding: var(--kf-emote-shell-padding) !important; border: 1px solid rgba(var(--kf-accent-rgb), .35) !important; border-radius: 8px !important; background: rgba(var(--kf-accent-rgb), .065) !important; } [data-kf-sticker-batch-summary] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 4px 7px !important; } [data-kf-sticker-batch-summary] strong { min-width: 0 !important; flex: 1 1 auto !important; color: var(--kf-text) !important; font-size: 11px !important; white-space: nowrap !important; } [data-kf-sticker-batch-summary] button { padding-inline: 5px !important; border: 0 !important; color: var(--kf-accent) !important; } [data-kf-sticker-batch][data-kf-has-selection="false"] [data-kf-sticker-clear-selection], [data-kf-sticker-batch][data-kf-can-reorder="false"] [data-kf-sticker-batch-reorder-group] { display: none !important; } [data-kf-sticker-batch-actions], [data-kf-sticker-batch-move-group], [data-kf-sticker-batch-reorder-group] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 4px !important; } [data-kf-sticker-batch-actions] { justify-content: flex-end !important; } [data-kf-sticker-batch-move-group] { flex: 1 1 152px !important; } [data-kf-sticker-batch-reorder-group] { flex: 0 0 auto !important; } [data-kf-sticker-batch] select { min-width: 88px !important; min-height: var(--kf-emote-control-height) !important; max-width: 128px !important; flex: 1 1 112px !important; padding: 0 24px 0 8px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 11px !important; } [data-kf-sticker-batch] button:disabled { cursor: not-allowed !important; opacity: .42 !important; } [data-kf-sticker-batch] button[data-kf-sticker-batch-remove] { color: var(--kf-danger) !important; } [data-kf-sticker-grid] { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(var(--kf-emote-tile-min-width), 1fr)) !important; grid-auto-rows: var(--kf-emote-tile-height) !important; gap: var(--kf-emote-grid-gap) !important; max-height: min(var(--kf-emote-grid-height), calc(100vh - 240px)) !important; overflow-x: hidden !important; overflow-y: auto !important; scrollbar-gutter: stable !important; padding: var(--kf-emote-shell-padding) 2px 5px !important; } [data-kf-sticker-item] { position: relative !important; min-width: 0 !important; min-height: var(--kf-emote-tile-height) !important; text-align: center !important; content-visibility: auto !important; contain-intrinsic-size: auto var(--kf-emote-tile-height) !important; } [data-kf-sticker-spacer] { grid-column: 1 / -1 !important; pointer-events: none !important; } [data-kf-sticker-proxy] { position: relative !important; display: grid !important; align-items: center !important; justify-content: center !important; width: 100% !important; height: 100% !important; min-height: calc(var(--kf-emote-tile-height) - 4px) !important; padding: var(--kf-emote-tile-padding) !important; border: 1px solid transparent !important; border-radius: 7px !important; background: rgba(255,255,255,.045) !important; cursor: pointer !important; } [data-kf-sticker-item][data-kf-sticker-reorderable="true"] [data-kf-sticker-proxy] { cursor: grab !important; user-select: none !important; } [data-kf-sticker-item][data-kf-sticker-dragging="true"] [data-kf-sticker-proxy] { opacity: .38 !important; cursor: grabbing !important; transform: scale(.94) !important; } [data-kf-sticker-item][data-kf-sticker-drop="before"] [data-kf-sticker-proxy] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; } [data-kf-sticker-item][data-kf-sticker-drop="after"] [data-kf-sticker-proxy] { box-shadow: inset -3px 0 0 var(--kf-accent) !important; } [data-kf-sticker-proxy]:hover, [data-kf-sticker-proxy]:focus-visible { border-color: rgba(var(--kf-accent-rgb), .52) !important; background: rgba(var(--kf-accent-rgb), .1) !important; } [data-kf-sticker-item][data-kf-sticker-pinned="true"] [data-kf-sticker-proxy] { border-color: rgba(var(--kf-accent-rgb), .72) !important; box-shadow: inset 0 -2px 0 var(--kf-accent) !important; } [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy] { border-style: dashed !important; } [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-proxy] { border-style: solid !important; border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .14) !important; box-shadow: inset 0 0 0 1px var(--kf-accent) !important; } [data-kf-sticker-proxy] img { width: 100% !important; height: 100% !important; object-fit: contain !important; } [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy] { border-color: var(--kf-border) !important; background: rgba(255,255,255,.025) !important; cursor: not-allowed !important; box-shadow: none !important; } [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy] img { filter: grayscale(1) !important; opacity: .55 !important; } [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy]:hover, [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy]:focus-visible { border-color: var(--kf-border-strong) !important; background: rgba(255,255,255,.045) !important; } [data-kf-sticker-proxy] .kf-rarity { display: inline-grid !important; position: absolute !important; top: 2px !important; left: 2px !important; z-index: 2 !important; min-width: 13px !important; height: 13px !important; padding: 0 3px !important; place-items: center !important; border: 1px solid currentColor !important; border-radius: 4px !important; background: var(--kf-panel-raised) !important; box-shadow: 0 1px 4px rgba(0,0,0,.52) !important; font-size: 8px !important; font-weight: 800 !important; line-height: 1 !important; text-transform: uppercase !important; cursor: inherit !important; } [data-kf-sticker-proxy] .kf-rarity[data-rarity="common"] { color: #b0b8b3 !important; } [data-kf-sticker-proxy] .kf-rarity[data-rarity="uncommon"] { color: #72dc7c !important; } [data-kf-sticker-proxy] .kf-rarity[data-rarity="rare"] { color: #62bdff !important; } [data-kf-sticker-proxy] .kf-rarity[data-rarity="epic"] { color: #b891ff !important; } [data-kf-sticker-proxy] .kf-rarity[data-rarity="legendary"] { color: #ffc05a !important; } [data-kf-sticker-proxy] .kf-rarity[data-rarity="mythic"] { color: #ff7c98 !important; } [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] .kf-rarity { display: none !important; } [data-kf-sticker-check] { display: none !important; position: absolute !important; top: 3px !important; left: 3px !important; z-index: 3 !important; width: 20px !important; height: 20px !important; place-items: center !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 4px !important; background: var(--kf-panel-raised) !important; color: transparent !important; pointer-events: none !important; } [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-check] { display: grid !important; } [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-check] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; } [data-kf-sticker-tools] { display: none !important; position: fixed !important; inset: auto !important; z-index: 2147483000 !important; min-width: 120px !important; max-width: min(196px, calc(100vw - 16px)) !important; flex-direction: column !important; gap: 2px !important; padding: 4px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 8px !important; background: var(--kf-panel-raised) !important; color: var(--kf-text) !important; box-shadow: 0 10px 28px rgba(0,0,0,.46) !important; pointer-events: auto !important; } [data-kf-sticker-tools][data-kf-open="true"] { display: flex !important; } [data-kf-sticker-organizer][data-kf-sticker-dragging="true"] [data-kf-sticker-tools] { display: none !important; } [data-kf-sticker-tools][data-kf-sticker-top-layer="true"] { overflow: visible !important; } [data-kf-sticker-tools] :is(button, a) { display: grid !important; grid-template-columns: 15px minmax(0, 1fr) !important; width: 100% !important; min-height: 30px !important; padding: 0 8px !important; align-items: center !important; gap: 7px !important; border: 1px solid transparent !important; border-radius: 6px !important; background: transparent !important; color: var(--kf-text-muted) !important; cursor: pointer !important; pointer-events: auto !important; font-size: 11px !important; font-weight: 720 !important; line-height: 1.1 !important; text-align: left !important; text-decoration: none !important; white-space: nowrap !important; transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease !important; } [data-kf-sticker-tools] :is(button, a) span { min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; } [data-kf-sticker-tools] :is(button, a):hover, [data-kf-sticker-tools] :is(button, a):focus-visible { border-color: rgba(var(--kf-accent-rgb), .5) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; } [data-kf-sticker-tools] button[aria-pressed="true"] { color: var(--kf-accent) !important; } [data-kf-sticker-tools] button[aria-pressed="true"] .kf-icon { fill: currentColor !important; } [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:hover, [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:focus-visible { border-color: var(--kf-danger) !important; color: var(--kf-danger) !important; } html[data-kf-large-targets="true"] [data-kf-sticker-grid] { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important; grid-auto-rows: 88px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-item] { min-height: 88px !important; contain-intrinsic-size: auto 88px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-proxy] { min-height: 84px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-tools] { min-width: 136px !important; padding: 5px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-tools] :is(button, a) { min-height: 40px !important; padding-inline: 10px !important; } html[data-kf-large-targets="true"] [data-kf-sticker-tools] .kf-icon { width: 18px !important; height: 18px !important; } [data-kf-sticker-empty] { display: grid !important; min-height: 112px !important; place-items: center !important; padding: 18px !important; color: var(--kf-text-muted) !important; font-size: 12px !important; line-height: 1.45 !important; text-align: center !important; } [data-kf-sticker-empty] strong { display: block !important; margin-bottom: 3px !important; color: var(--kf-text) !important; font-size: 13px !important; } @container kf-sticker (max-width: 500px) { [data-kf-sticker-batch] { grid-template-columns: 1fr !important; } [data-kf-sticker-batch-actions] { justify-content: flex-start !important; } } @container kf-sticker (max-width: 360px) { [data-kf-sticker-batch-actions] { flex-wrap: wrap !important; } [data-kf-sticker-batch-move-group] { flex-basis: 100% !important; } [data-kf-sticker-heading] span { display: none !important; } } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"], html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"], html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"], html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"], html[data-kf-sticker-view="group"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-group], html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group], html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-group], html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-native-group], html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-list], html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-list], html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-list], html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-native-list], html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-list] { display: none !important; } html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *, html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *, html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *, html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *, html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ * { display: none !important; } #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; } #chat-emotes-picker-panel button[data-kf-sticker-locked="true"][data-kf-sticker-native="true"] { display: none !important; } html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; } html[data-kf-large-targets="true"] :is(button, a, input, select, textarea) { min-height: 40px; } html[data-kf-contrast="true"] :is(main, #main-container) :is(p, span, div) { text-shadow: 0 0 .01px currentColor; } html[data-kf-control-contrast="true"] { --kf-border: #6a7a71; --kf-border-strong: #93a49a; --kf-header-edge-alpha: 1; } html[data-kf-control-contrast="true"][data-kf-theme="oled"] { --kf-border: #6d7b74; --kf-border-strong: #97a69f; } html[data-kf-control-contrast="true"][data-kf-theme="slate"] { --kf-border: #6d8496; --kf-border-strong: #9db2c2; } html[data-kf-focus-visible="true"] :is(button, a, input, select, textarea):focus-visible { outline: var(--kf-focus-ring) !important; outline-offset: 3px !important; } @media (min-width: 1024px) { html[data-kf-focus="true"] :is(main, #main-container) { width: 100% !important; max-width: none !important; } html[data-kf-route="category"] :is(main, #main-container) > div:first-child { max-width: 1680px; margin-inline: auto; } } [id^="google_ads_"], [id^="div-gpt-ad"], [data-ad-slot], [data-ad-unit], [data-testid="ad-banner"], [data-testid*="advertisement"], [aria-label="Advertisement"], [aria-label="advertisement"], iframe[src*="doubleclick.net"], iframe[src*="googlesyndication.com"], iframe[src*="googleadservices.com"], script[src*="imasdk.googleapis.com"], script[src*="doubleclick.net"], script[src*="googlesyndication.com"], script[src*="googleadservices.com"] { display: none !important; } video::cue { background: rgba(0, 0, 0, var(--kf-caption-opacity)); } @media (min-width: 1024px) { html[data-kf-sidebar="autohide"] #sidebar-wrapper { position: fixed !important; inset: var(--kf-header-height) auto 0 0 !important; z-index: 400 !important; width: var(--kf-sidebar-autohide-width, 256px) !important; max-width: 88vw !important; height: calc(100vh - var(--kf-header-height)) !important; overflow: hidden !important; border: 0 !important; border-right: 1px solid var(--kf-border) !important; border-radius: 0 8px 8px 0 !important; background: var(--kf-panel) !important; box-shadow: none !important; transform: translateX(calc(-100% + var(--kf-auto-hide-edge))) !important; transition: transform 180ms ease, box-shadow 180ms ease !important; } html[data-kf-sidebar="autohide"] #sidebar-wrapper::after { content: "" !important; position: absolute !important; inset: 0 0 0 auto !important; z-index: 4 !important; width: var(--kf-auto-hide-edge) !important; border-left: 1px solid rgba(var(--kf-accent-rgb), .34) !important; background: linear-gradient(180deg, rgba(var(--kf-accent-rgb), .15), var(--kf-panel) 24%, var(--kf-panel) 76%, rgba(var(--kf-accent-rgb), .10)) !important; pointer-events: none !important; transition: opacity 140ms ease !important; } html[data-kf-sidebar="autohide"] #sidebar-wrapper:is(:hover, :focus-within) { transform: translateX(0) !important; box-shadow: 22px 0 54px rgba(0,0,0,.46) !important; } html[data-kf-sidebar="autohide"] #sidebar-wrapper:is(:hover, :focus-within)::after { opacity: 0 !important; } html[data-kf-sidebar="autohide"] [aria-controls="sidebar-wrapper"] { display: none !important; } html[data-kf-sidebar="autohide"] :is(main, #main-container) { margin-left: 0 !important; } html[data-kf-sidebar="autohide"][data-kf-reduce-motion="true"] #sidebar-wrapper, html[data-kf-chat="autohide"][data-kf-reduce-motion="true"] [data-kf-chat-panel] { transition: none !important; } } @media (prefers-reduced-motion: reduce) { html[data-kf-sidebar="autohide"] #sidebar-wrapper, html[data-kf-chat="autohide"] [data-kf-chat-panel] { transition: none !important; } #kick-focus-following-preview { transition: none !important; transform: none !important; } } .kf-chat-badges { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; vertical-align: text-bottom; } .kf-chat-badge { width: 18px; height: 18px; object-fit: contain; border-radius: 3px; } .kf-chat-badge-text { padding: 1px 5px; border: 1px solid var(--kf-border-strong); border-radius: 3px; color: var(--kf-text-muted); font-size: 10px; font-weight: 700; line-height: 1.4; text-transform: uppercase; white-space: nowrap; } .kf-deletion-note { margin-top: 4px; padding: 4px 8px; border-left: 3px solid var(--kf-border-strong); border-radius: 4px; background: rgba(255,255,255,.04); color: var(--kf-text-muted); font-size: 11px; font-style: italic; } [data-kf-ai-moderated="true"] .kf-deletion-note { border-left-color: #d98b3a; color: #e7b478; } img[data-kf-emote-aspect="wide"] { width: auto !important; aspect-ratio: 2 / 1; object-fit: contain; } html[data-kf-static-emotes="true"] img[src*="/emotes/" i], html[data-kf-static-emotes="true"] img[data-src*="/emotes/" i] { animation-play-state: paused !important; } @media (prefers-reduced-motion: reduce) { html[data-kf-reduce-motion="true"] img[src*="/emotes/" i] { animation-play-state: paused !important; } } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]) { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):hover { background: var(--kf-surface-hover) !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):active { transform: translateY(1px) !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):disabled { opacity: .48 !important; cursor: not-allowed !important; transform: none !important; } :is([data-kf-card-actions] button, [data-kf-chat-pause], [data-kf-sticker-action], [data-kf-header-control]):focus-visible { outline: var(--kf-focus-ring) !important; outline-offset: 2px !important; } [data-kf-chat-emote-save] { border-radius: 4px !important; cursor: pointer !important; outline: 1px solid transparent; outline-offset: 2px; transition: filter 120ms ease, outline-color 120ms ease, transform 120ms ease !important; } [data-kf-chat-emote-save]:is(:hover, :focus-visible) { filter: brightness(1.14) saturate(1.08) !important; outline-color: var(--kf-accent) !important; transform: translateY(-1px) scale(1.05); } [data-kf-chat-emote-save]:active { transform: translateY(0) scale(1); } [data-kf-chat-emote-save][aria-busy="true"] { cursor: progress !important; opacity: .62; } html[data-kf-reduce-motion="true"] *, html[data-kf-reduce-motion="true"] *::before, html[data-kf-reduce-motion="true"] *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } @media (prefers-reduced-motion: reduce) { html[data-kf-route]:not([data-kf-reduce-motion="false"]) *, html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::before, html[data-kf-route]:not([data-kf-reduce-motion="false"]) *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } } `;
 function applySettingsAttributes() {
 const root = document.documentElement;
 const { layout, appearance, content, accessibility } = state.settings;
@@ -7483,8 +7498,10 @@ return favoritesForChannel(state.stickerPreferences.favorites, favoriteChannel()
 function isFavorited(key) {
 return isStickerFavorite(state.stickerPreferences.favorites, key, favoriteChannel());
 }
-function favoriteCount() {
-return favoriteKeysInOrder().length;
+function favoriteCount(availableKeys = null) {
+const favorites = favoriteKeysInOrder();
+if (!(availableKeys instanceof Set)) return favorites.length;
+return favorites.filter((key) => availableKeys.has(key)).length;
 }
 function favoriteScopeOf(key) {
 const channel = favoriteChannel();
@@ -7495,6 +7512,7 @@ return scoped ? channel : '';
 function stickerPreferencesFromValue(value) {
 return {
 favorites: value.favorites,
+order: [...value.order],
 hidden: new Set(value.hidden),
 view: value.view,
 showHidden: value.showHidden,
@@ -7508,6 +7526,7 @@ function stickerPreferencesValue(preferences = state.stickerPreferences) {
 return normalizeStickerPreferences({
 schema: STICKER_PREFERENCES_SCHEMA,
 favorites: preferences.favorites,
+order: preferences.order,
 hidden: [...preferences.hidden],
 view: preferences.view,
 showHidden: preferences.showHidden,
@@ -7581,6 +7600,8 @@ currentChannelSlug,
 currentVodId,
 plural,
 mergeStickerLibrary,
+reconcileStickerSubscriptions,
+renderStickerOrganizer,
 forgetChatMessage,
 });
 const {
@@ -8476,22 +8497,29 @@ const viewport = messages.getBoundingClientRect();
 const visible = chatScrollRows(messages)
 .map((node) => ({ node, rect: node.getBoundingClientRect() }))
 .filter(({ rect }) => rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom);
-const row = visible.find(({ rect }) => rect.top >= viewport.top) || visible[0];
-if (!row) return null;
-const id = chatMessageId(row.node);
-return {
-node: row.node,
-    signature: id ? `id:${id}` : `text:${String(row.node.textContent || '').replace(/\s+/g, ' ').trim()}`,
-offset: row.rect.top - viewport.top,
-};
+const anchors = visible.map(({ node, rect }) => ({ node, signature: chatScrollSignature(node), offset: rect.top - viewport.top }));
+const anchor = anchors.find(({ offset }) => offset >= 0) || anchors[0] || null;
+if (anchor) anchor.peers = anchors;
+return anchor;
+}
+function chatScrollSignature(node) {
+const id = chatMessageId(node);
+const text = String(node.textContent || '').replace(/\s+/g, ' ').trim();
+  return id ? `id:${id}|${text}` : `text:${text}`;
 }
 function chatScrollAnchorStillMatches(messages, anchor) {
-if (!anchor?.node?.isConnected || !messages.contains(anchor.node)) return false;
-const id = chatMessageId(anchor.node);
-const signature = id
-    ? `id:${id}`
-    : `text:${String(anchor.node.textContent || '').replace(/\s+/g, ' ').trim()}`;
-return signature === anchor.signature;
+let rows;
+for (const candidate of anchor?.peers || [anchor]) {
+if (!candidate?.signature) continue;
+if (!candidate.node?.isConnected || !messages.contains(candidate.node) || chatScrollSignature(candidate.node) !== candidate.signature) {
+candidate.node = (rows ||= chatScrollRows(messages)).find(node => chatScrollSignature(node) === candidate.signature);
+}
+if (candidate.node && chatScrollSignature(candidate.node) === candidate.signature) {
+Object.assign(anchor, candidate);
+return true;
+}
+}
+return false;
 }
 function restorePausedChatPosition(messages) {
 const anchor = state.runtime.chatScrollAnchor;
@@ -8595,6 +8623,8 @@ state.runtime.chatScrollHandler = null;
 state.runtime.chatScrollIntentHandler = null;
 state.runtime.chatScrollIntentUntil = 0;
 state.runtime.chatScrollIgnoreUntil = 0;
+clearInterval(state.runtime.chatScrollHoldTimer);
+state.runtime.chatScrollHoldTimer = 0;
 }
 function applyChatPause() {
 const panel = findProbe(document, 'chatPanel').element;
@@ -8656,11 +8686,22 @@ if (!state.observers.chat) {
 state.runtime.chatScrollTop = messages.scrollTop;
 state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
 state.observers.chat = new MutationObserver(() => schedulePausedChatRestore(messages));
-state.observers.chat.observe(messages, { childList: true, subtree: true, characterData: true });
+state.observers.chat.observe(messages, {
+childList: true,
+subtree: true,
+characterData: true,
+attributes: true,
+attributeFilter: ['style', 'data-index', 'data-message-id', 'data-chat-entry'],
+});
+}
+if (!state.runtime.chatScrollHoldTimer) {
+state.runtime.chatScrollHoldTimer = setInterval(() => schedulePausedChatRestore(messages), 250);
 }
 messages.setAttribute('aria-live', 'off');
 messages.dataset.kfChatPaused = 'true';
 } else {
+clearInterval(state.runtime.chatScrollHoldTimer);
+state.runtime.chatScrollHoldTimer = 0;
 state.observers.chat?.disconnect?.();
 state.observers.chat = null;
 state.runtime.chatPauseNode = null;
@@ -8793,7 +8834,14 @@ const incomingAccess = sticker.available || sticker.access === 'available'
 : sticker.access === 'channel'
 ? 'channel'
 : 'locked';
-const access = preferredStickerAccess(existing?.access, incomingAccess);
+const entitlement = ['granted', 'denied'].includes(sticker.entitlement)
+? sticker.entitlement
+: (existing?.entitlement || 'unknown');
+const access = entitlement === 'denied'
+? 'locked'
+: entitlement === 'granted'
+? 'available'
+: preferredStickerAccess(existing?.access, incomingAccess);
 const record = recordStickerObservation(existing, {
 key: sticker.key,
 id: sticker.id,
@@ -8805,6 +8853,7 @@ sourceSlug: sticker.sourceSlug || existing?.sourceSlug || '',
 requiresFollow: sticker.requiresFollow === true || existing?.requiresFollow === true,
 followed: sticker.followed === true || existing?.followed === true,
 subscribersOnly: sticker.subscribersOnly === true || existing?.subscribersOnly === true,
+entitlement,
 ...(sticker.usableEverywhere === undefined ? {} : { usableEverywhere: sticker.usableEverywhere === true }),
 ...(sticker.usableHere === undefined ? {} : { usableHere: sticker.usableHere === true }),
 }, now);
@@ -8817,10 +8866,34 @@ changed = true;
 }
 }
 if (!changed) return false;
+state.runtime.stickerCatalogDirty = true;
 queueStickerPersist();
 for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
 summary.textContent = stickerLibrarySummary();
 }
+return true;
+}
+function reconcileStickerSubscriptions(catalog) {
+if (!catalog?.account?.authenticated) return false;
+let changed = false;
+for (const [key, entry] of state.stickerPreferences.library) {
+if (!entry.subscribersOnly || !entry.sourceSlug) continue;
+const entitlement = catalogSubscriptionEntitlement(catalog, entry.sourceSlug);
+if (entitlement === 'unknown') continue;
+const access = entitlement === 'granted' ? 'available' : 'locked';
+if (entry.entitlement === entitlement && entry.access === access) continue;
+state.stickerPreferences.library.set(key, {
+...entry,
+entitlement,
+access,
+usableEverywhere: true,
+usableHere: entitlement === 'granted',
+});
+changed = true;
+}
+if (!changed) return false;
+state.runtime.stickerCatalogDirty = true;
+queueStickerPersist();
 return true;
 }
 function disconnectStickerObserver() {
@@ -8863,6 +8936,9 @@ sourceSlug: emote.sourceSlug,
 requiresFollow: emote.requiresFollow,
 followed: emote.followed,
 subscribersOnly: emote.subscribersOnly,
+entitlement: emote.entitlement,
+usableEverywhere: emote.usableEverywhere,
+usableHere: emote.usableHere,
 };
 }
 function chatStickerInfo(image) {
@@ -9123,6 +9199,7 @@ if (node.closest('[data-kf-sticker-organizer]')) continue;
 node.removeAttribute('data-kf-sticker-key');
 node.removeAttribute('data-kf-sticker-hidden');
 node.removeAttribute('data-kf-sticker-pinned');
+node.removeAttribute('data-kf-sticker-locked');
 node.removeAttribute('data-kf-sticker-native');
 node.removeAttribute('data-kf-sticker-native-group');
 node.removeAttribute('data-kf-sticker-native-list');
@@ -9130,7 +9207,6 @@ node.removeAttribute('data-kf-sticker-native-shell');
 }
 const nativeGroups = stickerNativeGroups(picker);
 const observed = new Map();
-const descriptors = new Map();
 for (const button of [...picker.querySelectorAll('button')].filter((candidate) => !candidate.closest('[data-kf-sticker-organizer]'))) {
 const info = stickerButtonInfo(button, { includeUnavailable: true });
 if (!info) continue;
@@ -9140,6 +9216,7 @@ const seen = observed.get(info.key);
 if (seen) {
 if (group && !seen.nativeGroups.includes(group)) seen.nativeGroups.push(group);
 seen.available ||= available;
+seen.originals.push(button);
 } else {
 observed.set(info.key, {
 key: info.key,
@@ -9148,25 +9225,27 @@ name: info.name,
 src: info.src,
 nativeGroups: group ? [group] : [],
 available,
-});
-}
-if (!available) continue;
-const existing = descriptors.get(info.key);
-if (existing) {
-existing.originals.push(button);
-if (group && !existing.nativeGroups.includes(group)) existing.nativeGroups.push(group);
-} else {
-descriptors.set(info.key, {
-key: info.key,
-id: info.id,
-name: info.name,
-src: info.src,
-nativeGroups: group ? [group] : [],
 originals: [button],
 });
 }
 }
 mergeStickerLibrary(observed.values());
+const descriptors = new Map();
+for (const candidate of observed.values()) {
+const stored = state.stickerPreferences.library.get(candidate.key);
+const locked = stickerSubscriptionLocked(stored)
+|| (!candidate.available && stored?.subscribersOnly === true && stored.entitlement !== 'granted');
+if (!candidate.available && !locked) continue;
+descriptors.set(candidate.key, {
+...stored,
+...candidate,
+locked,
+});
+}
+for (const [key, stored] of state.stickerPreferences.library) {
+if (descriptors.has(key) || !stickerSubscriptionLocked(stored)) continue;
+descriptors.set(key, { ...stored, available: false, locked: true, originals: [] });
+}
 for (const descriptor of descriptors.values()) {
 const hidden = state.stickerPreferences.hidden.has(descriptor.key);
 const pinned = isFavorited(descriptor.key);
@@ -9174,6 +9253,7 @@ for (const original of descriptor.originals) {
 original.dataset.kfStickerKey = descriptor.key;
 original.dataset.kfStickerHidden = String(hidden);
 original.dataset.kfStickerPinned = String(pinned);
+original.dataset.kfStickerLocked = String(descriptor.locked === true);
 original.dataset.kfStickerNative = 'true';
 }
 }
@@ -9184,7 +9264,8 @@ function rarityBadge(descriptor) {
 if (!state.settings.content.showEmoteRarity || !state.live.rarity) return '';
 const match = state.live.rarity.matched.find((entry) => entry.emote.id === descriptor.id);
 if (!match) return '';
-  return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="${escapeHtml(trf('Kick rarity, matched by {basis}', { basis: tr(match.basis) }))}">${escapeHtml(match.rarity)}</span>`;
+const rarity = String(match.rarity || '').toLowerCase();
+  return `<span class="kf-rarity" data-rarity="${escapeHtml(rarity)}" title="${escapeHtml(trf('Kick rarity, matched by {basis}', { basis: tr(match.basis) }))}">${escapeHtml(rarity.slice(0, 1).toUpperCase())}</span>`;
 }
 function emoteImageAttrs(descriptor) {
 return isCollectibleEmote(descriptor.name)
@@ -9202,34 +9283,264 @@ if (image.complete && image.naturalWidth) apply();
 else image.addEventListener('load', apply, { once: true });
 }
 }
-function stickerProxyMarkup(descriptor) {
-const pinned = isFavorited(descriptor.key);
+function stickerViewCanReorder(view = state.stickerPreferences.view) {
+return view === 'all' || view === 'pinned' || view === 'group';
+}
+function stickerProxyMarkup(descriptor, view) {
+const locked = descriptor.locked === true;
+const pinned = !locked && isFavorited(descriptor.key);
 const hidden = state.stickerPreferences.hidden.has(descriptor.key);
 const selected = state.runtime.stickerPickerSelection.has(descriptor.key);
 const organizing = state.runtime.stickerPickerOrganizing;
+const reorderable = stickerViewCanReorder(view) && !hidden && !locked;
+const dragging = state.runtime.stickerDragKey === descriptor.key;
 const safeKey = escapeHtml(descriptor.key);
 const safeName = escapeHtml(descriptor.name);
 const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
-  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-pinned="${pinned}" data-kf-sticker-selected="${selected}" data-kf-sticker-state="${pinned}:${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" data-kf-sticker-proxy${organizing ? ` aria-pressed="${selected}"` : ''} aria-label="${escapeHtml(trf(organizing ? 'Select emote {name}' : 'Use emote {name}', { name: descriptor.name }))}" title="${escapeHtml(trf(organizing ? 'Select {name}' : 'Use {name}', { name: descriptor.name }))}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
+const sourceSlug = favoriteScope(descriptor.sourceSlug);
+const sourceLabel = sourceSlug ? trf('Open {name} on Kick', { name: sourceSlug }) : '';
+const sourceText = sourceSlug ? trf('View {name}', { name: sourceSlug }) : '';
+const sourceLink = sourceSlug
+    ? `<a href="/${encodeURIComponent(sourceSlug)}" data-kf-sticker-source aria-label="${escapeHtml(sourceLabel)}" title="${escapeHtml(sourceLabel)}">${uiIcon('externalLink')}<span>${escapeHtml(sourceText)}</span></a>`
+: '';
+const title = locked
+? trf('{name} is unavailable until you resubscribe.', { name: descriptor.name })
+: trf(
+reorderable
+? (organizing ? 'Select {name}. Drag to rearrange.' : 'Use {name}. Drag to rearrange.')
+: (organizing ? 'Select {name}' : 'Use {name}'),
+{ name: descriptor.name },
+);
+  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-pinned="${pinned}" data-kf-sticker-locked="${locked}" data-kf-sticker-selected="${selected}" data-kf-sticker-state="${pinned}:${hidden}" data-kf-sticker-reorderable="${reorderable}"${dragging ? ' data-kf-sticker-dragging="true"' : ''}${scope ? ' data-kf-sticker-scoped="true"' : ''}>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" data-kf-sticker-proxy draggable="${reorderable}"${locked ? ' aria-disabled="true"' : (organizing ? ` aria-pressed="${selected}"` : '')} aria-label="${escapeHtml(trf(locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name: descriptor.name }))}" title="${escapeHtml(title)}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy" draggable="false"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <span data-kf-sticker-check aria-hidden="true">${uiIcon('check')}</span>
-    <div data-kf-sticker-tools>
-      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${uiIcon('star')}</button>
-      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf(hidden ? 'Restore {name}' : 'Remove {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}">${uiIcon(hidden ? 'reset' : 'trash')}</button>
+    <div data-kf-sticker-tools data-kf-open="false" role="group" aria-label="${escapeHtml(trf('Actions for {name}', { name: descriptor.name }))}">
+      ${locked ? '' : `<button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${uiIcon('star')}<span>${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}</span></button>`}
+      ${sourceLink}
+      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf(hidden ? 'Restore {name}' : 'Remove {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}">${uiIcon(hidden ? 'reset' : 'trash')}<span>${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}</span></button>
     </div>
   </div>`;
 }
-function unavailableStickerCount(picker, availableDescriptors) {
-const availableKeys = new Set(availableDescriptors.map((descriptor) => descriptor.key));
-const keys = new Set();
-for (const button of picker.querySelectorAll('button:disabled, button[aria-disabled="true"]')) {
-const info = stickerButtonInfo(button, { includeUnavailable: true });
-if (info && !availableKeys.has(info.key)) keys.add(info.key);
+function clearStickerActionHideTimer() {
+clearTimeout(state.runtime.stickerActionHideTimer);
+state.runtime.stickerActionHideTimer = 0;
 }
-return keys.size;
+function hideStickerTileActions() {
+clearStickerActionHideTimer();
+const tools = state.runtime.stickerActionTools;
+if (!tools) return;
+tools.dataset.kfOpen = 'false';
+tools.style.removeProperty('left');
+tools.style.removeProperty('top');
+tools.style.removeProperty('visibility');
+delete tools.dataset.kfSide;
+closeAnchoredSurface(tools);
+state.runtime.stickerActionTools = null;
+}
+function prepareStickerTileActions(scope) {
+for (const tools of scope?.querySelectorAll?.('[data-kf-sticker-tools]') || []) {
+if (tools.dataset.kfStickerActionsReady === 'true') continue;
+if (typeof tools.showPopover === 'function') {
+tools.setAttribute('popover', 'manual');
+tools.dataset.kfStickerTopLayer = 'true';
+}
+tools.dataset.kfStickerActionsReady = 'true';
+}
+}
+function showStickerTileActions(tile) {
+const organizer = tile?.closest?.('[data-kf-sticker-organizer]');
+if (!organizer || organizer.dataset.kfStickerOrganizing === 'true' || organizer.dataset.kfStickerDragging === 'true') {
+hideStickerTileActions();
+return;
+}
+const tools = tile.querySelector('[data-kf-sticker-tools]');
+const proxy = tile.querySelector('[data-kf-sticker-proxy]');
+if (!tools || !proxy) return;
+clearStickerActionHideTimer();
+if (state.runtime.stickerActionTools !== tools) hideStickerTileActions();
+state.runtime.stickerActionTools = tools;
+tools.dataset.kfOpen = 'true';
+tools.style.removeProperty('left');
+tools.style.removeProperty('top');
+tools.style.visibility = 'hidden';
+if (tools.dataset.kfStickerTopLayer === 'true') {
+try {
+if (!tools.matches(':popover-open')) tools.showPopover();
+} catch {
+}
+}
+const anchor = proxy.getBoundingClientRect();
+const box = tools.getBoundingClientRect();
+const gap = 6;
+const right = anchor.right + gap;
+const left = right + box.width <= window.innerWidth - 8
+? right
+: Math.max(8, anchor.left - box.width - gap);
+const top = Math.min(
+Math.max(8, anchor.top + ((anchor.height - box.height) / 2)),
+Math.max(8, window.innerHeight - box.height - 8),
+);
+  tools.style.setProperty('left', `${left}px`, 'important');
+  tools.style.setProperty('top', `${top}px`, 'important');
+tools.dataset.kfSide = left === right ? 'right' : 'left';
+tools.style.visibility = 'visible';
+}
+function scheduleStickerTileActionsHide(tile) {
+clearStickerActionHideTimer();
+state.runtime.stickerActionHideTimer = window.setTimeout(() => {
+state.runtime.stickerActionHideTimer = 0;
+const active = deepActiveElement();
+if (tile?.matches?.(':hover') || (active && tile?.contains?.(active))) return;
+hideStickerTileActions();
+}, 140);
+}
+function onStickerTileActionEnter(event) {
+const tile = event.target?.closest?.('[data-kf-sticker-item]');
+if (tile) showStickerTileActions(tile);
+}
+function onStickerTileActionLeave(event) {
+const tile = event.target?.closest?.('[data-kf-sticker-item]');
+if (!tile || tile.contains(event.relatedTarget)) return;
+scheduleStickerTileActionsHide(tile);
+}
+function stickerActionFocusReturn(target, event) {
+if (event.detail !== 0 || !target?.matches?.(':focus')) return null;
+return target.closest?.('[data-kf-sticker-item]')?.querySelector?.('[data-kf-sticker-proxy]') || null;
+}
+function restoreStickerActionFocus(target, organizer) {
+if (!target) return;
+requestAnimationFrame(() => {
+if (restoreFocus(target)) return;
+restoreFocus(organizer?.querySelector?.('[data-kf-sticker-item] [data-kf-sticker-proxy], [data-kf-sticker-view][data-active="true"]'));
+});
+}
+function clearStickerDragTarget() {
+const target = state.runtime.stickerDragTarget;
+if (target?.dataset) delete target.dataset.kfStickerDrop;
+state.runtime.stickerDragTarget = null;
+state.runtime.stickerDragAfter = false;
+}
+function finishStickerDrag(organizer, suppressClick = true) {
+const key = state.runtime.stickerDragKey;
+clearStickerDragTarget();
+if (organizer?.dataset) delete organizer.dataset.kfStickerDragging;
+for (const tile of organizer?.querySelectorAll?.('[data-kf-sticker-dragging="true"]') || []) {
+delete tile.dataset.kfStickerDragging;
+}
+state.runtime.stickerDragKey = '';
+if (suppressClick && key) {
+state.runtime.stickerDragSuppressKey = key;
+state.runtime.stickerDragSuppressClickUntil = Date.now() + 700;
+}
+}
+function sameStickerOrder(left, right) {
+return left.length === right.length && left.every((key, index) => key === right[index]);
+}
+function placePickerSticker(key, targetKey, after) {
+if (!key || !targetKey || key === targetKey || !stickerViewCanReorder()) return false;
+const view = state.stickerPreferences.view;
+if (view === 'pinned') {
+const scope = favoriteScopeOf(key);
+if (scope !== favoriteScopeOf(targetKey)) {
+showToast('Channel favorites stay before global favorites.');
+return false;
+}
+const previous = [...state.stickerPreferences.favorites];
+const next = placeStickerFavorite(previous, key, scope, targetKey, after);
+if (sameStickerOrder(favoritesForChannel(previous, favoriteChannel()), favoritesForChannel(next, favoriteChannel()))) return false;
+state.stickerPreferences.favorites = next;
+commitPickerStickerChange();
+showToast('Emote moved.', false, [{
+label: 'Undo',
+onClick: () => {
+state.stickerPreferences.favorites = previous;
+commitPickerStickerChange();
+showToast('Favorite order restored.');
+},
+}]);
+return true;
+}
+const previous = [...(state.stickerPreferences.order || [])];
+const fallback = orderedStickerKeys([...state.stickerCatalog.keys()], previous);
+const next = moveStickerOrder(previous, key, targetKey, after, fallback);
+if (sameStickerOrder(fallback, orderedStickerKeys(fallback, next))) return false;
+state.stickerPreferences.order = next;
+commitPickerStickerChange();
+showToast('Emote moved.', false, [{
+label: 'Undo',
+onClick: () => {
+state.stickerPreferences.order = previous;
+commitPickerStickerChange();
+showToast('Emote order restored.');
+},
+}]);
+return true;
+}
+function onStickerDragStart(event) {
+const proxy = event.target?.closest?.('[data-kf-sticker-proxy][draggable="true"]');
+const tile = proxy?.closest?.('[data-kf-sticker-item]');
+const organizer = tile?.closest?.('[data-kf-sticker-organizer]');
+const key = tile?.dataset.kfStickerKey;
+if (!proxy || !organizer || !key || !stickerViewCanReorder()) {
+event.preventDefault();
+return;
+}
+hideStickerTileActions();
+clearStickerDragTarget();
+state.runtime.stickerDragKey = key;
+organizer.dataset.kfStickerDragging = 'true';
+tile.dataset.kfStickerDragging = 'true';
+if (event.dataTransfer) {
+event.dataTransfer.effectAllowed = 'move';
+event.dataTransfer.setData('text/plain', key);
+}
+}
+function onStickerDragOver(event) {
+if (!state.runtime.stickerDragKey) return;
+const tile = event.target?.closest?.('[data-kf-sticker-item]');
+if (!tile || tile.dataset.kfStickerKey === state.runtime.stickerDragKey) {
+clearStickerDragTarget();
+return;
+}
+event.preventDefault();
+if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+const rect = tile.getBoundingClientRect();
+const after = event.clientX >= rect.left + (rect.width / 2);
+if (state.runtime.stickerDragTarget !== tile) clearStickerDragTarget();
+state.runtime.stickerDragTarget = tile;
+state.runtime.stickerDragAfter = after;
+tile.dataset.kfStickerDrop = after ? 'after' : 'before';
+}
+function onStickerDragLeave(event) {
+const organizer = event.currentTarget;
+if (organizer?.contains?.(event.relatedTarget)) return;
+clearStickerDragTarget();
+}
+function onStickerDrop(event) {
+const organizer = event.currentTarget;
+const target = state.runtime.stickerDragTarget;
+const key = state.runtime.stickerDragKey;
+const targetKey = target?.dataset.kfStickerKey;
+const after = state.runtime.stickerDragAfter;
+if (!key || !targetKey) {
+finishStickerDrag(organizer);
+return;
+}
+event.preventDefault();
+event.stopPropagation();
+rememberStickerGridScroll(target);
+finishStickerDrag(organizer);
+placePickerSticker(key, targetKey, after);
+}
+function onStickerDragEnd(event) {
+finishStickerDrag(event.currentTarget);
 }
 function removeStickerOrganizer() {
-for (const organizer of document.querySelectorAll('[data-kf-sticker-organizer]')) organizer.remove();
+hideStickerTileActions();
+for (const organizer of document.querySelectorAll('[data-kf-sticker-organizer]')) {
+finishStickerDrag(organizer, false);
+organizer.remove();
+}
 }
 function stickerGroupById(id) {
 return state.stickerPreferences.groups.find((group) => group.id === id) || null;
@@ -9270,7 +9581,7 @@ const bulkGroup = stickerGroupById(state.runtime.stickerPickerBulkGroup)
   const options = [`<option value=""${bulkGroup ? '' : ' selected'}>${escapeHtml(tr('Ungrouped'))}</option>`, ...state.stickerPreferences.groups.map((group) => `<option value="${escapeHtml(group.id)}"${bulkGroup === group.id ? ' selected' : ''}>${escapeHtml(group.name)}</option>`)].join('');
   return `<div data-kf-sticker-batch data-kf-has-selection="${Boolean(count)}" data-kf-can-reorder="${count === 1}">
     <div data-kf-sticker-batch-summary><strong data-kf-sticker-selected-count aria-live="polite">${escapeHtml(trf(count === 1 ? '{count} selected emote' : '{count} selected emotes', { count }))}</strong><button type="button" data-kf-sticker-select-shown>${escapeHtml(tr('Select shown'))}</button><button type="button" data-kf-sticker-clear-selection${disabled}>${escapeHtml(tr('Clear'))}</button></div>
-    <div data-kf-sticker-batch-actions><span data-kf-sticker-batch-move-group><select data-kf-sticker-bulk-group aria-label="${escapeHtml(tr('Move selected emotes to group'))}">${options}</select><button type="button" data-kf-sticker-batch-move${disabled}>${escapeHtml(tr('Move'))}</button></span>${state.stickerPreferences.view === 'pinned' ? `<span data-kf-sticker-batch-reorder-group><button type="button" data-kf-sticker-batch-reorder="up"${reorderDisabled}>${escapeHtml(tr('Earlier'))}</button><button type="button" data-kf-sticker-batch-reorder="down"${reorderDisabled}>${escapeHtml(tr('Later'))}</button></span>` : ''}<button type="button" data-kf-sticker-batch-remove${disabled}>${escapeHtml(tr('Remove'))}</button></div>
+    <div data-kf-sticker-batch-actions><span data-kf-sticker-batch-move-group><select data-kf-sticker-bulk-group aria-label="${escapeHtml(tr('Move selected emotes to group'))}">${options}</select><button type="button" data-kf-sticker-batch-move${disabled}>${escapeHtml(tr('Move'))}</button></span>${stickerViewCanReorder() ? `<span data-kf-sticker-batch-reorder-group><button type="button" data-kf-sticker-batch-reorder="up"${reorderDisabled}>${escapeHtml(tr('Earlier'))}</button><button type="button" data-kf-sticker-batch-reorder="down"${reorderDisabled}>${escapeHtml(tr('Later'))}</button></span>` : ''}<button type="button" data-kf-sticker-batch-remove${disabled}>${escapeHtml(tr('Remove'))}</button></div>
   </div>`;
 }
 function restoreStickerGridScroll(organizer, scrollTop) {
@@ -9296,6 +9607,7 @@ if (node.closest('[data-kf-sticker-organizer]')) continue;
 node.removeAttribute('data-kf-sticker-key');
 node.removeAttribute('data-kf-sticker-hidden');
 node.removeAttribute('data-kf-sticker-pinned');
+node.removeAttribute('data-kf-sticker-locked');
 node.removeAttribute('data-kf-sticker-native');
 node.removeAttribute('data-kf-sticker-native-group');
 node.removeAttribute('data-kf-sticker-native-list');
@@ -9364,6 +9676,11 @@ organizer.addEventListener('change', (event) => {
 const select = event.target.closest?.('select[data-kf-sticker-bulk-group]');
 if (select) state.runtime.stickerPickerBulkGroup = select.value;
 });
+organizer.addEventListener('dragstart', onStickerDragStart);
+organizer.addEventListener('dragover', onStickerDragOver);
+organizer.addEventListener('dragleave', onStickerDragLeave);
+organizer.addEventListener('drop', onStickerDrop);
+organizer.addEventListener('dragend', onStickerDragEnd);
 }
 const organizerAnchor = stickerOrganizerAnchor(search, picker);
 if (organizerAnchor && organizer.previousElementSibling !== organizerAnchor) organizerAnchor.after(organizer);
@@ -9374,13 +9691,26 @@ const query = String(search?.value || '').trim().toLowerCase();
 const showHidden = state.stickerPreferences.showHidden;
 const matches = (descriptor) => (!query || descriptor.name.toLowerCase().includes(query))
 && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
-const available = descriptors.filter((descriptor) => showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
+const available = descriptors.filter((descriptor) => !descriptor.locked
+&& (showHidden || !state.stickerPreferences.hidden.has(descriptor.key)));
+const locked = descriptors.filter((descriptor) => descriptor.locked
+&& (showHidden || !state.stickerPreferences.hidden.has(descriptor.key)));
 const allVisible = available.filter(matches);
+const lockedVisible = locked.filter(matches);
+const manualOrder = orderedStickerKeys(allVisible.map((descriptor) => descriptor.key), state.stickerPreferences.order || []);
+const byKey = new Map(allVisible.map((descriptor) => [descriptor.key, descriptor]));
+const manuallyOrdered = manualOrder.map((key) => byKey.get(key)).filter(Boolean);
 const favoriteOrder = favoriteKeysInOrder();
 const byFavoriteOrder = (left, right) => favoriteOrder.indexOf(left.key) - favoriteOrder.indexOf(right.key);
-const unavailableCount = unavailableStickerCount(picker, descriptors);
+const lockedOrder = orderedStickerKeys(
+lockedVisible.map((descriptor) => descriptor.key),
+[...favoriteOrder, ...(state.stickerPreferences.order || [])],
+);
+const lockedByKey = new Map(lockedVisible.map((descriptor) => [descriptor.key, descriptor]));
+const lockedOrdered = lockedOrder.map((key) => lockedByKey.get(key)).filter(Boolean);
+const unavailableCount = locked.length;
 const byId = new Map();
-for (const descriptor of descriptors) {
+for (const descriptor of available) {
 if (descriptor.id && !byId.has(String(descriptor.id))) byId.set(String(descriptor.id), descriptor);
 }
 const fromUsage = (ranked) => ranked
@@ -9395,17 +9725,19 @@ if (state.stickerPreferences.view === 'group'
 state.stickerPreferences.activeGroup = state.stickerPreferences.groups[0].id;
 }
 const view = state.stickerPreferences.view;
-const visible = view === 'pinned'
+const visible = view === 'locked'
+? lockedOrdered
+: view === 'pinned'
 ? allVisible.filter((descriptor) => isFavorited(descriptor.key)).sort(byFavoriteOrder)
 : view === 'recent'
 ? recent
 : view === 'group'
-? allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === state.stickerPreferences.activeGroup)
-: allVisible;
+? manuallyOrdered.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === state.stickerPreferences.activeGroup)
+: manuallyOrdered;
 state.runtime.stickerPickerVisibleKeys = visible.map((descriptor) => descriptor.key);
 const chrome = organizer.querySelector('[data-kf-sticker-chrome]');
 const gridHost = organizer.querySelector('[data-kf-sticker-grid-host]');
-organizer.dataset.kfStickerOrganizing = String(state.runtime.stickerPickerOrganizing && view !== 'native');
+organizer.dataset.kfStickerOrganizing = String(state.runtime.stickerPickerOrganizing && view !== 'native' && view !== 'locked');
 const signature = [
 activeLocale(),
 view,
@@ -9414,12 +9746,14 @@ String(showHidden),
 query,
 String(visible.length),
 String(allVisible.length),
+locked.map((descriptor) => descriptor.key).join(','),
 recent.map((descriptor) => descriptor.key).join(','),
 String(unavailableCount),
 String(state.runtime.stickerPickerOrganizing),
 state.runtime.stickerPickerGroupEditor,
 state.runtime.stickerPickerBulkGroup,
 favoriteOrder.join(','),
+(state.stickerPreferences.order || []).join(','),
 [...state.stickerPreferences.hidden].join(','),
     state.stickerPreferences.groups.map((group) => `${group.id}:${group.name}`).join(','),
     [...state.stickerPreferences.assignments].map(([key, groupId]) => `${key}:${groupId}`).join(','),
@@ -9431,27 +9765,32 @@ restoreStickerGridScroll(organizer, previousGridScrollTop);
 return;
 }
 chrome.dataset.kfStickerSignature = signature;
-const countLabel = query
+const countLabel = view === 'locked'
+? (query
+? trf('{shown} of {total} locked', { shown: visible.length, total: locked.length })
+: trf('{count} locked', { count: locked.length }))
+: (query
 ? trf('{shown} of {total} available', { shown: visible.length, total: available.length })
-: trf('{count} available', { count: available.length });
-const lockedLabel = unavailableCount ? trf(', {count} locked by Kick', { count: unavailableCount }) : '';
+: trf('{count} available', { count: available.length }));
+const lockedLabel = unavailableCount && view !== 'locked' ? trf(', {count} locked by Kick', { count: unavailableCount }) : '';
   const tab = (id, label, count = '') => `<button type="button" data-kf-sticker-view="${id}" data-active="${view === id}" aria-pressed="${view === id}">${escapeHtml(label)}${count === '' ? '' : ` <span>${count}</span>`}</button>`;
 const groupTarget = state.stickerPreferences.activeGroup || state.stickerPreferences.groups[0]?.id || '';
   const groupTab = `<button type="button" data-kf-sticker-view="group"${groupTarget ? ` data-kf-sticker-group="${escapeHtml(groupTarget)}"` : ''} data-active="${view === 'group'}" aria-pressed="${view === 'group'}">${escapeHtml(tr('Groups'))} <span>${state.stickerPreferences.groups.length}</span></button>`;
   setMarkup(chrome, `
     <div data-kf-sticker-topline>
       <div data-kf-sticker-heading><strong>${escapeHtml(tr('Your emotes'))}</strong><span data-kf-sticker-count title="${escapeHtml(countLabel + lockedLabel)}">${escapeHtml(countLabel + lockedLabel)}</span></div>
-      <div data-kf-sticker-top-actions><button type="button" data-kf-sticker-organize aria-pressed="${state.runtime.stickerPickerOrganizing}">${uiIcon('check')}<span>${escapeHtml(tr(state.runtime.stickerPickerOrganizing ? 'Done' : 'Organize'))}</span></button><button type="button" data-kf-sticker-manage="true">${uiIcon('folder')}<span>${escapeHtml(tr('Library'))}</span></button></div>
+      <div data-kf-sticker-top-actions><button type="button" data-kf-sticker-organize aria-pressed="${state.runtime.stickerPickerOrganizing}"${view === 'locked' ? ' disabled' : ''}>${uiIcon('check')}<span>${escapeHtml(tr(state.runtime.stickerPickerOrganizing ? 'Done' : 'Organize'))}</span></button><button type="button" data-kf-sticker-manage="true">${uiIcon('folder')}<span>${escapeHtml(tr('Library'))}</span></button></div>
     </div>
     <div data-kf-sticker-tabs role="group" aria-label="${escapeHtml(tr('Emote views'))}">
-      ${tab('pinned', tr('Favorites'), favoriteCount())}
+      ${tab('pinned', tr('Favorites'), favoriteCount(new Set(available.map((descriptor) => descriptor.key))))}
+      ${unavailableCount || view === 'locked' ? tab('locked', tr('Locked'), unavailableCount) : ''}
       ${tab('recent', tr('Recent'), recent.length)}
       ${tab('all', tr('All'), allVisible.length)}
       ${groupTab}
       ${tab('native', tr('Kick'))}
     </div>
     ${view === 'group' ? pickerStickerGroupPanelMarkup(available) : ''}
-    ${state.runtime.stickerPickerOrganizing && view !== 'native' ? pickerStickerBatchMarkup() : ''}`);
+    ${state.runtime.stickerPickerOrganizing && view !== 'native' && view !== 'locked' ? pickerStickerBatchMarkup() : ''}`);
 renderStickerGrid(gridHost, visible, view);
 patchStickerSelection(organizer);
 restoreStickerGridScroll(organizer, previousGridScrollTop);
@@ -9484,7 +9823,7 @@ const searching = Boolean(String(stickerSearchInput(stickerPicker())?.value || '
 const message = searching
 ? [tr('No emotes found'), tr('Try a different search or clear the search field.')]
 : view === 'pinned'
-? [tr('No favorites yet'), tr('Open All and use the star on any emote to keep it here.')]
+? [tr('No favorites yet'), tr('Open All, hover or focus an emote, then choose Favorite.')]
 : view === 'recent'
 ? [tr('No recent emotes yet'), tr('Emotes you send in this channel will appear here.')]
 : view === 'group' && !state.stickerPreferences.groups.length
@@ -9498,26 +9837,33 @@ return;
 const grid = gridHost.querySelector('[data-kf-sticker-grid]');
 const columns = stickerGridColumns(grid);
 const slice = visibleWindow(visible, state.runtime.stickerGridAnchor);
-const signature = [activeLocale(), view, String(state.settings.accessibility.largeTargets), state.settings.content.emotePickerDensity, state.settings.content.emotePickerHeight, String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end),
-slice.items.map((descriptor) => descriptor.key).join(',')].join('\u0001');
+const raritySignature = state.settings.content.showEmoteRarity
+    ? (state.live.rarity?.matched || []).map((entry) => `${entry.emote.id}:${entry.rarity}`).join(',')
+: '';
+const signature = [activeLocale(), view, String(state.settings.accessibility.largeTargets), state.settings.content.emotePickerDensity, state.settings.content.emotePickerHeight, String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end), raritySignature,
+    slice.items.map((descriptor) => `${descriptor.key}:${descriptor.locked === true}:${descriptor.sourceSlug || ''}`).join(',')].join('\u0001');
 if (gridHost.dataset.kfStickerGridSignature === signature) {
 patchStickerTileStates(gridHost);
+prepareStickerTileActions(gridHost);
 return;
 }
 const scrollTop = Number.isFinite(grid?.scrollTop) ? grid.scrollTop : null;
+hideStickerTileActions();
 gridHost.dataset.kfStickerGridSignature = signature;
   gridHost.dataset.kfStickerWindow = `${slice.start}-${slice.end}`;
   setMarkup(gridHost, `<div data-kf-sticker-grid data-kf-sticker-total="${visible.length}">${
 stickerSpacerMarkup(slice.before, columns, 'before')
-  }${slice.items.map(stickerProxyMarkup).join('')}${
+  }${slice.items.map((descriptor) => stickerProxyMarkup(descriptor, view)).join('')}${
 stickerSpacerMarkup(slice.after, columns, 'after')
   }</div>`);
 const next = gridHost.querySelector('[data-kf-sticker-grid]');
 if (next && scrollTop !== null) next.scrollTop = scrollTop;
+prepareStickerTileActions(gridHost);
 measureEmoteAspect(gridHost);
 }
 function setStickerGridHost(gridHost, signature, markup) {
 if (gridHost.dataset.kfStickerGridSignature === signature) return;
+hideStickerTileActions();
 gridHost.dataset.kfStickerGridSignature = signature;
 delete gridHost.dataset.kfStickerWindow;
 setMarkup(gridHost, markup);
@@ -9533,10 +9879,25 @@ tile.dataset.kfStickerSelected = String(active);
 const proxy = tile.querySelector('[data-kf-sticker-proxy]');
 if (!proxy) continue;
 const name = proxy.querySelector('img')?.getAttribute('alt') || 'emote';
+const locked = tile.dataset.kfStickerLocked === 'true';
+if (locked) {
+proxy.setAttribute('aria-disabled', 'true');
+proxy.removeAttribute('aria-pressed');
+} else {
+proxy.removeAttribute('aria-disabled');
 if (organizing) proxy.setAttribute('aria-pressed', String(active));
 else proxy.removeAttribute('aria-pressed');
-proxy.setAttribute('aria-label', trf(organizing ? 'Select emote {name}' : 'Use emote {name}', { name }));
-proxy.title = trf(organizing ? 'Select {name}' : 'Use {name}', { name });
+}
+proxy.setAttribute('aria-label', trf(locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name }));
+const reorderable = tile.dataset.kfStickerReorderable === 'true';
+proxy.title = locked
+? trf('{name} is unavailable until you resubscribe.', { name })
+: trf(
+reorderable
+? (organizing ? 'Select {name}. Drag to rearrange.' : 'Use {name}. Drag to rearrange.')
+: (organizing ? 'Select {name}' : 'Use {name}'),
+{ name },
+);
 }
 const count = selected.size;
 const batch = organizer.querySelector('[data-kf-sticker-batch]');
@@ -9557,7 +9918,7 @@ if (selectShown) selectShown.setAttribute('aria-pressed', String(visible.length 
 function patchStickerTileStates(gridHost) {
 for (const tile of gridHost.querySelectorAll('[data-kf-sticker-item]')) {
 const key = tile.dataset.kfStickerKey;
-const pinned = isFavorited(key);
+const pinned = tile.dataset.kfStickerLocked !== 'true' && isFavorited(key);
 const hidden = state.stickerPreferences.hidden.has(key);
     const stamp = `${pinned}:${hidden}`;
 if (tile.dataset.kfStickerState === stamp) continue;
@@ -9568,8 +9929,9 @@ const name = tile.querySelector('img')?.getAttribute('alt') || 'emote';
 const pin = tile.querySelector('[data-kf-sticker-action="pin"]');
 if (pin) {
 pin.setAttribute('aria-pressed', String(pinned));
-setMarkup(pin, uiIcon('star'));
 const scope = pinned ? favoriteScopeOf(key) : '';
+const pinLabel = tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite');
+      setMarkup(pin, `${uiIcon('star')}<span>${escapeHtml(pinLabel)}</span>`);
 pin.setAttribute('aria-label', trf(
 pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}',
 { name },
@@ -9580,7 +9942,7 @@ if (!scope) delete tile.dataset.kfStickerScoped;
 }
 const hide = tile.querySelector('[data-kf-sticker-action="hide"]');
 if (hide) {
-setMarkup(hide, uiIcon(hidden ? 'reset' : 'trash'));
+      setMarkup(hide, `${uiIcon(hidden ? 'reset' : 'trash')}<span>${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}</span>`);
 hide.setAttribute('aria-label', trf(hidden ? 'Restore {name}' : 'Remove {name}', { name }));
 hide.title = tr(hidden ? 'Restore' : 'Remove');
 }
@@ -9590,6 +9952,7 @@ function bindStickerGridScroll(gridHost) {
 gridHost.addEventListener('scroll', (event) => {
 const grid = event.target;
 if (!grid?.dataset || grid.dataset.kfStickerTotal === undefined) return;
+hideStickerTileActions();
 const total = Number(grid.dataset.kfStickerTotal) || 0;
 const [start, end] = String(gridHost.dataset.kfStickerWindow || '0-0').split('-').map(Number);
 if (end - start >= total) return;
@@ -9618,6 +9981,7 @@ state.runtime.stickerPickerOrganizing = false;
 state.runtime.stickerPickerGroupEditor = '';
 state.stickerPreferences = {
 favorites: [],
+order: [],
 hidden: new Set(),
 view: 'all',
 showHidden: false,
@@ -9644,6 +10008,7 @@ for (const [key, descriptor] of state.stickerCatalog) {
 for (const original of descriptor.originals || []) {
 original.dataset.kfStickerHidden = String(state.stickerPreferences.hidden.has(key));
 original.dataset.kfStickerPinned = String(isFavorited(key));
+original.dataset.kfStickerLocked = String(descriptor.locked === true);
 }
 }
 persistStickerPreferences();
@@ -9749,23 +10114,18 @@ return;
 const keys = [...selected].filter((key) => state.stickerPreferences.library.has(key));
 if (!keys.length) return;
 if ((action === 'earlier' || action === 'later') && keys.length === 1) {
-const previous = [...state.stickerPreferences.favorites];
 const key = keys[0];
-state.stickerPreferences.favorites = moveStickerFavorite(
-state.stickerPreferences.favorites,
-key,
-favoriteScopeOf(key),
-action === 'earlier' ? -1 : 1,
-);
-commitPickerStickerChange();
-showToast(action === 'earlier' ? 'Favorite moved earlier.' : 'Favorite moved later.', false, [{
-label: 'Undo',
-onClick: () => {
-state.stickerPreferences.favorites = previous;
-commitPickerStickerChange();
-showToast('Favorite order restored.');
-},
-}]);
+const visible = state.runtime.stickerPickerVisibleKeys;
+const step = action === 'earlier' ? -1 : 1;
+let index = visible.indexOf(key) + step;
+while (index >= 0 && index < visible.length) {
+const targetKey = visible[index];
+if (state.stickerPreferences.view !== 'pinned' || favoriteScopeOf(targetKey) === favoriteScopeOf(key)) {
+placePickerSticker(key, targetKey, step > 0);
+break;
+}
+index += step;
+}
 return;
 }
 if (action === 'move') {
@@ -9792,6 +10152,7 @@ return;
 const previous = {
 hidden: new Set(state.stickerPreferences.hidden),
 favorites: [...state.stickerPreferences.favorites],
+order: [...(state.stickerPreferences.order || [])],
 assignments: new Map(state.stickerPreferences.assignments),
 };
 for (const key of keys) {
@@ -9806,6 +10167,7 @@ label: 'Undo',
 onClick: () => {
 state.stickerPreferences.hidden = previous.hidden;
 state.stickerPreferences.favorites = previous.favorites;
+state.stickerPreferences.order = previous.order;
 state.stickerPreferences.assignments = previous.assignments;
 commitPickerStickerChange();
 showToast('Removed emotes restored.');
@@ -9827,6 +10189,7 @@ event.stopPropagation();
 const organizer = target.closest('[data-kf-sticker-organizer]');
 const key = target.dataset.kfStickerKey;
 const action = target.dataset.kfStickerAction;
+const focusReturn = stickerActionFocusReturn(target, event);
 if (target.dataset.kfStickerManage) {
 openSettings('emotes');
 return;
@@ -9890,12 +10253,22 @@ editPickerStickerSelection(target.dataset.kfStickerBatchReorder === 'up' ? 'earl
 return;
 }
 if (action === 'send') {
+if (key === state.runtime.stickerDragSuppressKey && Date.now() <= state.runtime.stickerDragSuppressClickUntil) {
+state.runtime.stickerDragSuppressKey = '';
+state.runtime.stickerDragSuppressClickUntil = 0;
+return;
+}
+if (state.stickerCatalog.get(key)?.locked === true) {
+showToast('This subscription emote is unavailable. Open its source profile to resubscribe.', true);
+return;
+}
 if (state.runtime.stickerPickerOrganizing) {
 if (state.runtime.stickerPickerSelection.has(key)) state.runtime.stickerPickerSelection.delete(key);
 else state.runtime.stickerPickerSelection.add(key);
 patchStickerSelection(organizer);
 return;
 }
+hideStickerTileActions();
 const original = state.stickerCatalog.get(key)?.originals?.find((button) => button.isConnected);
 original?.click?.();
 return;
@@ -9908,7 +10281,9 @@ state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferen
 if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
 const name = state.stickerCatalog.get(key)?.name || 'Emote';
 const message = isFavorited(key) ? trf('Favorited {name}.', { name }) : trf('Removed {name} from favorites.', { name });
+hideStickerTileActions();
 commitPickerStickerChange();
+restoreStickerActionFocus(focusReturn, organizer);
 showToast(message, false, [{
 label: 'Undo',
 onClick: () => {
@@ -9934,22 +10309,28 @@ const hidden = state.stickerPreferences.hidden.has(key);
 const name = state.stickerCatalog.get(key)?.name || 'Emote';
 if (hidden) {
 state.stickerPreferences.hidden.delete(key);
+hideStickerTileActions();
 commitPickerStickerChange();
+restoreStickerActionFocus(focusReturn, organizer);
 showToast(trf('Restored {name}.', { name }));
 } else {
 const previous = {
 favorites: [...state.stickerPreferences.favorites],
+order: [...(state.stickerPreferences.order || [])],
 assignment: state.stickerPreferences.assignments.get(key) || '',
 };
 state.stickerPreferences.hidden.add(key);
 state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
 state.stickerPreferences.assignments.delete(key);
+hideStickerTileActions();
 commitPickerStickerChange();
+restoreStickerActionFocus(focusReturn, organizer);
 showToast(trf('Removed {name}.', { name }), false, [{
 label: 'Undo',
 onClick: () => {
 state.stickerPreferences.hidden.delete(key);
 state.stickerPreferences.favorites = previous.favorites;
+state.stickerPreferences.order = previous.order;
 if (previous.assignment) state.stickerPreferences.assignments.set(key, previous.assignment);
 commitPickerStickerChange();
 showToast(trf('Restored {name}.', { name }));
@@ -9971,7 +10352,7 @@ return;
 } else if (state.stickerPreferences.view !== 'group') {
 state.runtime.stickerPickerGroupEditor = '';
 }
-if (state.stickerPreferences.view === 'native') {
+if (state.stickerPreferences.view === 'native' || state.stickerPreferences.view === 'locked') {
 state.runtime.stickerPickerOrganizing = false;
 state.runtime.stickerPickerSelection.clear();
 }
@@ -10908,6 +11289,10 @@ pageWindow.__kickFocusRuntimeInteractionsV1 = true;
 document.addEventListener('click', handleCardAction, true);
 document.addEventListener('click', handleSearchAction, true);
 document.addEventListener('click', handleStickerAction, true);
+document.addEventListener('pointerover', onStickerTileActionEnter, true);
+document.addEventListener('pointerout', onStickerTileActionLeave, true);
+document.addEventListener('focusin', onStickerTileActionEnter, true);
+document.addEventListener('focusout', onStickerTileActionLeave, true);
 document.addEventListener('click', handleChatStickerSave, true);
 document.addEventListener('keydown', handleChatStickerSave, true);
 document.addEventListener('click', (event) => {
@@ -11839,25 +12224,6 @@ const UI_CSS = `
   .kf-fact dd { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 
   
-  .kf-rarity {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 1px 6px;
-    border-radius: var(--radius-sm);
-    border: 1px solid currentColor;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: capitalize;
-  }
-  .kf-rarity[data-rarity="common"] { color: #9ba59f; }
-  .kf-rarity[data-rarity="uncommon"] { color: #6fd47a; }
-  .kf-rarity[data-rarity="rare"] { color: #57b6ff; }
-  .kf-rarity[data-rarity="epic"] { color: #b184ff; }
-  .kf-rarity[data-rarity="legendary"] { color: #ffb648; }
-  .kf-rarity[data-rarity="mythic"] { color: #ff6b8b; }
-
-  
   .kf-ms-backdrop { padding: 0; }
   .kf-ms-shell {
     display: grid;
@@ -12279,7 +12645,10 @@ const TRANSLATIONS = {
 'Groups': ['Grupos', 'Grupos'],
 'Your emotes': ['Tus emotes', 'Seus emotes'],
 'Library': ['Biblioteca', 'Biblioteca'],
+'Favorite': ['Favorito', 'Favorito'],
 'Favorites': ['Favoritos', 'Favoritos'],
+'Locked': ['Bloqueados', 'Bloqueados'],
+'Actions for {name}': ['Acciones para {name}', 'Ações para {name}'],
 'All': ['Todos', 'Todos'],
 'Kick': ['Kick', 'Kick'],
 'Kick groups': ['Grupos de Kick', 'Grupos da Kick'],
@@ -12287,7 +12656,7 @@ const TRANSLATIONS = {
 'No emotes found': ['No se encontraron emotes', 'Nenhum emote encontrado'],
 'Try a different search or clear the search field.': ['Prueba otra búsqueda o borra el campo de búsqueda.', 'Tente outra busca ou limpe o campo de busca.'],
 'No favorites yet': ['Aún no hay favoritos', 'Ainda não há favoritos'],
-'Open All and use the star on any emote to keep it here.': ['Abre Todos y usa la estrella de cualquier emote para guardarlo aquí.', 'Abra Todos e use a estrela em qualquer emote para mantê-lo aqui.'],
+'Open All, hover or focus an emote, then choose Favorite.': ['Abre Todos, pasa el cursor o enfoca un emote y elige Favorito.', 'Abra Todos, passe o cursor ou foque um emote e escolha Favorito.'],
 'No recent emotes yet': ['Aún no hay emotes recientes', 'Ainda não há emotes recentes'],
 'Emotes you send in this channel will appear here.': ['Los emotes que envíes en este canal aparecerán aquí.', 'Os emotes que você enviar neste canal aparecerão aqui.'],
 'Create your first group': ['Crea tu primer grupo', 'Crie seu primeiro grupo'],
@@ -12315,12 +12684,19 @@ const TRANSLATIONS = {
 'Remove favorite': ['Quitar de favoritos', 'Remover dos favoritos'],
 'Remove favorite (this channel)': ['Quitar de favoritos (este canal)', 'Remover dos favoritos (este canal)'],
 'Use emote {name}': ['Usar el emote {name}', 'Usar o emote {name}'],
+'Unavailable emote {name}': ['Emote {name} no disponible', 'Emote {name} indisponível'],
 'Select emote {name}': ['Seleccionar el emote {name}', 'Selecionar o emote {name}'],
 'Use {name}': ['Usar {name}', 'Usar {name}'],
+'Use {name}. Drag to rearrange.': ['Usar {name}. Arrastra para reordenar.', 'Usar {name}. Arraste para reorganizar.'],
+'Select {name}. Drag to rearrange.': ['Seleccionar {name}. Arrastra para reordenar.', 'Selecionar {name}. Arraste para reorganizar.'],
 '{count} in {name}': ['{count} en {name}', '{count} em {name}'],
 '{shown} of {total} available': ['{shown} de {total} disponibles', '{shown} de {total} disponíveis'],
 '{count} available': ['{count} disponibles', '{count} disponíveis'],
+'{shown} of {total} locked': ['{shown} de {total} bloqueados', '{shown} de {total} bloqueados'],
+'{count} locked': ['{count} bloqueados', '{count} bloqueados'],
 ', {count} locked by Kick': [', {count} bloqueados por Kick', ', {count} bloqueados pela Kick'],
+'{name} is unavailable until you resubscribe.': ['{name} no está disponible hasta que te vuelvas a suscribir.', '{name} fica indisponível até você assinar novamente.'],
+'This subscription emote is unavailable. Open its source profile to resubscribe.': ['Este emote de suscripción no está disponible. Abre el perfil de origen para volver a suscribirte.', 'Este emote de assinatura está indisponível. Abra o perfil de origem para assinar novamente.'],
 'Created {name}. Select emotes, then move them into it.': ['Se creó {name}. Selecciona emotes y luego muévelos ahí.', '{name} foi criado. Selecione emotes e depois mova-os para ele.'],
 'Deleted emote group {name}.': ['Se eliminó el grupo de emotes {name}.', 'O grupo de emotes {name} foi excluído.'],
 'Favorited {name}.': ['Se añadió {name} a favoritos.', '{name} foi adicionado aos favoritos.'],
@@ -12331,12 +12707,13 @@ const TRANSLATIONS = {
 'Group name restored.': ['Se restauró el nombre del grupo.', 'O nome do grupo foi restaurado.'],
 'Emote group restored.': ['Se restauró el grupo de emotes.', 'O grupo de emotes foi restaurado.'],
 'Favorite order restored.': ['Se restauró el orden de favoritos.', 'A ordem dos favoritos foi restaurada.'],
+'Emote order restored.': ['Se restauró el orden de emotes.', 'A ordem dos emotes foi restaurada.'],
+'Emote moved.': ['Emote movido.', 'Emote movido.'],
+'Channel favorites stay before global favorites.': ['Los favoritos del canal permanecen antes que los favoritos globales.', 'Os favoritos do canal ficam antes dos favoritos globais.'],
 'Emote group changes restored.': ['Se restauraron los cambios de grupos de emotes.', 'As alterações dos grupos de emotes foram restauradas.'],
 'Removed emotes restored.': ['Se restauraron los emotes eliminados.', 'Os emotes removidos foram restaurados.'],
 'Favorite change restored.': ['Se restauró el cambio de favorito.', 'A alteração de favorito foi restaurada.'],
 'Emote changes reset.': ['Se restablecieron los cambios de emotes.', 'As alterações de emotes foram redefinidas.'],
-'Favorite moved earlier.': ['El favorito se movió antes.', 'O favorito foi movido para antes.'],
-'Favorite moved later.': ['El favorito se movió después.', 'O favorito foi movido para depois.'],
 'Emote moved earlier.': ['El emote se movió antes.', 'O emote foi movido para antes.'],
 'Emote moved later.': ['El emote se movió después.', 'O emote foi movido para depois.'],
 'emote moved.': ['emote movido.', 'emote movido.'],
@@ -12354,6 +12731,7 @@ const TRANSLATIONS = {
 'Rename {name}': ['Cambiar el nombre de {name}', 'Renomear {name}'],
 'Show {name} again': ['Mostrar {name} de nuevo', 'Mostrar {name} novamente'],
 'Open {name} on Kick': ['Abrir {name} en Kick', 'Abrir {name} na Kick'],
+'View {name}': ['Ver {name}', 'Ver {name}'],
 'Remove {name} from the grid': ['Quitar {name} de la cuadrícula', 'Remover {name} da grade'],
 'Copy a link to board {name}': ['Copiar un enlace al tablero {name}', 'Copiar um link para o painel {name}'],
 'Delete board {name}': ['Eliminar el tablero {name}', 'Excluir o painel {name}'],
@@ -13478,6 +13856,7 @@ sourceSlug: emote.sourceSlug,
 requiresFollow: emote.requiresFollow,
 followed: emote.followed,
 subscribersOnly: emote.subscribersOnly,
+entitlement: emote.entitlement,
 }));
 mergeStickerLibrary(records);
 const added = state.stickerPreferences.library.size - before;
@@ -13610,7 +13989,7 @@ reward: {
 trigger: Boolean(document.querySelector(REWARD_TRIGGER)),
 lastClaimAt: record.lastClaimAt,
 nextCheckAt: record.nextCheckAt,
-previousResetAt: nextClaimResetAt(now) - 24 * 60 * 60 * 1000,
+previousResetAt: previousClaimResetAt(now),
 observedAt: now,
 },
 points: { onChannel, value: points, channel: currentChannelSlug(), observedAt: now },
@@ -14614,11 +14993,35 @@ if (plan.warning) showToast(plan.warning, true);
 }
 const REWARD_TRIGGER = 'button[aria-label="Claim Your Daily Reward"]';
 const REWARD_DIALOG = '[role="dialog"]';
-function rewardDialog() {
-for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
-if (dialog.dataset.kfRewardDialog === 'true') return dialog;
+const REWARD_AVAILABLE_MEDIA = 'video[src*="/rewards/reward-available-CTA."]';
+const REWARD_DIALOG_OPEN_TIMEOUT_MS = 3_000;
+const REWARD_DIALOG_RETRY_MS = 120;
+const REWARD_DIALOG_RENDER_GRACE_MS = 1_500;
+const REWARD_CLAIM_CONFIRM_TIMEOUT_MS = 30_000;
+const REWARD_CLAIM_CONFIRM_RETRY_MS = 250;
+const REWARD_FAILURE_RECHECK_MS = 60_000;
+function rewardDialogIdentity(dialog) {
+if (!dialog?.matches?.(REWARD_DIALOG)) return false;
+const titleId = dialog.getAttribute('aria-labelledby');
+const title = titleId ? document.getElementById(titleId) : null;
+return /^\s*claim your daily reward\s*$/i.test(title?.textContent || '');
 }
-return null;
+function controlledRewardDialog(trigger, adopt = false) {
+const dialogId = state.reward.dialogId || trigger?.getAttribute('aria-controls') || '';
+if (!dialogId) return null;
+const dialog = document.getElementById(dialogId);
+const expanded = trigger?.getAttribute('aria-expanded') === 'true';
+const open = dialog?.getAttribute('data-state') !== 'closed' && !dialog?.hidden;
+if (!expanded || !open || !rewardDialogIdentity(dialog)) return null;
+if (adopt) {
+state.reward.dialogId = dialogId;
+dialog.dataset.kfRewardDialog = 'true';
+}
+return dialog;
+}
+function rewardDialog() {
+const dialog = controlledRewardDialog(document.querySelector(REWARD_TRIGGER));
+return dialog?.dataset.kfRewardDialog === 'true' ? dialog : null;
 }
 function rewardActionButton(dialog) {
 for (const button of dialog.querySelectorAll('button')) {
@@ -14629,15 +15032,104 @@ return null;
 function rewardActionDisabled(button) {
 return Boolean(button.disabled) || button.getAttribute('aria-disabled') === 'true';
 }
+function rewardClaimConfirmed(dialog) {
+if (!dialog) return false;
+const text = String(dialog.textContent || '').replace(/\s+/g, ' ');
+const share = [...dialog.querySelectorAll('button')]
+.some((button) => /^\s*share\s*$/i.test(button.textContent || ''));
+return share && /daily\s+reward\s+resets?\s+at/i.test(text) && !rewardActionButton(dialog);
+}
+function rewardCloseButton(dialog) {
+for (const button of dialog?.querySelectorAll?.('button') || []) {
+    const label = `${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`.trim();
+if (/^close$/i.test(label)) return button;
+}
+return null;
+}
 function closeRewardDialog(dialog, restoreTo) {
 if (dialog) {
 delete dialog.dataset.kfRewardDialog;
-const close = dialog.querySelector('button[aria-label*="close" i]');
-if (close) close.click();
-}
+const close = rewardCloseButton(dialog);
+if (close) {
+close.click();
+} else {
 const trigger = document.querySelector(REWARD_TRIGGER);
 if (trigger?.getAttribute('aria-expanded') === 'true') trigger.click();
-if (restoreTo?.isConnected) restoreTo.focus?.();
+}
+}
+if (restoreTo?.isConnected) window.setTimeout(() => restoreTo.isConnected && restoreTo.focus?.(), 250);
+}
+function clearRewardTimer() {
+clearTimeout(state.reward.timer);
+state.reward.timer = 0;
+}
+function scheduleRewardClaim(delay) {
+clearRewardTimer();
+state.reward.timer = window.setTimeout(guard('daily reward claim', () => {
+state.reward.timer = 0;
+if (!state.runtime.suspended) runRewardClaim();
+}), Math.max(0, delay));
+}
+function resetRewardFlow() {
+clearRewardTimer();
+state.reward.phase = 'idle';
+state.reward.phaseDeadline = 0;
+state.reward.dialogId = '';
+}
+function rewardWait(dialog, now) {
+const dialogText = dialog.textContent || '';
+const minutes = parseClaimCountdown(dialogText);
+const observedReset = parseRewardBoundaryAt(dialogText, now);
+const nextCheckAt = nextRewardCheckAt({
+outcome: 'not-ready',
+now,
+minutesRemaining: minutes,
+dialogText,
+resetAt: observedReset,
+});
+writeRewardRecord({ claimStartedAt: 0, claimClickedAt: 0, nextCheckAt });
+state.reward.lastMessage = minutes != null
+    ? `Kick wants ${minutes} more ${plural(minutes, 'minute', 'minutes')} of watch time.`
+: 'Already collected today.';
+const restoreTo = state.reward.restoreFocusTo;
+resetRewardFlow();
+closeRewardDialog(dialog, restoreTo);
+updateRewardStatusInPlace();
+}
+function confirmRewardClaim(dialog, now, record) {
+const claimAt = Number(record.claimClickedAt);
+if (!claimAt) {
+rewardWait(dialog, now);
+return;
+}
+const alreadyRecorded = record.lastClaimAt >= claimAt;
+const observedReset = parseRewardBoundaryAt(dialog.textContent || '', now);
+writeRewardRecord({
+lastClaimAt: alreadyRecorded ? record.lastClaimAt : claimAt,
+claims: alreadyRecorded ? record.claims : record.claims + 1,
+claimStartedAt: 0,
+claimClickedAt: 0,
+nextCheckAt: nextRewardCheckAt({ outcome: 'claimed', now, resetAt: observedReset }),
+});
+  state.reward.lastMessage = `Daily reward confirmed at ${new Date(now).toLocaleTimeString()}.`;
+const restoreTo = state.reward.restoreFocusTo;
+delete dialog.dataset.kfRewardDialog;
+resetRewardFlow();
+closeRewardDialog(dialog, restoreTo);
+showToast('Daily reward claimed. It is in your collectibles.', false, [
+{ label: 'View', onClick: () => window.open('https://kick.com/collectibles', '_blank', 'noopener') },
+]);
+announce('Daily reward claimed.');
+updateRewardStatusInPlace();
+}
+function failRewardClaim(dialog, now, message) {
+writeRewardRecord({ claimStartedAt: 0, claimClickedAt: 0, nextCheckAt: now + REWARD_FAILURE_RECHECK_MS });
+state.reward.lastMessage = message;
+const restoreTo = state.reward.restoreFocusTo;
+resetRewardFlow();
+closeRewardDialog(dialog, restoreTo);
+showToast(message, true);
+updateRewardStatusInPlace();
 }
 function rewardRecord() {
 const stored = gmGet(REWARD_STATE_KEY, null);
@@ -14646,6 +15138,8 @@ return {
 lastClaimAt: Number(record.lastClaimAt) || 0,
 nextCheckAt: Number(record.nextCheckAt) || 0,
 claims: Number(record.claims) || 0,
+claimStartedAt: Number(record.claimStartedAt) || 0,
+claimClickedAt: Number(record.claimClickedAt) || 0,
 };
 }
 function writeRewardRecord(patch) {
@@ -14658,62 +15152,110 @@ function runRewardClaim() {
 const settings = state.settings.content;
 const now = Date.now();
 const trigger = document.querySelector(REWARD_TRIGGER);
-const open = rewardDialog();
 const record = rewardRecord();
-const action = open ? rewardActionButton(open) : null;
+if (!settings.autoClaimRewards) {
+resetRewardFlow();
+return;
+}
+if (!trigger) {
+resetRewardFlow();
+return;
+}
+if (state.reward.phase === 'opening' || state.reward.phase === 'reading') {
+const open = controlledRewardDialog(trigger, true);
+if (!open) {
+if (now < state.reward.phaseDeadline) {
+scheduleRewardClaim(REWARD_DIALOG_RETRY_MS);
+} else {
+failRewardClaim(null, now, 'Kick did not open the daily reward dialog.');
+}
+return;
+}
+if (state.reward.phase === 'opening') {
+state.reward.phase = 'reading';
+state.reward.phaseDeadline = now + REWARD_DIALOG_RENDER_GRACE_MS;
+}
+const action = rewardActionButton(open);
+if (!action && !rewardClaimConfirmed(open) && now < state.reward.phaseDeadline) {
+scheduleRewardClaim(REWARD_DIALOG_RETRY_MS);
+return;
+}
+if (rewardClaimConfirmed(open)) {
+confirmRewardClaim(open, now, record);
+return;
+}
 const decision = decideRewardClaim({
-enabled: settings.autoClaimRewards,
-hasTrigger: Boolean(trigger),
-dialogOpen: Boolean(open),
-hasAction: Boolean(action),
+enabled: true,
+hasTrigger: true,
+dialogOpen: true,
+hasAction: !!action,
 actionDisabled: !action || rewardActionDisabled(action),
 now,
 nextCheckAt: record.nextCheckAt,
 });
-state.reward.decision = decision.reason;
+if (decision.action === 'wait') {
+rewardWait(open, now);
+return;
+}
+state.reward.phase = 'claiming';
+state.reward.phaseDeadline = now + REWARD_CLAIM_CONFIRM_TIMEOUT_MS;
+writeRewardRecord({ claimClickedAt: now, nextCheckAt: now + REWARD_CLAIM_CONFIRM_TIMEOUT_MS });
+delete open.dataset.kfRewardDialog;
+action.click();
+scheduleRewardClaim(REWARD_CLAIM_CONFIRM_RETRY_MS);
+return;
+}
+if (state.reward.phase === 'claiming') {
+const open = controlledRewardDialog(trigger);
+if (rewardClaimConfirmed(open)) {
+confirmRewardClaim(open, now, record);
+return;
+}
+if (now < state.reward.phaseDeadline) {
+scheduleRewardClaim(REWARD_CLAIM_CONFIRM_RETRY_MS);
+} else {
+failRewardClaim(open, now, 'Kick did not confirm the daily reward claim.');
+}
+return;
+}
+if (trigger.getAttribute('aria-expanded') === 'true') {
+return;
+}
+const previousResetAt = previousClaimResetAt(now);
+const claimPending = record.claimStartedAt > 0
+&& now < Math.max(record.nextCheckAt, record.claimStartedAt + REWARD_CLAIM_CONFIRM_TIMEOUT_MS);
+const decision = decideRewardClaim({
+enabled: true,
+hasTrigger: true,
+triggerReady: !!trigger.querySelector(REWARD_AVAILABLE_MEDIA),
+dialogOpen: false,
+claimedSinceReset: record.lastClaimAt >= previousResetAt,
+claimPending,
+now,
+nextCheckAt: record.nextCheckAt,
+});
 if (decision.action === 'absent' || decision.action === 'cooling') return;
 if (decision.action === 'open') {
 const panelOpen = Boolean(state.modal && !state.modal.hidden);
 if (multistreamOpen() || panelOpen || document.activeElement?.closest?.(
 '[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"], input, textarea',
 )) return;
-writeRewardRecord({ nextCheckAt: now + CLAIM_RECHECK_MS });
+const dialogId = trigger.getAttribute('aria-controls') || '';
+if (!dialogId) {
+writeRewardRecord({ claimStartedAt: 0, claimClickedAt: 0, nextCheckAt: now + CLAIM_RECHECK_MS });
+state.reward.lastMessage = 'Kick did not identify the daily reward dialog.';
+updateRewardStatusInPlace();
+return;
+}
+writeRewardRecord({ claimStartedAt: now, claimClickedAt: 0, nextCheckAt: now + REWARD_CLAIM_CONFIRM_TIMEOUT_MS });
 state.reward.restoreFocusTo = document.activeElement;
+state.reward.dialogId = dialogId;
+state.reward.phase = 'opening';
+state.reward.phaseDeadline = now + REWARD_DIALOG_OPEN_TIMEOUT_MS;
 trigger.click();
-for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
-if (dialog.contains(trigger)) continue;
-dialog.dataset.kfRewardDialog = 'true';
-}
+scheduleRewardClaim(REWARD_DIALOG_RETRY_MS);
 return;
 }
-if (decision.action === 'wait') {
-const dialogText = open.textContent || '';
-const minutes = parseClaimCountdown(dialogText);
-const nextCheckAt = nextRewardCheckAt({ outcome: 'not-ready', now, minutesRemaining: minutes, dialogText });
-writeRewardRecord({ nextCheckAt });
-state.reward.minutesRemaining = minutes;
-state.reward.lastMessage = minutes != null
-      ? `Kick wants ${minutes} more ${plural(minutes, 'minute', 'minutes')} of watch time.`
-: 'Already collected today.';
-closeRewardDialog(open, state.reward.restoreFocusTo);
-updateRewardStatusInPlace();
-return;
-}
-writeRewardRecord({
-lastClaimAt: now,
-claims: record.claims + 1,
-nextCheckAt: nextRewardCheckAt({ outcome: 'claimed', now }),
-});
-state.reward.minutesRemaining = 0;
-delete open.dataset.kfRewardDialog;
-action.click();
-  state.reward.lastMessage = `Daily reward claimed at ${new Date(now).toLocaleTimeString()}.`;
-showToast('Daily reward claimed. It is in your collectibles.', false, [
-{ label: 'View', onClick: () => window.open('https://kick.com/collectibles', '_blank', 'noopener') },
-]);
-announce('Daily reward claimed.');
-window.setTimeout(() => closeRewardDialog(open, state.reward.restoreFocusTo), 6000);
-updateRewardStatusInPlace();
 }
 function updateRewardStatusInPlace() {
 for (const node of state.shadow?.querySelectorAll('[data-kf-reward-status]') || []) {
@@ -14729,6 +15271,7 @@ if (record.lastClaimAt) {
 } else {
 parts.push('Nothing claimed yet on this browser.');
 }
+if (record.claimStartedAt) parts.push('Waiting for Kick to confirm the current claim.');
 if (state.reward.lastMessage) parts.push(state.reward.lastMessage);
 if (record.nextCheckAt > Date.now()) {
     parts.push(`Next check ${new Date(record.nextCheckAt).toLocaleString()}.`);
@@ -14997,6 +15540,12 @@ removeSiteStyle();
 clearKeywordHighlight();
 clearTimeout(state.applyTimer);
 state.applyTimer = 0;
+clearRewardTimer();
+const ownedRewardDialog = rewardDialog();
+if (ownedRewardDialog) closeRewardDialog(ownedRewardDialog, state.reward.restoreFocusTo);
+state.reward.phase = 'idle';
+state.reward.phaseDeadline = 0;
+state.reward.dialogId = '';
 clearInterval(state.playbackDiagnosticsTimer);
 state.playbackDiagnosticsTimer = 0;
 clearInterval(state.uptimeTimer);

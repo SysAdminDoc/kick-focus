@@ -27,6 +27,7 @@ import {
   emoteLockState,
   emoteFollowRequirement,
   applyAccountEntitlement,
+  catalogSubscriptionEntitlement,
   catalogEmoteAccess,
   channelCatalogEmotes,
   normalizeCurrentViewers,
@@ -481,6 +482,7 @@ test('an authenticated catalog states entitlement; an anonymous one never does',
   assert.deepEqual(anonymous.account, { authenticated: false, ownedSets: [], ownedEmotes: 0 });
   assert.equal(at(anonymous, 'peyxwhy').entitlement, 'unknown');
   assert.equal(catalogEmoteAccess(at(anonymous, 'peyxwhy')), 'locked');
+  assert.equal(catalogSubscriptionEntitlement(anonymous, 'peyx'), 'unknown');
 
   // Authenticated, not subscribed to the channel being viewed.
   const guest = applyAccountEntitlement(AUTHENTICATED_CATALOG(), {
@@ -492,11 +494,15 @@ test('an authenticated catalog states entitlement; an anonymous one never does',
     entitlement: 'granted', usableEverywhere: true, usableHere: true,
   });
   assert.equal(catalogEmoteAccess(at(guest, 'peyxwhy')), 'available');
+  assert.equal(catalogSubscriptionEntitlement(guest, 'peyx'), 'granted');
 
   // The viewed channel's own subscriber emote: Kick said no, so it is denied
   // rather than merely unknown. Sending it answers SUBSCRIBERS_ONLY_EMOTE_ERROR.
   assert.partialDeepStrictEqual(at(guest, 'xqcAM'), { entitlement: 'denied', usableHere: false });
   assert.equal(catalogEmoteAccess(at(guest, 'xqcAM')), 'locked');
+  assert.equal(catalogSubscriptionEntitlement(guest, 'xqc'), 'denied');
+  assert.equal(catalogSubscriptionEntitlement(guest, 'expiredchannel'), 'denied',
+    'a missing source in the authenticated account catalog is an expired subscription');
 
   // Its free emote is usable here and refused anywhere else — the measured
   // FOREIGN_CHANNEL_EMOTE_ERROR, and the half Kick's own interface never says.
@@ -524,6 +530,7 @@ test('an authenticated catalog states entitlement; an anonymous one never does',
     slug: 'xqc', authenticated: true, subscribedToChannel: null,
   });
   assert.equal(at(unsure, 'xqcAM').entitlement, 'unknown');
+  assert.equal(catalogSubscriptionEntitlement(unsure, 'xqc'), 'unknown');
 
   // The sets carry the same objects as the flat list, so the organizer and the
   // picker cannot disagree about one emote.

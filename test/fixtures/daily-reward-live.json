@@ -1,0 +1,102 @@
+{
+  "capturedAt": "2026-08-27T02:25:34.027Z",
+  "viewport": {
+    "width": 1920,
+    "height": 889
+  },
+  "trigger": {
+    "selector": "button[aria-label=\"Claim Your Daily Reward\"]",
+    "attributes": {
+      "aria-haspopup": "dialog",
+      "aria-expanded": "false",
+      "aria-controls": "<radix-dialog-id>",
+      "data-state": "closed"
+    },
+    "availableMedia": "https://static.kick.com/rewards/reward-available-CTA.webm",
+    "claimedMedia": null,
+    "mountDelayMs": 83
+  },
+  "dialog": {
+    "role": "dialog",
+    "identity": {
+      "relationship": "trigger aria-controls equals dialog id",
+      "aria-labelledbyText": "Claim Your Daily Reward"
+    },
+    "ready": {
+      "action": "Claim",
+      "actionDisabled": false,
+      "boundary": "Claim before <month> <day>, 08:00 PM"
+    },
+    "claiming": {
+      "action": "Claim",
+      "actionDisabled": true,
+      "media": [
+        "https://static.kick.com/rewards/background.webm",
+        "https://static.kick.com/rewards/open-box.webm"
+      ]
+    },
+    "claimed": {
+      "action": "Share",
+      "actionDisabled": false,
+      "boundary": "Daily Reward resets at <month> <day>, 08:00 PM",
+      "countdown": "HH:MM:SS",
+      "streakDelta": 1
+    },
+    "unrelatedDialogObserved": true
+  },
+  "network": {
+    "claim": {
+      "method": "POST",
+      "path": "/api/v1/gamification/challenges/<challenge-id>/claim",
+      "requestBody": null,
+      "status": 200,
+      "durationMs": 290,
+      "response": {
+        "message": "success",
+        "data": {
+          "challenge_id": "<challenge-id>",
+          "roulette": "array[20]",
+          "winner": {
+            "id": "<reward-id>",
+            "card_url": "string",
+            "rarity": "string"
+          }
+        }
+      }
+    },
+    "refresh": [
+      {
+        "method": "GET",
+        "path": "/api/v1/gamification/challenges",
+        "status": 200,
+        "state": "claimed"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/gamification/users/<user-id>/streak",
+        "status": 200,
+        "response": {
+          "length_days": "number"
+        }
+      }
+    ]
+  },
+  "timing": {
+    "claimRequestAfterClickMs": 4,
+    "claimResponseAfterClickMs": 294,
+    "availableMediaGoneByMs": 1855,
+    "finalStateObservedByMs": 22540
+  },
+  "screenshots": {
+    "ready": "design/qa/daily-reward-claim-stage-1-v1.45.png",
+    "opening": "design/qa/daily-reward-claim-stage-2-v1.45.png",
+    "roulette": "design/qa/daily-reward-claim-stage-3-v1.45.png",
+    "claimed": "design/qa/daily-reward-claim-reveal-v1.45.png"
+  },
+  "privacy": {
+    "credentialsRecorded": false,
+    "authorizationHeadersRecorded": false,
+    "cookiesRecorded": false,
+    "accountIdentifiersRedacted": true
+  }
+}

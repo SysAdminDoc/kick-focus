@@ -18,8 +18,9 @@ const entry = (key, lastSeen, extra = {}) => ({ key, name: key, src: `https://fi
 const libraryOf = (count, from = 0) => Array.from({ length: count }, (_v, index) => entry(`kick:id:${from + index}`, from + index));
 
 const preferences = (library) => ({
-  schema: 8,
+  schema: 10,
   favorites: [{ key: 'kick:id:3', scope: 'global' }],
+  order: ['kick:id:7', 'kick:id:3'],
   hidden: ['kick:id:5'],
   view: 'all',
   showHidden: false,
@@ -93,7 +94,7 @@ test('the seed carries everything small and the newest slice of the library', { 
   // reach for in the moment before the database answers.
   assert.deepEqual(plan.seed.library.map((item) => item.lastSeen), Array.from({ length: 50 }, (_v, i) => 999 - i));
   // Everything that is not the library travels whole in both.
-  for (const field of ['favorites', 'hidden', 'groups', 'assignments', 'view', 'activeGroup', 'schema']) {
+  for (const field of ['favorites', 'order', 'hidden', 'groups', 'assignments', 'view', 'activeGroup', 'schema']) {
     assert.deepEqual(plan.seed[field], value[field], `${field} is complete in the seed`);
     assert.deepEqual(plan.full[field], value[field], `${field} is complete in the record`);
   }

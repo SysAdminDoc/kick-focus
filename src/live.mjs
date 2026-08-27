@@ -114,6 +114,8 @@ export function createLive(host) {
     currentVodId,
     plural,
     mergeStickerLibrary,
+    reconcileStickerSubscriptions = () => false,
+    renderStickerOrganizer = () => {},
   } = host;
 
   /**
@@ -427,9 +429,15 @@ export function createLive(host) {
       requiresFollow: emote.requiresFollow,
       followed: emote.followed,
       subscribersOnly: emote.subscribersOnly,
+      entitlement: emote.entitlement,
       usableEverywhere: emote.usableEverywhere,
       usableHere: emote.usableHere,
     })));
+
+    reconcileStickerSubscriptions(catalog);
+    // Source links and expired-subscription state are useful even when rarity
+    // is off, so repaint as soon as the account catalog has been reconciled.
+    renderStickerOrganizer();
 
     if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);
     refreshLiveDiagnostics();
@@ -454,6 +462,10 @@ export function createLive(host) {
     // Kick publishes no odds and documents no duplicate protection.
     const inventory = summarizeCollectibleInventory(cards);
     state.live.inventory = inventory.ok ? inventory : null;
+    // The picker normally rendered while this request was still in flight.
+    // Refresh it now so rarity appears without requiring a search, tab switch,
+    // or close/reopen cycle from the user.
+    renderStickerOrganizer();
     refreshLiveDiagnostics();
   }
 

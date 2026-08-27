@@ -4,6 +4,30 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.45.0, 2026-08-27
+
+### Added
+
+- All, Favorites, and custom group emote views now support drag-to-reorder. The saved order survives reloads, and every move offers Undo.
+- Organize mode exposes Earlier and Later as the keyboard-accessible reorder path in every view that supports dragging.
+- The one-time daily reward claim is preserved as a sanitized fixture with the trigger, dialog, transition, confirmation, timing, and response-shape contract. Account ids, challenge ids, credentials, tokens, and cookies are excluded.
+
+### Changed
+
+- Favorite and Remove now open in a labelled menu beside the hovered or focused emote. The menu flips at the chat edge and never covers the tile artwork.
+- The emote menu links to the source channel when Kick supplied one. Expired subscriber emotes leave active views and remain available as dimmed, disabled records in Locked, with the same source link for resubscribing.
+- Favorite state uses the tile edge instead of a star over the image. Channel-only favorites use a dashed edge.
+- Collectible rarity uses one small colored letter inside the tile across Compact, Balanced, Roomy, and Larger Targets. The full match detail remains available in the badge title.
+- Daily reward auto-claim now follows the exact dialog named by the reward trigger, waits for Radix to mount it, clicks Claim once, then waits for Kick to replace Claim with Share and print the next reset before recording success. A reward claimed manually updates the schedule without increasing the automatic claim count.
+
+### Fixed
+
+- Rarity no longer flows beneath compact tiles as clipped text such as `ra` or `co`.
+- An open picker now repaints as soon as Kick's collectible response arrives. Rarity no longer waits for a search, tab change, or reopen.
+- Dragging cannot trigger the emote's send action when the pointer is released.
+- Daily reward checks no longer mistake an unrelated privacy dialog for an already collected reward, miss the reward dialog because it mounted a frame later, reopen it while closing, or record success before Kick confirms the claim.
+- Paused chat now keeps several visible message anchors, fingerprints recycled indexes with their message content, watches the virtualizer attributes that move them, and runs a bounded hold check while paused. Replacing the first row, shifting a survivor, reusing an index, or moving without an observable mutation no longer loses the message being read.
+
 ## 1.44.0, 2026-08-26
 
 ### Added

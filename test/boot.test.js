@@ -607,12 +607,24 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
     'the compact emote grid must never expose a horizontal scrollbar');
   assert.match(site, /\[data-kf-sticker-scroll\][^}]*overflow-x: hidden !important/,
     'Kick own scroll shell must not expose a horizontal scrollbar around the organizer');
-  assert.match(site, /\[data-kf-sticker-tools\] \[data-kf-sticker-action="pin"\][^}]*opacity:\s*\.68 !important/,
-    'every emote tile needs one visible management affordance at rest');
-  assert.match(site, /\[data-kf-sticker-tools\] button[\s\S]*?width:\s*24px !important[\s\S]*?height:\s*24px !important/,
-    'normal emote management targets must meet the 24px floor');
-  assert.match(site, /data-kf-large-targets="true"\]\s+\[data-kf-sticker-tools\] button[^}]*width:\s*40px !important[^}]*height:\s*40px !important/,
+  assert.match(site, /\[data-kf-sticker-tools\][\s\S]*?display:\s*none !important[\s\S]*?position:\s*fixed !important/,
+    'tile management must stay outboard and leave the artwork clear at rest');
+  assert.match(site, /\[data-kf-sticker-tools\]\[data-kf-sticker-top-layer="true"\][^}]*overflow:\s*visible !important/,
+    'tile management must enter the top layer instead of clipping inside the grid');
+  assert.match(site, /\[data-kf-sticker-tools\] :is\(button, a\)[\s\S]*?min-height:\s*30px !important/,
+    'normal emote management rows and links must exceed the 24px target floor');
+  assert.match(site, /data-kf-large-targets="true"\]\s+\[data-kf-sticker-tools\] :is\(button, a\)[^}]*min-height:\s*40px !important/,
     'Larger targets must give emote management controls a 40px target');
+  assert.match(site, /data-kf-sticker-pinned="true"[^}]*border-color:[^}]*box-shadow:\s*inset 0 -2px 0 var\(--kf-accent\)/,
+    'favorite state must use the tile edge instead of an artwork-covering badge');
+  assert.doesNotMatch(site, /data-kf-sticker-scoped="true"[^}]*::after/,
+    'channel-scoped favorite state must not put a corner marker over the artwork');
+  assert.match(site, /\[data-kf-sticker-proxy\] \.kf-rarity[\s\S]*?position:\s*absolute !important[\s\S]*?top:\s*2px !important[\s\S]*?height:\s*13px !important/,
+    'compact rarity must be an in-tile badge instead of a text row under the artwork');
+  assert.doesNotMatch(site, /data-kf-emote-density="roomy"[^}]*\.kf-rarity|data-kf-large-targets="true"[^}]*\.kf-rarity/,
+    'roomy and Larger targets must keep the same unobtrusive rarity badge');
+  assert.doesNotMatch(ui, /\.kf-rarity\s*\{/,
+    'rarity styles cannot live only in the shadow-root sheet that misses the picker');
   assert.match(source, /const STICKER_GRID_METRICS[\s\S]*compact:[\s\S]*balanced:[\s\S]*roomy:[\s\S]*large:/,
     'every visual density needs explicit virtual-grid geometry');
   assert.match(source, /function stickerGridMetrics\(\)[\s\S]*state\.settings\.accessibility\.largeTargets[\s\S]*STICKER_GRID_METRICS\.large[\s\S]*emotePickerDensity/,
@@ -621,6 +633,26 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
   // The tile markup and the rule that styles it must agree on the selector.
   assert.match(source, /<button type="button" data-kf-sticker-action="send"[^>]*data-kf-sticker-proxy/,
     'the shelf send button must carry the attribute SITE_CSS styles');
+  assert.match(source, /data-kf-sticker-tools data-kf-open="false" role="group"[\s\S]*data-kf-sticker-action="pin"[\s\S]*<span>[\s\S]*data-kf-sticker-action="hide"/,
+    'the outboard surface must expose labelled favorite and remove actions');
+  assert.match(source, /class="kf-rarity"[^>]*data-rarity=[^>]*title=/,
+    'a rarity badge must expose the full meaning as a title');
+  assert.match(source, /rarity\.slice\(0, 1\)\.toUpperCase\(\)/,
+    'a rarity badge must render one in-tile letter with the full meaning available as a title');
+  assert.match(source, /const raritySignature = state\.settings\.content\.showEmoteRarity[\s\S]*state\.live\.rarity\?\.matched[\s\S]*raritySignature/,
+    'a late rarity response must invalidate the picker grid signature');
+  assert.match(source, /addEventListener\('pointerover', onStickerTileActionEnter, true\)[\s\S]*addEventListener\('focusin', onStickerTileActionEnter, true\)/,
+    'pointer and keyboard focus must open the same tile action surface');
+  assert.match(source, /function showStickerTileActions[\s\S]*const gap = 6[\s\S]*anchor\.right \+ gap[\s\S]*anchor\.left - box\.width - gap[\s\S]*window\.innerHeight - box\.height - 8/,
+    'the measured action surface must prefer the right, flip left, and clamp vertically');
+  assert.match(site, /data-kf-sticker-drop="before"[^}]*inset 3px 0 0 var\(--kf-accent\)[\s\S]*data-kf-sticker-drop="after"[^}]*inset -3px 0 0 var\(--kf-accent\)/,
+    'dragging must show an unambiguous before or after insertion edge');
+  assert.match(source, /data-kf-sticker-proxy draggable="\$\{reorderable\}"[\s\S]*organizer\.addEventListener\('dragstart', onStickerDragStart\)[\s\S]*organizer\.addEventListener\('drop', onStickerDrop\)/,
+    'reorderable tiles must drive delegated native drag and drop');
+  assert.match(source, /function onStickerDrop[\s\S]*rememberStickerGridScroll\(target\)[\s\S]*placePickerSticker\(key, targetKey, after\)/,
+    'a drop must preserve the shelf position and commit the requested placement');
+  assert.match(source, /stickerDragSuppressClickUntil[\s\S]*if \(action === 'send'\)[\s\S]*Date\.now\(\) <= state\.runtime\.stickerDragSuppressClickUntil/,
+    'ending a drag must not leak a send click into Kick');
   assert.doesNotMatch(source, /class="kf-sticker-proxy"/,
     'nothing styles that class; the attribute is what SITE_CSS keys on');
 });
@@ -652,6 +684,12 @@ test('compact shell modes reclaim both rails without removing their controls', {
     'compact channel density must return measured vertical space to the player');
   assert.match(runtime, /data-kf-density="compact"[\s\S]*#channel-content[\s\S]*& > :first-child[\s\S]*gap: 24px !important/,
     'compact channel density must tighten the channel information row');
+  assert.match(runtime, /anchor\.peers = anchors[\s\S]*function chatScrollAnchorStillMatches[\s\S]*\(rows \|\|= chatScrollRows\(messages\)\)\.find\(node => chatScrollSignature\(node\) === candidate\.signature\)/,
+    'paused chat must retain visible peers and reacquire them after Kick replaces virtual row nodes');
+  assert.match(runtime, /state\.observers\.chat\.observe\(messages,[\s\S]*attributes: true[\s\S]*attributeFilter: \['style', 'data-index', 'data-message-id', 'data-chat-entry'\]/,
+    'paused chat must observe the virtualizer attributes that can move a surviving row');
+  assert.match(runtime, /chatScrollHoldTimer = setInterval\(\(\) => schedulePausedChatRestore\(messages\), 250\)/,
+    'paused chat must keep a bounded hold check for virtualizer movement with no observable mutation');
 });
 
 test('emote organization has a direct route, visible search, and batch controls', { tags: ['artifact'] }, async () => {

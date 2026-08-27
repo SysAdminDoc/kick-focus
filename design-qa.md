@@ -1,5 +1,34 @@
 # Design QA, premium interface redesign
 
+## v1.45 daily reward capture
+
+The available reward was exercised once in the signed-in Chrome session at 1920 × 889. The capture covers the enabled Claim state, its immediate disabled transition, the chest animation, roulette, final collectible reveal, streak change from 49 to 50, Share action, and the printed 8:00 PM reset. The reward trigger lost its available video after the click and reopening the dialog showed the claimed state without another Claim action.
+
+Kick mounted the controlled dialog about 83 milliseconds after the trigger click. A separate privacy dialog already occupied the first `[role="dialog"]` position in the document, which explains why the old broad query reported the reward handled without ever seeing it. The repaired flow resolves the trigger's `aria-controls` id, checks the labelled heading, waits through the asynchronous mount, and records success only after Kick shows Share plus its reset line. Closing uses the dialog's own Close control and waits for the Radix state change instead of toggling the trigger again.
+
+The network observation was recorded only as a sanitized contract. Kick issued its claim POST four milliseconds after the visible click, answered in 290 milliseconds, refreshed challenges as `claimed`, and later reported the 50-day streak. The fixture keeps method, route shape, status, timing, and field names. It contains no account id, challenge id, collectible id, credential, cookie, authorization header, or token. Runtime code still drives Kick's visible UI and never calls that private endpoint.
+
+- Full lifecycle comparison: `design/qa/comparison-daily-reward-lifecycle-v1.45.png`
+- Ready state: `design/qa/daily-reward-claim-stage-1-v1.45.png`
+- Opening state: `design/qa/daily-reward-claim-stage-2-v1.45.png`
+- Roulette state: `design/qa/daily-reward-claim-stage-3-v1.45.png`
+- Confirmed reveal: `design/qa/daily-reward-claim-reveal-v1.45.png`
+- Sanitized state and timing fixture: `test/fixtures/daily-reward-live.json`
+
+## v1.45 emote management pass
+
+The signed-in emote tray was checked in Chrome at 1920 × 889 using Kick's live picker and the account's collectible inventory. At rest, every tile is clear of management controls. Hover and keyboard focus open a measured Favorite, source channel, and Remove menu six pixels beside the tile; it prefers the right, flips left at the chat edge, and stays inside the viewport. Compact rows remain 40 pixels tall, Larger Targets raises each action to 40 pixels, and no state changes the virtualized scroll geometry. Expired subscriber emotes were also checked in Locked as dimmed, disabled tiles that retain their source link while disappearing from Favorites, Recent, All, groups, and suggestions.
+
+Collectible rarity now stays inside the artwork tile as one 13-pixel letter badge in Compact, Balanced, Roomy, and Larger Targets. The full meaning remains in the title. The picker also repaints when the account response finishes, rather than waiting for another interaction. The attached user crop and the final crop were compared at the same 220 × 84 size.
+
+Drag verification moved the first All tile after the third, showed the insertion edge and faded source, suppressed the release click, persisted the new order, then restored the original order. The same command path covers Favorites within one scope and custom groups. Organize mode retains Earlier and Later as the non-drag path.
+
+- Management comparison: `design/qa/comparison-sticker-controls-v1.45.png`
+- Rarity comparison: `design/qa/comparison-sticker-rarity-v1.45.png`
+- Drag insertion state: `design/qa/sticker-drag-marker-v1.45.png`
+- Locked subscriber state: `design/qa/sticker-locked-after-v1.45.png`
+- Final picker: `design/screenshots/emote-picker.png`
+
 ## v1.44 live compact-shell pass
 
 The signed-in Kick channel page was compared at 1920 × 889 and 1440 × 900 in Chrome. Native Kick reserved 596 pixels for its fixed discovery and chat rails at 1920 pixels wide. Kick Focus leaves a 12-pixel reveal edge on each side, uses a 48-pixel header, and overlays either rail when it is needed. At 1920 × 889, the player grew from 1260 × 709 to 1310 × 737 pixels while the channel row dropped from 92 to 78 pixels. At 1440 × 900, the player remained 1330 × 748 pixels with no horizontal overflow.
@@ -56,7 +85,7 @@ The implementation is exercised through `test/fixtures/settings-preview.html` at
 - `design/screenshots/emote-library.png`
 - `design/screenshots/profile-stats-button.png`
 
-The retained QA comparisons contain the normalized target and browser implementation in the same frame. The current compact-shell, layout, and emote captures under `design/screenshots` come from the verified v1.44.0 bundle. Older feature captures remain tied to the release that introduced them.
+The retained QA comparisons contain the normalized target and browser implementation in the same frame. The current emote capture comes from the verified v1.45.0 bundle. The compact-shell and layout captures remain tied to v1.44.0, and older feature captures remain tied to the release that introduced them.
 
 ## Focused evidence
 

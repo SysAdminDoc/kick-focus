@@ -1,4 +1,4 @@
-export const VERSION = '1.44.0';
+export const VERSION = '1.45.0';
 export const SETTINGS_SCHEMA = 7;
 
 /**
@@ -11,96 +11,8 @@ export const SETTINGS_SCHEMA = 7;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
-  '1.44.0': Object.freeze({
-    summary: 'Both side rails now auto-hide by default, the header is 48 pixels tall, and chat has denser emote controls. Layout and Content & Ads keep every part adjustable.',
-    defaults: Object.freeze(['Sidebar mode', 'Chat layout', 'Chat width', 'Content density', 'Header height', 'Header actions', 'Quick emote strip']),
-  }),
-  '1.43.0': Object.freeze({
-    summary: 'The emote picker now fits more into the chat rail without crowding its controls. Choose Compact, Balanced, or Roomy emotes, then set a Short, Medium, or Tall shelf in Content & Ads.',
-    defaults: Object.freeze([]),
-  }),
-  '1.42.0': Object.freeze({
-    summary: 'Settings and the companion now use clearer status colors with consistent corners. Compact layouts keep controls reachable. Blank multi-stream boards stay unsavable, and Commands returns you to the setting you were editing.',
-    defaults: Object.freeze([]),
-  }),
-  '1.41.0': Object.freeze({
-    summary: 'Settings now opens reliably and stays inside the viewport down to 375 pixels. Reset recovery waits for you, Viewer status is clearer, emote management is easier to find, composer recall is visible, and the companion follows English, Spanish, or Portuguese.',
-    defaults: Object.freeze([]),
-  }),
-  '1.40.0': Object.freeze({
-    summary: 'Kick keeps its own keyboard: the six configurable shortcuts are gone and every action they reached is on the command menu, which now has a button in the header and one in Settings. Resetting acts straight away and offers one step of Undo instead of asking first, the page behind a dialog is properly out of reach, and the chat separator can be moved with the arrow keys.',
-    defaults: Object.freeze([]),
-  }),
-  '1.39.0': Object.freeze({
-    summary: 'Reduce motion, Large touch targets, High-contrast controls and Always show focus outlines now work at any window width, every settings control answers to the label you can see, and the interface is translated where it had quietly stayed English.',
-    defaults: Object.freeze([]),
-  }),
-  '1.38.0': Object.freeze({
-    summary: 'The profile comment-box emote picker now handles favorites, recent emotes, custom groups, batch moves, removal, recovery, and normal emote insertion in place.',
-    defaults: Object.freeze([]),
-  }),
-  '1.37.0': Object.freeze({
-    summary: 'Emotes now have a dedicated workspace, visible picker search, and batch controls for creating groups, moving selections, removing entries, and restoring them.',
-    defaults: Object.freeze([]),
-  }),
-  '1.21.0': Object.freeze({
-    summary: 'The live gate waits for what it asserts, the Firefox package no longer leaks a per-install identifier to Kick, and the interface declares the language it is written in.',
-    defaults: Object.freeze([]),
-  }),
-  '1.22.0': Object.freeze({
-    summary: 'Markup reaches the page through one checked path, and this notice exists, so an update no longer changes how Kick Focus behaves without saying so.',
-    defaults: Object.freeze([]),
-  }),
-  '1.23.0': Object.freeze({
-    summary: 'A recording now says how long Kick will keep it, and the emote card and completion list render above everything instead of competing with Kick for stacking order.',
-    defaults: Object.freeze(['Show how long Kick keeps this recording']),
-  }),
-  '1.24.0': Object.freeze({
-    summary: 'Drift detection now checks what a hook is for, not only that it matched. A stream card that stops yielding a channel name is reported instead of quietly taking three features with it.',
-    defaults: Object.freeze([]),
-  }),
-  '1.25.0': Object.freeze({
-    summary: 'The grid can merge every channel into one chat or float the focused one in an always-on-top window, and the emote suggestions stop offering emotes Kick would refuse.',
-    defaults: Object.freeze([]),
-  }),
-  '1.27.0': Object.freeze({
-    summary: 'Viewing presets, a protected custom accent, My Emotes, calmer signed-in pages, and honest points guidance make Kick easier to personalize without changing the account.',
-    defaults: Object.freeze([]),
-  }),
-  '1.28.0': Object.freeze({
-    summary: 'Every channel profile now has a StreamerStats action that opens that channel’s current analytics in a compact popup window.',
-    defaults: Object.freeze([]),
-  }),
-  '1.29.0': Object.freeze({
-    summary: 'A read-only Viewer page, five chat comfort switches, and saved discovery views: the daily reward and channel points in one place, message times and a bounded session chat search, and a named layout applied to the pages you choose.',
-    defaults: Object.freeze([]),
-  }),
-  '1.30.0': Object.freeze({
-    summary: 'Studio, OLED, and Slate now change the full surface hierarchy. Settings boards, multi-stream, and the companion popup have clearer structure and less visual noise.',
-    defaults: Object.freeze([]),
-  }),
-  '1.32.0': Object.freeze({
-    summary: 'Hidden channels, favorites, and volume now match Kick card links that carry a trailing slash. A stickers-only import no longer resets the rest of the profile. Copied diagnostics include a settings diff without channel names.',
-    defaults: Object.freeze([]),
-  }),
-  '1.33.0': Object.freeze({
-    summary: 'Scrolling chat up freezes it, every settings page offers help in the same place, and the build is 200 KB smaller so a userscript manager still injects it at page start.',
-    defaults: Object.freeze([]),
-  }),
-  '1.34.0': Object.freeze({
-    summary: 'Discovery cards can show a trustworthy live duration, chat can sit on either side, and local viewer tools add private composer recall, sidebar previews, and a browser-session watch clock.',
-    defaults: Object.freeze([]),
-  }),
-  '1.36.0': Object.freeze({
-    summary: 'Interface scale resizes the controls it names, every toast and accessible name is translated, keyboard focus looks the same everywhere, and the build stopped shipping 12 KB of stylesheet comments.',
-    defaults: Object.freeze([]),
-  }),
-  '1.35.0': Object.freeze({
-    summary: 'High-contrast controls now raise every border, the accent reaches the header buttons and the emote popover, and an imported emote library can no longer point its artwork at an outside origin.',
-    defaults: Object.freeze([]),
-  }),
-  '1.31.0': Object.freeze({
-    summary: 'The main Kick theme now uses clearer type, quieter borders, tighter spacing, flatter content cards, and more compact route controls.',
+  '1.45.0': Object.freeze({
+    summary: 'Emote management is clearer and draggable. Daily reward auto-claim now waits for Kick to confirm success.',
     defaults: Object.freeze([]),
   }),
 });
@@ -950,6 +862,46 @@ export function nextClaimResetAt(now, resetHour = CLAIM_RESET_HOUR) {
   return at.getTime();
 }
 
+/** The rollover that began the reward window containing `now`. */
+export function previousClaimResetAt(now, resetHour = CLAIM_RESET_HOUR) {
+  const at = new Date(nextClaimResetAt(now, resetHour));
+  // Calendar arithmetic matters here. Subtracting 24 hours is wrong on the two
+  // daylight-saving transitions, while Kick's reset remains at the same local
+  // wall-clock hour.
+  at.setDate(at.getDate() - 1);
+  return at.getTime();
+}
+
+const REWARD_MONTHS = 'janfebmaraprmayjunjulaugsepoctnovdec';
+const REWARD_BOUNDARY = /(?:claim\s+before|daily\s+reward\s+resets?\s+at)\s+([a-z]{3})\s+(\d{1,2}),\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/i;
+
+/**
+ * Read the exact boundary Kick prints beneath the reward action.
+ *
+ * Live capture 2026-08-27: ready says "Claim before Aug 27, 08:00 PM" and
+ * claimed says "Daily Reward resets at Aug 27, 08:00 PM". Kick omits the year,
+ * so December-to-January is resolved by choosing the next plausible occurrence.
+ */
+export function parseRewardBoundaryAt(text, now = Date.now()) {
+  const match = REWARD_BOUNDARY.exec(String(text ?? ''));
+  if (!match) return null;
+  const monthOffset = REWARD_MONTHS.indexOf(match[1].toLowerCase());
+  const month = monthOffset / 3;
+  const day = Number(match[2]);
+  let hour = Number(match[3]) % 12;
+  const minute = Number(match[4]);
+  if (match[5].toLowerCase() === 'pm') hour += 12;
+  if (monthOffset < 0 || !Number.isInteger(month) || day < 1 || day > 31 || minute < 0 || minute > 59) return null;
+
+  const base = new Date(now);
+  const at = new Date(base.getFullYear(), month, day, hour, minute, 0, 0);
+  if (at.getMonth() !== month || at.getDate() !== day) return null;
+  // A boundary printed by this dialog is current or upcoming. If its yearless
+  // date landed well behind us, it crossed New Year rather than time-travelling.
+  if (at.getTime() < now - 31 * 24 * 60 * 60 * 1000) at.setFullYear(at.getFullYear() + 1);
+  return at.getTime();
+}
+
 /**
  * When to look again, given what the dialog just said.
  *
@@ -967,8 +919,18 @@ export function nextClaimResetAt(now, resetHour = CLAIM_RESET_HOUR) {
  * render race, and only that gets the fixed fallback.
  */
 export function nextRewardCheckAt(facts = {}) {
-  const { outcome, now = 0, minutesRemaining = null, dialogText = '', resetHour = CLAIM_RESET_HOUR } = facts;
-  const reset = nextClaimResetAt(now, resetHour);
+  const {
+    outcome,
+    now = 0,
+    minutesRemaining = null,
+    dialogText = '',
+    resetAt = null,
+    resetHour = CLAIM_RESET_HOUR,
+  } = facts;
+  const observedReset = Number(resetAt);
+  const reset = Number.isFinite(observedReset) && observedReset > now
+    ? observedReset
+    : nextClaimResetAt(now, resetHour);
   if (outcome === 'claimed') return reset;
   if (Number.isFinite(minutesRemaining) && minutesRemaining > 0) {
     return Math.min(now + (minutesRemaining + 1) * 60_000, reset);
@@ -1003,9 +965,12 @@ export function decideRewardClaim(facts = {}) {
   const {
     enabled = false,
     hasTrigger = false,
+    triggerReady = false,
     dialogOpen = false,
     hasAction = false,
     actionDisabled = true,
+    claimedSinceReset = false,
+    claimPending = false,
     now = 0,
     nextCheckAt = 0,
   } = facts;
@@ -1013,6 +978,15 @@ export function decideRewardClaim(facts = {}) {
   if (!enabled) return { action: 'absent', reason: 'off' };
   if (!hasTrigger) return { action: 'absent', reason: 'no-trigger' };
   if (!dialogOpen) {
+    // A click being confirmed in this or another tab owns the slot. Likewise a
+    // confirmed claim in the current reward window outranks a briefly stale
+    // available animation in another tab.
+    if (claimPending) return { action: 'cooling', reason: 'claim-pending' };
+    if (claimedSinceReset) return { action: 'cooling', reason: 'already-claimed' };
+    // Kick's animated header control is a stronger, fresher signal than a stale
+    // local schedule. It lets an available reward recover from an earlier render
+    // race without reopening the dialog all day after a successful claim.
+    if (triggerReady) return { action: 'open', reason: 'ready-signal' };
     // One timestamp decides this, and it was written from what Kick last said
     // — the countdown, or the rollover. There is no polling interval to tune.
     if (nextCheckAt > now) return { action: 'cooling', reason: 'not-due' };
@@ -2649,6 +2623,13 @@ export function preferredStickerAccess(existingAccess, incomingAccess) {
   return accessRank[existingAccess] >= accessRank[incoming] ? existingAccess : incoming;
 }
 
+/** A subscription denial is authoritative; unknown catalog access is not. */
+export function stickerSubscriptionLocked(entry) {
+  return isRecord(entry)
+    && entry.subscribersOnly === true
+    && entry.entitlement === 'denied';
+}
+
 /**
  * Fold one observation of an emote into its stored record.
  *
@@ -2904,7 +2885,7 @@ export function monetizationKind({ text = '', ariaLabel = '', title = '', testId
   return '';
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 8;
+export const STICKER_PREFERENCES_SCHEMA = 10;
 
 /**
  * The platform an emote key belongs to.
@@ -2970,6 +2951,36 @@ function cleanStickerKeys(input, limit = STICKER_LIBRARY_LIMIT) {
     if (values.length >= limit) break;
   }
   return values;
+}
+
+/**
+ * Apply a saved manual order without losing emotes Kick added afterwards.
+ *
+ * The saved list wins for keys it knows. Every remaining key keeps the order
+ * supplied by Kick, so a new set or channel emote lands at the end instead of
+ * scrambling the arrangement the user already made.
+ */
+export function orderedStickerKeys(keys, order) {
+  const base = cleanStickerKeys(keys);
+  const available = new Set(base);
+  const preferred = cleanStickerKeys(order).filter((key) => available.has(key));
+  const seen = new Set(preferred);
+  return [...preferred, ...base.filter((key) => !seen.has(key))];
+}
+
+/** Place one emote before or after another in the persistent manual order. */
+export function moveStickerOrder(order, key, targetKey, after = false, fallbackKeys = []) {
+  const source = cleanStickerKeys([key], 1)[0];
+  const target = cleanStickerKeys([targetKey], 1)[0];
+  const baseline = cleanStickerKeys([
+    ...(Array.isArray(order) ? order : []),
+    ...(Array.isArray(fallbackKeys) ? fallbackKeys : []),
+  ]);
+  if (!source || !target || source === target || !baseline.includes(source) || !baseline.includes(target)) return baseline;
+  const next = baseline.filter((entry) => entry !== source);
+  const targetIndex = next.indexOf(target);
+  next.splice(targetIndex + (after ? 1 : 0), 0, source);
+  return next;
 }
 
 function cleanStickerText(value, maximum = 80) {
@@ -3151,6 +3162,7 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
       requiresFollow: raw.requiresFollow === true,
       followed: raw.followed === true,
       subscribersOnly: raw.subscribersOnly === true,
+      entitlement: enumValue(raw.entitlement, ['unknown', 'granted', 'denied'], 'unknown'),
       // Schema 4. Entries captured before it carry 0, which reads as unknown
       // rather than as a date the record cannot actually support.
       firstSeen: cleanCaptureTime(raw.firstSeen),
@@ -3281,6 +3293,24 @@ export function moveStickerFavorite(favorites, key, channel, delta) {
   return renumberFavorites([...rest, ...reordered.map((entry, order) => ({ ...entry, order }))]);
 }
 
+/** Place a favorite before or after another favorite in the same scope. */
+export function placeStickerFavorite(favorites, key, channel, targetKey, after = false) {
+  const list = Array.isArray(favorites) ? favorites : [];
+  const scope = favoriteScope(channel);
+  const inScope = list
+    .filter((entry) => entry.channel === scope)
+    .sort((left, right) => left.order - right.order);
+  const sourceIndex = inScope.findIndex((entry) => entry.key === key);
+  const targetIndex = inScope.findIndex((entry) => entry.key === targetKey);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return renumberFavorites(list);
+  const source = inScope[sourceIndex];
+  const reordered = inScope.filter((entry) => entry !== source);
+  const insertion = reordered.findIndex((entry) => entry.key === targetKey) + (after ? 1 : 0);
+  reordered.splice(insertion, 0, source);
+  const rest = list.filter((entry) => entry.channel !== scope);
+  return renumberFavorites([...rest, ...reordered.map((entry, order) => ({ ...entry, order }))]);
+}
+
 function renumberFavorites(list) {
   return cleanStickerFavorites(list, [], new Set());
 }
@@ -3292,12 +3322,15 @@ export function normalizeStickerPreferences(input) {
   const groups = cleanStickerGroups(source.groups);
   const groupIds = new Set(groups.map((group) => group.id));
   const activeGroup = groupIds.has(source.activeGroup) ? source.activeGroup : '';
-  const view = enumValue(source.view, ['all', 'pinned', 'recent', 'native', 'group'], 'all');
+  const view = enumValue(source.view, ['all', 'pinned', 'recent', 'native', 'group', 'locked'], 'all');
   const favorites = cleanStickerFavorites(source.favorites, source.pinned, hiddenSet);
+  const order = cleanStickerKeys(source.order).filter((key) => !hiddenSet.has(key));
   const assignments = cleanStickerAssignments(source.assignments, groupIds);
-  // Favorited or assigned emotes are protected from eviction: the user filed them.
+  // Favorited, assigned, or manually positioned emotes are protected from
+  // eviction: each represents a deliberate filing action.
   const protectedKeys = new Set([
     ...favorites.map((favorite) => favorite.key),
+    ...order,
     ...assignments.map((assignment) => assignment.key),
   ]);
   const library = evictStickerLibrary(
@@ -3308,6 +3341,7 @@ export function normalizeStickerPreferences(input) {
   return {
     schema: STICKER_PREFERENCES_SCHEMA,
     favorites,
+    order,
     hidden,
     view: view === 'group' && !activeGroup ? 'all' : view,
     showHidden: bool(source.showHidden, false),
@@ -3731,7 +3765,7 @@ export function validateImportedSettings(jsonText, { currentBlocklistUrl = '', c
         );
       }
     }
-    for (const field of ['favorites', 'hidden', 'groups', 'assignments']) {
+    for (const field of ['favorites', 'order', 'hidden', 'groups', 'assignments']) {
       if (Array.isArray(parsed.stickers[field]) && parsed.stickers[field].length !== stickers[field].length) {
         addNote(
           `Adjusted emote ${field} to supported entries.`,

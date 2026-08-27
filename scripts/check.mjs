@@ -177,7 +177,7 @@ const leakedModuleSyntax = bundleTargets.filter(([, bundleSource]) => withModule
  * broke the moment that value was computed once and reused, without anything
  * actually going missing. Read the signature array and check what is in it.
  */
-const ORGANIZER_SIGNATURE_TERMS = [/favoriteOrder|favoriteKeysInOrder/, /hidden/, /assignments/, /groups/];
+const ORGANIZER_SIGNATURE_TERMS = [/favoriteOrder|favoriteKeysInOrder/, /manualOrder|stickerPreferences\.order/, /hidden/, /assignments/, /groups/];
 function organizerSignatureCovers(bundle) {
   const start = bundle.indexOf('const signature = [');
   if (start === -1) return false;
@@ -312,14 +312,15 @@ const nameClashes = await topLevelCollisions([...moduleFiles, 'src/runtime.js'])
 /**
  * The auto-claim clicks Kick's button and nothing else.
  *
- * Three properties make this safe, and all three are worth failing on. It must
+ * The safety properties are all worth failing on. It must
  * drive the DOM rather than the claim endpoint (which lives inside Kick's own
  * bundle — replaying it would be exactly the private-endpoint replay this
  * project refuses). It must treat both `disabled` and `aria-disabled` as a
- * refusal, because Kick sets both and honouring one is honouring neither. And
- * it must only act inside a dialog this build itself opened, since `role=dialog`
- * is reused across the site and clicking an action button in the wrong one is a
- * misfire rather than a missed reward.
+ * refusal, because Kick sets both and honouring one is honouring neither. It
+ * must follow the trigger's `aria-controls` relationship because the live page
+ * keeps an unrelated privacy dialog mounted. It must wait for React/Radix to
+ * mount that controlled dialog, and it can record success only after Kick swaps
+ * Claim for Share plus the reset boundary.
  */
 function rewardClaimRegion(bundle) {
   const start = bundle.indexOf('const REWARD_TRIGGER =');
@@ -331,7 +332,15 @@ const rewardClaimIsSafe = (bundle) => {
   if (!region) return false;
   return /\.disabled\)?\s*\|\|\s*.*aria-disabled/.test(region)
     && region.includes('decideRewardClaim({')
-    && region.includes("dialog.dataset.kfRewardDialog === 'true'")
+    && /dialog\?*\.dataset\.kfRewardDialog === 'true'/.test(region)
+    && /trigger\?*\.getAttribute\('aria-controls'\)/.test(region)
+    && /document\.getElementById\(dialogId\)/.test(region)
+    && /rewardDialogIdentity\(dialog\)/.test(region)
+    && /trigger\.click\(\);\s*\n\s*scheduleRewardClaim\(REWARD_DIALOG_RETRY_MS\)/.test(region)
+    && /function rewardClaimConfirmed[\s\S]{0,500}?share[\s\S]{0,300}?daily\\s\+reward\\s\+resets/.test(region)
+    && /function confirmRewardClaim[\s\S]{0,180}?record\.claimClickedAt[\s\S]{0,120}?if \(!claimAt\)/.test(region)
+    && /function confirmRewardClaim[\s\S]{0,900}?lastClaimAt/.test(region)
+    && /writeRewardRecord\(\{ claimClickedAt: now[\s\S]{0,220}?action\.click\(\)/.test(region)
     // The dialog must be disowned before the click, or the apply cycle presses
     // the same button again for as long as the reveal is on screen.
     && /delete open\.dataset\.kfRewardDialog;\s*\n\s*action\.click\(\)/.test(region)
@@ -340,7 +349,7 @@ const rewardClaimIsSafe = (bundle) => {
 };
 /** It must be opt-in, like every other feature that acts on the user's behalf. */
 const rewardClaimIsOptIn = (bundle) => /autoClaimRewards: false/.test(bundle)
-  && /enabled: settings\.autoClaimRewards/.test(bundle);
+  && /if \(!settings\.autoClaimRewards\)\s*\{[\s\S]{0,160}?resetRewardFlow\(\);\s*\n\s*return;/.test(rewardClaimRegion(bundle));
 
 /** Any `innerHTML =` in a shipped bundle that is not handed to the policy. */
 const bareHTMLWrite = /\.innerHTML\s*=(?!\s*trustedHTML\()/g;
@@ -433,8 +442,8 @@ const everyMessageChecksSender = (background) => {
  * userscript manager, so the 1 MB rule does not apply to it.
  */
 /**
- * The two anchored surfaces resolve their anchor, and keep the path that does
- * not need one.
+ * Every anchored surface resolves its anchor, and keeps the path that does not
+ * need one.
  *
  * Anchor names are tree-scoped, and this build's surfaces live in shadow roots
  * whose hosts sit in the document tree. A `position-anchor` written into one of
@@ -454,7 +463,7 @@ const anchoredSurfacesResolve = (bundle) => {
   // Counted without the detects for the same reason they are stripped above:
   // `canAnchorPopover` names the property legitimately, and it is not a rule.
   const flips = (withoutDetects.match(/position-try-fallbacks:/g) || []).length;
-  const anchoredHosts = (bundle.match(/:host\(\[data-kf-anchored="true"\]\)/g) || []).length;
+  const anchoredHosts = (withoutDetects.match(/(?:\:host\()?\[data-kf-anchored="true"\]\)?\s*\{/g) || []).length;
   // Every anchored host declares its own flips: a surface that opts into the
   // top layer without them cannot come back on screen at a viewport edge.
   return flips >= 2 && flips === anchoredHosts;
@@ -644,7 +653,9 @@ for (const [name, text, budget] of SIZE_BUDGETS) {
  * big a library gets.
  */
 const INJECTION_CEILING = 1_000_000;
-const INJECTION_BUDGET = 925_000;
+// Keeps 50 KB free beneath the userscript manager's 1 MB advisory even after
+// the full synchronous library seed is counted.
+const INJECTION_BUDGET = 950_000;
 // The About panel prints this number, from its own copy in runtime.js. They were
 // hand-copied with nothing comparing them, so moving one would have left the
 // panel advertising a budget the build no longer enforced.
@@ -1471,10 +1482,14 @@ const checks = [
     && source.includes('data-kf-sticker-native-shell')
     && source.includes("nativeList.dataset.kfStickerNativeList = 'true'")
     && source.includes("shell.dataset.kfStickerNativeShell = 'true'")],
-  ['separates available emotes from Kick-locked ones', source.includes("trf('{count} available'")
+  ['separates active emotes from expired subscriptions and links every known source profile', source.includes("trf('{count} available'")
     && source.includes("trf(', {count} locked by Kick'")
     && source.includes('max-height: min(640px, calc(100vh - 132px))')
-    && source.includes('stickerButtonUnavailable')],
+    && source.includes('stickerButtonUnavailable')
+    && source.includes('catalogSubscriptionEntitlement')
+    && source.includes('stickerSubscriptionLocked')
+    && source.includes('data-kf-sticker-source')
+    && source.includes('data-kf-sticker-view="locked"')],
   ['persists and exports the complete sticker library', source.includes('mergeStickerLibrary')
     && source.includes('observeStickerPicker')
     && source.includes('observeChatStickerDiscovery')
@@ -1638,7 +1653,7 @@ const checks = [
   // than left to whoever edits this next.
   ['the reward re-check is scheduled from Kick’s countdown and the nightly rollover',
     /nextRewardCheckAt\(\{ outcome: 'claimed'/.test(source)
-    && /nextRewardCheckAt\(\{ outcome: 'not-ready'[\s\S]{0,120}?minutesRemaining/.test(source)
+    && /nextRewardCheckAt\(\{[\s\S]{0,300}?outcome: 'not-ready'[\s\S]{0,300}?minutesRemaining/.test(source)
     && /function nextClaimResetAt/.test(source)
     && /CLAIM_RESET_HOUR = 20/.test(source)],
   ['the library is stored behind a provider with a synchronous fallback',
@@ -2038,7 +2053,7 @@ const redProbes = [
   // gate exists to close: a file that fits until its storage is counted, and a
   // seed budget nobody would notice growing beside a small file.
   ['injection ceiling would catch a userscript that only fits without its storage',
-    overInjectionBudget({ length: 900_000 }, 50_000)],
+    overInjectionBudget({ length: 910_000 }, 50_000)],
   ['injection ceiling would catch an oversized seed beside a tiny userscript',
     overInjectionBudget({ length: 2_000 }, 1_200_000)],
   // A multi-byte string is the case the old measurement got wrong: 400,000
@@ -2084,6 +2099,10 @@ const redProbes = [
     !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\ndocument.querySelector('[role=dialog]').click();\ndecideRewardClaim({});\nfunction chatMessageInput() {}")],
   ['reward gate would catch a claim that leaves the dialog claimable behind it',
     !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\nif (b.disabled || b.getAttribute('aria-disabled')) return;\ndecideRewardClaim({});\ndialog.dataset.kfRewardDialog === 'true';\naction.click();\nfunction chatMessageInput() {}")],
+  ['reward gate would catch a claim that scans an unrelated dialog instead of following aria-controls',
+    !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\nif (b.disabled || b.getAttribute('aria-disabled')) return;\ndecideRewardClaim({});\ndialog.dataset.kfRewardDialog === 'true';\ndelete open.dataset.kfRewardDialog; action.click();\nfunction chatMessageInput() {}")],
+  ['reward gate would catch a claim recorded before Kick confirms its final state',
+    !rewardClaimIsSafe("const REWARD_TRIGGER = 'x';\nif (b.disabled || b.getAttribute('aria-disabled')) return;\ntrigger.getAttribute('aria-controls'); document.getElementById(dialogId); rewardDialogIdentity(dialog); decideRewardClaim({});\ndialog.dataset.kfRewardDialog === 'true';\ntrigger.click(); scheduleRewardClaim(REWARD_DIALOG_RETRY_MS);\nwriteRewardRecord({ lastClaimAt: Date.now() }); delete open.dataset.kfRewardDialog; action.click();\nfunction chatMessageInput() {}")],
   ['mouse-only gate would catch a completion list that captures Enter',
     !completionIsMouseOnly("function emoteCompletionHost() { list.addEventListener('keydown', accept); }\nfunction acceptEmoteCompletion() {}")],
   ['mouse-only gate would catch a completion that submits the message',
@@ -2104,12 +2123,12 @@ const redProbes = [
     !organizerDebouncesSearch("search.addEventListener('input', () => renderStickerOrganizer());")],
   ['in-place gate would catch a toggle that rebuilds the grid',
     !organizerPatchesInPlace('function renderStickerGrid() { gridHost.innerHTML = build(); }')],
-  ['organizer-signature gate would catch a signature that forgot favorite order',
+  ['organizer-signature gate would catch a signature that forgot saved ordering',
     !organizerSignatureCovers("const signature = [\n  view,\n  hidden,\n  assignments,\n  groups,\n].join('x');")],
   ['organizer-signature gate would catch a missing signature entirely',
     !organizerSignatureCovers('const other = [favoriteOrder, hidden, assignments, groups];')],
   ['organizer-signature gate reads past an inner [...set].join inside the array',
-    organizerSignatureCovers("const signature = [\n  favoriteOrder.join(','),\n  [...hidden].join(','),\n  assignments,\n  groups,\n].join('x');")],
+    organizerSignatureCovers("const signature = [\n  favoriteOrder.join(','),\n  manualOrder.join(','),\n  [...hidden].join(','),\n  assignments,\n  groups,\n].join('x');")],
   ['module-syntax gate would catch a surviving import',
     withModuleSyntax("'use strict';\nimport { x } from './core.mjs';\nconst y = 1;\n")],
   ['module-syntax gate would catch a surviving export',

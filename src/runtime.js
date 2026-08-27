@@ -162,6 +162,7 @@ const state = {
     chatScrollTop: null,
     chatScrollAnchor: null,
     chatScrollIgnoreUntil: 0,
+    chatScrollHoldTimer: 0,
     chatPauseNode: null,
     suspended: false,
     routeSource: '',
@@ -194,6 +195,18 @@ const state = {
     stickerPickerBulkGroup: '',
     stickerPickerOrganizing: false,
     stickerPickerGroupEditor: '',
+    // The one outboard action surface currently open beside a picker tile.
+    // It remains a child of the tile for natural Tab order, then enters the
+    // top layer so neither the grid nor Kick's picker can clip it.
+    stickerActionTools: null,
+    stickerActionHideTimer: 0,
+    // Native drag events keep sending clicks reliable while adding a direct
+    // mouse path for arranging the visible shelf.
+    stickerDragKey: '',
+    stickerDragTarget: null,
+    stickerDragAfter: false,
+    stickerDragSuppressKey: '',
+    stickerDragSuppressClickUntil: 0,
     emoteCatalogSlug: '',
     emoteCatalogStatus: '',
     emoteCatalogError: false,
@@ -286,19 +299,14 @@ const state = {
   },
   emoteUsage: readEmoteUsage(),
   multistream: normalizeMultistream(gmGet(MULTISTREAM_KEY, {})),
-  reward: (() => {
-    const stored = gmGet(REWARD_STATE_KEY, null);
-    const record = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
-    return {
-      lastClaimAt: Number(record.lastClaimAt) || 0,
-      claims: Number(record.claims) || 0,
-      lastAttemptAt: 0,
-      minutesRemaining: null,
-      lastMessage: '',
-      decision: '',
-      restoreFocusTo: null,
-    };
-  })(),
+  reward: {
+    lastMessage: '',
+    restoreFocusTo: null,
+    dialogId: '',
+    phase: 'idle',
+    phaseDeadline: 0,
+    timer: 0,
+  },
   multistreamError: '',
   // slug -> Kick channel id, and slug -> live, both filled from Kick's own
   // responses. Kept apart from `multistream` so neither is ever persisted.
@@ -1060,7 +1068,7 @@ function hiddenElementCss() {
  */
 const BUNDLE_BYTES = Number('__KICK_FOCUS_BYTES__') || 0;
 const BUNDLE_BYTE_CEILING = 1000000;
-const INJECTION_BYTE_BUDGET = 925000;
+const INJECTION_BYTE_BUDGET = 950000;
 
 const SITE_CSS = `
   :root {
@@ -2044,7 +2052,7 @@ const SITE_CSS = `
       --kf-emote-control-height: 26px;
       --kf-emote-control-padding: 6px;
       --kf-emote-tab-height: 26px;
-      --kf-emote-tab-padding: 5px;
+      --kf-emote-tab-padding: 4px;
       --kf-emote-search-height: 34px;
       --kf-emote-grid-height: 240px;
     }
@@ -2185,7 +2193,7 @@ const SITE_CSS = `
     [data-kf-sticker-tabs] {
       display: flex !important;
       align-items: stretch !important;
-      gap: 2px !important;
+      gap: 1px !important;
       margin: 0 -2px !important;
       padding: 0 2px var(--kf-emote-section-gap) !important;
       border-bottom: 1px solid var(--kf-border) !important;
@@ -2292,6 +2300,7 @@ const SITE_CSS = `
        still describes the whole library. Spans every column, draws nothing. */
     [data-kf-sticker-spacer] { grid-column: 1 / -1 !important; pointer-events: none !important; }
     [data-kf-sticker-proxy] {
+      position: relative !important;
       display: grid !important;
       align-items: center !important;
       justify-content: center !important;
@@ -2304,47 +2313,108 @@ const SITE_CSS = `
       background: rgba(255,255,255,.045) !important;
       cursor: pointer !important;
     }
-    [data-kf-sticker-proxy]:hover, [data-kf-sticker-proxy]:focus-visible { border-color: rgba(var(--kf-accent-rgb), .42) !important; background: rgba(var(--kf-accent-rgb), .1) !important; }
-    [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-proxy] { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .14) !important; box-shadow: inset 0 0 0 1px var(--kf-accent) !important; }
-    [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy] { position: relative !important; box-shadow: inset 0 0 0 1px rgba(var(--kf-accent-rgb), .5) !important; }
-    [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy]::after { content: "" !important; position: absolute !important; right: 0 !important; bottom: 0 !important; border-left: 7px solid transparent !important; border-bottom: 7px solid var(--kf-accent) !important; }
+    [data-kf-sticker-item][data-kf-sticker-reorderable="true"] [data-kf-sticker-proxy] { cursor: grab !important; user-select: none !important; }
+    [data-kf-sticker-item][data-kf-sticker-dragging="true"] [data-kf-sticker-proxy] { opacity: .38 !important; cursor: grabbing !important; transform: scale(.94) !important; }
+    [data-kf-sticker-item][data-kf-sticker-drop="before"] [data-kf-sticker-proxy] { box-shadow: inset 3px 0 0 var(--kf-accent) !important; }
+    [data-kf-sticker-item][data-kf-sticker-drop="after"] [data-kf-sticker-proxy] { box-shadow: inset -3px 0 0 var(--kf-accent) !important; }
+    [data-kf-sticker-proxy]:hover, [data-kf-sticker-proxy]:focus-visible { border-color: rgba(var(--kf-accent-rgb), .52) !important; background: rgba(var(--kf-accent-rgb), .1) !important; }
+    /* Favorite state lives on the tile edge, never over the artwork. A dashed
+       edge distinguishes a this-channel favorite without adding a badge. */
+    [data-kf-sticker-item][data-kf-sticker-pinned="true"] [data-kf-sticker-proxy] { border-color: rgba(var(--kf-accent-rgb), .72) !important; box-shadow: inset 0 -2px 0 var(--kf-accent) !important; }
+    [data-kf-sticker-scoped="true"] [data-kf-sticker-proxy] { border-style: dashed !important; }
+    [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-proxy] { border-style: solid !important; border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .14) !important; box-shadow: inset 0 0 0 1px var(--kf-accent) !important; }
     [data-kf-sticker-proxy] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+    [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy] { border-color: var(--kf-border) !important; background: rgba(255,255,255,.025) !important; cursor: not-allowed !important; box-shadow: none !important; }
+    [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy] img { filter: grayscale(1) !important; opacity: .55 !important; }
+    [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy]:hover,
+    [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy]:focus-visible { border-color: var(--kf-border-strong) !important; background: rgba(255,255,255,.045) !important; }
+    /* Rarity is metadata, not another grid row. Keep one unobtrusive letter
+       inside every tile and expose the full meaning through the title. */
+    [data-kf-sticker-proxy] .kf-rarity {
+      display: inline-grid !important;
+      position: absolute !important;
+      top: 2px !important;
+      left: 2px !important;
+      z-index: 2 !important;
+      min-width: 13px !important;
+      height: 13px !important;
+      padding: 0 3px !important;
+      place-items: center !important;
+      border: 1px solid currentColor !important;
+      border-radius: 4px !important;
+      background: var(--kf-panel-raised) !important;
+      box-shadow: 0 1px 4px rgba(0,0,0,.52) !important;
+      font-size: 8px !important;
+      font-weight: 800 !important;
+      line-height: 1 !important;
+      text-transform: uppercase !important;
+      cursor: inherit !important;
+    }
+    [data-kf-sticker-proxy] .kf-rarity[data-rarity="common"] { color: #b0b8b3 !important; }
+    [data-kf-sticker-proxy] .kf-rarity[data-rarity="uncommon"] { color: #72dc7c !important; }
+    [data-kf-sticker-proxy] .kf-rarity[data-rarity="rare"] { color: #62bdff !important; }
+    [data-kf-sticker-proxy] .kf-rarity[data-rarity="epic"] { color: #b891ff !important; }
+    [data-kf-sticker-proxy] .kf-rarity[data-rarity="legendary"] { color: #ffc05a !important; }
+    [data-kf-sticker-proxy] .kf-rarity[data-rarity="mythic"] { color: #ff7c98 !important; }
+    [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] .kf-rarity { display: none !important; }
     [data-kf-sticker-check] { display: none !important; position: absolute !important; top: 3px !important; left: 3px !important; z-index: 3 !important; width: 20px !important; height: 20px !important; place-items: center !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 4px !important; background: var(--kf-panel-raised) !important; color: transparent !important; pointer-events: none !important; }
     [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-check] { display: grid !important; }
     [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-check] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; }
-    [data-kf-sticker-tools] { display: flex !important; position: absolute !important; top: 3px !important; right: 3px !important; bottom: 3px !important; z-index: 3 !important; flex-direction: column !important; justify-content: space-between !important; pointer-events: none !important; }
-    [data-kf-sticker-tools] button {
+    [data-kf-sticker-tools] {
+      display: none !important;
+      position: fixed !important;
+      inset: auto !important;
+      z-index: 2147483000 !important;
+      min-width: 120px !important;
+      max-width: min(196px, calc(100vw - 16px)) !important;
+      flex-direction: column !important;
+      gap: 2px !important;
+      padding: 4px !important;
+      border: 1px solid var(--kf-border-strong) !important;
+      border-radius: 8px !important;
+      background: var(--kf-panel-raised) !important;
+      color: var(--kf-text) !important;
+      box-shadow: 0 10px 28px rgba(0,0,0,.46) !important;
+      pointer-events: auto !important;
+    }
+    [data-kf-sticker-tools][data-kf-open="true"] { display: flex !important; }
+    [data-kf-sticker-organizer][data-kf-sticker-dragging="true"] [data-kf-sticker-tools] { display: none !important; }
+    /* The top layer escapes Kick's clipping. Script measures the real surface,
+       prefers the right, and flips it before it can cover the anchor. */
+    [data-kf-sticker-tools][data-kf-sticker-top-layer="true"] { overflow: visible !important; }
+    [data-kf-sticker-tools] :is(button, a) {
       display: grid !important;
-      width: 24px !important;
-      height: 24px !important;
-      min-height: 24px !important;
-      padding: 0 !important;
-      place-items: center !important;
-      border: 1px solid var(--kf-border) !important;
+      grid-template-columns: 15px minmax(0, 1fr) !important;
+      width: 100% !important;
+      min-height: 30px !important;
+      padding: 0 8px !important;
+      align-items: center !important;
+      gap: 7px !important;
+      border: 1px solid transparent !important;
       border-radius: 6px !important;
-      background: rgba(8,12,9,.94) !important;
+      background: transparent !important;
       color: var(--kf-text-muted) !important;
       cursor: pointer !important;
-      opacity: 0 !important;
       pointer-events: auto !important;
-      transition: opacity 100ms ease, border-color 100ms ease, color 100ms ease !important;
+      font-size: 11px !important;
+      font-weight: 720 !important;
+      line-height: 1.1 !important;
+      text-align: left !important;
+      text-decoration: none !important;
+      white-space: nowrap !important;
+      transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease !important;
     }
-    /* One quiet management action remains visible at rest. It teaches the tile
-       without covering it in controls; Remove appears on hover or focus. */
-    [data-kf-sticker-tools] [data-kf-sticker-action="pin"] { opacity: .68 !important; border-color: transparent !important; background: rgba(8,12,9,.72) !important; }
-    [data-kf-sticker-item]:hover [data-kf-sticker-tools] button,
-    [data-kf-sticker-item]:focus-within [data-kf-sticker-tools] button,
-    [data-kf-sticker-item][data-kf-sticker-pinned="true"] [data-kf-sticker-action="pin"] { opacity: 1 !important; }
-    [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-tools] { display: none !important; }
-    [data-kf-sticker-tools] button:hover, [data-kf-sticker-tools] button:focus-visible { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
-    [data-kf-sticker-tools] button[aria-pressed="true"] { border-color: rgba(var(--kf-accent-rgb), .58) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-tools] :is(button, a) span { min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+    [data-kf-sticker-tools] :is(button, a):hover, [data-kf-sticker-tools] :is(button, a):focus-visible { border-color: rgba(var(--kf-accent-rgb), .5) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-tools] button[aria-pressed="true"] { color: var(--kf-accent) !important; }
     [data-kf-sticker-tools] button[aria-pressed="true"] .kf-icon { fill: currentColor !important; }
     [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:hover,
     [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:focus-visible { border-color: var(--kf-danger) !important; color: var(--kf-danger) !important; }
     html[data-kf-large-targets="true"] [data-kf-sticker-grid] { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important; grid-auto-rows: 88px !important; }
     html[data-kf-large-targets="true"] [data-kf-sticker-item] { min-height: 88px !important; contain-intrinsic-size: auto 88px !important; }
     html[data-kf-large-targets="true"] [data-kf-sticker-proxy] { min-height: 84px !important; }
-    html[data-kf-large-targets="true"] [data-kf-sticker-tools] button { width: 40px !important; height: 40px !important; min-height: 40px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-tools] { min-width: 136px !important; padding: 5px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-tools] :is(button, a) { min-height: 40px !important; padding-inline: 10px !important; }
     html[data-kf-large-targets="true"] [data-kf-sticker-tools] .kf-icon { width: 18px !important; height: 18px !important; }
     [data-kf-sticker-empty] { display: grid !important; min-height: 112px !important; place-items: center !important; padding: 18px !important; color: var(--kf-text-muted) !important; font-size: 12px !important; line-height: 1.45 !important; text-align: center !important; }
     [data-kf-sticker-empty] strong { display: block !important; margin-bottom: 3px !important; color: var(--kf-text) !important; font-size: 13px !important; }
@@ -2361,20 +2431,25 @@ const SITE_CSS = `
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
+    html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
+    html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
+    html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-list] { display: none !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
+    html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ * { display: none !important; }
     #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
+    #chat-emotes-picker-panel button[data-kf-sticker-locked="true"][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-stickers-show-hidden="true"] #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: flex !important; opacity: .42 !important; }
 
   /* Accessibility settings are not a width. Everything below used to sit inside
@@ -3028,8 +3103,10 @@ function isFavorited(key) {
   return isStickerFavorite(state.stickerPreferences.favorites, key, favoriteChannel());
 }
 
-function favoriteCount() {
-  return favoriteKeysInOrder().length;
+function favoriteCount(availableKeys = null) {
+  const favorites = favoriteKeysInOrder();
+  if (!(availableKeys instanceof Set)) return favorites.length;
+  return favorites.filter((key) => availableKeys.has(key)).length;
 }
 
 /** Which scope a key is favorited in here, for labelling. '' means global. */
@@ -3043,6 +3120,7 @@ function favoriteScopeOf(key) {
 function stickerPreferencesFromValue(value) {
   return {
     favorites: value.favorites,
+    order: [...value.order],
     hidden: new Set(value.hidden),
     view: value.view,
     showHidden: value.showHidden,
@@ -3057,6 +3135,7 @@ function stickerPreferencesValue(preferences = state.stickerPreferences) {
   return normalizeStickerPreferences({
     schema: STICKER_PREFERENCES_SCHEMA,
     favorites: preferences.favorites,
+    order: preferences.order,
     hidden: [...preferences.hidden],
     view: preferences.view,
     showHidden: preferences.showHidden,
@@ -3198,6 +3277,8 @@ const liveSurface = createLive({
   currentVodId,
   plural,
   mergeStickerLibrary,
+  reconcileStickerSubscriptions,
+  renderStickerOrganizer,
   forgetChatMessage,
 });
 const {
@@ -4390,26 +4471,38 @@ function captureChatScrollAnchor(messages) {
   const visible = chatScrollRows(messages)
     .map((node) => ({ node, rect: node.getBoundingClientRect() }))
     .filter(({ rect }) => rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom);
-  const row = visible.find(({ rect }) => rect.top >= viewport.top) || visible[0];
-  if (!row) return null;
-  const id = chatMessageId(row.node);
-  return {
-    node: row.node,
-    signature: id ? `id:${id}` : `text:${String(row.node.textContent || '').replace(/\s+/g, ' ').trim()}`,
-    offset: row.rect.top - viewport.top,
-  };
+  const anchors = visible.map(({ node, rect }) => ({ node, signature: chatScrollSignature(node), offset: rect.top - viewport.top }));
+  const anchor = anchors.find(({ offset }) => offset >= 0) || anchors[0] || null;
+  if (anchor) anchor.peers = anchors;
+  return anchor;
+}
+
+function chatScrollSignature(node) {
+  const id = chatMessageId(node);
+  const text = String(node.textContent || '').replace(/\s+/g, ' ').trim();
+  // Kick reuses virtual row indexes as the live buffer advances. An index by
+  // itself can therefore point at a different message a moment later and make
+  // the pause holder "restore" to the wrong row. Pair every available id with
+  // the rendered message so recycled indexes fail closed and a surviving peer
+  // can take over instead.
+  return id ? `id:${id}|${text}` : `text:${text}`;
 }
 
 function chatScrollAnchorStillMatches(messages, anchor) {
-  if (!anchor?.node?.isConnected || !messages.contains(anchor.node)) return false;
-  const id = chatMessageId(anchor.node);
-  const signature = id
-    ? `id:${id}`
-    : `text:${String(anchor.node.textContent || '').replace(/\s+/g, ' ').trim()}`;
-  return signature === anchor.signature;
+  let rows;
+  for (const candidate of anchor?.peers || [anchor]) {
+    if (!candidate?.signature) continue;
+    if (!candidate.node?.isConnected || !messages.contains(candidate.node) || chatScrollSignature(candidate.node) !== candidate.signature) {
+      candidate.node = (rows ||= chatScrollRows(messages)).find(node => chatScrollSignature(node) === candidate.signature);
+    }
+    if (candidate.node && chatScrollSignature(candidate.node) === candidate.signature) {
+      Object.assign(anchor, candidate);
+      return true;
+    }
+  }
+  return false;
 }
 
-/** Hold the anchored row, or the last stable pixel when Kick recycled it. */
 function restorePausedChatPosition(messages) {
   const anchor = state.runtime.chatScrollAnchor;
   if (chatScrollAnchorStillMatches(messages, anchor)) {
@@ -4570,6 +4663,8 @@ function releaseChatScrollPause() {
   state.runtime.chatScrollIntentHandler = null;
   state.runtime.chatScrollIntentUntil = 0;
   state.runtime.chatScrollIgnoreUntil = 0;
+  clearInterval(state.runtime.chatScrollHoldTimer);
+  state.runtime.chatScrollHoldTimer = 0;
 }
 
 function applyChatPause() {
@@ -4635,11 +4730,22 @@ function applyChatPause() {
       state.runtime.chatScrollTop = messages.scrollTop;
       state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
       state.observers.chat = new MutationObserver(() => schedulePausedChatRestore(messages));
-      state.observers.chat.observe(messages, { childList: true, subtree: true, characterData: true });
+      state.observers.chat.observe(messages, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['style', 'data-index', 'data-message-id', 'data-chat-entry'],
+      });
+    }
+    if (!state.runtime.chatScrollHoldTimer) {
+      state.runtime.chatScrollHoldTimer = setInterval(() => schedulePausedChatRestore(messages), 250);
     }
     messages.setAttribute('aria-live', 'off');
     messages.dataset.kfChatPaused = 'true';
   } else {
+    clearInterval(state.runtime.chatScrollHoldTimer);
+    state.runtime.chatScrollHoldTimer = 0;
     state.observers.chat?.disconnect?.();
     state.observers.chat = null;
     state.runtime.chatPauseNode = null;
@@ -4816,7 +4922,16 @@ function mergeStickerLibrary(observed) {
         : sticker.access === 'channel'
           ? 'channel'
           : 'locked';
-    const access = preferredStickerAccess(existing?.access, incomingAccess);
+    const entitlement = ['granted', 'denied'].includes(sticker.entitlement)
+      ? sticker.entitlement
+      : (existing?.entitlement || 'unknown');
+    // Account entitlement is current state, not a lifetime achievement. An
+    // explicit denial must be allowed to replace yesterday's available record.
+    const access = entitlement === 'denied'
+      ? 'locked'
+      : entitlement === 'granted'
+        ? 'available'
+        : preferredStickerAccess(existing?.access, incomingAccess);
     // Nothing here calls Kick. The record is built from what the page and the
     // catalog already showed, so no claim is automated and no endpoint replayed.
     const record = recordStickerObservation(existing, {
@@ -4830,6 +4945,7 @@ function mergeStickerLibrary(observed) {
       requiresFollow: sticker.requiresFollow === true || existing?.requiresFollow === true,
       followed: sticker.followed === true || existing?.followed === true,
       subscribersOnly: sticker.subscribersOnly === true || existing?.subscribersOnly === true,
+      entitlement,
       // Where Kick will accept it, which is not what its access level says: a
       // free channel emote is `channel` access and works in exactly one chat,
       // while an owned subscriber emote works in all of them. Absent on records
@@ -4848,10 +4964,36 @@ function mergeStickerLibrary(observed) {
     }
   }
   if (!changed) return false;
+  state.runtime.stickerCatalogDirty = true;
   queueStickerPersist();
   for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
     summary.textContent = stickerLibrarySummary();
   }
+  return true;
+}
+
+/** Reconcile saved premium emotes against Kick's current account catalog. */
+function reconcileStickerSubscriptions(catalog) {
+  if (!catalog?.account?.authenticated) return false;
+  let changed = false;
+  for (const [key, entry] of state.stickerPreferences.library) {
+    if (!entry.subscribersOnly || !entry.sourceSlug) continue;
+    const entitlement = catalogSubscriptionEntitlement(catalog, entry.sourceSlug);
+    if (entitlement === 'unknown') continue;
+    const access = entitlement === 'granted' ? 'available' : 'locked';
+    if (entry.entitlement === entitlement && entry.access === access) continue;
+    state.stickerPreferences.library.set(key, {
+      ...entry,
+      entitlement,
+      access,
+      usableEverywhere: true,
+      usableHere: entitlement === 'granted',
+    });
+    changed = true;
+  }
+  if (!changed) return false;
+  state.runtime.stickerCatalogDirty = true;
+  queueStickerPersist();
   return true;
 }
 
@@ -4899,6 +5041,9 @@ function enrichChatSticker(sticker) {
     requiresFollow: emote.requiresFollow,
     followed: emote.followed,
     subscribersOnly: emote.subscribersOnly,
+    entitlement: emote.entitlement,
+    usableEverywhere: emote.usableEverywhere,
+    usableHere: emote.usableHere,
   };
 }
 
@@ -5265,6 +5410,7 @@ function stickerDescriptors(picker) {
     node.removeAttribute('data-kf-sticker-key');
     node.removeAttribute('data-kf-sticker-hidden');
     node.removeAttribute('data-kf-sticker-pinned');
+    node.removeAttribute('data-kf-sticker-locked');
     node.removeAttribute('data-kf-sticker-native');
     node.removeAttribute('data-kf-sticker-native-group');
     node.removeAttribute('data-kf-sticker-native-list');
@@ -5273,7 +5419,6 @@ function stickerDescriptors(picker) {
 
   const nativeGroups = stickerNativeGroups(picker);
   const observed = new Map();
-  const descriptors = new Map();
   for (const button of [...picker.querySelectorAll('button')].filter((candidate) => !candidate.closest('[data-kf-sticker-organizer]'))) {
     const info = stickerButtonInfo(button, { includeUnavailable: true });
     if (!info) continue;
@@ -5283,6 +5428,7 @@ function stickerDescriptors(picker) {
     if (seen) {
       if (group && !seen.nativeGroups.includes(group)) seen.nativeGroups.push(group);
       seen.available ||= available;
+      seen.originals.push(button);
     } else {
       observed.set(info.key, {
         key: info.key,
@@ -5291,25 +5437,31 @@ function stickerDescriptors(picker) {
         src: info.src,
         nativeGroups: group ? [group] : [],
         available,
-      });
-    }
-    if (!available) continue;
-    const existing = descriptors.get(info.key);
-    if (existing) {
-      existing.originals.push(button);
-      if (group && !existing.nativeGroups.includes(group)) existing.nativeGroups.push(group);
-    } else {
-      descriptors.set(info.key, {
-        key: info.key,
-        id: info.id,
-        name: info.name,
-        src: info.src,
-        nativeGroups: group ? [group] : [],
         originals: [button],
       });
     }
   }
   mergeStickerLibrary(observed.values());
+
+  const descriptors = new Map();
+  for (const candidate of observed.values()) {
+    const stored = state.stickerPreferences.library.get(candidate.key);
+    const locked = stickerSubscriptionLocked(stored)
+      || (!candidate.available && stored?.subscribersOnly === true && stored.entitlement !== 'granted');
+    if (!candidate.available && !locked) continue;
+    descriptors.set(candidate.key, {
+      ...stored,
+      ...candidate,
+      locked,
+    });
+  }
+  // Expired favorites may disappear from Kick's native picker entirely. Keep
+  // their saved record in one non-sendable shelf so resubscribing can restore
+  // the old favorite and group placement without asking the user to rebuild it.
+  for (const [key, stored] of state.stickerPreferences.library) {
+    if (descriptors.has(key) || !stickerSubscriptionLocked(stored)) continue;
+    descriptors.set(key, { ...stored, available: false, locked: true, originals: [] });
+  }
 
   for (const descriptor of descriptors.values()) {
     const hidden = state.stickerPreferences.hidden.has(descriptor.key);
@@ -5318,6 +5470,7 @@ function stickerDescriptors(picker) {
       original.dataset.kfStickerKey = descriptor.key;
       original.dataset.kfStickerHidden = String(hidden);
       original.dataset.kfStickerPinned = String(pinned);
+      original.dataset.kfStickerLocked = String(descriptor.locked === true);
       original.dataset.kfStickerNative = 'true';
     }
   }
@@ -5335,7 +5488,8 @@ function rarityBadge(descriptor) {
   if (!state.settings.content.showEmoteRarity || !state.live.rarity) return '';
   const match = state.live.rarity.matched.find((entry) => entry.emote.id === descriptor.id);
   if (!match) return '';
-  return `<span class="kf-rarity" data-rarity="${escapeHtml(match.rarity)}" title="${escapeHtml(trf('Kick rarity, matched by {basis}', { basis: tr(match.basis) }))}">${escapeHtml(match.rarity)}</span>`;
+  const rarity = String(match.rarity || '').toLowerCase();
+  return `<span class="kf-rarity" data-rarity="${escapeHtml(rarity)}" title="${escapeHtml(trf('Kick rarity, matched by {basis}', { basis: tr(match.basis) }))}">${escapeHtml(rarity.slice(0, 1).toUpperCase())}</span>`;
 }
 
 /**
@@ -5362,38 +5516,293 @@ function measureEmoteAspect(scope) {
   }
 }
 
-function stickerProxyMarkup(descriptor) {
-  const pinned = isFavorited(descriptor.key);
+function stickerViewCanReorder(view = state.stickerPreferences.view) {
+  return view === 'all' || view === 'pinned' || view === 'group';
+}
+
+function stickerProxyMarkup(descriptor, view) {
+  const locked = descriptor.locked === true;
+  const pinned = !locked && isFavorited(descriptor.key);
   const hidden = state.stickerPreferences.hidden.has(descriptor.key);
   const selected = state.runtime.stickerPickerSelection.has(descriptor.key);
   const organizing = state.runtime.stickerPickerOrganizing;
+  const reorderable = stickerViewCanReorder(view) && !hidden && !locked;
+  const dragging = state.runtime.stickerDragKey === descriptor.key;
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
   const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
+  const sourceSlug = favoriteScope(descriptor.sourceSlug);
+  const sourceLabel = sourceSlug ? trf('Open {name} on Kick', { name: sourceSlug }) : '';
+  const sourceText = sourceSlug ? trf('View {name}', { name: sourceSlug }) : '';
+  const sourceLink = sourceSlug
+    ? `<a href="/${encodeURIComponent(sourceSlug)}" data-kf-sticker-source aria-label="${escapeHtml(sourceLabel)}" title="${escapeHtml(sourceLabel)}">${uiIcon('externalLink')}<span>${escapeHtml(sourceText)}</span></a>`
+    : '';
+  const title = locked
+    ? trf('{name} is unavailable until you resubscribe.', { name: descriptor.name })
+    : trf(
+      reorderable
+        ? (organizing ? 'Select {name}. Drag to rearrange.' : 'Use {name}. Drag to rearrange.')
+        : (organizing ? 'Select {name}' : 'Use {name}'),
+      { name: descriptor.name },
+    );
   // The state stamp is what lets a favorite toggle patch this tile in place
   // instead of re-serialising the window it sits in.
-  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-pinned="${pinned}" data-kf-sticker-selected="${selected}" data-kf-sticker-state="${pinned}:${hidden}"${scope ? ' data-kf-sticker-scoped="true"' : ''}>
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" data-kf-sticker-proxy${organizing ? ` aria-pressed="${selected}"` : ''} aria-label="${escapeHtml(trf(organizing ? 'Select emote {name}' : 'Use emote {name}', { name: descriptor.name }))}" title="${escapeHtml(trf(organizing ? 'Select {name}' : 'Use {name}', { name: descriptor.name }))}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
+  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-pinned="${pinned}" data-kf-sticker-locked="${locked}" data-kf-sticker-selected="${selected}" data-kf-sticker-state="${pinned}:${hidden}" data-kf-sticker-reorderable="${reorderable}"${dragging ? ' data-kf-sticker-dragging="true"' : ''}${scope ? ' data-kf-sticker-scoped="true"' : ''}>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" data-kf-sticker-proxy draggable="${reorderable}"${locked ? ' aria-disabled="true"' : (organizing ? ` aria-pressed="${selected}"` : '')} aria-label="${escapeHtml(trf(locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name: descriptor.name }))}" title="${escapeHtml(title)}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy" draggable="false"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <span data-kf-sticker-check aria-hidden="true">${uiIcon('check')}</span>
-    <div data-kf-sticker-tools>
-      <button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${uiIcon('star')}</button>
-      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf(hidden ? 'Restore {name}' : 'Remove {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}">${uiIcon(hidden ? 'reset' : 'trash')}</button>
+    <div data-kf-sticker-tools data-kf-open="false" role="group" aria-label="${escapeHtml(trf('Actions for {name}', { name: descriptor.name }))}">
+      ${locked ? '' : `<button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${uiIcon('star')}<span>${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}</span></button>`}
+      ${sourceLink}
+      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf(hidden ? 'Restore {name}' : 'Remove {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}">${uiIcon(hidden ? 'reset' : 'trash')}<span>${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}</span></button>
     </div>
   </div>`;
 }
 
-function unavailableStickerCount(picker, availableDescriptors) {
-  const availableKeys = new Set(availableDescriptors.map((descriptor) => descriptor.key));
-  const keys = new Set();
-  for (const button of picker.querySelectorAll('button:disabled, button[aria-disabled="true"]')) {
-    const info = stickerButtonInfo(button, { includeUnavailable: true });
-    if (info && !availableKeys.has(info.key)) keys.add(info.key);
+function clearStickerActionHideTimer() {
+  clearTimeout(state.runtime.stickerActionHideTimer);
+  state.runtime.stickerActionHideTimer = 0;
+}
+
+function hideStickerTileActions() {
+  clearStickerActionHideTimer();
+  const tools = state.runtime.stickerActionTools;
+  if (!tools) return;
+  tools.dataset.kfOpen = 'false';
+  tools.style.removeProperty('left');
+  tools.style.removeProperty('top');
+  tools.style.removeProperty('visibility');
+  delete tools.dataset.kfSide;
+  closeAnchoredSurface(tools);
+  state.runtime.stickerActionTools = null;
+}
+
+function prepareStickerTileActions(scope) {
+  for (const tools of scope?.querySelectorAll?.('[data-kf-sticker-tools]') || []) {
+    if (tools.dataset.kfStickerActionsReady === 'true') continue;
+    if (typeof tools.showPopover === 'function') {
+      tools.setAttribute('popover', 'manual');
+      tools.dataset.kfStickerTopLayer = 'true';
+    }
+    tools.dataset.kfStickerActionsReady = 'true';
   }
-  return keys.size;
+}
+
+function showStickerTileActions(tile) {
+  const organizer = tile?.closest?.('[data-kf-sticker-organizer]');
+  if (!organizer || organizer.dataset.kfStickerOrganizing === 'true' || organizer.dataset.kfStickerDragging === 'true') {
+    hideStickerTileActions();
+    return;
+  }
+  const tools = tile.querySelector('[data-kf-sticker-tools]');
+  const proxy = tile.querySelector('[data-kf-sticker-proxy]');
+  if (!tools || !proxy) return;
+  clearStickerActionHideTimer();
+  if (state.runtime.stickerActionTools !== tools) hideStickerTileActions();
+  state.runtime.stickerActionTools = tools;
+  tools.dataset.kfOpen = 'true';
+  tools.style.removeProperty('left');
+  tools.style.removeProperty('top');
+  tools.style.visibility = 'hidden';
+  if (tools.dataset.kfStickerTopLayer === 'true') {
+    try {
+      if (!tools.matches(':popover-open')) tools.showPopover();
+    } catch {
+      // A disconnected tile cannot enter the top layer. The normal fixed
+      // positioning path remains available for a connected fallback.
+    }
+  }
+  // Measured after entering the top layer so Larger targets and translated
+  // labels both participate in the edge decision.
+  const anchor = proxy.getBoundingClientRect();
+  const box = tools.getBoundingClientRect();
+  const gap = 6;
+  const right = anchor.right + gap;
+  const left = right + box.width <= window.innerWidth - 8
+    ? right
+    : Math.max(8, anchor.left - box.width - gap);
+  const top = Math.min(
+    Math.max(8, anchor.top + ((anchor.height - box.height) / 2)),
+    Math.max(8, window.innerHeight - box.height - 8),
+  );
+  // Inline important beats the stylesheet's inset reset, which is itself
+  // important so Kick utility classes cannot center the popover.
+  tools.style.setProperty('left', `${left}px`, 'important');
+  tools.style.setProperty('top', `${top}px`, 'important');
+  tools.dataset.kfSide = left === right ? 'right' : 'left';
+  tools.style.visibility = 'visible';
+}
+
+function scheduleStickerTileActionsHide(tile) {
+  clearStickerActionHideTimer();
+  state.runtime.stickerActionHideTimer = window.setTimeout(() => {
+    state.runtime.stickerActionHideTimer = 0;
+    const active = deepActiveElement();
+    if (tile?.matches?.(':hover') || (active && tile?.contains?.(active))) return;
+    hideStickerTileActions();
+  }, 140);
+}
+
+function onStickerTileActionEnter(event) {
+  const tile = event.target?.closest?.('[data-kf-sticker-item]');
+  if (tile) showStickerTileActions(tile);
+}
+
+function onStickerTileActionLeave(event) {
+  const tile = event.target?.closest?.('[data-kf-sticker-item]');
+  if (!tile || tile.contains(event.relatedTarget)) return;
+  scheduleStickerTileActionsHide(tile);
+}
+
+function stickerActionFocusReturn(target, event) {
+  if (event.detail !== 0 || !target?.matches?.(':focus')) return null;
+  return target.closest?.('[data-kf-sticker-item]')?.querySelector?.('[data-kf-sticker-proxy]') || null;
+}
+
+function restoreStickerActionFocus(target, organizer) {
+  if (!target) return;
+  requestAnimationFrame(() => {
+    if (restoreFocus(target)) return;
+    restoreFocus(organizer?.querySelector?.('[data-kf-sticker-item] [data-kf-sticker-proxy], [data-kf-sticker-view][data-active="true"]'));
+  });
+}
+
+function clearStickerDragTarget() {
+  const target = state.runtime.stickerDragTarget;
+  if (target?.dataset) delete target.dataset.kfStickerDrop;
+  state.runtime.stickerDragTarget = null;
+  state.runtime.stickerDragAfter = false;
+}
+
+function finishStickerDrag(organizer, suppressClick = true) {
+  const key = state.runtime.stickerDragKey;
+  clearStickerDragTarget();
+  if (organizer?.dataset) delete organizer.dataset.kfStickerDragging;
+  for (const tile of organizer?.querySelectorAll?.('[data-kf-sticker-dragging="true"]') || []) {
+    delete tile.dataset.kfStickerDragging;
+  }
+  state.runtime.stickerDragKey = '';
+  if (suppressClick && key) {
+    state.runtime.stickerDragSuppressKey = key;
+    state.runtime.stickerDragSuppressClickUntil = Date.now() + 700;
+  }
+}
+
+function sameStickerOrder(left, right) {
+  return left.length === right.length && left.every((key, index) => key === right[index]);
+}
+
+function placePickerSticker(key, targetKey, after) {
+  if (!key || !targetKey || key === targetKey || !stickerViewCanReorder()) return false;
+  const view = state.stickerPreferences.view;
+  if (view === 'pinned') {
+    const scope = favoriteScopeOf(key);
+    if (scope !== favoriteScopeOf(targetKey)) {
+      showToast('Channel favorites stay before global favorites.');
+      return false;
+    }
+    const previous = [...state.stickerPreferences.favorites];
+    const next = placeStickerFavorite(previous, key, scope, targetKey, after);
+    if (sameStickerOrder(favoritesForChannel(previous, favoriteChannel()), favoritesForChannel(next, favoriteChannel()))) return false;
+    state.stickerPreferences.favorites = next;
+    commitPickerStickerChange();
+    showToast('Emote moved.', false, [{
+      label: 'Undo',
+      onClick: () => {
+        state.stickerPreferences.favorites = previous;
+        commitPickerStickerChange();
+        showToast('Favorite order restored.');
+      },
+    }]);
+    return true;
+  }
+
+  const previous = [...(state.stickerPreferences.order || [])];
+  const fallback = orderedStickerKeys([...state.stickerCatalog.keys()], previous);
+  const next = moveStickerOrder(previous, key, targetKey, after, fallback);
+  if (sameStickerOrder(fallback, orderedStickerKeys(fallback, next))) return false;
+  state.stickerPreferences.order = next;
+  commitPickerStickerChange();
+  showToast('Emote moved.', false, [{
+    label: 'Undo',
+    onClick: () => {
+      state.stickerPreferences.order = previous;
+      commitPickerStickerChange();
+      showToast('Emote order restored.');
+    },
+  }]);
+  return true;
+}
+
+function onStickerDragStart(event) {
+  const proxy = event.target?.closest?.('[data-kf-sticker-proxy][draggable="true"]');
+  const tile = proxy?.closest?.('[data-kf-sticker-item]');
+  const organizer = tile?.closest?.('[data-kf-sticker-organizer]');
+  const key = tile?.dataset.kfStickerKey;
+  if (!proxy || !organizer || !key || !stickerViewCanReorder()) {
+    event.preventDefault();
+    return;
+  }
+  hideStickerTileActions();
+  clearStickerDragTarget();
+  state.runtime.stickerDragKey = key;
+  organizer.dataset.kfStickerDragging = 'true';
+  tile.dataset.kfStickerDragging = 'true';
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', key);
+  }
+}
+
+function onStickerDragOver(event) {
+  if (!state.runtime.stickerDragKey) return;
+  const tile = event.target?.closest?.('[data-kf-sticker-item]');
+  if (!tile || tile.dataset.kfStickerKey === state.runtime.stickerDragKey) {
+    clearStickerDragTarget();
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  const rect = tile.getBoundingClientRect();
+  const after = event.clientX >= rect.left + (rect.width / 2);
+  if (state.runtime.stickerDragTarget !== tile) clearStickerDragTarget();
+  state.runtime.stickerDragTarget = tile;
+  state.runtime.stickerDragAfter = after;
+  tile.dataset.kfStickerDrop = after ? 'after' : 'before';
+}
+
+function onStickerDragLeave(event) {
+  const organizer = event.currentTarget;
+  if (organizer?.contains?.(event.relatedTarget)) return;
+  clearStickerDragTarget();
+}
+
+function onStickerDrop(event) {
+  const organizer = event.currentTarget;
+  const target = state.runtime.stickerDragTarget;
+  const key = state.runtime.stickerDragKey;
+  const targetKey = target?.dataset.kfStickerKey;
+  const after = state.runtime.stickerDragAfter;
+  if (!key || !targetKey) {
+    finishStickerDrag(organizer);
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  rememberStickerGridScroll(target);
+  finishStickerDrag(organizer);
+  placePickerSticker(key, targetKey, after);
+}
+
+function onStickerDragEnd(event) {
+  finishStickerDrag(event.currentTarget);
 }
 
 function removeStickerOrganizer() {
-  for (const organizer of document.querySelectorAll('[data-kf-sticker-organizer]')) organizer.remove();
+  hideStickerTileActions();
+  for (const organizer of document.querySelectorAll('[data-kf-sticker-organizer]')) {
+    finishStickerDrag(organizer, false);
+    organizer.remove();
+  }
 }
 
 function stickerGroupById(id) {
@@ -5437,7 +5846,7 @@ function pickerStickerBatchMarkup() {
   const options = [`<option value=""${bulkGroup ? '' : ' selected'}>${escapeHtml(tr('Ungrouped'))}</option>`, ...state.stickerPreferences.groups.map((group) => `<option value="${escapeHtml(group.id)}"${bulkGroup === group.id ? ' selected' : ''}>${escapeHtml(group.name)}</option>`)].join('');
   return `<div data-kf-sticker-batch data-kf-has-selection="${Boolean(count)}" data-kf-can-reorder="${count === 1}">
     <div data-kf-sticker-batch-summary><strong data-kf-sticker-selected-count aria-live="polite">${escapeHtml(trf(count === 1 ? '{count} selected emote' : '{count} selected emotes', { count }))}</strong><button type="button" data-kf-sticker-select-shown>${escapeHtml(tr('Select shown'))}</button><button type="button" data-kf-sticker-clear-selection${disabled}>${escapeHtml(tr('Clear'))}</button></div>
-    <div data-kf-sticker-batch-actions><span data-kf-sticker-batch-move-group><select data-kf-sticker-bulk-group aria-label="${escapeHtml(tr('Move selected emotes to group'))}">${options}</select><button type="button" data-kf-sticker-batch-move${disabled}>${escapeHtml(tr('Move'))}</button></span>${state.stickerPreferences.view === 'pinned' ? `<span data-kf-sticker-batch-reorder-group><button type="button" data-kf-sticker-batch-reorder="up"${reorderDisabled}>${escapeHtml(tr('Earlier'))}</button><button type="button" data-kf-sticker-batch-reorder="down"${reorderDisabled}>${escapeHtml(tr('Later'))}</button></span>` : ''}<button type="button" data-kf-sticker-batch-remove${disabled}>${escapeHtml(tr('Remove'))}</button></div>
+    <div data-kf-sticker-batch-actions><span data-kf-sticker-batch-move-group><select data-kf-sticker-bulk-group aria-label="${escapeHtml(tr('Move selected emotes to group'))}">${options}</select><button type="button" data-kf-sticker-batch-move${disabled}>${escapeHtml(tr('Move'))}</button></span>${stickerViewCanReorder() ? `<span data-kf-sticker-batch-reorder-group><button type="button" data-kf-sticker-batch-reorder="up"${reorderDisabled}>${escapeHtml(tr('Earlier'))}</button><button type="button" data-kf-sticker-batch-reorder="down"${reorderDisabled}>${escapeHtml(tr('Later'))}</button></span>` : ''}<button type="button" data-kf-sticker-batch-remove${disabled}>${escapeHtml(tr('Remove'))}</button></div>
   </div>`;
 }
 
@@ -5466,6 +5875,7 @@ function clearStickerUI() {
     node.removeAttribute('data-kf-sticker-key');
     node.removeAttribute('data-kf-sticker-hidden');
     node.removeAttribute('data-kf-sticker-pinned');
+    node.removeAttribute('data-kf-sticker-locked');
     node.removeAttribute('data-kf-sticker-native');
     node.removeAttribute('data-kf-sticker-native-group');
     node.removeAttribute('data-kf-sticker-native-list');
@@ -5539,6 +5949,11 @@ function renderStickerOrganizer() {
       const select = event.target.closest?.('select[data-kf-sticker-bulk-group]');
       if (select) state.runtime.stickerPickerBulkGroup = select.value;
     });
+    organizer.addEventListener('dragstart', onStickerDragStart);
+    organizer.addEventListener('dragover', onStickerDragOver);
+    organizer.addEventListener('dragleave', onStickerDragLeave);
+    organizer.addEventListener('drop', onStickerDrop);
+    organizer.addEventListener('dragend', onStickerDragEnd);
   }
   const organizerAnchor = stickerOrganizerAnchor(search, picker);
   if (organizerAnchor && organizer.previousElementSibling !== organizerAnchor) organizerAnchor.after(organizer);
@@ -5550,18 +5965,31 @@ function renderStickerOrganizer() {
   const showHidden = state.stickerPreferences.showHidden;
   const matches = (descriptor) => (!query || descriptor.name.toLowerCase().includes(query))
     && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
-  const available = descriptors.filter((descriptor) => showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
+  const available = descriptors.filter((descriptor) => !descriptor.locked
+    && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key)));
+  const locked = descriptors.filter((descriptor) => descriptor.locked
+    && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key)));
   const allVisible = available.filter(matches);
+  const lockedVisible = locked.filter(matches);
+  const manualOrder = orderedStickerKeys(allVisible.map((descriptor) => descriptor.key), state.stickerPreferences.order || []);
+  const byKey = new Map(allVisible.map((descriptor) => [descriptor.key, descriptor]));
+  const manuallyOrdered = manualOrder.map((key) => byKey.get(key)).filter(Boolean);
   // Favorites render in their explicit order, not in picker order — that
   // ordering is the whole point, and the picker's own order is Kick's.
   const favoriteOrder = favoriteKeysInOrder();
   const byFavoriteOrder = (left, right) => favoriteOrder.indexOf(left.key) - favoriteOrder.indexOf(right.key);
-  const unavailableCount = unavailableStickerCount(picker, descriptors);
+  const lockedOrder = orderedStickerKeys(
+    lockedVisible.map((descriptor) => descriptor.key),
+    [...favoriteOrder, ...(state.stickerPreferences.order || [])],
+  );
+  const lockedByKey = new Map(lockedVisible.map((descriptor) => [descriptor.key, descriptor]));
+  const lockedOrdered = lockedOrder.map((key) => lockedByKey.get(key)).filter(Boolean);
+  const unavailableCount = locked.length;
 
   // Usage counts are keyed by Kick's emote id; the organizer is keyed by
   // storage key, so Recent is a lookup rather than a second store.
   const byId = new Map();
-  for (const descriptor of descriptors) {
+  for (const descriptor of available) {
     if (descriptor.id && !byId.has(String(descriptor.id))) byId.set(String(descriptor.id), descriptor);
   }
   // Presentational, over counts this build already records. Nothing here sends,
@@ -5579,18 +6007,20 @@ function renderStickerOrganizer() {
     state.stickerPreferences.activeGroup = state.stickerPreferences.groups[0].id;
   }
   const view = state.stickerPreferences.view;
-  const visible = view === 'pinned'
+  const visible = view === 'locked'
+    ? lockedOrdered
+    : view === 'pinned'
     ? allVisible.filter((descriptor) => isFavorited(descriptor.key)).sort(byFavoriteOrder)
     : view === 'recent'
       ? recent
       : view === 'group'
-        ? allVisible.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === state.stickerPreferences.activeGroup)
-        : allVisible;
+        ? manuallyOrdered.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === state.stickerPreferences.activeGroup)
+        : manuallyOrdered;
   state.runtime.stickerPickerVisibleKeys = visible.map((descriptor) => descriptor.key);
 
   const chrome = organizer.querySelector('[data-kf-sticker-chrome]');
   const gridHost = organizer.querySelector('[data-kf-sticker-grid-host]');
-  organizer.dataset.kfStickerOrganizing = String(state.runtime.stickerPickerOrganizing && view !== 'native');
+  organizer.dataset.kfStickerOrganizing = String(state.runtime.stickerPickerOrganizing && view !== 'native' && view !== 'locked');
 
   // The chrome and the grid carry separate signatures. Toggling one favorite
   // changes a count, which is cheap; re-serialising a library at the 2400 cap
@@ -5603,6 +6033,7 @@ function renderStickerOrganizer() {
     query,
     String(visible.length),
     String(allVisible.length),
+    locked.map((descriptor) => descriptor.key).join(','),
     recent.map((descriptor) => descriptor.key).join(','),
     String(unavailableCount),
     String(state.runtime.stickerPickerOrganizing),
@@ -5611,6 +6042,7 @@ function renderStickerOrganizer() {
     // Order is part of the signature: reordering changes nothing else, so
     // without it the shelf would keep the stale arrangement on screen.
     favoriteOrder.join(','),
+    (state.stickerPreferences.order || []).join(','),
     [...state.stickerPreferences.hidden].join(','),
     state.stickerPreferences.groups.map((group) => `${group.id}:${group.name}`).join(','),
     [...state.stickerPreferences.assignments].map(([key, groupId]) => `${key}:${groupId}`).join(','),
@@ -5624,27 +6056,32 @@ function renderStickerOrganizer() {
     return;
   }
   chrome.dataset.kfStickerSignature = signature;
-  const countLabel = query
-    ? trf('{shown} of {total} available', { shown: visible.length, total: available.length })
-    : trf('{count} available', { count: available.length });
-  const lockedLabel = unavailableCount ? trf(', {count} locked by Kick', { count: unavailableCount }) : '';
+  const countLabel = view === 'locked'
+    ? (query
+      ? trf('{shown} of {total} locked', { shown: visible.length, total: locked.length })
+      : trf('{count} locked', { count: locked.length }))
+    : (query
+      ? trf('{shown} of {total} available', { shown: visible.length, total: available.length })
+      : trf('{count} available', { count: available.length }));
+  const lockedLabel = unavailableCount && view !== 'locked' ? trf(', {count} locked by Kick', { count: unavailableCount }) : '';
   const tab = (id, label, count = '') => `<button type="button" data-kf-sticker-view="${id}" data-active="${view === id}" aria-pressed="${view === id}">${escapeHtml(label)}${count === '' ? '' : ` <span>${count}</span>`}</button>`;
   const groupTarget = state.stickerPreferences.activeGroup || state.stickerPreferences.groups[0]?.id || '';
   const groupTab = `<button type="button" data-kf-sticker-view="group"${groupTarget ? ` data-kf-sticker-group="${escapeHtml(groupTarget)}"` : ''} data-active="${view === 'group'}" aria-pressed="${view === 'group'}">${escapeHtml(tr('Groups'))} <span>${state.stickerPreferences.groups.length}</span></button>`;
   setMarkup(chrome, `
     <div data-kf-sticker-topline>
       <div data-kf-sticker-heading><strong>${escapeHtml(tr('Your emotes'))}</strong><span data-kf-sticker-count title="${escapeHtml(countLabel + lockedLabel)}">${escapeHtml(countLabel + lockedLabel)}</span></div>
-      <div data-kf-sticker-top-actions><button type="button" data-kf-sticker-organize aria-pressed="${state.runtime.stickerPickerOrganizing}">${uiIcon('check')}<span>${escapeHtml(tr(state.runtime.stickerPickerOrganizing ? 'Done' : 'Organize'))}</span></button><button type="button" data-kf-sticker-manage="true">${uiIcon('folder')}<span>${escapeHtml(tr('Library'))}</span></button></div>
+      <div data-kf-sticker-top-actions><button type="button" data-kf-sticker-organize aria-pressed="${state.runtime.stickerPickerOrganizing}"${view === 'locked' ? ' disabled' : ''}>${uiIcon('check')}<span>${escapeHtml(tr(state.runtime.stickerPickerOrganizing ? 'Done' : 'Organize'))}</span></button><button type="button" data-kf-sticker-manage="true">${uiIcon('folder')}<span>${escapeHtml(tr('Library'))}</span></button></div>
     </div>
     <div data-kf-sticker-tabs role="group" aria-label="${escapeHtml(tr('Emote views'))}">
-      ${tab('pinned', tr('Favorites'), favoriteCount())}
+      ${tab('pinned', tr('Favorites'), favoriteCount(new Set(available.map((descriptor) => descriptor.key))))}
+      ${unavailableCount || view === 'locked' ? tab('locked', tr('Locked'), unavailableCount) : ''}
       ${tab('recent', tr('Recent'), recent.length)}
       ${tab('all', tr('All'), allVisible.length)}
       ${groupTab}
       ${tab('native', tr('Kick'))}
     </div>
     ${view === 'group' ? pickerStickerGroupPanelMarkup(available) : ''}
-    ${state.runtime.stickerPickerOrganizing && view !== 'native' ? pickerStickerBatchMarkup() : ''}`);
+    ${state.runtime.stickerPickerOrganizing && view !== 'native' && view !== 'locked' ? pickerStickerBatchMarkup() : ''}`);
   renderStickerGrid(gridHost, visible, view);
   patchStickerSelection(organizer);
   restoreStickerGridScroll(organizer, previousGridScrollTop);
@@ -5696,7 +6133,7 @@ function renderStickerGrid(gridHost, visible, view) {
     const message = searching
       ? [tr('No emotes found'), tr('Try a different search or clear the search field.')]
       : view === 'pinned'
-      ? [tr('No favorites yet'), tr('Open All and use the star on any emote to keep it here.')]
+      ? [tr('No favorites yet'), tr('Open All, hover or focus an emote, then choose Favorite.')]
       : view === 'recent'
         ? [tr('No recent emotes yet'), tr('Emotes you send in this channel will appear here.')]
         : view === 'group' && !state.stickerPreferences.groups.length
@@ -5710,30 +6147,37 @@ function renderStickerGrid(gridHost, visible, view) {
   const grid = gridHost.querySelector('[data-kf-sticker-grid]');
   const columns = stickerGridColumns(grid);
   const slice = visibleWindow(visible, state.runtime.stickerGridAnchor);
-  const signature = [activeLocale(), view, String(state.settings.accessibility.largeTargets), state.settings.content.emotePickerDensity, state.settings.content.emotePickerHeight, String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end),
-    slice.items.map((descriptor) => descriptor.key).join(',')].join('\u0001');
+  const raritySignature = state.settings.content.showEmoteRarity
+    ? (state.live.rarity?.matched || []).map((entry) => `${entry.emote.id}:${entry.rarity}`).join(',')
+    : '';
+  const signature = [activeLocale(), view, String(state.settings.accessibility.largeTargets), state.settings.content.emotePickerDensity, state.settings.content.emotePickerHeight, String(state.runtime.stickerPickerOrganizing), String(visible.length), String(columns), String(slice.start), String(slice.end), raritySignature,
+    slice.items.map((descriptor) => `${descriptor.key}:${descriptor.locked === true}:${descriptor.sourceSlug || ''}`).join(',')].join('\u0001');
   if (gridHost.dataset.kfStickerGridSignature === signature) {
     // Same tiles, possibly different state on one of them.
     patchStickerTileStates(gridHost);
+    prepareStickerTileActions(gridHost);
     return;
   }
   const scrollTop = Number.isFinite(grid?.scrollTop) ? grid.scrollTop : null;
+  hideStickerTileActions();
   gridHost.dataset.kfStickerGridSignature = signature;
   gridHost.dataset.kfStickerWindow = `${slice.start}-${slice.end}`;
   setMarkup(gridHost, `<div data-kf-sticker-grid data-kf-sticker-total="${visible.length}">${
     stickerSpacerMarkup(slice.before, columns, 'before')
-  }${slice.items.map(stickerProxyMarkup).join('')}${
+  }${slice.items.map((descriptor) => stickerProxyMarkup(descriptor, view)).join('')}${
     stickerSpacerMarkup(slice.after, columns, 'after')
   }</div>`);
   // Replacing the grid element resets its scroll; the window only moved because
   // the viewer scrolled, so putting it back is what makes the swap invisible.
   const next = gridHost.querySelector('[data-kf-sticker-grid]');
   if (next && scrollTop !== null) next.scrollTop = scrollTop;
+  prepareStickerTileActions(gridHost);
   measureEmoteAspect(gridHost);
 }
 
 function setStickerGridHost(gridHost, signature, markup) {
   if (gridHost.dataset.kfStickerGridSignature === signature) return;
+  hideStickerTileActions();
   gridHost.dataset.kfStickerGridSignature = signature;
   delete gridHost.dataset.kfStickerWindow;
   setMarkup(gridHost, markup);
@@ -5750,10 +6194,25 @@ function patchStickerSelection(organizer) {
     const proxy = tile.querySelector('[data-kf-sticker-proxy]');
     if (!proxy) continue;
     const name = proxy.querySelector('img')?.getAttribute('alt') || 'emote';
-    if (organizing) proxy.setAttribute('aria-pressed', String(active));
-    else proxy.removeAttribute('aria-pressed');
-    proxy.setAttribute('aria-label', trf(organizing ? 'Select emote {name}' : 'Use emote {name}', { name }));
-    proxy.title = trf(organizing ? 'Select {name}' : 'Use {name}', { name });
+    const locked = tile.dataset.kfStickerLocked === 'true';
+    if (locked) {
+      proxy.setAttribute('aria-disabled', 'true');
+      proxy.removeAttribute('aria-pressed');
+    } else {
+      proxy.removeAttribute('aria-disabled');
+      if (organizing) proxy.setAttribute('aria-pressed', String(active));
+      else proxy.removeAttribute('aria-pressed');
+    }
+    proxy.setAttribute('aria-label', trf(locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name }));
+    const reorderable = tile.dataset.kfStickerReorderable === 'true';
+    proxy.title = locked
+      ? trf('{name} is unavailable until you resubscribe.', { name })
+      : trf(
+        reorderable
+          ? (organizing ? 'Select {name}. Drag to rearrange.' : 'Use {name}. Drag to rearrange.')
+          : (organizing ? 'Select {name}' : 'Use {name}'),
+        { name },
+      );
   }
   const count = selected.size;
   const batch = organizer.querySelector('[data-kf-sticker-batch]');
@@ -5782,7 +6241,7 @@ function patchStickerSelection(organizer) {
 function patchStickerTileStates(gridHost) {
   for (const tile of gridHost.querySelectorAll('[data-kf-sticker-item]')) {
     const key = tile.dataset.kfStickerKey;
-    const pinned = isFavorited(key);
+    const pinned = tile.dataset.kfStickerLocked !== 'true' && isFavorited(key);
     const hidden = state.stickerPreferences.hidden.has(key);
     const stamp = `${pinned}:${hidden}`;
     if (tile.dataset.kfStickerState === stamp) continue;
@@ -5793,8 +6252,9 @@ function patchStickerTileStates(gridHost) {
     const pin = tile.querySelector('[data-kf-sticker-action="pin"]');
     if (pin) {
       pin.setAttribute('aria-pressed', String(pinned));
-      setMarkup(pin, uiIcon('star'));
       const scope = pinned ? favoriteScopeOf(key) : '';
+      const pinLabel = tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite');
+      setMarkup(pin, `${uiIcon('star')}<span>${escapeHtml(pinLabel)}</span>`);
       pin.setAttribute('aria-label', trf(
         pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}',
         { name },
@@ -5805,7 +6265,7 @@ function patchStickerTileStates(gridHost) {
     }
     const hide = tile.querySelector('[data-kf-sticker-action="hide"]');
     if (hide) {
-      setMarkup(hide, uiIcon(hidden ? 'reset' : 'trash'));
+      setMarkup(hide, `${uiIcon(hidden ? 'reset' : 'trash')}<span>${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}</span>`);
       hide.setAttribute('aria-label', trf(hidden ? 'Restore {name}' : 'Remove {name}', { name }));
       hide.title = tr(hidden ? 'Restore' : 'Remove');
     }
@@ -5823,6 +6283,7 @@ function bindStickerGridScroll(gridHost) {
   gridHost.addEventListener('scroll', (event) => {
     const grid = event.target;
     if (!grid?.dataset || grid.dataset.kfStickerTotal === undefined) return;
+    hideStickerTileActions();
     const total = Number(grid.dataset.kfStickerTotal) || 0;
     const [start, end] = String(gridHost.dataset.kfStickerWindow || '0-0').split('-').map(Number);
     if (end - start >= total) return; // everything is rendered; nothing to move
@@ -5852,6 +6313,7 @@ function resetStickerPreferences(options = {}) {
   state.runtime.stickerPickerGroupEditor = '';
   state.stickerPreferences = {
     favorites: [],
+    order: [],
     hidden: new Set(),
     view: 'all',
     showHidden: false,
@@ -5882,6 +6344,7 @@ function commitPickerStickerChange() {
     for (const original of descriptor.originals || []) {
       original.dataset.kfStickerHidden = String(state.stickerPreferences.hidden.has(key));
       original.dataset.kfStickerPinned = String(isFavorited(key));
+      original.dataset.kfStickerLocked = String(descriptor.locked === true);
     }
   }
   persistStickerPreferences();
@@ -5994,23 +6457,18 @@ function editPickerStickerSelection(action) {
   const keys = [...selected].filter((key) => state.stickerPreferences.library.has(key));
   if (!keys.length) return;
   if ((action === 'earlier' || action === 'later') && keys.length === 1) {
-    const previous = [...state.stickerPreferences.favorites];
     const key = keys[0];
-    state.stickerPreferences.favorites = moveStickerFavorite(
-      state.stickerPreferences.favorites,
-      key,
-      favoriteScopeOf(key),
-      action === 'earlier' ? -1 : 1,
-    );
-    commitPickerStickerChange();
-    showToast(action === 'earlier' ? 'Favorite moved earlier.' : 'Favorite moved later.', false, [{
-      label: 'Undo',
-      onClick: () => {
-        state.stickerPreferences.favorites = previous;
-        commitPickerStickerChange();
-        showToast('Favorite order restored.');
-      },
-    }]);
+    const visible = state.runtime.stickerPickerVisibleKeys;
+    const step = action === 'earlier' ? -1 : 1;
+    let index = visible.indexOf(key) + step;
+    while (index >= 0 && index < visible.length) {
+      const targetKey = visible[index];
+      if (state.stickerPreferences.view !== 'pinned' || favoriteScopeOf(targetKey) === favoriteScopeOf(key)) {
+        placePickerSticker(key, targetKey, step > 0);
+        break;
+      }
+      index += step;
+    }
     return;
   }
   if (action === 'move') {
@@ -6037,6 +6495,7 @@ function editPickerStickerSelection(action) {
   const previous = {
     hidden: new Set(state.stickerPreferences.hidden),
     favorites: [...state.stickerPreferences.favorites],
+    order: [...(state.stickerPreferences.order || [])],
     assignments: new Map(state.stickerPreferences.assignments),
   };
   for (const key of keys) {
@@ -6051,6 +6510,7 @@ function editPickerStickerSelection(action) {
     onClick: () => {
       state.stickerPreferences.hidden = previous.hidden;
       state.stickerPreferences.favorites = previous.favorites;
+      state.stickerPreferences.order = previous.order;
       state.stickerPreferences.assignments = previous.assignments;
       commitPickerStickerChange();
       showToast('Removed emotes restored.');
@@ -6073,6 +6533,7 @@ function handleStickerAction(event) {
   const organizer = target.closest('[data-kf-sticker-organizer]');
   const key = target.dataset.kfStickerKey;
   const action = target.dataset.kfStickerAction;
+  const focusReturn = stickerActionFocusReturn(target, event);
   if (target.dataset.kfStickerManage) {
     openSettings('emotes');
     return;
@@ -6136,12 +6597,22 @@ function handleStickerAction(event) {
     return;
   }
   if (action === 'send') {
+    if (key === state.runtime.stickerDragSuppressKey && Date.now() <= state.runtime.stickerDragSuppressClickUntil) {
+      state.runtime.stickerDragSuppressKey = '';
+      state.runtime.stickerDragSuppressClickUntil = 0;
+      return;
+    }
+    if (state.stickerCatalog.get(key)?.locked === true) {
+      showToast('This subscription emote is unavailable. Open its source profile to resubscribe.', true);
+      return;
+    }
     if (state.runtime.stickerPickerOrganizing) {
       if (state.runtime.stickerPickerSelection.has(key)) state.runtime.stickerPickerSelection.delete(key);
       else state.runtime.stickerPickerSelection.add(key);
       patchStickerSelection(organizer);
       return;
     }
+    hideStickerTileActions();
     const original = state.stickerCatalog.get(key)?.originals?.find((button) => button.isConnected);
     original?.click?.();
     return;
@@ -6156,7 +6627,9 @@ function handleStickerAction(event) {
     if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
     const name = state.stickerCatalog.get(key)?.name || 'Emote';
     const message = isFavorited(key) ? trf('Favorited {name}.', { name }) : trf('Removed {name} from favorites.', { name });
+    hideStickerTileActions();
     commitPickerStickerChange();
+    restoreStickerActionFocus(focusReturn, organizer);
     showToast(message, false, [{
       label: 'Undo',
       onClick: () => {
@@ -6182,22 +6655,28 @@ function handleStickerAction(event) {
     const name = state.stickerCatalog.get(key)?.name || 'Emote';
     if (hidden) {
       state.stickerPreferences.hidden.delete(key);
+      hideStickerTileActions();
       commitPickerStickerChange();
+      restoreStickerActionFocus(focusReturn, organizer);
       showToast(trf('Restored {name}.', { name }));
     } else {
       const previous = {
         favorites: [...state.stickerPreferences.favorites],
+        order: [...(state.stickerPreferences.order || [])],
         assignment: state.stickerPreferences.assignments.get(key) || '',
       };
       state.stickerPreferences.hidden.add(key);
       state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
       state.stickerPreferences.assignments.delete(key);
+      hideStickerTileActions();
       commitPickerStickerChange();
+      restoreStickerActionFocus(focusReturn, organizer);
       showToast(trf('Removed {name}.', { name }), false, [{
         label: 'Undo',
         onClick: () => {
           state.stickerPreferences.hidden.delete(key);
           state.stickerPreferences.favorites = previous.favorites;
+          state.stickerPreferences.order = previous.order;
           if (previous.assignment) state.stickerPreferences.assignments.set(key, previous.assignment);
           commitPickerStickerChange();
           showToast(trf('Restored {name}.', { name }));
@@ -6219,7 +6698,7 @@ function handleStickerAction(event) {
     } else if (state.stickerPreferences.view !== 'group') {
       state.runtime.stickerPickerGroupEditor = '';
     }
-    if (state.stickerPreferences.view === 'native') {
+    if (state.stickerPreferences.view === 'native' || state.stickerPreferences.view === 'locked') {
       state.runtime.stickerPickerOrganizing = false;
       state.runtime.stickerPickerSelection.clear();
     }
@@ -7471,6 +7950,10 @@ function installRuntimeInteractions() {
   document.addEventListener('click', handleCardAction, true);
   document.addEventListener('click', handleSearchAction, true);
   document.addEventListener('click', handleStickerAction, true);
+  document.addEventListener('pointerover', onStickerTileActionEnter, true);
+  document.addEventListener('pointerout', onStickerTileActionLeave, true);
+  document.addEventListener('focusin', onStickerTileActionEnter, true);
+  document.addEventListener('focusout', onStickerTileActionLeave, true);
   document.addEventListener('click', handleChatStickerSave, true);
   document.addEventListener('keydown', handleChatStickerSave, true);
   document.addEventListener('click', (event) => {
@@ -8490,25 +8973,6 @@ const UI_CSS = `
   .kf-fact dt { margin: 0 0 3px; font-size: 12px; font-weight: 700; }
   .kf-fact dd { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 
-  /* Rarity is shown only when the join is confident; see joinCollectibleRarity. */
-  .kf-rarity {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 1px 6px;
-    border-radius: var(--radius-sm);
-    border: 1px solid currentColor;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: capitalize;
-  }
-  .kf-rarity[data-rarity="common"] { color: #9ba59f; }
-  .kf-rarity[data-rarity="uncommon"] { color: #6fd47a; }
-  .kf-rarity[data-rarity="rare"] { color: #57b6ff; }
-  .kf-rarity[data-rarity="epic"] { color: #b184ff; }
-  .kf-rarity[data-rarity="legendary"] { color: #ffb648; }
-  .kf-rarity[data-rarity="mythic"] { color: #ff6b8b; }
-
   /* Multi-stream: a grid of Kick's own embedded players. */
   .kf-ms-backdrop { padding: 0; }
   .kf-ms-shell {
@@ -8943,7 +9407,10 @@ const TRANSLATIONS = {
   'Groups': ['Grupos', 'Grupos'],
   'Your emotes': ['Tus emotes', 'Seus emotes'],
   'Library': ['Biblioteca', 'Biblioteca'],
+  'Favorite': ['Favorito', 'Favorito'],
   'Favorites': ['Favoritos', 'Favoritos'],
+  'Locked': ['Bloqueados', 'Bloqueados'],
+  'Actions for {name}': ['Acciones para {name}', 'Ações para {name}'],
   'All': ['Todos', 'Todos'],
   'Kick': ['Kick', 'Kick'],
   'Kick groups': ['Grupos de Kick', 'Grupos da Kick'],
@@ -8951,7 +9418,7 @@ const TRANSLATIONS = {
   'No emotes found': ['No se encontraron emotes', 'Nenhum emote encontrado'],
   'Try a different search or clear the search field.': ['Prueba otra búsqueda o borra el campo de búsqueda.', 'Tente outra busca ou limpe o campo de busca.'],
   'No favorites yet': ['Aún no hay favoritos', 'Ainda não há favoritos'],
-  'Open All and use the star on any emote to keep it here.': ['Abre Todos y usa la estrella de cualquier emote para guardarlo aquí.', 'Abra Todos e use a estrela em qualquer emote para mantê-lo aqui.'],
+  'Open All, hover or focus an emote, then choose Favorite.': ['Abre Todos, pasa el cursor o enfoca un emote y elige Favorito.', 'Abra Todos, passe o cursor ou foque um emote e escolha Favorito.'],
   'No recent emotes yet': ['Aún no hay emotes recientes', 'Ainda não há emotes recentes'],
   'Emotes you send in this channel will appear here.': ['Los emotes que envíes en este canal aparecerán aquí.', 'Os emotes que você enviar neste canal aparecerão aqui.'],
   'Create your first group': ['Crea tu primer grupo', 'Crie seu primeiro grupo'],
@@ -8979,12 +9446,19 @@ const TRANSLATIONS = {
   'Remove favorite': ['Quitar de favoritos', 'Remover dos favoritos'],
   'Remove favorite (this channel)': ['Quitar de favoritos (este canal)', 'Remover dos favoritos (este canal)'],
   'Use emote {name}': ['Usar el emote {name}', 'Usar o emote {name}'],
+  'Unavailable emote {name}': ['Emote {name} no disponible', 'Emote {name} indisponível'],
   'Select emote {name}': ['Seleccionar el emote {name}', 'Selecionar o emote {name}'],
   'Use {name}': ['Usar {name}', 'Usar {name}'],
+  'Use {name}. Drag to rearrange.': ['Usar {name}. Arrastra para reordenar.', 'Usar {name}. Arraste para reorganizar.'],
+  'Select {name}. Drag to rearrange.': ['Seleccionar {name}. Arrastra para reordenar.', 'Selecionar {name}. Arraste para reorganizar.'],
   '{count} in {name}': ['{count} en {name}', '{count} em {name}'],
   '{shown} of {total} available': ['{shown} de {total} disponibles', '{shown} de {total} disponíveis'],
   '{count} available': ['{count} disponibles', '{count} disponíveis'],
+  '{shown} of {total} locked': ['{shown} de {total} bloqueados', '{shown} de {total} bloqueados'],
+  '{count} locked': ['{count} bloqueados', '{count} bloqueados'],
   ', {count} locked by Kick': [', {count} bloqueados por Kick', ', {count} bloqueados pela Kick'],
+  '{name} is unavailable until you resubscribe.': ['{name} no está disponible hasta que te vuelvas a suscribir.', '{name} fica indisponível até você assinar novamente.'],
+  'This subscription emote is unavailable. Open its source profile to resubscribe.': ['Este emote de suscripción no está disponible. Abre el perfil de origen para volver a suscribirte.', 'Este emote de assinatura está indisponível. Abra o perfil de origem para assinar novamente.'],
   'Created {name}. Select emotes, then move them into it.': ['Se creó {name}. Selecciona emotes y luego muévelos ahí.', '{name} foi criado. Selecione emotes e depois mova-os para ele.'],
   'Deleted emote group {name}.': ['Se eliminó el grupo de emotes {name}.', 'O grupo de emotes {name} foi excluído.'],
   'Favorited {name}.': ['Se añadió {name} a favoritos.', '{name} foi adicionado aos favoritos.'],
@@ -8995,12 +9469,13 @@ const TRANSLATIONS = {
   'Group name restored.': ['Se restauró el nombre del grupo.', 'O nome do grupo foi restaurado.'],
   'Emote group restored.': ['Se restauró el grupo de emotes.', 'O grupo de emotes foi restaurado.'],
   'Favorite order restored.': ['Se restauró el orden de favoritos.', 'A ordem dos favoritos foi restaurada.'],
+  'Emote order restored.': ['Se restauró el orden de emotes.', 'A ordem dos emotes foi restaurada.'],
+  'Emote moved.': ['Emote movido.', 'Emote movido.'],
+  'Channel favorites stay before global favorites.': ['Los favoritos del canal permanecen antes que los favoritos globales.', 'Os favoritos do canal ficam antes dos favoritos globais.'],
   'Emote group changes restored.': ['Se restauraron los cambios de grupos de emotes.', 'As alterações dos grupos de emotes foram restauradas.'],
   'Removed emotes restored.': ['Se restauraron los emotes eliminados.', 'Os emotes removidos foram restaurados.'],
   'Favorite change restored.': ['Se restauró el cambio de favorito.', 'A alteração de favorito foi restaurada.'],
   'Emote changes reset.': ['Se restablecieron los cambios de emotes.', 'As alterações de emotes foram redefinidas.'],
-  'Favorite moved earlier.': ['El favorito se movió antes.', 'O favorito foi movido para antes.'],
-  'Favorite moved later.': ['El favorito se movió después.', 'O favorito foi movido para depois.'],
   'Emote moved earlier.': ['El emote se movió antes.', 'O emote foi movido para antes.'],
   'Emote moved later.': ['El emote se movió después.', 'O emote foi movido para depois.'],
   'emote moved.': ['emote movido.', 'emote movido.'],
@@ -9018,6 +9493,7 @@ const TRANSLATIONS = {
   'Rename {name}': ['Cambiar el nombre de {name}', 'Renomear {name}'],
   'Show {name} again': ['Mostrar {name} de nuevo', 'Mostrar {name} novamente'],
   'Open {name} on Kick': ['Abrir {name} en Kick', 'Abrir {name} na Kick'],
+  'View {name}': ['Ver {name}', 'Ver {name}'],
   'Remove {name} from the grid': ['Quitar {name} de la cuadrícula', 'Remover {name} da grade'],
   'Copy a link to board {name}': ['Copiar un enlace al tablero {name}', 'Copiar um link para o painel {name}'],
   'Delete board {name}': ['Eliminar el tablero {name}', 'Excluir o painel {name}'],
@@ -10256,6 +10732,7 @@ async function importChannelEmotes() {
     requiresFollow: emote.requiresFollow,
     followed: emote.followed,
     subscribersOnly: emote.subscribersOnly,
+    entitlement: emote.entitlement,
   }));
   mergeStickerLibrary(records);
   const added = state.stickerPreferences.library.size - before;
@@ -10438,7 +10915,7 @@ function collectViewerFacts() {
       nextCheckAt: record.nextCheckAt,
       // The rollover this reward belongs to, so a claim from yesterday is not
       // reported as today's.
-      previousResetAt: nextClaimResetAt(now) - 24 * 60 * 60 * 1000,
+      previousResetAt: previousClaimResetAt(now),
       observedAt: now,
     },
     points: { onChannel, value: points, channel: currentChannelSlug(), observedAt: now },
@@ -11686,15 +12163,40 @@ function acceptEmoteCompletion(key) {
 
 const REWARD_TRIGGER = 'button[aria-label="Claim Your Daily Reward"]';
 const REWARD_DIALOG = '[role="dialog"]';
+const REWARD_AVAILABLE_MEDIA = 'video[src*="/rewards/reward-available-CTA."]';
+const REWARD_DIALOG_OPEN_TIMEOUT_MS = 3_000;
+const REWARD_DIALOG_RETRY_MS = 120;
+const REWARD_DIALOG_RENDER_GRACE_MS = 1_500;
+const REWARD_CLAIM_CONFIRM_TIMEOUT_MS = 30_000;
+const REWARD_CLAIM_CONFIRM_RETRY_MS = 250;
+const REWARD_FAILURE_RECHECK_MS = 60_000;
+
+/** The controlled Radix surface must name the same reward as the trigger. */
+function rewardDialogIdentity(dialog) {
+  if (!dialog?.matches?.(REWARD_DIALOG)) return false;
+  const titleId = dialog.getAttribute('aria-labelledby');
+  const title = titleId ? document.getElementById(titleId) : null;
+  return /^\s*claim your daily reward\s*$/i.test(title?.textContent || '');
+}
+
+/** Resolve only the `aria-controls` dialog; another role=dialog is always present. */
+function controlledRewardDialog(trigger, adopt = false) {
+  const dialogId = state.reward.dialogId || trigger?.getAttribute('aria-controls') || '';
+  if (!dialogId) return null;
+  const dialog = document.getElementById(dialogId);
+  const expanded = trigger?.getAttribute('aria-expanded') === 'true';
+  const open = dialog?.getAttribute('data-state') !== 'closed' && !dialog?.hidden;
+  if (!expanded || !open || !rewardDialogIdentity(dialog)) return null;
+  if (adopt) {
+    state.reward.dialogId = dialogId;
+    dialog.dataset.kfRewardDialog = 'true';
+  }
+  return dialog;
+}
 
 function rewardDialog() {
-  // Only a dialog this build actually opened counts. Kick reuses `role="dialog"`
-  // for other surfaces, and clicking a button in the wrong one would be a real
-  // misfire rather than a missed claim.
-  for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
-    if (dialog.dataset.kfRewardDialog === 'true') return dialog;
-  }
-  return null;
+  const dialog = controlledRewardDialog(document.querySelector(REWARD_TRIGGER));
+  return dialog?.dataset.kfRewardDialog === 'true' ? dialog : null;
 }
 
 function rewardActionButton(dialog) {
@@ -11708,19 +12210,115 @@ function rewardActionDisabled(button) {
   return Boolean(button.disabled) || button.getAttribute('aria-disabled') === 'true';
 }
 
+/** The claim is complete only when Kick replaces Claim with its final state. */
+function rewardClaimConfirmed(dialog) {
+  if (!dialog) return false;
+  const text = String(dialog.textContent || '').replace(/\s+/g, ' ');
+  const share = [...dialog.querySelectorAll('button')]
+    .some((button) => /^\s*share\s*$/i.test(button.textContent || ''));
+  return share && /daily\s+reward\s+resets?\s+at/i.test(text) && !rewardActionButton(dialog);
+}
+
+function rewardCloseButton(dialog) {
+  for (const button of dialog?.querySelectorAll?.('button') || []) {
+    const label = `${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`.trim();
+    if (/^close$/i.test(label)) return button;
+  }
+  return null;
+}
+
 /** Close what we opened, and put focus back where the user left it. */
 function closeRewardDialog(dialog, restoreTo) {
   if (dialog) {
     delete dialog.dataset.kfRewardDialog;
-    const close = dialog.querySelector('button[aria-label*="close" i]');
-    if (close) close.click();
+    const close = rewardCloseButton(dialog);
+    if (close) {
+      close.click();
+    } else {
+      const trigger = document.querySelector(REWARD_TRIGGER);
+      if (trigger?.getAttribute('aria-expanded') === 'true') trigger.click();
+    }
   }
-  const trigger = document.querySelector(REWARD_TRIGGER);
-  // Radix keeps the dialog open while its trigger reports expanded; toggling the
-  // trigger is the path that always works, Escape is not (this build adds no
-  // key handling, and synthesising one would be a keystroke the page did not get).
-  if (trigger?.getAttribute('aria-expanded') === 'true') trigger.click();
-  if (restoreTo?.isConnected) restoreTo.focus?.();
+  // Radix closes later; synchronous focus restoration is refused while modal.
+  if (restoreTo?.isConnected) window.setTimeout(() => restoreTo.isConnected && restoreTo.focus?.(), 250);
+}
+
+function clearRewardTimer() {
+  clearTimeout(state.reward.timer);
+  state.reward.timer = 0;
+}
+
+function scheduleRewardClaim(delay) {
+  clearRewardTimer();
+  state.reward.timer = window.setTimeout(guard('daily reward claim', () => {
+    state.reward.timer = 0;
+    if (!state.runtime.suspended) runRewardClaim();
+  }), Math.max(0, delay));
+}
+
+function resetRewardFlow() {
+  clearRewardTimer();
+  state.reward.phase = 'idle';
+  state.reward.phaseDeadline = 0;
+  state.reward.dialogId = '';
+}
+
+function rewardWait(dialog, now) {
+  const dialogText = dialog.textContent || '';
+  const minutes = parseClaimCountdown(dialogText);
+  const observedReset = parseRewardBoundaryAt(dialogText, now);
+  const nextCheckAt = nextRewardCheckAt({
+    outcome: 'not-ready',
+    now,
+    minutesRemaining: minutes,
+    dialogText,
+    resetAt: observedReset,
+  });
+  writeRewardRecord({ claimStartedAt: 0, claimClickedAt: 0, nextCheckAt });
+  state.reward.lastMessage = minutes != null
+    ? `Kick wants ${minutes} more ${plural(minutes, 'minute', 'minutes')} of watch time.`
+    : 'Already collected today.';
+  const restoreTo = state.reward.restoreFocusTo;
+  resetRewardFlow();
+  closeRewardDialog(dialog, restoreTo);
+  updateRewardStatusInPlace();
+}
+
+function confirmRewardClaim(dialog, now, record) {
+  const claimAt = Number(record.claimClickedAt);
+  if (!claimAt) {
+    rewardWait(dialog, now);
+    return;
+  }
+  const alreadyRecorded = record.lastClaimAt >= claimAt;
+  const observedReset = parseRewardBoundaryAt(dialog.textContent || '', now);
+  writeRewardRecord({
+    lastClaimAt: alreadyRecorded ? record.lastClaimAt : claimAt,
+    claims: alreadyRecorded ? record.claims : record.claims + 1,
+    claimStartedAt: 0,
+    claimClickedAt: 0,
+    nextCheckAt: nextRewardCheckAt({ outcome: 'claimed', now, resetAt: observedReset }),
+  });
+  state.reward.lastMessage = `Daily reward confirmed at ${new Date(now).toLocaleTimeString()}.`;
+  const restoreTo = state.reward.restoreFocusTo;
+  delete dialog.dataset.kfRewardDialog;
+  resetRewardFlow();
+  closeRewardDialog(dialog, restoreTo);
+  showToast('Daily reward claimed. It is in your collectibles.', false, [
+    { label: 'View', onClick: () => window.open('https://kick.com/collectibles', '_blank', 'noopener') },
+  ]);
+  announce('Daily reward claimed.');
+  updateRewardStatusInPlace();
+}
+
+function failRewardClaim(dialog, now, message) {
+  writeRewardRecord({ claimStartedAt: 0, claimClickedAt: 0, nextCheckAt: now + REWARD_FAILURE_RECHECK_MS });
+  state.reward.lastMessage = message;
+  const restoreTo = state.reward.restoreFocusTo;
+  resetRewardFlow();
+  closeRewardDialog(dialog, restoreTo);
+  showToast(message, true);
+  updateRewardStatusInPlace();
 }
 
 /**
@@ -11747,6 +12345,8 @@ function rewardRecord() {
     // reads as zero and means "look now" — the right answer for an upgrade.
     nextCheckAt: Number(record.nextCheckAt) || 0,
     claims: Number(record.claims) || 0,
+    claimStartedAt: Number(record.claimStartedAt) || 0,
+    claimClickedAt: Number(record.claimClickedAt) || 0,
   };
 }
 
@@ -11761,19 +12361,98 @@ function runRewardClaim() {
   const settings = state.settings.content;
   const now = Date.now();
   const trigger = document.querySelector(REWARD_TRIGGER);
-  const open = rewardDialog();
   const record = rewardRecord();
-  const action = open ? rewardActionButton(open) : null;
+
+  if (!settings.autoClaimRewards) {
+    resetRewardFlow();
+    return;
+  }
+  if (!trigger) {
+    resetRewardFlow();
+    return;
+  }
+
+  // The controlled Radix dialog mounted 83 ms after the live trigger click.
+  if (state.reward.phase === 'opening' || state.reward.phase === 'reading') {
+    const open = controlledRewardDialog(trigger, true);
+    if (!open) {
+      if (now < state.reward.phaseDeadline) {
+        scheduleRewardClaim(REWARD_DIALOG_RETRY_MS);
+      } else {
+        failRewardClaim(null, now, 'Kick did not open the daily reward dialog.');
+      }
+      return;
+    }
+
+    if (state.reward.phase === 'opening') {
+      state.reward.phase = 'reading';
+      state.reward.phaseDeadline = now + REWARD_DIALOG_RENDER_GRACE_MS;
+    }
+    const action = rewardActionButton(open);
+    if (!action && !rewardClaimConfirmed(open) && now < state.reward.phaseDeadline) {
+      scheduleRewardClaim(REWARD_DIALOG_RETRY_MS);
+      return;
+    }
+    if (rewardClaimConfirmed(open)) {
+      confirmRewardClaim(open, now, record);
+      return;
+    }
+    const decision = decideRewardClaim({
+      enabled: true,
+      hasTrigger: true,
+      dialogOpen: true,
+      hasAction: !!action,
+      actionDisabled: !action || rewardActionDisabled(action),
+      now,
+      nextCheckAt: record.nextCheckAt,
+    });
+    if (decision.action === 'wait') {
+      rewardWait(open, now);
+      return;
+    }
+
+    // Count only after Kick replaces Claim with Share and the reset boundary.
+    state.reward.phase = 'claiming';
+    state.reward.phaseDeadline = now + REWARD_CLAIM_CONFIRM_TIMEOUT_MS;
+    writeRewardRecord({ claimClickedAt: now, nextCheckAt: now + REWARD_CLAIM_CONFIRM_TIMEOUT_MS });
+    delete open.dataset.kfRewardDialog;
+    action.click();
+    scheduleRewardClaim(REWARD_CLAIM_CONFIRM_RETRY_MS);
+    return;
+  }
+
+  if (state.reward.phase === 'claiming') {
+    const open = controlledRewardDialog(trigger);
+    if (rewardClaimConfirmed(open)) {
+      confirmRewardClaim(open, now, record);
+      return;
+    }
+    if (now < state.reward.phaseDeadline) {
+      scheduleRewardClaim(REWARD_CLAIM_CONFIRM_RETRY_MS);
+    } else {
+      failRewardClaim(open, now, 'Kick did not confirm the daily reward claim.');
+    }
+    return;
+  }
+
+  // A dialog the user opened belongs to the user.
+  if (trigger.getAttribute('aria-expanded') === 'true') {
+    return;
+  }
+
+  const previousResetAt = previousClaimResetAt(now);
+  const claimPending = record.claimStartedAt > 0
+    && now < Math.max(record.nextCheckAt, record.claimStartedAt + REWARD_CLAIM_CONFIRM_TIMEOUT_MS);
   const decision = decideRewardClaim({
-    enabled: settings.autoClaimRewards,
-    hasTrigger: Boolean(trigger),
-    dialogOpen: Boolean(open),
-    hasAction: Boolean(action),
-    actionDisabled: !action || rewardActionDisabled(action),
+    enabled: true,
+    hasTrigger: true,
+    triggerReady: !!trigger.querySelector(REWARD_AVAILABLE_MEDIA),
+    dialogOpen: false,
+    claimedSinceReset: record.lastClaimAt >= previousResetAt,
+    claimPending,
     now,
     nextCheckAt: record.nextCheckAt,
   });
-  state.reward.decision = decision.reason;
   if (decision.action === 'absent' || decision.action === 'cooling') return;
 
   if (decision.action === 'open') {
@@ -11786,67 +12465,23 @@ function runRewardClaim() {
     if (multistreamOpen() || panelOpen || document.activeElement?.closest?.(
       '[data-testid="chat-input"], #chat-input, div[contenteditable="true"][role="textbox"], input, textarea',
     )) return;
-    // Hold the slot before opening, so a tab that is torn down mid-open does
-    // not leave every other tab thinking a check is still due.
-    writeRewardRecord({ nextCheckAt: now + CLAIM_RECHECK_MS });
-    state.reward.restoreFocusTo = document.activeElement;
-    trigger.click();
-    // Radix mounts the dialog synchronously off the click; claim on the next
-    // cycle so a half-rendered dialog is never acted on.
-    for (const dialog of document.querySelectorAll(REWARD_DIALOG)) {
-      if (dialog.contains(trigger)) continue;
-      dialog.dataset.kfRewardDialog = 'true';
+    const dialogId = trigger.getAttribute('aria-controls') || '';
+    if (!dialogId) {
+      writeRewardRecord({ claimStartedAt: 0, claimClickedAt: 0, nextCheckAt: now + CLAIM_RECHECK_MS });
+      state.reward.lastMessage = 'Kick did not identify the daily reward dialog.';
+      updateRewardStatusInPlace();
+      return;
     }
+    // Hold the slot across tabs while the controlled dialog mounts.
+    writeRewardRecord({ claimStartedAt: now, claimClickedAt: 0, nextCheckAt: now + REWARD_CLAIM_CONFIRM_TIMEOUT_MS });
+    state.reward.restoreFocusTo = document.activeElement;
+    state.reward.dialogId = dialogId;
+    state.reward.phase = 'opening';
+    state.reward.phaseDeadline = now + REWARD_DIALOG_OPEN_TIMEOUT_MS;
+    trigger.click();
+    scheduleRewardClaim(REWARD_DIALOG_RETRY_MS);
     return;
   }
-
-  if (decision.action === 'wait') {
-    const dialogText = open.textContent || '';
-    const minutes = parseClaimCountdown(dialogText);
-    // Schedule from what Kick just said, not from a timer: the countdown when
-    // there is one, and the nightly rollover when the reward is already gone.
-    const nextCheckAt = nextRewardCheckAt({ outcome: 'not-ready', now, minutesRemaining: minutes, dialogText });
-    writeRewardRecord({ nextCheckAt });
-    state.reward.minutesRemaining = minutes;
-    state.reward.lastMessage = minutes != null
-      ? `Kick wants ${minutes} more ${plural(minutes, 'minute', 'minutes')} of watch time.`
-      : 'Already collected today.';
-    closeRewardDialog(open, state.reward.restoreFocusTo);
-    updateRewardStatusInPlace();
-    return;
-  }
-
-  // The only click this feature ever makes. Recorded before it happens, so a
-  // reward that claims but throws on the way out is still not claimed twice.
-  writeRewardRecord({
-    lastClaimAt: now,
-    claims: record.claims + 1,
-    nextCheckAt: nextRewardCheckAt({ outcome: 'claimed', now }),
-  });
-  state.reward.minutesRemaining = 0;
-  // Disown the dialog *before* clicking. It stays on screen for the reveal, and
-  // the apply cycle runs every few seconds — so while it is still marked as
-  // ours, every one of those passes sees a claimable dialog and presses the
-  // button again. The stored schedule cannot stop that on its own, because an
-  // open dialog is exactly the state that is allowed to skip it.
-  delete open.dataset.kfRewardDialog;
-  // Safe while a Kick Focus modal is open, even though the page behind one is
-  // inert. Measured in headless Chromium 1234 on 2026-08-25: with the container
-  // inert, a scripted .click() still ran the handler and an anchor still
-  // navigated, while focus() was refused. inert blocks user interaction and
-  // focus, not synthetic activation. This matters because the claim is recorded
-  // before the click, so a swallowed one would mark the reward taken and never
-  // retry it that day.
-  action.click();
-  state.reward.lastMessage = `Daily reward claimed at ${new Date(now).toLocaleTimeString()}.`;
-  showToast('Daily reward claimed. It is in your collectibles.', false, [
-    { label: 'View', onClick: () => window.open('https://kick.com/collectibles', '_blank', 'noopener') },
-  ]);
-  announce('Daily reward claimed.');
-  // Let the reveal animation run before closing, the way a person would. The
-  // reference is held rather than re-looked-up, because it is no longer marked.
-  window.setTimeout(() => closeRewardDialog(open, state.reward.restoreFocusTo), 6000);
-  updateRewardStatusInPlace();
 }
 
 function updateRewardStatusInPlace() {
@@ -11864,6 +12499,7 @@ function rewardStatusSummary() {
   } else {
     parts.push('Nothing claimed yet on this browser.');
   }
+  if (record.claimStartedAt) parts.push('Waiting for Kick to confirm the current claim.');
   if (state.reward.lastMessage) parts.push(state.reward.lastMessage);
   // The whole point of the schedule is that it is knowable, so say it.
   if (record.nextCheckAt > Date.now()) {
@@ -12173,6 +12809,12 @@ function clearEnhancedPage() {
   clearKeywordHighlight();
   clearTimeout(state.applyTimer);
   state.applyTimer = 0;
+  clearRewardTimer();
+  const ownedRewardDialog = rewardDialog();
+  if (ownedRewardDialog) closeRewardDialog(ownedRewardDialog, state.reward.restoreFocusTo);
+  state.reward.phase = 'idle';
+  state.reward.phaseDeadline = 0;
+  state.reward.dialogId = '';
   clearInterval(state.playbackDiagnosticsTimer);
   state.playbackDiagnosticsTimer = 0;
   // The player uptime chip is driven by its own 1 Hz interval, and the only

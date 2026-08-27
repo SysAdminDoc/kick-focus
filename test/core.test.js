@@ -92,6 +92,10 @@ import {
   isStickerFavorite,
   toggleStickerFavorite,
   moveStickerFavorite,
+  placeStickerFavorite,
+  orderedStickerKeys,
+  moveStickerOrder,
+  stickerSubscriptionLocked,
   routeKind,
   streamerStatsProfileUrl,
   sanitizeDiagnosticUrl,
@@ -150,6 +154,8 @@ import {
   nextClaimResetAt,
   nextRewardCheckAt,
   parseClaimCountdown,
+  parseRewardBoundaryAt,
+  previousClaimResetAt,
   updateNotice,
   normalizeVersion,
   rankSettingsMatches,
@@ -204,6 +210,26 @@ test('one stored time decides whether to look, and nothing else', { tags: ['unit
   assert.equal(decideRewardClaim({ ...base, nextCheckAt: at(15) }).action, 'open');
 });
 
+test('Kick’s available animation can recover a stale schedule without racing a real claim', { tags: ['unit'] }, () => {
+  const stale = {
+    enabled: true,
+    hasTrigger: true,
+    triggerReady: true,
+    dialogOpen: false,
+    now: at(15),
+    nextCheckAt: at(20),
+  };
+  assert.deepEqual(decideRewardClaim(stale), { action: 'open', reason: 'ready-signal' });
+  assert.deepEqual(
+    decideRewardClaim({ ...stale, claimPending: true }),
+    { action: 'cooling', reason: 'claim-pending' },
+  );
+  assert.deepEqual(
+    decideRewardClaim({ ...stale, claimedSinceReset: true }),
+    { action: 'cooling', reason: 'already-claimed' },
+  );
+});
+
 test('the rollover is the next 8pm, today or tomorrow', { tags: ['unit'] }, () => {
   assert.equal(nextClaimResetAt(at(15)), at(CLAIM_RESET_HOUR), 'afternoon waits for tonight');
   assert.equal(nextClaimResetAt(at(19, 59)), at(CLAIM_RESET_HOUR), 'a minute before, still tonight');
@@ -212,6 +238,28 @@ test('the rollover is the next 8pm, today or tomorrow', { tags: ['unit'] }, () =
   assert.equal(nextClaimResetAt(at(20)), at(CLAIM_RESET_HOUR, 0, 13));
   assert.equal(nextClaimResetAt(at(23, 30)), at(CLAIM_RESET_HOUR, 0, 13), 'late night waits for tomorrow');
   assert.equal(nextClaimResetAt(at(2)), at(CLAIM_RESET_HOUR), 'after midnight is still today’s rollover');
+  assert.equal(previousClaimResetAt(at(21)), at(CLAIM_RESET_HOUR), 'after rollover, the current window began today');
+  assert.equal(previousClaimResetAt(at(2)), at(CLAIM_RESET_HOUR, 0, 11), 'before rollover, the current window began yesterday');
+});
+
+test('the exact reset boundary from the live reward dialog is preferred', { tags: ['unit'] }, () => {
+  const observedAt = new Date(2026, 7, 26, 22, 27, 0, 0).getTime();
+  const expected = new Date(2026, 7, 27, 20, 0, 0, 0).getTime();
+  assert.equal(parseRewardBoundaryAt('Claim before Aug 27, 08:00 PM', observedAt), expected);
+  assert.equal(parseRewardBoundaryAt('Daily Reward resets at Aug 27, 08:00 PM', observedAt), expected);
+  assert.equal(parseRewardBoundaryAt('Watch 54 more minutes to claim', observedAt), null);
+  assert.equal(parseRewardBoundaryAt('Daily Reward resets at Feb 30, 08:00 PM', observedAt), null);
+  assert.equal(
+    nextRewardCheckAt({ outcome: 'claimed', now: observedAt, resetAt: expected }),
+    expected,
+    'Kick’s printed boundary outranks the local fallback',
+  );
+
+  const newYear = new Date(2026, 11, 31, 22, 0, 0, 0).getTime();
+  assert.equal(
+    parseRewardBoundaryAt('Daily Reward resets at Jan 01, 08:00 PM', newYear),
+    new Date(2027, 0, 1, 20, 0, 0, 0).getTime(),
+  );
 });
 
 test('a claimed reward sleeps to the rollover instead of being re-checked', { tags: ['unit'] }, () => {
@@ -283,7 +331,7 @@ test('the action button is recognised by every verb the reward uses', { tags: ['
     assert.ok(CLAIM_ACTION.test(label), `${JSON.stringify(label)} is an action button`);
   }
   // And not by anything else in the same dialog.
-  for (const label of ['Cancel', 'Close', 'Reclaim', 'Claimed', 'Watch 54 more minutes to claim', '']) {
+  for (const label of ['Cancel', 'Close', 'Share', 'Reclaim', 'Claimed', 'Watch 54 more minutes to claim', '']) {
     assert.ok(!CLAIM_ACTION.test(label), `${JSON.stringify(label)} is not an action button`);
   }
 });
@@ -632,7 +680,7 @@ test('emote keys carry a platform prefix, and every store migrates together loss
     assignments: [{ key: 'id:2', groupId: 'grp' }],
   };
   const migrated = normalizeStickerPreferences(legacy);
-  assert.equal(migrated.schema, 8);
+  assert.equal(migrated.schema, 10);
   assert.deepEqual(migrated.library.map((entry) => entry.key), ['kick:id:1', 'kick:id:2']);
   assert.deepEqual(migrated.favorites.map((entry) => entry.key), ['kick:id:1']);
   assert.deepEqual(migrated.hidden, ['kick:id:3']);
@@ -1837,6 +1885,28 @@ test('favorites can be reordered explicitly, within their own scope only', { tag
 
   // An unknown key changes nothing.
   assert.deepEqual(favoritesForChannel(moveStickerFavorite(favorites, 'nope', '', -1), ''), ['c', 'a', 'b']);
+
+  favorites = placeStickerFavorite(favorites, 'b', '', 'c', false);
+  assert.deepEqual(favoritesForChannel(favorites, ''), ['b', 'c', 'a']);
+  // A cross-scope target is refused rather than changing either scope.
+  assert.deepEqual(favoritesForChannel(placeStickerFavorite(favorites, 'b', '', 'z', false), ''), ['b', 'c', 'a']);
+});
+
+test('manual emote order is stable, bounded, and movable by drop position', { tags: ['unit'] }, () => {
+  const base = ['id:a', 'id:b', 'id:c', 'id:d'];
+  assert.deepEqual(orderedStickerKeys(base, ['id:c', 'id:a']), [
+    'kick:id:c', 'kick:id:a', 'kick:id:b', 'kick:id:d',
+  ]);
+
+  const moved = moveStickerOrder([], 'id:d', 'id:b', true, base);
+  assert.deepEqual(moved, ['kick:id:a', 'kick:id:b', 'kick:id:d', 'kick:id:c']);
+  // An ordered key not loaded in the current picker survives a local move.
+  const withMissing = moveStickerOrder(['id:elsewhere', 'id:a'], 'id:c', 'id:a', false, base);
+  assert.deepEqual(withMissing, ['kick:id:elsewhere', 'kick:id:c', 'kick:id:a', 'kick:id:b', 'kick:id:d']);
+  assert.deepEqual(moveStickerOrder(moved, 'id:d', 'id:unknown', false, base), moved);
+
+  const normalized = normalizeStickerPreferences({ order: ['id:c', 'id:c', 'id:hidden'], hidden: ['id:hidden'] });
+  assert.deepEqual(normalized.order, ['kick:id:c']);
 });
 
 test('toggling a favorite touches one scope and respects the ceiling', { tags: ['unit'] }, () => {
@@ -1899,7 +1969,7 @@ test('sticker library keeps portable metadata, catalog access, custom groups, an
       { key: 'id:200', groupId: 'missing' },
     ],
     library: [
-      { key: 'id:100', id: '100', name: 'Wave', src: 'https://files.kick.com/emotes/100/fullsize', nativeGroups: ['Global', ' Global '], access: 'locked' },
+      { key: 'id:100', id: '100', name: 'Wave', src: 'https://files.kick.com/emotes/100/fullsize', nativeGroups: ['Global', ' Global '], access: 'locked', sourceSlug: 'somechannel', subscribersOnly: true, entitlement: 'denied' },
       { key: 'id:101', id: '101', name: 'Chat find', src: 'https://files.kick.com/emotes/101/fullsize', nativeGroups: ['Seen in chat'], access: 'observed' },
       { key: 'id:102', id: '102', name: 'Channel find', src: 'https://files.kick.com/emotes/102/fullsize', nativeGroups: ['somechannel'], access: 'channel' },
       { key: 'id:200', id: '200', name: 'External', src: 'https://tracker.example/emotes/200/fullsize' },
@@ -1912,11 +1982,15 @@ test('sticker library keeps portable metadata, catalog access, custom groups, an
   assert.deepEqual(value.assignments, [{ key: 'kick:id:100', groupId: 'reactions' }]);
   assert.equal(value.library.length, 3);
   assert.equal(value.library[0].access, 'locked');
+  assert.equal(value.library[0].entitlement, 'denied');
+  assert.equal(stickerSubscriptionLocked(value.library[0]), true);
+  assert.equal(stickerSubscriptionLocked({ subscribersOnly: true, entitlement: 'unknown' }), false);
   assert.deepEqual(value.library[0].nativeGroups, ['Global']);
   assert.equal(value.library[1].access, 'observed');
   assert.equal(value.library[2].access, 'channel');
   assert.equal(normalizeStickerPreferences({ view: 'group', activeGroup: 'missing' }).view, 'all');
   assert.equal(normalizeStickerPreferences({ view: 'recent' }).view, 'recent');
+  assert.equal(normalizeStickerPreferences({ view: 'locked' }).view, 'locked');
 });
 
 test('an emote asset is pinned to Kick by the URL parser, not by how the string starts', { tags: ['unit'] }, () => {
@@ -3128,14 +3202,15 @@ test('an update is announced, a first install is not', { tags: ['unit'] }, () =>
   assert.equal(updateNotice(null, '1.22.0'), null, 'neither has one that predates the field');
   assert.equal(updateNotice('1.22.0', '1.22.0'), null, 'the same build is not an update');
 
-  const upgrade = updateNotice('1.21.0', '1.22.0');
+  const notes = { '1.22.0': { summary: 'A concrete update summary used only by this test.', defaults: [] } };
+  const upgrade = updateNotice('1.21.0', '1.22.0', notes);
   assert.equal(upgrade.from, '1.21.0');
   assert.equal(upgrade.to, '1.22.0');
   assert.ok(upgrade.summary.length > 20, 'the version being moved to is the one described');
 
   // A downgrade is worth knowing about too — running an older build than last
   // time is a surprise, not a non-event.
-  const downgrade = updateNotice('1.22.0', '1.21.0');
+  const downgrade = updateNotice('1.22.0', '1.21.0', notes);
   assert.equal(downgrade.from, '1.22.0');
   assert.equal(downgrade.to, '1.21.0');
 });
