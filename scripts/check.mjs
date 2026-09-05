@@ -820,6 +820,28 @@ const extractFunction = (text, name) => {
   return '';
 };
 
+/**
+ * The five-row sidebar fix has to use Kick's own account control, keep paging
+ * only after the row set changes, and run before preview rows are tagged.
+ * Keeping the claim here lets the red probe remove the click in memory and
+ * prove the artifact gate notices, without touching a working source file.
+ */
+const allLiveFollowsAreWired = (text) => {
+  const region = extractFunction(text, 'syncAllLiveFollows');
+  const cycle = extractFunction(text, 'runApplyCycle');
+  const native = cycle.indexOf('syncNativeSidebar()');
+  const expand = cycle.indexOf('syncAllLiveFollows()');
+  const preview = cycle.indexOf('tagFollowingPreviewRows()');
+  return region.includes("findProbe(sidebar, 'followingExpand').element")
+    && region.includes("findAllProbe(sidebar, 'followingPreviewControl').elements")
+    && region.includes("more.getAttribute?.('aria-disabled') === 'true'")
+    && region.includes('signature === state.runtime.followingExpandSignature')
+    && region.includes('more.click()')
+    && !/\bfetch\s*\(|GM_xmlhttpRequest|XMLHttpRequest/.test(region)
+    && native >= 0 && expand > native && preview > expand
+    && text.includes('sidebar-show-less-following');
+};
+
 const BLOCKLIST_URL_CORPUS = [
   'https://example.com/list.json',
   'https://example.com/list.json#fragment',
@@ -1296,6 +1318,8 @@ const checks = [
       && source.includes('#kick-focus-following-preview')
       && !/\bfetch\s*\(|GM_xmlhttpRequest|XMLHttpRequest/.test(region);
   })()],
+  ["every live followed channel expands through Kick's own paged sidebar control",
+    allLiveFollowsAreWired(source)],
   ['paused chat accepts a new history position only after direct scroll intent', source.includes("messages.addEventListener('wheel', intentHandler")
     && source.includes("messages.addEventListener('pointerdown', intentHandler")
     && source.includes('movedUp && Date.now() < state.runtime.chatScrollIntentUntil')
@@ -2087,6 +2111,8 @@ const redProbes = [
   ['live-gate waiter gate would catch a probe that samples the shadow host once',
     unwaitedShadowReads("const shadow = document.getElementById('x')?.shadowRoot;\n    if (!shadow) return {};") === 1],
   ['live-gate waiter gate accepts the real gate', unwaitedShadowReads(liveGate) === 0],
+  ['all-live-follow gate would catch the native expansion click being removed',
+    !allLiveFollowsAreWired(source.replace(/more\.click\(\);/, ''))],
   ['skip-reason gate would reject a bare noun',
     !skipReasonsAreActionable("return { skip: 'no video' };")],
   ['ad-ruleset gate would reject an empty ad list', !(0 > 0 && [].length === 0)],

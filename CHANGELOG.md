@@ -4,6 +4,16 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.47.0, 2026-09-05
+
+### Changed
+
+- Kick's five-channel Following preview now expands automatically and stays open. If the site returns another batch behind the same control, Kick Focus keeps going until every live followed channel is listed.
+
+### Fixed
+
+- Live followed channels no longer disappear behind a five-row sidebar cutoff. The existing Kick links, viewer counts, ordering, and live updates remain in charge.
+
 ## 1.46.0, 2026-09-05
 
 ### Added

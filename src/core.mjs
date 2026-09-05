@@ -1,4 +1,4 @@
-export const VERSION = '1.46.0';
+export const VERSION = '1.47.0';
 export const SETTINGS_SCHEMA = 7;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 7;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.47.0': Object.freeze({
+    summary: 'All live follows now stay visible in the sidebar.',
+    defaults: Object.freeze([]),
+  }),
   '1.46.0': Object.freeze({
     summary: 'The emote workspace now sits beside chat. A quick dock handles insertion, while the organizer keeps removals recoverable.',
     defaults: Object.freeze([]),

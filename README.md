@@ -1,6 +1,6 @@
 # Kick Focus
 
-[![Version](https://img.shields.io/badge/version-1.46.0-53fc18?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.47.0-53fc18?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-desktop%20Chromium%20%7C%20Firefox-171a1c?style=flat-square)](#desktop-support)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-9fa6ad?style=flat-square)](package.json)
@@ -15,6 +15,10 @@ An optional Manifest V3 companion extension adds the one thing a userscript on C
 
 - Restyles Kick's current semantic desktop shell with clearer type, tighter spacing, quieter borders, rectangular status labels, and text-first route tabs. Stream and category cards use imagery and whitespace instead of boxed perimeters.
 - Reclaims the permanent discovery rail with Kick, Compact, Auto-hide, and Hidden modes. Auto-hide is the default. It leaves a 12-pixel edge target and opens the full rail on hover or keyboard focus.
+- Keeps every live channel you follow in the sidebar. Kick's five-channel preview expands automatically, stays open through page changes, and continues paging when the site returns the list in batches.
+
+![Every live followed channel visible in the sidebar](design/screenshots/all-live-follows.png)
+
 - A followed channel opens a compact profile preview on hover or focus. The card upgrades Kick's 75-pixel rail thumbnail to the matching full-resolution profile asset, stays inside the viewport, closes with Escape, and freezes that sharper source when Reduced Motion is active.
 
 ![Full-resolution followed-channel preview](design/screenshots/following-preview.png)
@@ -208,7 +212,7 @@ Nothing is listed anywhere today, and publishing to any catalogue or store needs
 - Primary verified viewport: 1440×900
 - Secondary verified viewport: 1920×1080
 - Authenticated recon routes: Home, Browse, Categories, Category, Following, Drops, Search, Channel/chat, native emote picker, Daily Reward, account menu, Profile, Preferences, and Notifications (re-captured 2026-08-19). The eight that need a session are tracked in the signed-in journey matrix described below.
-- Isolated companion proof: Chromium 151, logged out, headed and off-screen, 107/107 live checks pass with 11 skips at both 1440×900 and 1920×1080 (2026-09-05, against this exact build). The matrix loads a public emote catalog into the real organizer, inserts through the dock and completion list with zero sends, and renders a 900-emote stress library through a 240-tile window. It also covers the Theater split, a real separator drag, every route contract, a 300-message chat burst, Content-Security-Policy, held chat scroll, narrow settings, and contrast across both themes and the companion popup. Checks whose subject Kick did not render are reported as skips that name what was missing and are counted apart from the total.
+- Isolated companion proof: Chromium 151, logged out, headed and off-screen, 108/108 live checks pass with 11 skips at both 1440×900 and 1920×1080 (2026-09-05, against this exact build). The matrix loads a public emote catalog into the real organizer, inserts through the dock and completion list with zero sends, and renders a 900-emote stress library through a 240-tile window. It also covers the Theater split, a real separator drag, every route contract, a 300-message chat burst, Content-Security-Policy, held chat scroll, narrow settings, and contrast across both themes and the companion popup. Checks whose subject Kick did not render are reported as skips that name what was missing and are counted apart from the total.
 - Firefox companion proof: Firefox 153.0.3, logged out and headless, the Manifest V2 package is installed as a temporary add-on over WebDriver BiDi and asserted against live Kick by `npm run verify:firefox`. The current run passes 8/8 with one documented popup-navigation skip (2026-08-27, against this exact build).
 - **The automated live gate runs logged out**, so it needs no credentials and cannot touch an account. Everything Kick renders only for a session is listed in a matrix the gate reads: account menu, Daily Reward, Profile, Preferences, Notifications, Drops, Collectibles, and the authenticated emote catalog. With no session the run prints one skip per journey saying which selectors a signed-in run would assert and why the route needs an account, so a release states what it covered instead of implying it covered everything. Point the gate at a profile that is already signed in with `KF_USER_DATA_DIR=/path/to/profile` and the skips become assertions. Every one of those checks is read-only: it counts selector matches and reads no display name, balance, notification text, or chat. The build's only account writes are the follow request behind the click-to-save emote gesture and the unfollow that undoes it, and `npm run check` fails if a third one ever appears.
 - The Kick site remains desktop-focused; the settings UI is also checked at 375×812 so narrow windows do not clip controls or hide the active section.

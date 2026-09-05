@@ -172,6 +172,7 @@ const state = {
     applyRunning: false,
     applyQueued: false,
     followingPreviewInteractions: false,
+    followingExpandSignature: '',
     presenceRequested: false,
     stickerGridScrollTop: null,
     stickerSearchTimer: 0,
@@ -1262,6 +1263,10 @@ const SITE_CSS = `
 
     #sidebar-wrapper a[data-testid^="sidebar-"]:hover {
       background: rgba(255,255,255,.045) !important;
+    }
+
+    html[data-kf-route] #sidebar-wrapper [data-testid="sidebar-show-less-following"] {
+      display: none !important;
     }
 
     #kick-focus-following-preview {
@@ -3747,6 +3752,31 @@ function applyRailVisibility() {
     const owner = heading.closest?.('section, [data-kick-rail], div') || heading.parentElement;
     if (owner) owner.dataset[`kf${rail[0].toUpperCase()}${rail.slice(1)}Rail`] = 'true';
   }
+}
+
+/**
+ * Keep Kick's account-only Following section open past its five-row preview.
+ *
+ * This deliberately presses Kick's own Show More control instead of cloning
+ * rows or making a second account request. Kick keeps ownership of the links,
+ * viewer counts, ordering, and live-state refresh. Some shells reveal the
+ * whole list in one press; a paged shell can keep the same control around. The
+ * row signature allows another press only after that control produced more
+ * channels, so a broken or disabled control cannot turn into a click loop.
+ */
+function syncAllLiveFollows() {
+  const sidebar = findProbe(document, 'sidebar').element;
+  const more = sidebar && findProbe(sidebar, 'followingExpand').element;
+  if (!more) {
+    state.runtime.followingExpandSignature = '';
+    return;
+  }
+  if (more.disabled || more.getAttribute?.('aria-disabled') === 'true') return;
+  const rows = findAllProbe(sidebar, 'followingPreviewControl').elements;
+  const signature = `${rows.length}:${rows.map((row) => cardPath(row)).filter(Boolean).join('|')}`;
+  if (signature === state.runtime.followingExpandSignature) return;
+  state.runtime.followingExpandSignature = signature;
+  more.click();
 }
 
 /** The stable marker owner around a followed-channel control. */
@@ -7928,6 +7958,7 @@ async function runApplyCycle() {
     removeAdShells();
     applyContentFilters();
     syncNativeSidebar();
+    syncAllLiveFollows();
     tagFollowingPreviewRows();
     applyRailVisibility();
     applySearchEnhancements();

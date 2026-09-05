@@ -61,6 +61,16 @@ export const LOCATOR_PROBES = Object.freeze({
       selector: ':is(a[href], button, [role="link"], [tabindex]):has([data-testid^="sidebar-following-channel-"])',
     }),
   ]),
+  // Kick deliberately renders five live follows, then leaves the rest behind
+  // this account-only control. The exact test id is language-independent and
+  // has stayed stable across every signed-in capture, so it is the only probe
+  // licensed to trigger an action on the page.
+  followingExpand: Object.freeze([
+    Object.freeze({
+      id: 'following-expand-testid',
+      selector: 'button[data-testid="sidebar-show-more-following"]',
+    }),
+  ]),
   sidebarCollapse: Object.freeze([
     Object.freeze({ id: 'sidebar-collapse-testid', selector: '[data-testid="sidebar-collapse"]' }),
     Object.freeze({ id: 'sidebar-expanded-control', selector: '[aria-controls="sidebar-wrapper"][aria-expanded="true"]' }),

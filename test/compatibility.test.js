@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compatibilitySnapshot, compatibilitySummary, derivedSnapshot, DERIVED_EXPECTATIONS, findAllProbe, findHideableElements, HIDEABLE_PROBE_WINNERS, LOCATOR_PROBES } from '../src/compatibility.mjs';
+import { compatibilitySnapshot, compatibilitySummary, derivedSnapshot, DERIVED_EXPECTATIONS, findAllProbe, findHideableElements, findProbe, HIDEABLE_PROBE_WINNERS, LOCATOR_PROBES } from '../src/compatibility.mjs';
 import { HIDEABLE_ELEMENTS } from '../src/core.mjs';
 
 class FakeNode {
@@ -157,6 +157,21 @@ test('followed-channel preview probes resolve direct, wrapper, and owner control
   assert.deepEqual(findAllProbe(ancestor, 'followingPreviewControl'), {
     elements: [ownerLink], probe: 'following-control-owner',
   });
+});
+
+test('the live-follow expansion probe targets only Kick’s exact account control', { tags: ['unit'] }, () => {
+  const button = new FakeNode();
+  const selector = LOCATOR_PROBES.followingExpand[0].selector;
+  const current = new FakeNode({ query: { [selector]: button } });
+
+  assert.deepEqual(findProbe(current, 'followingExpand'), {
+    element: button,
+    probe: 'following-expand-testid',
+  });
+  assert.deepEqual(findProbe(new FakeNode({ query: {
+    'button[aria-label="Show more"]': new FakeNode(),
+  } }), 'followingExpand'), { element: null, probe: null },
+  'a translated or unrelated Show more control was accepted');
 });
 
 

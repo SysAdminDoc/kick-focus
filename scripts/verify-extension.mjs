@@ -427,6 +427,171 @@ try {
   const waiterReady = await evaluate(pageClient, 'window.__kfWaitInstalled === true');
   record('the probe waiter is installed in the page', waiterReady.value === true);
 
+  // The account rail starts with five followed channels and hides the rest
+  // behind Kick's own Show More control. Exercise a two-page synthetic list on
+  // the real sidebar so this proves the runtime keeps expanding after the
+  // first click, does not duplicate the rows, and retires the collapse control.
+  const followingScreenshotPath = process.env.KF_FOLLOWING_SCREENSHOT_PATH
+    ? resolve(process.env.KF_FOLLOWING_SCREENSHOT_PATH)
+    : '';
+  const allLiveFollowsProbe = await evaluate(pageClient, `(async () => {
+    const captureScreenshot = ${Boolean(process.env.KF_FOLLOWING_SCREENSHOT_PATH)};
+    const sidebarProbes = ${JSON.stringify(LOCATOR_PROBES.sidebar)};
+    let sidebar = null;
+    for (const probe of sidebarProbes) {
+      const candidate = document.querySelector(probe.selector);
+      if (!candidate) continue;
+      sidebar = probe.id === 'sidebar-owner'
+        ? candidate.closest('[data-sidebar]') || candidate.parentElement || candidate
+        : candidate;
+      break;
+    }
+    if (!sidebar || getComputedStyle(sidebar).display === 'none'
+      || document.documentElement.dataset.kfSidebar === 'hidden') {
+      return { skip: 'the sidebar is hidden on this run' };
+    }
+    const nativeMoreSelector = 'button[data-testid="sidebar-show-more-following"]';
+    const nativeReady = await __kfWait(() => !sidebar.querySelector(nativeMoreSelector), { timeout: 2500 });
+    if (!nativeReady) return { ok: false, why: 'Kick’s native five-row control remained after the automatic expansion pass' };
+
+    const nativeRows = [...sidebar.querySelectorAll('[data-testid^="sidebar-following-channel-"]')];
+    const nativeLess = sidebar.querySelector('[data-testid="sidebar-show-less-following"]');
+    if (nativeLess && getComputedStyle(nativeLess).display !== 'none') {
+      return { ok: false, why: 'Kick’s collapse control remained visible while every live follow was pinned open' };
+    }
+
+    const fixture = document.createElement('section');
+    fixture.dataset.kfAllLiveFollowsProbe = 'true';
+    const discoverySamples = [...document.querySelectorAll('[data-testid="livestream-results-card"], [data-testid="stream-card"], [class*="group/card"]')]
+      .map((card) => {
+        const link = card.matches('a[href]') ? card : card.querySelector('a[href]');
+        const image = card.querySelector('img[src]');
+        if (!link || !image) return null;
+        const path = new URL(link.href, location.origin).pathname;
+        if (!/^\\/[^/]+\\/?$/.test(path)) return null;
+        const name = path.replace(/^\\/|\\/$/g, '');
+        return { name, image: image.currentSrc || image.src };
+      })
+      .filter(Boolean)
+      .filter((sample, index, samples) => samples.findIndex((entry) => entry.name === sample.name) === index);
+    const appendRows = (start, end) => {
+      for (let index = start; index <= end; index += 1) {
+        const row = document.createElement('a');
+        row.href = '/kf-live-follow-' + index;
+        row.dataset.testid = 'sidebar-following-channel-kf-' + index;
+        if (captureScreenshot) {
+          const sample = discoverySamples[index - 1];
+          const avatar = document.createElement(sample ? 'img' : 'span');
+          avatar.className = 'kf-follow-shot-avatar';
+          if (sample) {
+            avatar.src = sample.image;
+            avatar.alt = '';
+          } else {
+            avatar.textContent = String(index).padStart(2, '0');
+          }
+          const copy = document.createElement('span');
+          copy.className = 'kf-follow-shot-copy';
+          const name = document.createElement('strong');
+          name.textContent = sample?.name || 'followed-channel-' + String(index).padStart(2, '0');
+          const status = document.createElement('span');
+          status.textContent = 'Live now';
+          copy.append(name, status);
+          const live = document.createElement('span');
+          live.className = 'kf-follow-shot-live';
+          live.textContent = 'LIVE';
+          row.append(avatar, copy, live);
+        } else {
+          row.textContent = 'Live follow ' + index;
+        }
+        fixture.append(row);
+      }
+    };
+    if (captureScreenshot) {
+      fixture.setAttribute('aria-label', 'Following');
+      fixture.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483646;width:304px;height:636px;box-sizing:border-box;padding:18px 12px 14px;overflow:hidden;border-right:1px solid rgba(255,255,255,.09);background:#0b0f0c;color:#f4f7f4;font-family:Inter,ui-sans-serif,system-ui,sans-serif;box-shadow:18px 0 50px rgba(0,0,0,.42)';
+      const heading = document.createElement('header');
+      heading.style.cssText = 'display:flex;align-items:center;justify-content:space-between;height:40px;padding:0 6px 8px';
+      const title = document.createElement('strong');
+      title.textContent = 'Following';
+      title.style.cssText = 'font-size:16px;letter-spacing:-.01em';
+      const total = document.createElement('span');
+      total.textContent = '12 live';
+      total.style.cssText = 'padding:3px 7px;border-radius:999px;background:rgba(83,252,24,.12);color:#7dff50;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.04em';
+      heading.append(title, total);
+      const style = document.createElement('style');
+      style.textContent = '[data-kf-all-live-follows-probe]>button{display:none!important}[data-kf-all-live-follows-probe] a{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;height:46px;padding:4px 7px;border-radius:8px;color:#f4f7f4;text-decoration:none}[data-kf-all-live-follows-probe] a:nth-of-type(3){background:rgba(83,252,24,.1);box-shadow:inset 2px 0 #53fc18}.kf-follow-shot-avatar{display:grid;place-items:center;width:34px;height:34px;overflow:hidden;border:1px solid rgba(255,255,255,.12);border-radius:50%;background:linear-gradient(135deg,#214d28,#17211a);color:#a9b5ad;font-size:10px;object-fit:cover}.kf-follow-shot-copy{display:flex;min-width:0;flex-direction:column;gap:2px}.kf-follow-shot-copy strong{overflow:hidden;font-size:13px;line-height:1.15;text-overflow:ellipsis;white-space:nowrap}.kf-follow-shot-copy span{color:#87918b;font-size:11px}.kf-follow-shot-live{display:flex;align-items:center;gap:4px;color:#7dff50;font-size:10px;font-weight:800;letter-spacing:.04em}.kf-follow-shot-live:before{width:6px;height:6px;border-radius:50%;background:#53fc18;content:""}';
+      fixture.append(heading, style);
+    }
+    appendRows(1, 5);
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.dataset.testid = 'sidebar-show-more-following';
+    more.textContent = 'Show More';
+    let clicks = 0;
+    more.addEventListener('click', () => {
+      clicks += 1;
+      if (clicks === 1) appendRows(6, 8);
+      if (clicks === 2) {
+        appendRows(9, 12);
+        more.dataset.testid = 'sidebar-show-less-following';
+        more.textContent = 'Show Less';
+      }
+    });
+    fixture.append(more);
+    sidebar.append(fixture);
+
+    const expanded = await __kfWait(() => clicks === 2
+      && fixture.querySelectorAll('[data-testid^="sidebar-following-channel-"]').length === 12
+      && !fixture.querySelector(nativeMoreSelector), { timeout: 3500 });
+    const rows = fixture.querySelectorAll('[data-testid^="sidebar-following-channel-"]').length;
+    const less = fixture.querySelector('[data-testid="sidebar-show-less-following"]');
+    const lessHidden = Boolean(less) && getComputedStyle(less).display === 'none';
+    const duplicates = rows - new Set([...fixture.querySelectorAll('a[href]')]
+      .map((row) => new URL(row.href, location.origin).pathname)).size;
+    if (captureScreenshot) document.body.append(fixture);
+    const screenshot = captureScreenshot
+      ? (() => {
+        const box = fixture.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      })()
+      : null;
+    if (!captureScreenshot) fixture.remove();
+    return {
+      ok: true,
+      nativeRows: nativeRows.length,
+      expanded,
+      clicks,
+      rows,
+      duplicates,
+      lessHidden,
+      screenshot,
+    };
+  })()`);
+  const allLiveFollows = allLiveFollowsProbe.value || {};
+  recordProbe('every live followed channel expands past Kick’s five-row sidebar preview', allLiveFollows,
+    allLiveFollows.ok === true && allLiveFollows.expanded === true
+      && allLiveFollows.clicks === 2 && allLiveFollows.rows === 12
+      && allLiveFollows.duplicates === 0 && allLiveFollows.lessHidden === true,
+    allLiveFollows.ok
+      ? `${allLiveFollows.rows} synthetic rows in ${allLiveFollows.clicks} native expansions, ${allLiveFollows.nativeRows} account row(s) already present, duplicates=${allLiveFollows.duplicates}, collapse hidden=${allLiveFollows.lessHidden}`
+      : allLiveFollows.why);
+
+  if (followingScreenshotPath && allLiveFollows.screenshot) {
+    await sleep(700);
+    const capture = await pageClient.send('Page.captureScreenshot', {
+      format: 'png',
+      fromSurface: true,
+      clip: { ...allLiveFollows.screenshot, scale: 1 },
+    });
+    if (capture.result?.data) {
+      await writeFile(followingScreenshotPath, Buffer.from(capture.result.data, 'base64'));
+      record('captured the expanded live-follow sidebar', true, followingScreenshotPath);
+    } else {
+      record('captured the expanded live-follow sidebar', false, 'CDP returned no image data');
+    }
+    await evaluate(pageClient, "document.querySelector('[data-kf-all-live-follows-probe]')?.remove()");
+  }
+
   // R-87: exercise the document-level hover and focus handlers on the real
   // Kick page. A synthetic followed row is used only when the signed-in rail is
   // genuinely empty. If Kick rendered a native row, that row itself must be
