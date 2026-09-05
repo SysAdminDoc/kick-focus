@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: **2026-08-27**
+Updated: **2026-09-04**
 
 Release history lives in [CHANGELOG.md](CHANGELOG.md); this file tracks incomplete work only.
 
@@ -99,6 +99,7 @@ None open.
   Evidence: design/mockups, design/screenshots, design/qa, scripts/release-checklist.mjs; https://playwright.dev/docs/next/test-snapshots
   Touches: scripts/cdp.mjs, new local visual verifier under scripts, deterministic fixtures, design reference images, package.json
   Acceptance: A dependency-free local command captures Home, channel, settings, emote picker, and multistream in Studio, OLED, and Slate at both supported widths; volatile media and text regions are masked; a browser-canvas pixel comparison emits an inspectable diff and fails above documented per-pixel and changed-area thresholds.
+  Note 2026-09-04: the comparison need not run in a browser canvas. `Page.captureScreenshot` emits 8-bit RGBA non-interlaced PNG, which `node:zlib` `inflateSync` over the IDAT chunks decodes in well under a hundred lines, so the diff can be a plain Node step with an inspectable output image. Pin `deviceScaleFactor: 1` through `Emulation.setDeviceMetricsOverride` (this machine is 125% DPI) and inject `*{animation:none!important;transition:none!important}` before capture, or the run is not deterministic. Capture must use Chromium or Chrome for Testing: `--load-extension` was removed from branded Chrome in 137 and `chrome-headless-shell` cannot load extensions at all.
   Complexity: L
 
 - [ ] P1: R-111: Run browser-neutral journey contracts in Chromium and Firefox
@@ -130,6 +131,7 @@ None open.
   Evidence: src/runtime.js applyPlaybackDiagnostics; https://github.com/SevenTV/Extension/issues/1250; https://github.com/SevenTV/Extension/pull/1252; https://chromewebstore.google.com/detail/alternate-player-for-twit/bhplkbgoehhhddaoolmakpocnenplmhf
   Touches: src/runtime.js playback diagnostics and controls, src/core.mjs pure recovery decision, settings and translations, tests, live gate
   Acceptance: An opt-in Recover or Return live action appears only after sustained stall or measured latency; it never reloads the page, never acts while paused or on VOD, preserves quality, volume, and mute state, uses cooldown plus bounded backoff, and disables itself after a failed safe attempt with a diagnostic reason.
+  Note 2026-09-04: this is the highest measured user demand of anything on this roadmap and should be treated as P1, not P2. The only community sweep with counts behind it ranks player reliability first — stream-switching stalls of five to ten seconds and a sidebar that stops refreshing. Kick's own help centre carries dedicated articles for chat not loading and for stream buffering. Both 7TV citations were re-checked and are still open. The third citation, the Alternate Player Chrome listing, is dead: that extension was archived 2026-03-05 and delisted from the Chrome Web Store 2026-08-28; use https://addons.mozilla.org/en-US/firefox/addon/twitch_5/ instead, which is still served.
   Complexity: L
 
 ### P3
@@ -146,6 +148,7 @@ None open.
   Evidence: https://chromewebstore.google.com/detail/kickenhance/eobmipgghmnbbipfhpemfacnljiflmnj; https://greasyfork.org/en/scripts/587473-overkick-cinematic-chat-overlay
   Touches: src/runtime.js fullscreen lifecycle and styles, src/core.mjs settings normalization, src/settings.mjs, translations, fixtures, live gate
   Acceptance: An opt-in overlay reuses Kick’s native chat inside the active fullscreen element; side, width, and opacity persist; native moderation state and composer accessibility remain intact; Escape remains owned by fullscreen; closing or route change restores the exact original DOM and focus.
+  Note 2026-09-04: the KickEnhance citation is wrong and should be dropped — no extension by that name exists on the Chrome Web Store, AMO, Greasyfork, or GitHub. OverKick is the only real precedent, and it has 10 Greasyfork installs, so the demand claim rests on one tiny script. Weigh that before spending an L on it.
   Complexity: L
 
 - [ ] P3: R-118: Add an all-channel private notes index with content search
@@ -295,3 +298,89 @@ Complexity: S
   Complexity: M
 
 ### P3
+
+
+## Research-Driven Additions, 2026-09-04 (v1.45.0 to v1.48.0 pass)
+
+Added from the research recorded in [RESEARCH.md](RESEARCH.md). The pass began against v1.45.0 (`5ea2173`) and every item below was re-verified against the in-progress v1.48.0 working tree on 2026-09-04, because another session shipped v1.46.0 and v1.47.0 while it ran. Line references are current as of that tree and will drift; the file and function names beside them are the durable part. Continues the R-NN scheme from R-150.
+
+**Two drafted items are not here because that concurrent work implemented them first, and their IDs are retired so nobody reuses them.** R-151 would have asked for build-time compaction of every `_CSS` template; `scripts/strip-comments.mjs` now carries `compactCss` and the hardcoded `SITE_CSS` regex has left `scripts/build.mjs`, leaving 47 recoverable bytes across all seven sheets. R-158 would have asked for `aria-expanded` on the emote tile's action group; the emote rebuild replaced that group with `data-kf-sticker-manage-tile`, which declares `aria-expanded` and keeps it in sync on patch. Both are recorded under Rejected Ideas in [RESEARCH.md](RESEARCH.md) so the measurements survive.
+
+Cross-references to existing work: R-153 is what makes R-147's central claim measurable, because a coverage figure for the bundle is the only way to show whether `onInterfaceClick` is reached at all. R-154 is the missing precondition for [Roadmap_Blocked.md](Roadmap_Blocked.md)'s R-55, whose stated blocker — no signed-in session — expired when the daily-reward fixture was captured on 2026-08-27; on completion, move R-55 back here rather than leaving it recorded as blocked. Inline notes were added above to R-105, R-115, and R-117.
+
+### P1
+
+- [ ] P1: R-152: Translate the search and Drops surfaces, and gate copy written into the page
+  Why: `applySearchEnhancements` and `applyDropsEnhancements` write about 24 literal English strings into the page DOM — "Search results", "Clear", the Clear search label, "Campaign status", "No open campaigns", "Browse eligible streams", "Reward activity", "How drops work", the three step headings and their captions, and the rest. `localizeInterface` is only ever called with its default `state.shadow` root, so it never walks any of them. Every one already has a dictionary entry, so the translations exist and nothing reads them. The i18n-coverage gate stays green because it proves a key exists, not that the runtime looks it up, which is the same blind spot commit `2ecf337` closed for settings markup one layer in.
+  Evidence: src/runtime.js:3718 applySearchEnhancements and its markup at :3740; src/runtime.js:3755 applyDropsEnhancements and its markup at :3782-3796; src/runtime.js:10033 localizeInterface and its five call sites; dictionary entries at src/runtime.js:9101, :9839, :9843, :9849; src/runtime.js:3578 does it correctly with the locale in its rebuild signature; src/runtime.js:13446 states the rule for the header shadow; commit 2ecf337
+  Touches: src/runtime.js search and drops enhancers, test/i18n-coverage.test.js scanners, scripts/check.mjs
+  Acceptance: Every user-visible string on both surfaces reaches the DOM through `tr`, `trf` or `plural`; interpolated sentences are `trf` templates so a locale can move the placeholder; both surfaces rebuild when the interface language changes, the way card actions already do; the host element carries `lang`; and a gate fails on a whole-literal user-visible string inside a `setMarkup` template whose target root `localizeInterface` does not walk, proven by a red probe that plants one.
+  Complexity: M
+
+- [ ] P1: R-153: Make the built bundle report coverage
+  Why: `src/runtime.js` is 13,681 lines and 395 top-level functions, 57.8% of the concatenated source by line and 59.8% by byte, and contributes nothing to the coverage table, so the global floor is measured over the importable modules and the build scripts only. It is listed as uncoverable, but it is not: `test/boot.test.js` already evaluates the bundle, it just does so without a filename, so Node's reporter discards it.
+  Evidence: test/coverage.test.js:25-31; test/boot.test.js:173 and :206 plus six sibling `vm.runInNewContext(bundle, context)` calls; scripts/coverage-floors.mjs; probed 2026-09-04 — passing a `filename` option pointing at dist/kick-focus.user.js makes `node --test --experimental-test-coverage` list the bundle, and a bare context alone already reports 15.80% lines, 33.33% branches and 0.14% functions
+  Touches: test/boot.test.js, scripts/coverage-floors.mjs, test/coverage.test.js, package.json
+  Acceptance: The coverage table lists the built userscript; a floor for it is set from the measured baseline and ratchets upward only; the `runtime.js` entry in `UNCOVERABLE` is replaced by that measurement or by a reason that is still true after it; deleting a boot scenario lowers the reported figure, proven by a red probe; and the floors command stays under the current runtime budget on this machine.
+  Caveat the implementer has to handle: the bundle contains the importable modules as well, so its figure overlaps the existing project row and must not be folded into the global average. Give it its own row and its own floor, and say in `coverage-floors.mjs` why the two numbers cover the same code twice, or the global percentage silently starts meaning something else.
+  Complexity: M
+
+- [ ] P1: R-154: Add Channel points and Level to the signed-in journey matrix
+  Why: The Viewer Hub renders both cards, but neither has a journey, so an anonymous run emits no skip naming them and a signed-in run asserts nothing about them. That is why R-55 cannot move: its blocker is no longer a missing session — one was used to capture the daily-reward fixture on 2026-08-27 — it is that nothing tells that run which selectors to record. Level compounds it: it is read only from the reward dialog's own figures, so the card reports "not read yet" whenever that dialog is closed, and Channel points is read from the DOM on a channel route only.
+  Evidence: scripts/signed-in-journeys.mjs, eight entries and no points or level; src/core.mjs:1059 VIEWER_HUB_TITLES; src/runtime.js:10738 readRewardDialogFigures; src/runtime.js:10721 readChannelPoints; Roadmap_Blocked.md R-55
+  Touches: scripts/signed-in-journeys.mjs, scripts/verify-extension.mjs, scripts/release-checklist.mjs, test/signed-in.test.js
+  Acceptance: Two journeys exist with why, expects, reads and `mutates: false`, and both pass the existing rule that a skip reason may not be a bare noun; an anonymous run prints one skip each naming the route and selectors a signed-in run would assert; a `KF_USER_DATA_DIR` run asserts them; the release checklist prints both; and neither journey records a balance, level number, display name, or any account identifier.
+  Complexity: S
+
+- [ ] P1: R-155: Give the byte budget attribution and a release-over-release ratchet
+  Why: The build prints one total, and the gate fails only at the cliff. Nothing says where growth came from, so a release that adds 12,000 bytes of dictionary and one that adds 12,000 bytes of CSS look identical until the build stops. Measured 2026-09-04 against the 886,138-byte artifact: `TRANSLATIONS` is 118,396 bytes, `SITE_CSS` 65,623 and `UI_CSS` 53,877 — 27% of it in three constants nobody is currently accountable for. Headroom is 13,862 bytes, and the compaction lever that bought most of it is now spent, so the next reclaim has to be a product decision rather than a build trick.
+  Evidence: scripts/build.mjs prints one number per artifact; scripts/check.mjs size and injection budgets; src/runtime.js:1070-1071 BUNDLE_BYTE_CEILING and INJECTION_BYTE_BUDGET; measured region sizes 2026-09-04
+  Touches: scripts/build.mjs, scripts/check.mjs, a checked-in baseline file, test/boot.test.js, README.md
+  Acceptance: The build prints UTF-8 bytes per source module and per named region — each `_CSS` template, the dictionary, and the remainder — measured with `Buffer.byteLength`; a committed baseline records the previous release's figures; the gate fails when any region grows by more than a documented threshold without the baseline being updated in the same change; the About panel and the README report the same numbers the build enforces; and the whole report is derived, so a new region cannot be omitted from it silently.
+  Complexity: M
+
+### P2
+
+- [ ] P2: R-156: Surface unrecognized third-party origins in the protection log
+  Why: The ad and telemetry host lists are eleven hand-curated entries with no upstream to inherit from, because mainstream filter lists still carry no kick.com ad rules. `report()` fires only when a classification is blocked, so a request to a Kick ad host nobody has added yet is classified allowed and then discarded. The protection log can therefore only ever show what the build already knew.
+  Evidence: src/core.mjs:413 AD_HOSTS and :424 TELEMETRY_HOSTS; src/core.mjs:2444 the blocked branch of classifyRequest; src/runtime.js:872, :970 and :989 gate reporting on the blocked flag; src/runtime.js:607 recordProtection caps at 20 entries
+  Touches: src/runtime.js network hooks and diagnostics, src/core.mjs classification, src/settings.mjs protection log, translations, tests
+  Acceptance: A bounded tally records the origin only — never a path, query, or fragment — of third-party requests that are neither Kick's own hosts nor already classified; the protection log shows them under a distinct "Seen, not blocked" heading with counts; the list is capped, cleared by reset, and never sent anywhere; a fixture carrying a novel ad-shaped origin makes it appear, and one carrying only Kick's own hosts leaves the section empty rather than showing a zero row.
+  Complexity: M
+
+- [ ] P2: R-157: Take the compatibility probe sweep off the per-mutation hot path
+  Why: `runApplyCycle` runs `compatibilitySnapshot` over the whole document — 24 probe groups, 59 probe entries and 4 derived expectations — on every debounced mutation batch, on a page whose player, chat and viewer counts mutate continuously. Probe winners change on a route change or a Kick deploy, not every 80 milliseconds. The apply cost is already measured and shown, so the improvement is provable rather than asserted.
+  Evidence: src/runtime.js:7678 inside the apply cycle and src/runtime.js:12702 on boot; src/runtime.js:7689 recordApplyCost; src/compatibility.mjs LOCATOR_PROBES and DERIVED_EXPECTATIONS, counted 2026-09-04
+  Touches: src/runtime.js apply cycle and compatibility publishing, src/core.mjs scheduling decision, test/core.test.js, scripts/check.mjs
+  Acceptance: First, measure — record the sweep's own share of a cycle on a channel fixture and on live Kick, and if it is not a material fraction, close this item with that number rather than changing the scheduling. If it is: the full sweep runs on route change, on boot, on a bounded low-frequency interval, and on demand from the settings self-check; every other apply cycle either skips it or runs a cheap subset that names which probes it revalidated; a mid-session Kick change is still noticed within the documented interval, proven by a test that removes a marker between cycles; the published verdict is never a stale snapshot from a previous route; and the recorded apply cost drops by a stated margin against the current build on the same fixture.
+  Complexity: M
+
+- [ ] P2: R-159: Keep the mod's own surfaces legible in Windows High Contrast
+  Why: One `forced-colors: active` block exists and it covers text-input focus rings. UI_CSS carries 21 drawing box-shadow declarations (25 occurrences, four of them `none`) and 3 gradients, and forced-colors suppresses box-shadow, so every separator, ring and elevation cue drawn that way disappears while everything around it is repainted in system colours. The build ships an accessibility page and four contrast settings, which makes this the one accessibility mode it claims nothing about.
+  Evidence: src/runtime.js:8701 the single forced-colors block; counted 2026-09-04 in the UI_CSS range src/runtime.js:7949-9102 — 25 box-shadow occurrences of which 21 draw, and 3 linear-gradients; https://www.w3.org/TR/WCAG22/
+  Touches: src/runtime.js UI_CSS, src/settings.mjs, scripts/check.mjs, scripts/verify-extension.mjs
+  Acceptance: Every visual boundary the panel, picker, toasts, command menu and multistream board draw only as a shadow has a forced-colors counterpart using a system colour keyword; selected, pressed and disabled states stay distinguishable without relying on custom colour; a check fails when a new shadow-only boundary is added with no forced-colors rule beside it; and the browser gate captures the settings shell and picker with forced-colors emulated and asserts no control loses its edge.
+  Complexity: M
+
+- [ ] P2: R-160: Publish a security contact and a drift-report intake
+  Why: The repository is public with issues enabled and has no `.github/` directory, `SECURITY.md`, `CONTRIBUTING.md`, or issue template. The whole product position is trust — no remote code, read-only, local-only — and the one thing a user cannot do is report either a vulnerability or a Kick DOM break in a form the drift gates could consume. The About page already produces a sanitized diagnostics block and a compatibility self-test summary, so the intake exists; nothing asks for it.
+  Evidence: no .github directory in the tree; zero issues, pull requests and discussions as of 2026-09-04; the settings Compatibility self-test row in src/settings.mjs; the copy-diagnostics action in src/runtime.js; README.md Distribution and listing posture
+  Touches: new SECURITY.md, new .github/ISSUE_TEMPLATE files, README.md
+  Acceptance: `SECURITY.md` names a disclosure address, what is in scope, and the fact that no server or account exists to attack; a bug template asks for browser and version, userscript manager and version, build version, route, and the two blocks the About page already produces, and says in the form that both are sanitized; the templates add no GitHub Actions workflow; and the README links both from the sections a reader reaches first.
+  Complexity: S
+
+- [ ] P2: R-161: Bring design-qa.md's verification block up to the shipped release
+  Why: It records the v1.42.0 run — 463 tests, 213 checks, 91 probes, 858,234 bytes — while the project has shipped v1.43.0 through v1.47.0 since. The same line reports 91,766 bytes below the injection ceiling, a figure measured against the 950,000 budget rather than the 1,000,000 ceiling, so it conflates the two numbers the build deliberately keeps apart. The file's own v1.45 sections above it are current, which makes the stale block read as if it were too.
+  Evidence: design-qa.md:191; src/runtime.js:1070-1071 the two distinct constants; dist/kick-focus.user.js measured 886,138 bytes on 2026-09-04, 13,862 below the 950,000 budget and 63,862 below the 1,000,000 ceiling after the 50,000-byte seed allowance
+  Touches: design-qa.md
+  Acceptance: The verification block states the shipped release's counts and byte figures, names budget and ceiling as two separate numbers with the seed allowance shown, and dates the run; nothing in the file attributes a v1.42.0 measurement to the current build.
+  Complexity: S
+
+### P3
+
+- [ ] P3: R-162: Scope saved views by channel, category, and player state
+  Why: Saved views are named snapshots applied per route, so a viewer who wants a wide chat on one channel and a hidden chat on another has to switch by hand. FrankerFaceZ solves the general problem with settings profiles selected by a composable filter tree over Channel, Category, Title, TheaterMode, Fullscreen and Time, which is one mechanism instead of a scoping flag per feature. Kick Focus already has the storage, the normalization and the per-route application; what it lacks is the predicate.
+  Evidence: README.md saved views; src/core.mjs channelLayouts and its 50-entry cap; src/core.mjs observedChannelPath; https://github.com/FrankerFaceZ/FrankerFaceZ (src/settings/filters.ts, src/settings/profile.ts)
+  Touches: src/core.mjs a pure predicate evaluator and its normalization, src/runtime.js view application, src/settings.mjs the editor, import and export, translations, tests
+  Acceptance: A saved view carries an optional condition built from route, channel slug, category slug, theater or fullscreen state, and multistream versus solo, combined with all-of and any-of and a single negation; evaluation is pure, total, and cannot throw on a malformed stored condition; the most specific matching view wins under one documented and tested rule, and ties resolve deterministically; the editor states in words which condition is active and why a view did or did not apply; conditions round-trip through import, export and reset; and randomized condition trees preserve the schema invariants.
+  Complexity: L
