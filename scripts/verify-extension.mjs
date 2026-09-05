@@ -540,9 +540,19 @@ try {
     fixture.append(more);
     sidebar.append(fixture);
 
-    const expanded = await __kfWait(() => clicks === 2
-      && fixture.querySelectorAll('[data-testid^="sidebar-following-channel-"]').length === 12
-      && !fixture.querySelector(nativeMoreSelector), { timeout: 3500 });
+    // Poke the route between polls rather than waiting passively. The build
+    // expands the rail from its apply cycle, and that cycle only runs when
+    // something tells it to; appending the fixture is one mutation, so a
+    // passive wait was betting that the coalesced cycle happened to run twice
+    // inside the window. On a busy page it sometimes did not, and the check
+    // failed for the run's timing rather than for the build's behaviour.
+    const expanded = await __kfWait(() => {
+      if (clicks === 2
+        && fixture.querySelectorAll('[data-testid^="sidebar-following-channel-"]').length === 12
+        && !fixture.querySelector(nativeMoreSelector)) return true;
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      return null;
+    }, { timeout: 8000 });
     const rows = fixture.querySelectorAll('[data-testid^="sidebar-following-channel-"]').length;
     const less = fixture.querySelector('[data-testid="sidebar-show-less-following"]');
     const lessHidden = Boolean(less) && getComputedStyle(less).display === 'none';
