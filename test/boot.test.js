@@ -607,13 +607,13 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
     'the compact emote grid must never expose a horizontal scrollbar');
   assert.match(site, /\[data-kf-sticker-scroll\][^}]*overflow-x: hidden !important/,
     'Kick own scroll shell must not expose a horizontal scrollbar around the organizer');
-  assert.match(site, /\[data-kf-sticker-tools\][\s\S]*?display:\s*none !important[\s\S]*?position:\s*fixed !important/,
-    'tile management must stay outboard and leave the artwork clear at rest');
-  assert.match(site, /\[data-kf-sticker-tools\]\[data-kf-sticker-top-layer="true"\][^}]*overflow:\s*visible !important/,
-    'tile management must enter the top layer instead of clipping inside the grid');
-  assert.match(site, /\[data-kf-sticker-tools\] :is\(button, a\)[\s\S]*?min-height:\s*30px !important/,
-    'normal emote management rows and links must exceed the 24px target floor');
-  assert.match(site, /data-kf-large-targets="true"\]\s+\[data-kf-sticker-tools\] :is\(button, a\)[^}]*min-height:\s*40px !important/,
+  assert.match(site, /\[data-kf-sticker-manage-tile\][\s\S]*?position:\s*absolute !important[\s\S]*?width:\s*24px !important/,
+    'every tile needs a stable management button that does not depend on hover');
+  assert.match(site, /\[data-kf-sticker-detail\][\s\S]*?grid-template-columns:\s*42px minmax\(0, 1fr\) auto/,
+    'emote management must use a stable in-picker detail tray');
+  assert.match(site, /\[data-kf-sticker-detail-actions\] :is\(button, a, select\)[\s\S]*?min-height:\s*30px !important/,
+    'normal emote management controls must exceed the 24px target floor');
+  assert.match(site, /data-kf-large-targets="true"\]\s+\[data-kf-sticker-detail-actions\] :is\(button, a, select\)[\s\S]*?min-height:\s*40px !important/,
     'Larger targets must give emote management controls a 40px target');
   assert.match(site, /data-kf-sticker-pinned="true"[^}]*border-color:[^}]*box-shadow:\s*inset 0 -2px 0 var\(--kf-accent\)/,
     'favorite state must use the tile edge instead of an artwork-covering badge');
@@ -633,18 +633,18 @@ test('the emote shelf is styled by the sheet that can actually reach it', { tags
   // The tile markup and the rule that styles it must agree on the selector.
   assert.match(source, /<button type="button" data-kf-sticker-action="send"[^>]*data-kf-sticker-proxy/,
     'the shelf send button must carry the attribute SITE_CSS styles');
-  assert.match(source, /data-kf-sticker-tools data-kf-open="false" role="group"[\s\S]*data-kf-sticker-action="pin"[\s\S]*<span>[\s\S]*data-kf-sticker-action="hide"/,
-    'the outboard surface must expose labelled favorite and remove actions');
+  assert.match(source, /data-kf-sticker-manage-tile[\s\S]*aria-expanded="\$\{inspected\}"/,
+    'each tile must expose whether its stable detail tray is open');
+  assert.match(source, /function stickerDetailMarkup[\s\S]*data-kf-sticker-action="pin"[\s\S]*data-kf-sticker-direct-group[\s\S]*data-kf-sticker-action="hide"/,
+    'the detail tray must expose favorite, direct group, and reversible removal controls');
   assert.match(source, /class="kf-rarity"[^>]*data-rarity=[^>]*title=/,
     'a rarity badge must expose the full meaning as a title');
   assert.match(source, /rarity\.slice\(0, 1\)\.toUpperCase\(\)/,
     'a rarity badge must render one in-tile letter with the full meaning available as a title');
   assert.match(source, /const raritySignature = state\.settings\.content\.showEmoteRarity[\s\S]*state\.live\.rarity\?\.matched[\s\S]*raritySignature/,
     'a late rarity response must invalidate the picker grid signature');
-  assert.match(source, /addEventListener\('pointerover', onStickerTileActionEnter, true\)[\s\S]*addEventListener\('focusin', onStickerTileActionEnter, true\)/,
-    'pointer and keyboard focus must open the same tile action surface');
-  assert.match(source, /function showStickerTileActions[\s\S]*const gap = 6[\s\S]*anchor\.right \+ gap[\s\S]*anchor\.left - box\.width - gap[\s\S]*window\.innerHeight - box\.height - 8/,
-    'the measured action surface must prefer the right, flip left, and clamp vertically');
+  assert.doesNotMatch(source, /showStickerTileActions|data-kf-sticker-tools/,
+    'the fragile hover popover must not return');
   assert.match(site, /data-kf-sticker-drop="before"[^}]*inset 3px 0 0 var\(--kf-accent\)[\s\S]*data-kf-sticker-drop="after"[^}]*inset -3px 0 0 var\(--kf-accent\)/,
     'dragging must show an unambiguous before or after insertion edge');
   assert.match(source, /data-kf-sticker-proxy draggable="\$\{reorderable\}"[\s\S]*organizer\.addEventListener\('dragstart', onStickerDragStart\)[\s\S]*organizer\.addEventListener\('drop', onStickerDrop\)/,
@@ -707,7 +707,7 @@ test('emote organization has a direct route, visible search, and batch controls'
   for (const control of ['data-kf-sticker-organize', 'data-kf-sticker-group-create', 'data-kf-sticker-batch-move', 'data-kf-sticker-batch-remove']) {
     assert.ok(runtime.includes(control), `${control} is missing from the composer picker`);
   }
-  for (const setting of ['content.emotePickerDensity', 'content.emotePickerHeight', 'content.quickEmoteBar', 'content.quickEmoteLimit']) {
+  for (const setting of ['content.emotePickerDensity', 'content.emotePickerHeight', 'content.quickEmoteBar', 'content.emoteDockSource', 'content.quickEmoteLimit']) {
     assert.ok(settings.includes(setting), `${setting} is missing from settings`);
   }
   assert.match(runtime, /root\.dataset\.kfEmoteDensity = content\.emotePickerDensity/,
@@ -718,19 +718,25 @@ test('emote organization has a direct route, visible search, and batch controls'
     'the quick-strip density must reach Kick own chat footer');
   assert.match(runtime, /root\.dataset\.kfQuickEmoteLimit = content\.quickEmoteLimit/,
     'the quick-strip count must reach Kick own chat footer');
-  assert.match(runtime, /data-kf-quick-emote-bar="compact"[\s\S]*#quick-emotes-holder button[\s\S]*width:\s*24px !important/,
-    'compact quick emotes need a measured 24px control');
-  assert.match(runtime, /data-kf-quick-emote-limit="6"[\s\S]*#quick-emotes-holder > \* > :nth-child\(n \+ 7\)/,
-    'quick-emote limits must hide Kick wrapper items after the selected count');
+  assert.match(runtime, /\[data-kf-emote-dock-emote\], \[data-kf-emote-dock-manage\][\s\S]*width:\s*30px !important/,
+    'the compact chat dock needs a measured 30px control');
+  assert.match(runtime, /function renderComposerEmoteDock[\s\S]*selectEmoteDockKeys[\s\S]*favoriteKeysInOrder\(\)[\s\S]*recent/,
+    'the chat dock must combine channel-aware favorites with recent use');
+  assert.match(runtime, /#quick-emotes-holder\[data-kf-emote-dock-host="true"\] > :not\(\[data-kf-emote-dock\]\) \{ display: none !important; \}/,
+    'the custom dock must preserve and temporarily hide Kick own quick controls');
   for (const flow of ['savePickerStickerGroup', 'deletePickerStickerGroup', 'editPickerStickerSelection']) {
     assert.ok(runtime.includes(`function ${flow}`), `${flow} is missing from the composer picker`);
   }
   assert.match(runtime, /Try a different search or clear the search field\./,
     'searching an empty group must explain how to recover');
+  assert.match(runtime, /data-kf-sticker-view="removed"[\s\S]*data-kf-sticker-restore-all/,
+    'the picker needs an individual and bulk recovery view');
+  assert.match(runtime, /function syncEmoteReturnControl[\s\S]*Back to chat/,
+    'opening the Library from the composer needs an explicit return path');
   assert.match(runtime, /const signature = \[\s*activeLocale\(\),\s*view,/,
     'changing the interface language must invalidate the composer chrome');
   for (const action of ['select-library-sticker', 'select-visible-stickers', 'move-selected-stickers', 'remove-selected-stickers']) {
-    assert.ok(settings.includes(`data-action="${action}"`), `${action} is missing from the library`);
+    assert.ok(settings.includes(action), `${action} is missing from the library`);
   }
   assert.match(settings, /aria-live="polite"/,
     'batch selection status must be announced');

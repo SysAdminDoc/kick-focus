@@ -701,8 +701,17 @@ try {
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = (ms = 120) => new Promise((done) => setTimeout(done, ms));
     const beforePath = location.pathname;
+    // A channel route already owns a real player, and Kick may replace that
+    // node while this probe runs. Isolate every fixture video with one temporary
+    // rule so a newly mounted real player cannot steal the synthetic handoff.
+    document.documentElement.dataset.kfSessionWatchIsolated = 'true';
+    const isolationStyle = document.createElement('style');
+    isolationStyle.textContent = 'html[data-kf-session-watch-isolated="true"] video:not([data-kf-session-watch-fixture="true"]){display:none!important}';
+    document.head.append(isolationStyle);
     const video = document.createElement('video');
     video.dataset.kfSessionWatchProbe = 'true';
+    video.dataset.kfSessionWatchFixture = 'true';
+    video.dataset.channelPlayer = 'true';
     video.style.cssText = 'position:fixed;inset:80px auto auto 240px;width:640px;height:360px;visibility:visible';
     let playing = true;
     Object.defineProperty(video, 'paused', { configurable: true, get: () => !playing });
@@ -710,12 +719,14 @@ try {
     Object.defineProperty(video, 'readyState', { configurable: true, get: () => 4 });
     document.body.prepend(video);
     const preview = document.createElement('video');
+    preview.dataset.kfSessionWatchFixture = 'true';
     preview.className = 'player-preview';
     preview.style.cssText = 'position:fixed;inset:40px auto auto 120px;width:960px;height:540px;visibility:visible';
     Object.defineProperty(preview, 'paused', { configurable: true, get: () => false });
     Object.defineProperty(preview, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(preview, 'readyState', { configurable: true, get: () => 4 });
     const background = document.createElement('video');
+    background.dataset.kfSessionWatchFixture = 'true';
     background.className = 'background-video';
     background.muted = true;
     background.style.cssText = 'position:fixed;inset:20px auto auto 80px;width:1080px;height:608px;visibility:visible';
@@ -723,18 +734,22 @@ try {
     Object.defineProperty(background, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(background, 'readyState', { configurable: true, get: () => 4 });
     const replacement = document.createElement('video');
+    replacement.dataset.kfSessionWatchFixture = 'true';
+    replacement.dataset.channelPlayer = 'true';
     replacement.style.cssText = 'position:fixed;inset:100px auto auto 280px;width:720px;height:405px;visibility:visible';
     let replacementPlaying = true;
     Object.defineProperty(replacement, 'paused', { configurable: true, get: () => !replacementPlaying });
     Object.defineProperty(replacement, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(replacement, 'readyState', { configurable: true, get: () => 4 });
     const preload = document.createElement('video');
+    preload.dataset.kfSessionWatchFixture = 'true';
     preload.className = 'preload-video';
     preload.style.cssText = 'display:none;width:640px;height:360px';
     Object.defineProperty(preload, 'paused', { configurable: true, get: () => false });
     Object.defineProperty(preload, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(preload, 'readyState', { configurable: true, get: () => 4 });
     const detached = document.createElement('video');
+    detached.dataset.kfSessionWatchFixture = 'true';
     Object.defineProperty(detached, 'paused', { configurable: true, get: () => false });
     Object.defineProperty(detached, 'ended', { configurable: true, get: () => false });
     Object.defineProperty(detached, 'readyState', { configurable: true, get: () => 4 });
@@ -762,10 +777,21 @@ try {
       background.dispatchEvent(new Event('playing'));
       await settle(1250);
       const nonOwner = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
+      // Settings correctly makes the page behind it inert. Close it for the
+      // owner handoff, then reopen the Viewer page to read the banked interval.
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+      await settle(250);
       video.remove();
       document.body.prepend(replacement);
       replacement.dispatchEvent(new Event('playing'));
-      await settle(1350);
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      // Keep Settings closed while the replacement owns playback. Opening the
+      // modal makes the page behind it inert, which correctly pauses the clock.
+      await settle(2400);
+      shadow.querySelector('[data-kf-quick]')?.click();
+      await settle(250);
+      shadow.querySelector('[data-page="viewer"]')?.click();
+      await settle(250);
       const swapped = String(shadow.querySelector('[data-kf-hub-card="watch"] strong')?.textContent || '').trim();
       replacementPlaying = false;
       replacement.dispatchEvent(new Event('waiting'));
@@ -804,6 +830,8 @@ try {
       replacement.remove();
       preload.remove();
       detached.remove();
+      isolationStyle.remove();
+      delete document.documentElement.dataset.kfSessionWatchIsolated;
       history.pushState({}, '', beforePath || '/');
     }
   })()`);
@@ -812,7 +840,7 @@ try {
     sessionWatch.ok === true && /^\d+:\d{2}(?::\d{2})?$/.test(sessionWatch.first || '')
       && sessionWatch.first !== '0:00' && sessionWatch.paused === sessionWatch.first
       && sessionWatch.nonOwner === sessionWatch.paused
-      && sessionWatch.swapSeconds >= 1 && sessionWatch.swapSeconds <= 2
+      && sessionWatch.swapSeconds >= 1 && sessionWatch.swapSeconds <= 3
       && sessionWatch.boundarySeconds >= 0 && sessionWatch.boundarySeconds <= 1
       && sessionWatch.swappedPaused === sessionWatch.swapBoundary
       && sessionWatch.hiddenPreload === sessionWatch.swappedPaused
@@ -1014,18 +1042,26 @@ try {
     deviceScaleFactor: 1, mobile: false,
   });
   const reflow = await evaluate(pageClient, `(() => {
-    const shell = document.getElementById('kick-focus-root')?.shadowRoot?.querySelector('[data-kf-settings-shell]');
+    const host = document.getElementById('kick-focus-root');
+    const shell = host?.shadowRoot?.querySelector('[data-kf-settings-shell]');
     const rect = shell?.getBoundingClientRect();
+    const documentOverflow = document.documentElement.scrollWidth - window.innerWidth;
+    const previousDisplay = host?.style.display || '';
+    if (host) host.style.display = 'none';
+    const siteOverflow = document.documentElement.scrollWidth - window.innerWidth;
+    if (host) host.style.display = previousDisplay;
     return {
       viewport: window.innerWidth,
-      documentOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      documentOverflow,
+      siteOverflow,
       shellOverflow: rect ? Math.round(rect.width - window.innerWidth) : null,
     };
   })()`);
   const zoom = reflow.value || {};
   record('the interface reflows at 200% zoom without a horizontal scrollbar',
-    zoom.documentOverflow <= 0 && zoom.shellOverflow !== null && zoom.shellOverflow <= 0,
-    `at ${zoom.viewport}px CSS width: document overflow ${zoom.documentOverflow}px, settings shell overflow ${zoom.shellOverflow}px`);
+    zoom.documentOverflow <= Math.max(0, zoom.siteOverflow)
+      && zoom.shellOverflow !== null && zoom.shellOverflow <= 0,
+    `at ${zoom.viewport}px CSS width: document overflow ${zoom.documentOverflow}px (site baseline ${zoom.siteOverflow}px), settings shell overflow ${zoom.shellOverflow}px`);
   // R-85, WCAG 2.2 3.2.6 Consistent Help: the same help mechanism, in the same
   // relative place, on every settings page — measured at 680px CSS width, where
   // the footer has the least room to keep four controls on one row. Search
@@ -1107,6 +1143,7 @@ try {
   const routeProbe = await evaluate(pageClient, `(async () => {
     const routeNow = () => document.documentElement.dataset.kfRoute || '';
     const before = routeNow();
+    const beforeUrl = location.pathname + location.search + location.hash;
     // Not "is native": Kick's own Sentry instrumentation wraps history exactly
     // as it wraps fetch, so on the live site nobody is outermost. The claim
     // that can be tested is that this build's wrapper is not in the stack.
@@ -1123,7 +1160,7 @@ try {
     const after = await __kfWait(() => (routeNow() === 'browse' ? 'browse' : null), { timeout: 8000 }) || routeNow();
     const landed = location.pathname;
 
-    history.pushState(null, '', '/');
+    history.pushState(null, '', beforeUrl || '/');
     const back = await __kfWait(() => {
       const route = routeNow();
       return route && route !== 'browse' ? route : null;
@@ -1155,15 +1192,18 @@ try {
   // The roll-call only means anything with a second tab actually answering, so
   // open one on a channel and ask from this one. Nothing is stubbed: two real
   // pages, the real BroadcastChannel, the real button.
+  const currentTargetSlug = new URL(TARGET_URL).pathname.split('/').filter(Boolean)[0]?.toLowerCase() || '';
+  const presenceSlug = currentTargetSlug === 'xqc' ? 'trainwreckstv' : 'xqc';
   const secondTab = await (async () => {
     const c = cdp((await json('/json/version')).webSocketDebuggerUrl);
     await c.ready;
-    const r = await c.send('Target.createTarget', { url: 'https://kick.com/xqc' });
+    const r = await c.send('Target.createTarget', { url: `https://kick.com/${presenceSlug}` });
     c.close();
     return r.result.targetId;
   })();
   await sleep(9000);
   const presence = await evaluate(pageClient, `(async () => {
+    const expectedSlug = ${JSON.stringify(presenceSlug)};
     const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 900));
@@ -1181,14 +1221,14 @@ try {
     const streams = [...shadow.querySelectorAll('[data-kf-multistream-tile]')].length;
     const stored = JSON.parse(localStorage.getItem('kick-focus:multistream') || '{}');
     shadow.querySelector('[data-action="close-multistream"]')?.click();
-    return { ok: true, offered, streams, stored: stored.streams || [] };
+    return { ok: true, expectedSlug, offered, streams, stored: stored.streams || [] };
   })()`);
   const pres = presence.value || { why: presence.error || 'probe returned nothing' };
   record('a second Kick tab answers the roll-call and its channel can be added in one click',
     pres.ok === true && pres.offered?.hidden === false
       && /Add open tabs \(1\)/.test(pres.offered?.label || '')
-      && /xqc/i.test(pres.offered?.title || '')
-      && Array.isArray(pres.stored) && pres.stored.some((slug) => /^xqc$/i.test(slug)),
+      && new RegExp(pres.expectedSlug, 'i').test(pres.offered?.title || '')
+      && Array.isArray(pres.stored) && pres.stored.some((slug) => slug.toLowerCase() === pres.expectedSlug),
     pres.ok ? `offer="${pres.offered?.label}" tabs="${pres.offered?.title}" grid now ${JSON.stringify(pres.stored)}` : pres.why);
   await (async () => {
     const c = cdp((await json('/json/version')).webSocketDebuggerUrl);
@@ -1395,7 +1435,7 @@ try {
   // and pass on a quiet one. Both legacy entries must be there, and every key
   // in the store must carry the platform prefix, observations included.
   record('a backup from the previous build migrates to the platform-prefixed key space without loss',
-    m.ok === true && m.schema === 10
+    m.ok === true && m.schema === 11
       && m.names?.includes('LegacyOne') && m.names?.includes('LegacyTwo')
       && m.keys?.includes('kick:id:9001') && m.keys?.includes('kick:id:9002')
       && prefixed(m.keys) && prefixed(m.favorites) && prefixed(m.hidden) && prefixed(m.assignments)
@@ -1495,6 +1535,89 @@ try {
     tt.api === true && tt.rendered === true,
     `trustedTypes available=${tt.api}, page enforces a default policy=${tt.enforced}, settings shell rendered=${tt.rendered}`);
 
+  // Anonymous Kick pages do not expose the account-wide picker until the user
+  // opens chat UI that may not exist at all on the current route. Harvest a
+  // small public, free-only slice through the same native-picker observation
+  // path so insertion, docking, and search are exercised on every live run.
+  const emoteCatalogProbe = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const response = await fetch('/emotes/xqc', { credentials: 'omit' });
+    if (!response.ok) return { ok: false, why: 'the public emote catalog answered HTTP ' + response.status };
+    const payload = await response.json();
+    const groups = (Array.isArray(payload) ? payload : []).map((group) => ({
+      name: String(group?.name || group?.slug || 'Kick'),
+      emotes: (Array.isArray(group?.emotes) ? group.emotes : [])
+        .filter((emote) => emote && emote.subscribers_only !== true && emote.id && emote.name)
+        .slice(0, 16),
+    })).filter((group) => group.emotes.length).slice(0, 3);
+    const total = groups.reduce((sum, group) => sum + group.emotes.length, 0);
+    if (!total) return { ok: false, why: 'the public catalog exposed no free emotes' };
+
+    const original = document.getElementById('chat-emotes-picker-panel');
+    const originalStyle = original?.getAttribute('style') ?? null;
+    if (original) {
+      original.id = 'chat-emotes-picker-panel-kf-live-original';
+      original.style.display = 'none';
+    }
+    const panel = document.createElement('section');
+    panel.id = 'chat-emotes-picker-panel';
+    panel.style.cssText = 'position:fixed;left:-5000px;top:0;width:420px;height:620px;overflow:hidden';
+    const search = document.createElement('input');
+    search.id = 'search-emotes-input';
+    search.placeholder = 'Search emotes';
+    panel.append(search);
+    const scroll = document.createElement('div');
+    scroll.className = 'overflow-y-auto';
+    for (const groupInfo of groups) {
+      const group = document.createElement('section');
+      group.setAttribute('role', 'group');
+      const label = document.createElement('h3');
+      label.id = 'emote-picker-section-name-kf-' + groupInfo.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+      label.textContent = groupInfo.name;
+      group.append(label);
+      for (const emote of groupInfo.emotes) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.emoteId = String(emote.id);
+        button.setAttribute('aria-label', String(emote.name));
+        const image = document.createElement('img');
+        image.src = 'https://files.kick.com/emotes/' + encodeURIComponent(String(emote.id)) + '/fullsize';
+        image.alt = String(emote.name);
+        button.append(image);
+        group.append(button);
+      }
+      scroll.append(group);
+    }
+    panel.append(scroll);
+    document.body.append(panel);
+    try {
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      const organizer = await __kfWait(() => panel.querySelector('[data-kf-sticker-organizer]'));
+      if (!organizer) return { ok: false, why: 'the native picker observation path did not mount the organizer' };
+      await new Promise((done) => setTimeout(done, 500));
+      const backdrop = shadow.querySelector('[data-kf-settings-backdrop]');
+      if (backdrop?.hidden !== false) shadow.querySelector('[data-kf-quick]')?.click();
+      await new Promise((done) => setTimeout(done, 500));
+      shadow.querySelector('[data-page="emotes"]')?.click();
+      await new Promise((done) => setTimeout(done, 500));
+      const cards = shadow.querySelectorAll('[data-kf-sticker-library-item]').length;
+      return { ok: true, offered: total, observed: cards };
+    } finally {
+      panel.remove();
+      if (original) {
+        original.id = 'chat-emotes-picker-panel';
+        if (originalStyle === null) original.removeAttribute('style');
+        else original.setAttribute('style', originalStyle);
+      }
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+    }
+  })()`);
+  const catalog = emoteCatalogProbe.value || {};
+  record('the public free-emote catalog reaches the organizer through Kick-shaped picker markup',
+    catalog.ok === true && catalog.offered > 0 && catalog.observed >= catalog.offered,
+    catalog.ok ? `${catalog.observed} library cards from ${catalog.offered} offered emotes` : catalog.why);
+
   // Typing an emote name reaches into Kick's own composer, so prove against a
   // real contenteditable that the plain name lands at the caret and that
   // nothing in the path submits: no Enter, no send click, no form submit.
@@ -1503,12 +1626,20 @@ try {
     const shadow = await __kfWait(() => host && host.shadowRoot);
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     const settle = () => new Promise((done) => setTimeout(done, 400));
+    let room = document.querySelector('#channel-chatroom, [data-testid="chatroom"]');
+    const syntheticRoom = !room;
+    if (!room) {
+      room = document.createElement('section');
+      room.id = 'channel-chatroom';
+      room.style.cssText = 'position:fixed;left:-5000px;top:0;width:360px;height:500px';
+      document.body.append(room);
+    }
     const box = document.createElement('div');
     box.setAttribute('contenteditable', 'true');
     box.setAttribute('role', 'textbox');
     box.setAttribute('data-testid', 'chat-input');
-    box.style.cssText = 'position:fixed;left:4px;bottom:4px;width:200px;height:32px';
-    document.body.append(box);
+    box.style.cssText = 'width:200px;height:32px';
+    room.prepend(box);
     const submits = [];
     for (const type of ['keydown', 'keypress', 'submit']) {
       document.addEventListener(type, (event) => {
@@ -1520,17 +1651,20 @@ try {
     // The action is gated by its own setting, not merely by the button being
     // rendered — so turn it on the way a user would.
     const toggle = shadow.querySelector('[data-set="content.insertEmoteName"]');
-    if (!toggle) { box.remove(); return { ok: false, why: 'no insert-name setting' }; }
+    if (!toggle) { box.remove(); if (syntheticRoom) room.remove(); return { ok: false, why: 'no insert-name setting' }; }
     if (toggle.getAttribute('aria-checked') !== 'true') { toggle.click(); await settle(); }
     // The library lives inside the bundle IIFE, so take a key from a rendered
     // card rather than reaching for a private binding.
+    shadow.querySelector('[data-page="emotes"]')?.click();
+    await settle();
     const seeded = shadow.querySelector('[data-action="insert-sticker-name"]');
-    if (!seeded) { box.remove(); return { skip: 'the library is empty on this throwaway profile; run the gate against a channel URL so chat fills it' }; }
+    if (!seeded) { box.remove(); if (syntheticRoom) room.remove(); return { ok: false, why: 'the observed free-emote catalog did not render an insert action' }; }
     seeded.click();
     await settle();
     const typed = box.textContent;
     const toast = String(shadow.querySelector('.kf-toast-text')?.textContent || '');
     box.remove();
+    if (syntheticRoom) room.remove();
     return { ok: true, typed, toast, submits };
   })()`);
   const insert = insertProbe.value || {};
@@ -1541,6 +1675,153 @@ try {
       && !insert.typed.includes('[emote:')
       && Array.isArray(insert.submits) && insert.submits.length === 0,
     insert.ok ? `typed ${JSON.stringify(insert.typed)}; submit-shaped events ${JSON.stringify(insert.submits)}` : insert.why);
+
+  // The composer dock is the bridge between organization and chat. Exercise
+  // it against Kick's real quick-emote holder, but use a synthetic draft box
+  // inside the same chatroom so an anonymous run can prove insertion without
+  // needing, or ever sending through, an account composer.
+  const emoteDockProbe = await evaluate(pageClient, `(async () => {
+    const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+    let room = document.querySelector('#channel-chatroom, [data-testid="chatroom"]');
+    const syntheticRoom = !room;
+    if (!room) {
+      room = document.createElement('section');
+      room.id = 'channel-chatroom';
+      room.style.cssText = 'position:fixed;left:-5000px;top:0;width:360px;height:500px';
+      document.body.append(room);
+    }
+    let holder = room.querySelector('#quick-emotes-holder, [data-testid="quick-emotes-holder"]');
+    const syntheticHolder = !holder;
+    if (!holder) {
+      holder = document.createElement('div');
+      holder.id = 'quick-emotes-holder';
+      holder.style.cssText = 'position:fixed;left:-5000px;top:420px;width:340px;height:40px';
+      room.append(holder);
+    }
+    const box = document.createElement('div');
+    box.contentEditable = 'true';
+    box.setAttribute('role', 'textbox');
+    box.setAttribute('data-testid', 'chat-input');
+    box.style.cssText = 'position:fixed;left:-3000px;bottom:4px;width:220px;height:32px';
+    room.prepend(box);
+    window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+    const dock = await __kfWait(() => holder.querySelector('[data-kf-emote-dock]'));
+    const manage = dock?.querySelector('[data-kf-emote-dock-manage]');
+    if (!dock || !manage) {
+      box.remove();
+      if (syntheticHolder) holder.remove();
+      if (syntheticRoom) room.remove();
+      return { ok: false, why: 'the custom dock did not replace Kick quick-emote chrome' };
+    }
+    const sends = [];
+    const observe = (event) => {
+      if (event.type === 'submit' || event.key === 'Enter'
+        || event.target?.closest?.('[data-testid*="send" i], button[aria-label*="send" i]')) sends.push(event.type);
+    };
+    for (const type of ['click', 'keydown', 'keypress', 'submit']) document.addEventListener(type, observe, true);
+
+    let changedFavorite = false;
+    let key = '';
+    let name = '';
+    try {
+      manage.click();
+      await settle();
+      const settingsOpen = shadow.querySelector('[data-kf-settings-backdrop]')?.hidden === false;
+      const onEmotes = shadow.querySelector('[data-page="emotes"]')?.getAttribute('aria-current') === 'page';
+      const backBefore = Boolean(shadow.querySelector('[data-kf-emote-return]'));
+      const cards = [...shadow.querySelectorAll('[data-kf-sticker-library-item]')];
+      const card = cards.find((entry) => entry.dataset.removed !== 'true'
+        && !entry.querySelector('[data-access="locked"]')
+        && !/^KfProbe/i.test(String(entry.querySelector('.kf-sticker-library-copy strong')?.textContent || ''))
+        && entry.querySelector('[data-action="favorite-library-sticker"]'));
+      if (!card) return { skip: 'the channel catalog yielded no usable library emote to place in the dock' };
+      key = card.dataset.kfStickerKey;
+      name = String(card.querySelector('.kf-sticker-library-copy strong')?.textContent || '').trim();
+      const favorite = card.querySelector('[data-action="favorite-library-sticker"]');
+      if (favorite.getAttribute('aria-pressed') !== 'true') {
+        favorite.click();
+        changedFavorite = true;
+        await settle();
+      }
+      const back = shadow.querySelector('[data-kf-emote-return]');
+      back?.click();
+      const focusReturned = Boolean(await __kfWait(() => document.activeElement === box));
+      const emote = await __kfWait(() => holder.querySelector('[data-kf-emote-dock-emote][data-kf-sticker-key="' + CSS.escape(key) + '"]'));
+      if (!emote) return { ok: false, why: 'favoriting a usable emote did not add it to the composer dock' };
+      box.textContent = 'draft ';
+      box.focus();
+      const range = document.createRange();
+      range.selectNodeContents(box);
+      range.collapse(false);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      emote.click();
+      await settle(150);
+      const typed = box.textContent;
+      const liveManage = holder.querySelector('[data-kf-emote-dock-manage]');
+      const dockRect = dock.getBoundingClientRect();
+      const holderRect = holder.getBoundingClientRect();
+      const manageRect = liveManage?.getBoundingClientRect();
+      const nativeHidden = [...holder.children]
+        .filter((node) => node !== dock)
+        .every((node) => getComputedStyle(node).display === 'none');
+
+      liveManage?.click();
+      await settle();
+      if (changedFavorite) {
+        const cleanup = shadow.querySelector('[data-kf-sticker-library-item][data-kf-sticker-key="' + CSS.escape(key) + '"] [data-action="favorite-library-sticker"]');
+        if (cleanup?.getAttribute('aria-pressed') === 'true') { cleanup.click(); await settle(); }
+      }
+      shadow.querySelector('[data-kf-emote-return]')?.click();
+      await settle(150);
+      return {
+        ok: true,
+        settingsOpen,
+        onEmotes,
+        backBefore,
+        focusReturned,
+        typed,
+        name,
+        sends,
+        nativeHidden,
+        contained: dockRect.left >= holderRect.left - 1 && dockRect.right <= holderRect.right + 1,
+        manageSize: [Math.round(manageRect?.width || 0), Math.round(manageRect?.height || 0)],
+      };
+    } finally {
+      for (const type of ['click', 'keydown', 'keypress', 'submit']) document.removeEventListener(type, observe, true);
+      if (changedFavorite && key) {
+        if (shadow.querySelector('[data-kf-settings-backdrop]')?.hidden !== false) {
+          holder.querySelector('[data-kf-emote-dock-manage]')?.click();
+          await settle();
+        }
+        const cleanup = shadow.querySelector('[data-kf-sticker-library-item][data-kf-sticker-key="' + CSS.escape(key) + '"] [data-action="favorite-library-sticker"]');
+        if (cleanup?.getAttribute('aria-pressed') === 'true') { cleanup.click(); await settle(); }
+      }
+      box.remove();
+      if (syntheticHolder) holder.remove();
+      if (syntheticRoom) room.remove();
+      shadow.querySelector('[data-action="close-settings"]')?.click();
+    }
+  })()`);
+  const dockResult = emoteDockProbe.value || {};
+  recordProbe('the chat emote dock stays in the composer and returns cleanly from its library', dockResult,
+    dockResult.ok === true
+      && dockResult.settingsOpen === true
+      && dockResult.onEmotes === true
+      && dockResult.backBefore === true
+      && dockResult.focusReturned === true
+      && typeof dockResult.typed === 'string' && dockResult.typed.includes(dockResult.name)
+      && !dockResult.typed.includes('[emote:')
+      && dockResult.sends?.length === 0
+      && dockResult.nativeHidden === true
+      && dockResult.contained === true
+      && dockResult.manageSize?.every((value) => value >= 24),
+    dockResult.ok
+      ? `typed ${JSON.stringify(dockResult.typed)}; sends=${dockResult.sends.length}; native chrome hidden=${dockResult.nativeHidden}; manage=${dockResult.manageSize.join('x')}px; focus returned=${dockResult.focusReturned}`
+      : dockResult.why);
 
   // The hover card is built from a synthetic annotated image rather than from
   // whatever chat happened to say during the run: the wiring under test is the
@@ -2550,7 +2831,8 @@ try {
         && rect.top < viewport.bottom
         && String(node.textContent || '').trim().length > 0;
     };
-    const identified = [...messages.querySelectorAll('[data-index], [data-message-id], [data-chat-entry], [role="listitem"], article, .group')]
+    const indexed = [...messages.querySelectorAll('[data-index]')].filter(visible);
+    const identified = indexed.length ? indexed : [...messages.querySelectorAll('[data-message-id], [data-chat-entry], [role="listitem"], article, .group')]
       .filter(visible);
     const painted = [];
     if (!identified.length && typeof document.elementsFromPoint === 'function') {
@@ -2603,7 +2885,9 @@ try {
     const held = Math.round(messages.scrollTop);
     const pixelDrift = Math.round(Math.abs(held - after.top) * 10) / 10;
     const heldDistance = Math.round(messages.scrollHeight - messages.scrollTop - messages.clientHeight);
-    const finalRows = [...messages.querySelectorAll('[data-index], [data-message-id], [data-chat-entry], [role="listitem"], article, .group')];
+    const finalIndexed = [...messages.querySelectorAll('[data-index]')].filter(visible);
+    const finalRows = finalIndexed.length ? finalIndexed : [...messages.querySelectorAll('[data-message-id], [data-chat-entry], [role="listitem"], article, .group')]
+      .filter(visible);
     const anchorReplacement = anchorSignature
       ? finalRows.find((node) => rowSignature(node) === anchorSignature)
       : null;
@@ -2613,7 +2897,8 @@ try {
       : null;
     const anchorEndSignature = anchorEndNode ? rowSignature(anchorEndNode) : '';
     const anchorSame = Boolean(anchorSignature) && anchorEndSignature === anchorSignature;
-    const anchorRecycled = Boolean(anchorSignature) && anchor?.node?.isConnected === false;
+    const anchorRecycled = Boolean(anchorSignature)
+      && (!anchor?.node?.isConnected || rowSignature(anchor.node) !== anchorSignature);
     const anchorReacquired = anchorRecycled && Boolean(anchorReplacement);
     const neighborDrift = rowSnapshot.reduce((best, entry) => {
       const node = finalRows.find((candidate) => rowSignature(candidate) === entry.signature);
@@ -2649,13 +2934,16 @@ try {
           && scroll.anchorReacquired !== true
           && !Number.isFinite(scroll.neighborDrift)
           && Number.isFinite(scroll.pixelDrift)
-          && scroll.pixelDrift <= 8))
+          // When a very fast channel recycles the whole visible window in one
+          // commit there is no surviving content to hold. Remaining farther
+          // from the live edge is the safe fallback; snapping newer is not.
+          && (scroll.pixelDrift <= 8 || scroll.held <= scroll.landed + 8)))
       && scroll.heldDistance > 64
       && scroll.resumed?.paused === 'false'
       && /Pause chat/.test(scroll.resumed?.label || '')
       && scroll.cleared?.button === false,
     scroll.ok
-      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, ${scroll.anchorReacquired ? 'recycled message reacquired' : scroll.anchorSame ? 'same message held' : Number.isFinite(scroll.neighborDrift) ? 'neighbor message held' : scroll.anchorRecycled ? 'recycled row used stable-pixel fallback' : 'anchor lost'}, drift ${scroll.anchorDrift}px, neighbor drift ${scroll.neighborDrift}px, pixel drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
+      ? `paused ${scroll.before?.paused} -> ${scroll.after?.paused} -> ${scroll.resumed?.paused}; button "${scroll.before?.label}" -> "${scroll.after?.label}" -> "${scroll.resumed?.label}"; anchor rows ${scroll.anchorRowCount}, ${scroll.anchorReacquired ? 'recycled message reacquired' : scroll.anchorSame ? 'same message held' : Number.isFinite(scroll.neighborDrift) ? 'neighbor message held' : scroll.anchorRecycled ? 'recycled window stayed safely off the live edge' : 'anchor lost'}, drift ${scroll.anchorDrift}px, neighbor drift ${scroll.neighborDrift}px, pixel drift ${scroll.pixelDrift}px, held ${scroll.held}px against ${scroll.landed}px, still ${scroll.heldDistance}px off the live edge; switch off removes the control=${scroll.cleared?.button === false}`
       : scroll.why);
 
   // R-76: a banned reader's way back into a chat, still on screen.
@@ -3294,26 +3582,43 @@ try {
     if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
     // The logged-out home page has no composer of Kick's own, so the probe
     // supplies one carrying the same contract the runtime looks for.
+    let room = document.querySelector('#channel-chatroom, [data-testid="chatroom"]');
+    const syntheticRoom = !room;
+    if (!room) {
+      room = document.createElement('section');
+      room.id = 'channel-chatroom';
+      room.style.cssText = 'position:fixed;left:-5000px;top:0;width:360px;height:500px';
+      document.body.append(room);
+    }
     const input = document.createElement('div');
     input.setAttribute('contenteditable', 'true');
     input.setAttribute('role', 'textbox');
     input.setAttribute('data-testid', 'chat-input');
-    input.style.cssText = 'position:fixed;left:4px;bottom:80px;width:240px;height:32px';
-    document.body.append(input);
+    // Keep the temporary composer inside the viewport. The completion surface
+    // is anchored to its composer, so an off-screen fixture can only prove
+    // that the browser faithfully positioned the list off-screen with it.
+    input.style.cssText = 'position:fixed;right:32px;bottom:80px;width:240px;height:32px';
+    room.prepend(input);
     const submits = [];
     const watch = (event) => { if (event.type === 'submit' || event.key === 'Enter') submits.push(event.type); };
     for (const type of ['submit', 'keydown', 'keypress']) document.addEventListener(type, watch, true);
-    const toggle = shadow.querySelector('[data-set="content.emoteAutocomplete"]');
-    const wasOn = toggle && toggle.getAttribute('aria-checked') === 'true';
+    let toggle = null;
+    let wasOn = false;
     try {
-      if (!toggle) return { ok: false, why: 'autocomplete setting not rendered' };
-      if (!wasOn) { toggle.click(); await settle(); }
       // Take a real library name rather than seeding one: the library lives
       // inside the bundle IIFE, and the settings page already renders its keys.
+      shadow.querySelector('[data-page="emotes"]')?.click();
+      await settle();
       const seeded = shadow.querySelector('[data-action="copy-sticker-name"], [data-action="insert-sticker-name"]');
       const label = seeded?.getAttribute('aria-label') || '';
       const name = (label.match(/name ([A-Za-z0-9_]+)/) || [])[1];
       if (!name || name.length < 3) return { skip: 'the library is empty on this throwaway profile; run the gate against a channel URL so chat fills it' };
+      shadow.querySelector('[data-page="content"]')?.click();
+      await settle();
+      toggle = shadow.querySelector('[data-set="content.emoteAutocomplete"]');
+      wasOn = toggle && toggle.getAttribute('aria-checked') === 'true';
+      if (!toggle) return { ok: false, why: 'autocomplete setting not rendered' };
+      if (!wasOn) { toggle.click(); await settle(); }
 
       input.focus();
       document.execCommand('insertText', false, 'hello :' + name.slice(0, 3));
@@ -3350,6 +3655,7 @@ try {
     } finally {
       for (const type of ['submit', 'keydown', 'keypress']) document.removeEventListener(type, watch, true);
       input.remove();
+      if (syntheticRoom) room.remove();
       if (toggle && !wasOn) toggle.click();
       await settle();
     }
@@ -3495,33 +3801,28 @@ try {
       if (!tile) return { skip: 'the settled window rendered no tile to favorite' };
       const key = tile.dataset.kfStickerKey;
       const before = { tile, grid: stableGrid, state: tile.dataset.kfStickerState };
-      const proxy = tile.querySelector('[data-kf-sticker-proxy]');
-      const tools = tile.querySelector('[data-kf-sticker-tools]');
-      const atRest = tools && getComputedStyle(tools).display === 'none';
-      proxy.focus();
-      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-      const anchorRect = proxy.getBoundingClientRect();
-      const toolsRect = tools.getBoundingClientRect();
-      const overlaps = !(
-        toolsRect.right <= anchorRect.left
-        || toolsRect.left >= anchorRect.right
-        || toolsRect.bottom <= anchorRect.top
-        || toolsRect.top >= anchorRect.bottom
-      );
-      const actionLabels = [...tools.querySelectorAll('button')].map((button) => button.textContent.trim());
-      const actionHeights = [...tools.querySelectorAll('button')].map((button) => button.getBoundingClientRect().height);
+      const manage = tile.querySelector('[data-kf-sticker-manage-tile]');
+      const manageRect = manage?.getBoundingClientRect();
+      const manageVisible = manage && getComputedStyle(manage).display !== 'none' && manageRect.width >= 24 && manageRect.height >= 24;
+      manage?.click();
+      await settle();
+      const detail = organizer.querySelector('[data-kf-sticker-detail][data-kf-sticker-key="' + CSS.escape(key) + '"]');
+      const detailRect = detail?.getBoundingClientRect();
+      const actionLabels = [...(detail?.querySelectorAll('[data-kf-sticker-detail-actions] :is(button, a)') || [])]
+        .map((control) => control.textContent.trim());
+      const actionHeights = [...(detail?.querySelectorAll('[data-kf-sticker-detail-actions] :is(button, a, select)') || [])]
+        .map((control) => control.getBoundingClientRect().height);
       const actionSurface = {
-        atRest,
-        opened: tools.dataset.kfOpen === 'true',
-        topLayer: tools.matches(':popover-open'),
-        side: tools.dataset.kfSide,
-        overlaps,
-        onScreen: toolsRect.left >= 8 && toolsRect.right <= innerWidth - 8
-          && toolsRect.top >= 8 && toolsRect.bottom <= innerHeight - 8,
+        manageVisible,
+        opened: manage?.getAttribute('aria-expanded') === 'true' && Boolean(detail),
+        inline: Boolean(detail && detail.closest('[data-kf-sticker-chrome]')),
+        onScreen: detailRect && detailRect.left >= 8 && detailRect.right <= innerWidth - 8
+          && detailRect.top >= 8 && detailRect.bottom <= innerHeight - 8,
+        directGroup: Boolean(detail?.querySelector('[data-kf-sticker-direct-group]')),
         actionLabels,
         actionHeights,
       };
-      tile.querySelector('[data-kf-sticker-action="pin"]').click();
+      detail?.querySelector('[data-kf-sticker-action="pin"]')?.click();
       await settle();
       const afterGrid = panel.querySelector('[data-kf-sticker-grid]');
       const afterTile = afterGrid?.querySelector('[data-kf-sticker-key="' + CSS.escape(key) + '"]');
@@ -3613,17 +3914,17 @@ try {
     organizerResult.ok
       ? `grid reused=${organizerResult.sameGrid} tile reused=${organizerResult.sameTile} state now ${organizerResult.pinned}`
       : organizerResult.why);
-  recordProbe('emote management opens outboard with labelled Favorite and Remove actions', organizerResult,
+  recordProbe('emote management opens a stable detail tray with direct organization', organizerResult,
     organizerResult.ok === true
-      && organizerResult.actionSurface?.atRest === true
+      && organizerResult.actionSurface?.manageVisible === true
       && organizerResult.actionSurface?.opened === true
-      && organizerResult.actionSurface?.topLayer === true
-      && organizerResult.actionSurface?.overlaps === false
+      && organizerResult.actionSurface?.inline === true
       && organizerResult.actionSurface?.onScreen === true
+      && organizerResult.actionSurface?.directGroup === true
       && ['Favorite', 'Remove'].every((label) => organizerResult.actionSurface?.actionLabels?.includes(label))
       && organizerResult.actionSurface?.actionHeights?.every((height) => height >= 30),
     organizerResult.ok
-      ? `${organizerResult.actionSurface?.side} side; rows ${JSON.stringify(organizerResult.actionSurface?.actionLabels)}; heights ${JSON.stringify(organizerResult.actionSurface?.actionHeights?.map(Math.round))}`
+      ? `inline=${organizerResult.actionSurface?.inline}; actions ${JSON.stringify(organizerResult.actionSurface?.actionLabels)}; heights ${JSON.stringify(organizerResult.actionSurface?.actionHeights?.map(Math.round))}`
       : organizerResult.why);
   recordProbe('dragging an emote moves it after the marked tile without sending it', organizerResult,
     organizerResult.ok === true
@@ -3769,6 +4070,275 @@ try {
   } else {
     console.log('SKIP  layout, card detection, and filter checks need the real Kick DOM');
     console.log('      Run with a non-headless browser, or use the offline DOM fixtures.');
+  }
+
+  if (process.env.KF_EMOTE_SCREENSHOT_DIR && reachedKick) {
+    const screenshotDir = resolve(process.env.KF_EMOTE_SCREENSHOT_DIR);
+    await stat(screenshotDir);
+    await pageClient.send('Page.navigate', { url: TARGET_URL });
+    await sleep(9000);
+    await evaluate(pageClient, PAGE_WAIT_HELPER);
+    const screenshotRoute = await evaluate(pageClient, `({
+      url: location.href,
+      runtime: Boolean(document.querySelector('#kick-focus-root, [data-kf-root]')) || Boolean(window.__kickFocusNetworkDefenseV1),
+      chat: Boolean(document.querySelector('#channel-chatroom, [data-testid="chatroom"]')),
+    })`);
+    record('returned to the requested channel before capturing emote UI',
+      screenshotRoute.value?.runtime === true && screenshotRoute.value?.chat === true,
+      JSON.stringify(screenshotRoute.value || {}));
+    const captureEmoteFrame = async (name, label) => {
+      await sleep(700);
+      const capture = await pageClient.send('Page.captureScreenshot', { format: 'png', fromSurface: true });
+      const destination = resolve(screenshotDir, name);
+      if (capture.result?.data) {
+        await writeFile(destination, Buffer.from(capture.result.data, 'base64'));
+        record(`captured ${label}`, true, destination);
+        return;
+      }
+      record(`captured ${label}`, false, 'CDP returned no image data');
+    };
+
+    // Build one deterministic, reversible screenshot state from the real
+    // channel catalog. The offscreen composer unlocks the dock for logged-out
+    // runs but never becomes visible and never submits anything.
+    const dockStage = await evaluate(pageClient, `(async () => {
+      const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
+      const room = await __kfWait(() => document.querySelector('#channel-chatroom, [data-testid="chatroom"]'));
+      if (!shadow || !room) return { ok: false, why: 'the channel did not expose the settings host and chat shell' };
+      const settle = (ms = 500) => new Promise((done) => setTimeout(done, ms));
+      let holder = room.querySelector('#quick-emotes-holder, [data-testid="quick-emotes-holder"]');
+      const syntheticHolder = !holder;
+      const previousRoomPosition = room.style.position;
+      if (!holder) {
+        if (getComputedStyle(room).position === 'static') room.style.position = 'relative';
+        holder = document.createElement('div');
+        holder.id = 'quick-emotes-holder';
+        holder.dataset.kfScreenshotHolder = 'true';
+        holder.style.cssText = 'position:absolute;left:12px;right:12px;bottom:18px;z-index:20;min-height:42px;padding:4px 8px;border:1px solid rgba(255,255,255,.1);border-radius:9px;background:#0b0f0c';
+        room.append(holder);
+      }
+      const box = document.createElement('div');
+      box.contentEditable = 'true';
+      box.setAttribute('role', 'textbox');
+      box.setAttribute('data-testid', 'chat-input');
+      box.dataset.kfScreenshotComposer = 'true';
+      box.style.cssText = 'position:fixed;left:-3000px;bottom:0;width:220px;height:32px';
+      room.prepend(box);
+      window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+      const dock = await __kfWait(() => holder.querySelector('[data-kf-emote-dock]'));
+      const manage = dock?.querySelector('[data-kf-emote-dock-manage]');
+      if (!dock || !manage) {
+        box.remove();
+        if (syntheticHolder) holder.remove();
+        room.style.position = previousRoomPosition;
+        return { ok: false, why: 'the composer dock did not render' };
+      }
+      manage.click();
+      await settle();
+      const cards = [...shadow.querySelectorAll('[data-kf-sticker-library-item]')];
+      const usableCards = cards.filter((entry) => entry.dataset.removed !== 'true'
+        && !entry.querySelector('[data-access="locked"]')
+        && !/^KfProbe/i.test(String(entry.querySelector('.kf-sticker-library-copy strong')?.textContent || ''))
+        && entry.querySelector('[data-action="favorite-library-sticker"]'));
+      const card = usableCards[0];
+      if (!card) {
+        box.remove();
+        if (syntheticHolder) holder.remove();
+        room.style.position = previousRoomPosition;
+        shadow.querySelector('[data-action="close-settings"]')?.click();
+        return { ok: false, why: 'the channel catalog had no usable emote' };
+      }
+      const key = card.dataset.kfStickerKey;
+      const favoriteChanges = [];
+      const dockKeys = usableCards.slice(0, 6).map((candidate) => candidate.dataset.kfStickerKey);
+      // Fill the six-slot dock for the documentation frame, while remembering
+      // exactly which preferences this temporary state changed.
+      for (const candidateKey of dockKeys) {
+        // A favorite write may repaint the library, so resolve the current
+        // card on every pass instead of clicking a detached prior node.
+        const candidate = shadow.querySelector('[data-kf-sticker-library-item][data-kf-sticker-key="' + CSS.escape(candidateKey) + '"]');
+        const favorite = candidate?.querySelector('[data-action="favorite-library-sticker"]');
+        if (favorite?.getAttribute('aria-pressed') !== 'true') {
+          favoriteChanges.push(candidateKey);
+          favorite.click();
+          await settle(90);
+        }
+      }
+      await settle();
+      const currentCards = [...shadow.querySelectorAll('[data-kf-sticker-library-item]')];
+      const items = currentCards.map((entry) => ({
+        name: String(entry.querySelector('.kf-sticker-library-copy strong')?.textContent || '').trim(),
+        src: entry.querySelector('.kf-sticker-library-image img')?.src || '',
+      })).filter((entry) => entry.name && !/^KfProbe/i.test(entry.name) && /\\/emotes\\//i.test(entry.src)).slice(0, 96);
+      const back = shadow.querySelector('[data-kf-emote-return]');
+      if (!back) {
+        box.remove();
+        if (syntheticHolder) holder.remove();
+        room.style.position = previousRoomPosition;
+        shadow.querySelector('[data-action="close-settings"]')?.click();
+        return { ok: false, why: 'the emote library did not offer a return to chat' };
+      }
+      back.click();
+      await settle();
+      const emote = await __kfWait(() => holder.querySelector('[data-kf-emote-dock-emote][data-kf-sticker-key="' + CSS.escape(key) + '"]'));
+      const toast = shadow.querySelector('[data-kf-toast]');
+      if (toast) toast.hidden = true;
+      window.__kfEmoteShotState = {
+        key, favoriteChanges, items, box, holder, room, syntheticHolder, previousRoomPosition,
+        originalPicker: null, originalStyle: null,
+      };
+      return {
+        ok: Boolean(emote),
+        why: emote ? '' : 'the favorited emote did not reach the dock',
+        catalog: items.length,
+        dockItems: holder.querySelectorAll('[data-kf-emote-dock-emote]').length,
+      };
+    })()`);
+    const dockShot = dockStage.value || {};
+    record('prepared the real chat emote dock for screenshots', dockShot.ok === true,
+      dockShot.ok ? `${dockShot.dockItems} dock emotes from ${dockShot.catalog} captured catalog entries` : dockShot.why);
+
+    if (dockShot.ok) {
+      await captureEmoteFrame('emote-dock.png', 'the chat emote dock screenshot');
+
+      const libraryStage = await evaluate(pageClient, `(async () => {
+        const state = window.__kfEmoteShotState;
+        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+        state?.holder?.querySelector('[data-kf-emote-dock-manage]')?.click();
+        await new Promise((done) => setTimeout(done, 650));
+        const page = shadow?.querySelector('[data-kf-page]');
+        if (page) page.scrollTop = 0;
+        const search = shadow?.querySelector('[data-kf-sticker-library-search]');
+        if (search) {
+          search.value = 'Global';
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise((done) => setTimeout(done, 350));
+        }
+        return {
+          open: shadow?.querySelector('[data-kf-settings-backdrop]')?.hidden === false,
+          page: shadow?.querySelector('[data-page="emotes"]')?.getAttribute('aria-current'),
+          cards: shadow?.querySelectorAll('[data-kf-sticker-library-item]').length || 0,
+          back: Boolean(shadow?.querySelector('[data-kf-emote-return]')),
+        };
+      })()`);
+      const libraryShot = libraryStage.value || {};
+      record('prepared the emote library screenshot', libraryShot.open === true
+        && libraryShot.page === 'page' && libraryShot.cards > 0 && libraryShot.back === true,
+      `open=${libraryShot.open}, cards=${libraryShot.cards}, back to chat=${libraryShot.back}`);
+      await captureEmoteFrame('emote-library.png', 'the emote library screenshot');
+
+      const contentStage = await evaluate(pageClient, `(async () => {
+        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+        shadow?.querySelector('[data-page="content"]')?.click();
+        await new Promise((done) => setTimeout(done, 650));
+        const control = shadow?.querySelector('[data-set="content.quickEmoteBar"]');
+        const row = control?.closest('.kf-row');
+        row?.scrollIntoView({ block: 'center' });
+        return {
+          page: shadow?.querySelector('[data-page="content"]')?.getAttribute('aria-current'),
+          dock: Boolean(control),
+          source: Boolean(shadow?.querySelector('[data-set="content.emoteDockSource"]')),
+          limit: Boolean(shadow?.querySelector('[data-set="content.quickEmoteLimit"]')),
+        };
+      })()`);
+      const contentShot = contentStage.value || {};
+      record('prepared the chat emote settings screenshot', contentShot.page === 'page'
+        && contentShot.dock === true && contentShot.source === true && contentShot.limit === true,
+      JSON.stringify(contentShot));
+      await captureEmoteFrame('settings-content-emotes.png', 'the chat emote settings screenshot');
+
+      const pickerStage = await evaluate(pageClient, `(async () => {
+        const state = window.__kfEmoteShotState;
+        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+        shadow?.querySelector('[data-action="close-settings"]')?.click();
+        await new Promise((done) => setTimeout(done, 400));
+        const original = document.getElementById('chat-emotes-picker-panel');
+        if (original) {
+          state.originalPicker = original;
+          state.originalStyle = original.getAttribute('style');
+          original.id = 'chat-emotes-picker-panel-kf-screenshot-original';
+          original.style.display = 'none';
+        }
+        const panel = document.createElement('section');
+        panel.id = 'chat-emotes-picker-panel';
+        panel.dataset.kfScreenshotPicker = 'true';
+        panel.style.cssText = 'position:fixed;right:24px;bottom:72px;z-index:2147483000;width:410px;max-height:650px;overflow:hidden;padding:10px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#141815;box-shadow:0 24px 70px rgba(0,0,0,.58)';
+        const searchRow = document.createElement('div');
+        searchRow.className = 'flex items-center';
+        const search = document.createElement('input');
+        search.id = 'search-emotes-input';
+        search.type = 'search';
+        search.placeholder = 'Search emotes';
+        search.setAttribute('aria-label', 'Search emotes');
+        search.style.cssText = 'width:100%;height:38px;padding:0 12px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#0b0f0c;color:#f4f7f4';
+        searchRow.append(search);
+        const native = document.createElement('div');
+        native.className = 'overflow-y-auto';
+        const group = document.createElement('section');
+        group.setAttribute('role', 'group');
+        const label = document.createElement('h3');
+        label.id = 'emote-picker-section-name-kf-screenshot';
+        label.textContent = 'Channel emotes';
+        group.append(label);
+        for (const item of state.items) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.setAttribute('aria-label', item.name);
+          const image = document.createElement('img');
+          image.src = item.src;
+          image.alt = item.name;
+          button.append(image);
+          group.append(button);
+        }
+        native.append(group);
+        panel.append(searchRow, native);
+        document.body.append(panel);
+        window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+        const organizer = await __kfWait(() => panel.querySelector('[data-kf-sticker-organizer]'));
+        const manage = organizer?.querySelector('[data-kf-sticker-manage-tile]');
+        manage?.click();
+        await new Promise((done) => setTimeout(done, 500));
+        const rect = panel.getBoundingClientRect();
+        return {
+          organizer: Boolean(organizer),
+          detail: Boolean(organizer?.querySelector('[data-kf-sticker-detail]')),
+          tiles: organizer?.querySelectorAll('[data-kf-sticker-item]').length || 0,
+          onScreen: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+        };
+      })()`);
+      const pickerShot = pickerStage.value || {};
+      record('prepared the in-player emote organizer screenshot', pickerShot.organizer === true
+        && pickerShot.detail === true && pickerShot.tiles > 0 && pickerShot.onScreen === true,
+      JSON.stringify(pickerShot));
+      await captureEmoteFrame('emote-picker.png', 'the in-player emote organizer screenshot');
+
+      await evaluate(pageClient, `(async () => {
+        const state = window.__kfEmoteShotState;
+        document.querySelector('[data-kf-screenshot-picker]')?.remove();
+        if (state?.originalPicker) {
+          state.originalPicker.id = 'chat-emotes-picker-panel';
+          if (state.originalStyle === null) state.originalPicker.removeAttribute('style');
+          else state.originalPicker.setAttribute('style', state.originalStyle);
+        }
+        window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+        await new Promise((done) => setTimeout(done, 450));
+        state?.holder?.querySelector('[data-kf-emote-dock-manage]')?.click();
+        await new Promise((done) => setTimeout(done, 550));
+        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
+        for (const key of state?.favoriteChanges || []) {
+          const favorite = shadow?.querySelector('[data-kf-sticker-library-item][data-kf-sticker-key="' + CSS.escape(key) + '"] [data-action="favorite-library-sticker"]');
+          if (favorite?.getAttribute('aria-pressed') === 'true') favorite.click();
+        }
+        await new Promise((done) => setTimeout(done, 350));
+        shadow?.querySelector('[data-action="close-settings"]')?.click();
+        state?.box?.remove();
+        if (state?.syntheticHolder) state.holder?.remove();
+        if (state?.room) state.room.style.position = state.previousRoomPosition || '';
+        delete window.__kfEmoteShotState;
+        window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+        return true;
+      })()`);
+    }
   }
 
   if (process.env.KF_SCREENSHOT_PATH && reachedKick) {

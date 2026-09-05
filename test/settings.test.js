@@ -26,7 +26,7 @@ const EXPECTED_HOST_KEYS = [
   'plural', 'PRE_IMPORT_BACKUP_KEY', 'protectionRows', 'rankSettingsMatches', 'refreshViewerCollectibles',
   'remoteBlocklistSummary', 'renderChatHistoryResults', 'rewardStatusSummary', 'setMarkup', 'settingsFocusSelector',
   'startChannelEmoteImport', 'state', 'STICKER_GROUP_LIMIT', 'STICKER_LIBRARY_LIMIT', 'stickerChangedSinceCapture', 'storageDiagnostics',
-  'storageHealth', 'TELEMETRY_HOSTS', 'tr', 'trf', 'VERSION', 'VIEWER_HUB_REASONS',
+  'storageHealth', 'syncEmoteReturnControl', 'TELEMETRY_HOSTS', 'tr', 'trf', 'VERSION', 'VIEWER_HUB_REASONS',
   'resettableSection', 'undoSlotLabel', 'VIEWER_HUB_REWARD_WORDS', 'VIEWER_HUB_TITLES', 'viewerHubCards', 'viewerHubSummary',
 ].sort();
 

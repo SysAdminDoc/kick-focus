@@ -95,6 +95,8 @@ import {
   placeStickerFavorite,
   orderedStickerKeys,
   moveStickerOrder,
+  selectEmoteDockKeys,
+  stickerSearchRank,
   stickerSubscriptionLocked,
   routeKind,
   streamerStatsProfileUrl,
@@ -680,7 +682,7 @@ test('emote keys carry a platform prefix, and every store migrates together loss
     assignments: [{ key: 'id:2', groupId: 'grp' }],
   };
   const migrated = normalizeStickerPreferences(legacy);
-  assert.equal(migrated.schema, 10);
+  assert.equal(migrated.schema, STICKER_PREFERENCES_SCHEMA);
   assert.deepEqual(migrated.library.map((entry) => entry.key), ['kick:id:1', 'kick:id:2']);
   assert.deepEqual(migrated.favorites.map((entry) => entry.key), ['kick:id:1']);
   assert.deepEqual(migrated.hidden, ['kick:id:3']);
@@ -1906,7 +1908,7 @@ test('manual emote order is stable, bounded, and movable by drop position', { ta
   assert.deepEqual(moveStickerOrder(moved, 'id:d', 'id:unknown', false, base), moved);
 
   const normalized = normalizeStickerPreferences({ order: ['id:c', 'id:c', 'id:hidden'], hidden: ['id:hidden'] });
-  assert.deepEqual(normalized.order, ['kick:id:c']);
+  assert.deepEqual(normalized.order, ['kick:id:c', 'kick:id:hidden']);
 });
 
 test('toggling a favorite touches one scope and respects the ceiling', { tags: ['unit'] }, () => {
@@ -2072,7 +2074,7 @@ test('a full library evicts an old observed entry rather than dropping the new o
   assert.ok(!value.library.some((item) => item.key === 'kick:id:1'), 'the oldest observed emote is evicted');
 });
 
-test('removed keys are never re-materialised into the library on normalize', { tags: ['unit'] }, () => {
+test('removed emotes retain their full library record for individual recovery', { tags: ['unit'] }, () => {
   const value = normalizeStickerPreferences({
     schema: STICKER_PREFERENCES_SCHEMA,
     hidden: ['id:gone'],
@@ -2081,7 +2083,29 @@ test('removed keys are never re-materialised into the library on normalize', { t
       { key: 'id:kept', id: 'kept', name: 'Kept', src: 'https://files.kick.com/emotes/kept/fullsize', nativeGroups: [], access: 'observed' },
     ],
   });
-  assert.deepEqual(value.library.map((item) => item.key), ['kick:id:kept']);
+  assert.deepEqual(value.library.map((item) => item.key), ['kick:id:gone', 'kick:id:kept']);
+  assert.equal(value.library[0].name, 'Gone');
+  assert.deepEqual(value.hidden, ['kick:id:gone']);
+});
+
+test('chat emote dock combines channel-aware favorites and recent usable emotes', { tags: ['unit'] }, () => {
+  const input = {
+    favorites: ['channel-favorite', 'global-favorite', 'missing'],
+    recent: ['recent-one', 'channel-favorite', 'recent-two'],
+    available: ['channel-favorite', 'global-favorite', 'recent-one', 'recent-two'],
+    limit: 3,
+  };
+  assert.deepEqual(selectEmoteDockKeys({ ...input, mode: 'mixed' }), ['channel-favorite', 'global-favorite', 'recent-one']);
+  assert.deepEqual(selectEmoteDockKeys({ ...input, mode: 'favorites' }), ['channel-favorite', 'global-favorite']);
+  assert.deepEqual(selectEmoteDockKeys({ ...input, mode: 'recent' }), ['recent-one', 'channel-favorite', 'recent-two']);
+});
+
+test('emote search ranks names before source and custom group metadata', { tags: ['unit'] }, () => {
+  const sticker = { name: 'PartyParrot', sourceSlug: 'music-room', nativeGroups: ['Celebrations'] };
+  assert.equal(stickerSearchRank(sticker, 'party'), 1);
+  assert.equal(stickerSearchRank(sticker, 'celebrations'), 4);
+  assert.equal(stickerSearchRank(sticker, 'favorites', 'Favorites'), 4);
+  assert.equal(stickerSearchRank(sticker, 'missing', 'Favorites'), Number.POSITIVE_INFINITY);
 });
 
 test('the emote preferences migrate losslessly from every historical schema to the current schema', { tags: ['unit'] }, () => {

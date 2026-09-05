@@ -207,13 +207,13 @@ const organizerWindows = (bundle) => /visibleWindow\(visible,/.test(bundle)
 const spacerMathMatchesCss = (bundle) => {
   const metrics = [...bundle.matchAll(/(?:compact|balanced|roomy|large): Object\.freeze\(\{ tileHeight: (\d+), tileMinWidth: (\d+), gap: (\d+) \}\)/g)]
     .map((match) => match.slice(1).join(':'));
-  const cssMetrics = [...bundle.matchAll(/--kf-emote-tile-height: (\d+)px;[\s\S]{0,120}?--kf-emote-tile-min-width: (\d+)px;[\s\S]{0,120}?--kf-emote-grid-gap: (\d+)px;/g)]
+  const cssMetrics = [...bundle.matchAll(/--kf-emote-tile-height:\s*(\d+)px;[\s\S]{0,120}?--kf-emote-tile-min-width:\s*(\d+)px;[\s\S]{0,120}?--kf-emote-grid-gap:\s*(\d+)px;/g)]
     .map((match) => match.slice(1).join(':'));
   return metrics.length === 4
     && metrics.every((metric) => cssMetrics.includes(metric))
-    && /grid-auto-rows: var\(--kf-emote-tile-height\)/.test(bundle)
-    && /grid-template-columns: repeat\(auto-fill, minmax\(var\(--kf-emote-tile-min-width\)/.test(bundle)
-    && /gap: var\(--kf-emote-grid-gap\)/.test(bundle)
+    && /grid-auto-rows:\s*var\(--kf-emote-tile-height\)/.test(bundle)
+    && /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(var\(--kf-emote-tile-min-width\)/.test(bundle)
+    && /gap:\s*var\(--kf-emote-grid-gap\)/.test(bundle)
     && /const \{ tileHeight, gap \} = stickerGridMetrics\(\);[\s\S]{0,100}?rows \* tileHeight \+ \(rows - 1\) \* gap/.test(bundle);
 };
 const SPACER_MATH_SAMPLE = `
@@ -237,7 +237,7 @@ const organizerDebouncesSearch = (bundle) =>
 /** A favorite toggle must patch its tile, not re-serialise the window. */
 const organizerPatchesInPlace = (bundle) => /function patchStickerTileStates/.test(bundle)
   && /patchStickerTileStates\(gridHost\)/.test(bundle)
-  && bundle.includes('data-kf-sticker-state="${pinned}:${hidden}"');
+  && bundle.includes('data-kf-sticker-state="${pinned}:${hidden}:${inspected}"');
 
 /**
  * Cross-tab convergence must stay a nudge, never the mechanism.
@@ -893,7 +893,7 @@ const unguardedMotion = motionSheets.flatMap(([name, css]) => {
     })
     .map((match) => match.index);
   if (!motion.length) return [];
-  const guards = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{/g)];
+  const guards = [...css.matchAll(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{/g)];
   if (!guards.length) return [`${name} animates and never mentions prefers-reduced-motion`];
   // The last guard must actually neutralise something, not merely exist: an
   // empty block at the end of the sheet satisfied position alone.
@@ -1068,7 +1068,8 @@ const checks = [
     // chat pop-out is a separate document, and its sheet's fallbacks are
     // deliberately the path for "the page has not painted yet". All five of
     // those were wrong, so the designed path painted colours from nowhere.
-    const head = source.indexOf('--kf-focus-ring: 3px solid var(--kf-accent);');
+    const headMatch = /--kf-focus-ring:\s*3px solid var\(--kf-accent\);/.exec(source);
+    const head = headMatch?.index ?? -1;
     if (head < 0) return false;
     const block = source.slice(head, source.indexOf('}', head));
     const tokens = new Map([...block.matchAll(/--kf-([a-z-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/g)]
@@ -1369,8 +1370,8 @@ const checks = [
   // Off-screen emote tiles skip layout and paint; the intrinsic size keeps the
   // scroll height honest so the bar does not jump as cards render.
   ['off-screen emote tiles are skipped with a stated intrinsic size',
-    bundleTargets.every(([, bundleSource]) => (bundleSource.match(/content-visibility: auto/g) || []).length >= 2
-      && (bundleSource.match(/contain-intrinsic-size:/g) || []).length >= 2)],
+    bundleTargets.every(([, bundleSource]) => (bundleSource.match(/content-visibility:\s*auto/g) || []).length >= 2
+      && (bundleSource.match(/contain-intrinsic-size\s*:/g) || []).length >= 2)],
   // Keyword highlighting must paint from the registry, never by wrapping words
   // in nodes: a <mark> inside Kick's chat is something React reconciles against
   // and something this build then has to undo.
@@ -1404,17 +1405,19 @@ const checks = [
   // text into Kick's editor, or send anything.
   ['emote name insertion stays a plain name, never sends, and has no raw-text fallback',
     bundleTargets.every(([, bundleSource]) => bundleSource.includes('function insertionPlanFor')
-      && bundleSource.includes("execCommand('insertText', false, plan.text)")
+      && bundleSource.includes('function typeStickerNameIntoComposer')
+      && bundleSource.includes("const text = options.trailingSpace ? `${plan.text} ` : plan.text")
+      && bundleSource.includes("execCommand('insertText', false, text)")
       && bundleSource.includes('const PLAIN_EMOTE_NAME')
       && !/\[emote:\$\{/.test(bundleSource)
-      && !/insertStickerName[\s\S]{0,1200}?(key:\s*'Enter'|click\(\)|form\.submit)/.test(bundleSource))],
+      && !/(?:insertStickerName|typeStickerNameIntoComposer)[\s\S]{0,1200}?(key:\s*'Enter'|click\(\)|form\.submit)/.test(bundleSource))],
   // The hover card must stay keyed to the save affordance and stay out of the
   // pointer's way: a card that can be hovered fights the emote for the hover,
   // and one keyed on "any image in chat" annotates unrelated injected content.
   ['the chat emote hover card is delegated, key-scoped, and never a pointer target',
     bundleTargets.every(([, bundleSource]) => bundleSource.includes('function emoteTooltipText')
       && bundleSource.includes("closest?.('[data-kf-chat-emote-save]')")
-      && bundleSource.includes('pointer-events: none')
+      && /pointer-events:\s*none/.test(bundleSource)
       && /host\.style\.left = /.test(bundleSource))],
   // An import writes ten stores. Committing them one at a time is how a quota
   // ceiling produces a configuration that is half the file and half the old
@@ -1484,7 +1487,7 @@ const checks = [
     && source.includes("shell.dataset.kfStickerNativeShell = 'true'")],
   ['separates active emotes from expired subscriptions and links every known source profile', source.includes("trf('{count} available'")
     && source.includes("trf(', {count} locked by Kick'")
-    && source.includes('max-height: min(640px, calc(100vh - 132px))')
+    && /max-height:\s*min\(640px,calc\(100vh - 132px\)\)/.test(source)
     && source.includes('stickerButtonUnavailable')
     && source.includes('catalogSubscriptionEntitlement')
     && source.includes('stickerSubscriptionLocked')
@@ -1506,7 +1509,7 @@ const checks = [
     && source.includes('role="status" aria-live="polite"')
     && source.includes("setAttribute('role', isError ? 'alert' : 'status')")
     && source.includes('aria-valuetext=')
-    && source.includes('.kf-switch[aria-checked="true"] { background: Highlight; }')],
+    && /\.kf-switch\[aria-checked="true"\]\{background:\s*Highlight\}/.test(source)],
   ['pluralization is locale-correct via Intl.PluralRules, not a hand n===1 rule', source.includes('function pluralForm')
     && source.includes('new Intl.PluralRules')
     && source.includes('function plural(')],
@@ -1520,10 +1523,12 @@ const checks = [
     && source.includes('settings.liveChatEvents && settings.organizeChatStickers')
     && source.includes('new Image()')
     && source.includes('chatEmoteHarvest.negative')],
-  ['caps the emote library without dropping new or acted-on records', source.includes('function evictStickerLibrary')
+  ['caps the emote library without dropping new, organized, or removed records', source.includes('function evictStickerLibrary')
     && source.includes('function queueStickerPersist')
     && source.includes('if (state.stickerPreferences.hidden.has(sticker.key)) continue')
-    && source.includes('state.stickerPreferences.library.delete(key)')],
+    && source.includes('...assignments.map((assignment) => assignment.key)')
+    && source.includes('...hidden,')
+    && source.includes('cleanStickerLibrary(source.library)')],
   ['export payload covers every registered backup store', STORAGE_STORES.filter((store) => store.backup)
     .every((store) => (store.field === 'settings' ? ('probe' in exportProbe) : (store.field in exportProbe)))],
   [`import restores every backup store${importGaps.length ? ` — missing ${importGaps.join(', ')}` : ''}`,
@@ -1590,7 +1595,7 @@ const checks = [
     && source.includes("tab('all', tr('All')")
     && source.includes('data-kf-sticker-view="group"')
     && source.includes("tab('native', tr('Kick'))")],
-  ['styles the current semantic Kick shell', source.includes(':is(main, #main-container)')
+  ['styles the current semantic Kick shell', /:is\(main,\s*#main-container\)/.test(source)
     && source.includes('[data-testid="livestream-results-card"]')
     && source.includes('#channel-chatroom')],
   ['ships route-specific search and Drops recovery', source.includes('applySearchEnhancements')
@@ -1860,7 +1865,7 @@ const checks = [
 
   ['offers a hover-expanding auto-hide sidebar mode', source.includes('data-kf-sidebar="autohide"')
     && source.includes('[aria-controls="sidebar-wrapper"]')
-    && source.includes('min-width: 1024px')
+    && /min-width:\s*1024px/.test(source)
     // A panel that slides out under the pointer must honour reduced motion.
     && source.includes('prefers-reduced-motion: reduce')],
   ['multi-stream is reachable without opening settings', source.includes('data-kf-header-multi')
@@ -1911,8 +1916,8 @@ const checks = [
   ['renders wide collectibles at their measured aspect', source.includes('measureEmoteAspect')
     && source.includes('data-kf-emote-aspect="wide"')],
   ['every API endpoint stays on kick.com', !EXFIL_REGEX.test(source)],
-  ['gives High Contrast a real focus outline', source.includes('forced-colors: active')
-    && source.includes('outline: 3px solid Highlight')],
+  ['gives High Contrast a real focus outline', /forced-colors:\s*active/.test(source)
+    && /outline:\s*3px solid Highlight/.test(source)],
   ['page-realm hooks do not announce themselves', source.includes('function disguise(')
     && source.includes('[native code]')],
 

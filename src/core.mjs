@@ -1,4 +1,4 @@
-export const VERSION = '1.45.0';
+export const VERSION = '1.46.0';
 export const SETTINGS_SCHEMA = 7;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 7;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.46.0': Object.freeze({
+    summary: 'The emote workspace now sits beside chat. A quick dock handles insertion, while the organizer keeps removals recoverable.',
+    defaults: Object.freeze([]),
+  }),
   '1.45.0': Object.freeze({
     summary: 'Emote management is clearer and draggable. Daily reward auto-claim now waits for Kick to confirm success.',
     defaults: Object.freeze([]),
@@ -208,6 +212,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
     emotePickerHeight: 'medium',
     quickEmoteBar: 'compact',
     quickEmoteLimit: '6',
+    // Favorites stay predictable while recent use fills the empty slots. The
+    // other modes let somebody make the composer dock entirely deliberate or
+    // entirely usage-driven without changing either underlying list.
+    emoteDockSource: 'mixed',
     clickChatEmotes: true,
     // Off by default: this one types into Kick's chat input. Copying a name to
     // the clipboard needs no permission and always ships; putting characters in
@@ -2306,6 +2314,7 @@ export function normalizeSettings(input) {
       emotePickerHeight: enumValue(content.emotePickerHeight, ['short', 'medium', 'tall'], defaults.content.emotePickerHeight),
       quickEmoteBar: enumValue(content.quickEmoteBar, ['hidden', 'compact', 'standard'], defaults.content.quickEmoteBar),
       quickEmoteLimit: enumValue(String(content.quickEmoteLimit ?? ''), ['4', '6', '8', '10', 'all'], defaults.content.quickEmoteLimit),
+      emoteDockSource: enumValue(content.emoteDockSource, ['mixed', 'favorites', 'recent'], defaults.content.emoteDockSource),
       clickChatEmotes: bool(content.clickChatEmotes, defaults.content.clickChatEmotes),
       insertEmoteName: bool(content.insertEmoteName, defaults.content.insertEmoteName),
     emoteAutocomplete: bool(content.emoteAutocomplete, defaults.content.emoteAutocomplete),
@@ -2885,7 +2894,7 @@ export function monetizationKind({ text = '', ariaLabel = '', title = '', testId
   return '';
 }
 
-export const STICKER_PREFERENCES_SCHEMA = 10;
+export const STICKER_PREFERENCES_SCHEMA = 11;
 
 /**
  * The platform an emote key belongs to.
@@ -3137,7 +3146,7 @@ export function observationsFromChatEmotes(emotes, urlFn) {
   return out;
 }
 
-function cleanStickerLibrary(input, hiddenSet = new Set()) {
+function cleanStickerLibrary(input) {
   if (!Array.isArray(input)) return [];
   const library = [];
   const keys = new Set();
@@ -3146,8 +3155,10 @@ function cleanStickerLibrary(input, hiddenSet = new Set()) {
     const key = cleanStickerKeys([raw.key], 1)[0];
     const name = cleanStickerText(raw.name, 80);
     const src = cleanStickerAssetUrl(raw.src);
-    // A removed key is a slot the user freed; never re-materialise it here.
-    if (!key || !name || !src || keys.has(key) || hiddenSet.has(key)) continue;
+    // Removed entries keep their safe display record. Without it, the Removed
+    // view can offer only a key nobody recognises and individual recovery is
+    // impossible after the Undo notice closes.
+    if (!key || !name || !src || keys.has(key)) continue;
     keys.add(key);
     const entry = {
       key,
@@ -3264,6 +3275,55 @@ export function isStickerFavorite(favorites, key, channel) {
   return favoritesForChannel(favorites, channel).includes(key);
 }
 
+/**
+ * Pick the emotes shown in the composer dock.
+ *
+ * The caller supplies normalized keys. This function owns only the stable
+ * ordering and de-duplication rule, which keeps Favorites, Recent, and Mixed
+ * consistent between the browser surface and its tests.
+ */
+export function selectEmoteDockKeys({ favorites = [], recent = [], available = [], mode = 'mixed', limit = 6 } = {}) {
+  const usable = new Set(Array.isArray(available) ? available.filter((key) => typeof key === 'string' && key) : []);
+  const ordered = mode === 'favorites'
+    ? favorites
+    : mode === 'recent'
+      ? recent
+      : [...favorites, ...recent];
+  const maximum = Math.max(1, Math.min(24, Number(limit) || 6));
+  const seen = new Set();
+  const result = [];
+  for (const key of Array.isArray(ordered) ? ordered : []) {
+    if (typeof key !== 'string' || !usable.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    result.push(key);
+    if (result.length >= maximum) break;
+  }
+  return result;
+}
+
+/** Rank a local emote across the fields both library surfaces expose. */
+export function stickerSearchRank(sticker, query, customGroup = '') {
+  const normalize = (value) => String(value || '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  const needle = normalize(query);
+  if (!needle) return 0;
+  const name = normalize(sticker?.name);
+  const source = normalize(sticker?.sourceSlug);
+  const nativeGroups = (Array.isArray(sticker?.nativeGroups) ? sticker.nativeGroups : []).map(normalize);
+  const group = normalize(customGroup);
+  if (name === needle) return 0;
+  if (name.startsWith(needle)) return 1;
+  if (name.split(/[^a-z0-9]+/).some((token) => token.startsWith(needle))) return 2;
+  if (name.includes(needle)) return 3;
+  if (source === needle || nativeGroups.includes(needle) || group === needle) return 4;
+  if ([source, ...nativeGroups, group].some((field) => field.includes(needle))) return 5;
+  return Number.POSITIVE_INFINITY;
+}
+
 /** Add or remove one favorite in one scope, leaving every other scope alone. */
 export function toggleStickerFavorite(favorites, key, channel) {
   const list = Array.isArray(favorites) ? favorites : [];
@@ -3322,9 +3382,11 @@ export function normalizeStickerPreferences(input) {
   const groups = cleanStickerGroups(source.groups);
   const groupIds = new Set(groups.map((group) => group.id));
   const activeGroup = groupIds.has(source.activeGroup) ? source.activeGroup : '';
-  const view = enumValue(source.view, ['all', 'pinned', 'recent', 'native', 'group', 'locked'], 'all');
+  const view = enumValue(source.view, ['all', 'pinned', 'recent', 'native', 'group', 'locked', 'removed'], 'all');
   const favorites = cleanStickerFavorites(source.favorites, source.pinned, hiddenSet);
-  const order = cleanStickerKeys(source.order).filter((key) => !hiddenSet.has(key));
+  // Removal is reversible, so keep manual placement while the emote is hidden.
+  // Filtering happens at render time and restoring puts it back where it was.
+  const order = cleanStickerKeys(source.order);
   const assignments = cleanStickerAssignments(source.assignments, groupIds);
   // Favorited, assigned, or manually positioned emotes are protected from
   // eviction: each represents a deliberate filing action.
@@ -3332,9 +3394,10 @@ export function normalizeStickerPreferences(input) {
     ...favorites.map((favorite) => favorite.key),
     ...order,
     ...assignments.map((assignment) => assignment.key),
+    ...hidden,
   ]);
   const library = evictStickerLibrary(
-    cleanStickerLibrary(source.library, hiddenSet),
+    cleanStickerLibrary(source.library),
     STICKER_LIBRARY_LIMIT,
     protectedKeys,
   ).library;

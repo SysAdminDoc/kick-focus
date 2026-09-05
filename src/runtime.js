@@ -195,11 +195,13 @@ const state = {
     stickerPickerBulkGroup: '',
     stickerPickerOrganizing: false,
     stickerPickerGroupEditor: '',
-    // The one outboard action surface currently open beside a picker tile.
-    // It remains a child of the tile for natural Tab order, then enters the
-    // top layer so neither the grid nor Kick's picker can clip it.
-    stickerActionTools: null,
-    stickerActionHideTimer: 0,
+    // One inspected emote at a time. Its actions render in a stable tray above
+    // the grid instead of floating over neighbouring artwork.
+    stickerDetailKey: '',
+    // When the Library is opened from chat, the footer becomes an explicit
+    // return path and this keeps the original composer and picker context.
+    emoteReturnContext: null,
+    emoteDockSignature: '',
     // Native drag events keep sending clicks reliable while adding a direct
     // mouse path for arranging the visible shelf.
     stickerDragKey: '',
@@ -2009,38 +2011,77 @@ const SITE_CSS = `
   }
 
     html[data-kf-quick-emote-bar="hidden"] #quick-emotes-holder { display: none !important; }
-    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder {
-      height: 24px !important;
-      max-height: 24px !important;
+    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder:not([data-kf-emote-dock-host="true"]) {
+      height: 28px !important;
+      max-height: 28px !important;
       padding-bottom: 0 !important;
     }
-    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * {
-      height: 24px !important;
-      max-height: 24px !important;
+    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder:not([data-kf-emote-dock-host="true"]) > * {
+      height: 28px !important;
+      max-height: 28px !important;
       justify-content: flex-start !important;
-      gap: 2px !important;
+      gap: 3px !important;
     }
-    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button {
-      width: 24px !important;
-      min-width: 24px !important;
-      height: 24px !important;
-      min-height: 24px !important;
+    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder:not([data-kf-emote-dock-host="true"]) button {
+      width: 28px !important;
+      min-width: 28px !important;
+      height: 28px !important;
+      min-height: 28px !important;
       padding: 2px !important;
       border-radius: 4px !important;
     }
-    html[data-kf-quick-emote-bar="compact"] #quick-emotes-holder button img {
-      width: 20px !important;
-      max-width: 20px !important;
-      height: 20px !important;
-      max-height: 20px !important;
+    html[data-kf-quick-emote-limit="4"] #quick-emotes-holder:not([data-kf-emote-dock-host="true"]) > * > :nth-child(n + 5),
+    html[data-kf-quick-emote-limit="6"] #quick-emotes-holder:not([data-kf-emote-dock-host="true"]) > * > :nth-child(n + 7),
+    html[data-kf-quick-emote-limit="8"] #quick-emotes-holder:not([data-kf-emote-dock-host="true"]) > * > :nth-child(n + 9),
+    html[data-kf-quick-emote-limit="10"] #quick-emotes-holder:not([data-kf-emote-dock-host="true"]) > * > :nth-child(n + 11) { display: none !important; }
+
+    #quick-emotes-holder[data-kf-emote-dock-host="true"] {
+      display: block !important;
+      height: auto !important;
+      max-height: none !important;
+      padding: 0 0 5px !important;
+      overflow: visible !important;
     }
-    html[data-kf-quick-emote-limit="4"] #quick-emotes-holder > * > :nth-child(n + 5),
-    html[data-kf-quick-emote-limit="6"] #quick-emotes-holder > * > :nth-child(n + 7),
-    html[data-kf-quick-emote-limit="8"] #quick-emotes-holder > * > :nth-child(n + 9),
-    html[data-kf-quick-emote-limit="10"] #quick-emotes-holder > * > :nth-child(n + 11) { display: none !important; }
-    html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder,
-    html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder > * { height: 40px !important; max-height: 40px !important; }
-    html[data-kf-large-targets="true"][data-kf-quick-emote-bar="compact"] #quick-emotes-holder button { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; }
+    #quick-emotes-holder[data-kf-emote-dock-host="true"] > :not([data-kf-emote-dock]) { display: none !important; }
+    [data-kf-emote-dock] {
+      display: grid !important;
+      grid-template-columns: auto minmax(0, 1fr) auto !important;
+      min-width: 0 !important;
+      align-items: center !important;
+      gap: 5px !important;
+      padding: 4px 5px !important;
+      border: 1px solid var(--kf-border) !important;
+      border-radius: 8px !important;
+      background: var(--kf-panel) !important;
+      color: var(--kf-text) !important;
+    }
+    [data-kf-emote-dock-label] { color: var(--kf-text-muted) !important; font-size: 10px !important; font-weight: 760 !important; white-space: nowrap !important; }
+    [data-kf-emote-dock-track] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 3px !important; overflow-x: auto !important; scrollbar-width: none !important; }
+    [data-kf-emote-dock-track]::-webkit-scrollbar { display: none !important; }
+    [data-kf-emote-dock-emote], [data-kf-emote-dock-manage] {
+      display: grid !important;
+      width: 30px !important;
+      min-width: 30px !important;
+      height: 30px !important;
+      min-height: 30px !important;
+      flex: 0 0 30px !important;
+      place-items: center !important;
+      padding: 3px !important;
+      border: 1px solid transparent !important;
+      border-radius: 6px !important;
+      background: var(--kf-panel-raised) !important;
+      color: var(--kf-text-muted) !important;
+      cursor: pointer !important;
+    }
+    [data-kf-emote-dock-emote]:hover, [data-kf-emote-dock-emote]:focus-visible,
+    [data-kf-emote-dock-manage]:hover, [data-kf-emote-dock-manage]:focus-visible { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; }
+    [data-kf-emote-dock-emote][data-kf-favorite="true"] { border-color: rgba(var(--kf-accent-rgb), .58) !important; box-shadow: inset 0 -2px 0 var(--kf-accent) !important; }
+    [data-kf-emote-dock-emote] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+    [data-kf-emote-dock-manage] .kf-icon { width: 15px !important; height: 15px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; }
+    html[data-kf-quick-emote-bar="standard"] [data-kf-emote-dock-emote],
+    html[data-kf-quick-emote-bar="standard"] [data-kf-emote-dock-manage] { width: 38px !important; min-width: 38px !important; height: 38px !important; min-height: 38px !important; flex-basis: 38px !important; padding: 5px !important; }
+    html[data-kf-large-targets="true"] [data-kf-emote-dock-emote],
+    html[data-kf-large-targets="true"] [data-kf-emote-dock-manage] { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; flex-basis: 40px !important; }
 
     #chat-emotes-picker-panel {
       --kf-emote-tile-height: 40px;
@@ -2247,6 +2288,7 @@ const SITE_CSS = `
     [data-kf-sticker-group-summary] > span { min-width: 0 !important; color: var(--kf-text-muted) !important; font-size: 11px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
     [data-kf-sticker-group-actions] { display: flex !important; flex: 0 0 auto !important; gap: 4px !important; }
     [data-kf-sticker-group-actions] button { min-height: max(27px, var(--kf-emote-control-height)) !important; padding-inline: 6px !important; }
+    [data-kf-sticker-group-actions] button:disabled { cursor: not-allowed !important; opacity: .38 !important; }
     [data-kf-sticker-group-actions] button[data-kf-sticker-group-delete] { color: var(--kf-danger) !important; }
     [data-kf-sticker-group-editor] { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px !important; margin-top: 7px !important; }
     [data-kf-sticker-group-editor] input { min-width: 0 !important; min-height: max(34px, var(--kf-emote-control-height)) !important; padding: 0 9px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-canvas) !important; color: var(--kf-text) !important; font-size: 12px !important; }
@@ -2360,62 +2402,66 @@ const SITE_CSS = `
     [data-kf-sticker-check] { display: none !important; position: absolute !important; top: 3px !important; left: 3px !important; z-index: 3 !important; width: 20px !important; height: 20px !important; place-items: center !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 4px !important; background: var(--kf-panel-raised) !important; color: transparent !important; pointer-events: none !important; }
     [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-check] { display: grid !important; }
     [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-check] { border-color: var(--kf-accent) !important; background: var(--kf-accent) !important; color: var(--kf-on-accent, #071004) !important; }
-    [data-kf-sticker-tools] {
-      display: none !important;
-      position: fixed !important;
-      inset: auto !important;
-      z-index: 2147483000 !important;
-      min-width: 120px !important;
-      max-width: min(196px, calc(100vw - 16px)) !important;
-      flex-direction: column !important;
-      gap: 2px !important;
+    [data-kf-sticker-manage-tile] {
+      display: grid !important;
+      position: absolute !important;
+      right: 2px !important;
+      bottom: 2px !important;
+      z-index: 4 !important;
+      width: 24px !important;
+      min-width: 24px !important;
+      height: 24px !important;
+      min-height: 24px !important;
+      place-items: center !important;
       padding: 4px !important;
       border: 1px solid var(--kf-border-strong) !important;
-      border-radius: 8px !important;
+      border-radius: 5px !important;
       background: var(--kf-panel-raised) !important;
-      color: var(--kf-text) !important;
-      box-shadow: 0 10px 28px rgba(0,0,0,.46) !important;
-      pointer-events: auto !important;
-    }
-    [data-kf-sticker-tools][data-kf-open="true"] { display: flex !important; }
-    [data-kf-sticker-organizer][data-kf-sticker-dragging="true"] [data-kf-sticker-tools] { display: none !important; }
-    /* The top layer escapes Kick's clipping. Script measures the real surface,
-       prefers the right, and flips it before it can cover the anchor. */
-    [data-kf-sticker-tools][data-kf-sticker-top-layer="true"] { overflow: visible !important; }
-    [data-kf-sticker-tools] :is(button, a) {
-      display: grid !important;
-      grid-template-columns: 15px minmax(0, 1fr) !important;
-      width: 100% !important;
-      min-height: 30px !important;
-      padding: 0 8px !important;
-      align-items: center !important;
-      gap: 7px !important;
-      border: 1px solid transparent !important;
-      border-radius: 6px !important;
-      background: transparent !important;
       color: var(--kf-text-muted) !important;
       cursor: pointer !important;
-      pointer-events: auto !important;
-      font-size: 11px !important;
-      font-weight: 720 !important;
-      line-height: 1.1 !important;
-      text-align: left !important;
-      text-decoration: none !important;
-      white-space: nowrap !important;
-      transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease !important;
+      opacity: .84 !important;
     }
-    [data-kf-sticker-tools] :is(button, a) span { min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; }
-    [data-kf-sticker-tools] :is(button, a):hover, [data-kf-sticker-tools] :is(button, a):focus-visible { border-color: rgba(var(--kf-accent-rgb), .5) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; }
-    [data-kf-sticker-tools] button[aria-pressed="true"] { color: var(--kf-accent) !important; }
-    [data-kf-sticker-tools] button[aria-pressed="true"] .kf-icon { fill: currentColor !important; }
-    [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:hover,
-    [data-kf-sticker-tools] button[data-kf-sticker-action="hide"]:focus-visible { border-color: var(--kf-danger) !important; color: var(--kf-danger) !important; }
+    [data-kf-sticker-manage-tile]:hover, [data-kf-sticker-manage-tile]:focus-visible,
+    [data-kf-sticker-manage-tile][aria-expanded="true"] { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; opacity: 1 !important; }
+    [data-kf-sticker-manage-tile] .kf-icon { width: 14px !important; height: 14px !important; }
+    [data-kf-sticker-organizer][data-kf-sticker-organizing="true"] [data-kf-sticker-manage-tile] { display: none !important; }
+    [data-kf-sticker-item][data-kf-sticker-inspected="true"] [data-kf-sticker-proxy] { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .12) !important; }
+
+    [data-kf-sticker-detail] {
+      display: grid !important;
+      grid-template-columns: 42px minmax(0, 1fr) auto !important;
+      align-items: center !important;
+      gap: 8px !important;
+      margin-top: var(--kf-emote-section-gap) !important;
+      padding: 7px !important;
+      border: 1px solid rgba(var(--kf-accent-rgb), .42) !important;
+      border-radius: 8px !important;
+      background: rgba(var(--kf-accent-rgb), .065) !important;
+    }
+    [data-kf-sticker-detail-art] { display: grid !important; width: 42px !important; height: 42px !important; place-items: center !important; padding: 4px !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; }
+    [data-kf-sticker-detail-art] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+    [data-kf-sticker-detail-copy] { min-width: 0 !important; }
+    [data-kf-sticker-detail-copy] strong, [data-kf-sticker-detail-copy] span { display: block !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+    [data-kf-sticker-detail-copy] strong { color: var(--kf-text) !important; font-size: 12px !important; }
+    [data-kf-sticker-detail-copy] span { margin-top: 2px !important; color: var(--kf-text-muted) !important; font-size: 10px !important; }
+    [data-kf-sticker-detail-close] { align-self: start !important; width: 28px !important; min-width: 28px !important; height: 28px !important; min-height: 28px !important; padding: 5px !important; border: 1px solid transparent !important; border-radius: 6px !important; background: transparent !important; color: var(--kf-text-muted) !important; cursor: pointer !important; }
+    [data-kf-sticker-detail-close]:hover, [data-kf-sticker-detail-close]:focus-visible { border-color: var(--kf-border-strong) !important; color: var(--kf-text) !important; }
+    [data-kf-sticker-detail-actions] { display: grid !important; grid-column: 1 / -1 !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 5px !important; }
+    [data-kf-sticker-detail-actions] :is(button, a, select) { min-width: 0 !important; min-height: 30px !important; border: 1px solid var(--kf-border) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; color: var(--kf-text-muted) !important; font-size: 11px !important; font-weight: 720 !important; }
+    [data-kf-sticker-detail-actions] :is(button, a) { display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 5px !important; padding: 0 7px !important; cursor: pointer !important; text-decoration: none !important; }
+    [data-kf-sticker-detail-actions] select { grid-column: 1 / -1 !important; padding: 0 28px 0 8px !important; }
+    [data-kf-sticker-detail-actions] :is(button, a):hover, [data-kf-sticker-detail-actions] :is(button, a):focus-visible { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
+    [data-kf-sticker-detail-actions] button[data-kf-sticker-action="hide"]:hover,
+    [data-kf-sticker-detail-actions] button[data-kf-sticker-action="hide"]:focus-visible { border-color: var(--kf-danger) !important; color: var(--kf-danger) !important; }
+    [data-kf-sticker-recovery] { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; margin-top: var(--kf-emote-section-gap) !important; padding: 6px 7px !important; border: 1px solid var(--kf-border) !important; border-radius: 7px !important; background: rgba(255,255,255,.025) !important; color: var(--kf-text-muted) !important; font-size: 11px !important; }
+    [data-kf-sticker-recovery] button { min-height: var(--kf-emote-control-height) !important; flex: 0 0 auto !important; padding: 0 8px !important; border: 1px solid var(--kf-border-strong) !important; border-radius: 6px !important; background: var(--kf-panel-raised) !important; color: var(--kf-text) !important; cursor: pointer !important; font-size: 11px !important; font-weight: 720 !important; }
+    [data-kf-sticker-recovery] button:hover, [data-kf-sticker-recovery] button:focus-visible { border-color: var(--kf-accent) !important; color: var(--kf-accent) !important; }
     html[data-kf-large-targets="true"] [data-kf-sticker-grid] { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important; grid-auto-rows: 88px !important; }
     html[data-kf-large-targets="true"] [data-kf-sticker-item] { min-height: 88px !important; contain-intrinsic-size: auto 88px !important; }
     html[data-kf-large-targets="true"] [data-kf-sticker-proxy] { min-height: 84px !important; }
-    html[data-kf-large-targets="true"] [data-kf-sticker-tools] { min-width: 136px !important; padding: 5px !important; }
-    html[data-kf-large-targets="true"] [data-kf-sticker-tools] :is(button, a) { min-height: 40px !important; padding-inline: 10px !important; }
-    html[data-kf-large-targets="true"] [data-kf-sticker-tools] .kf-icon { width: 18px !important; height: 18px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-manage-tile] { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; }
+    html[data-kf-large-targets="true"] [data-kf-sticker-detail-actions] :is(button, a, select),
+    html[data-kf-large-targets="true"] [data-kf-sticker-detail-close] { min-height: 40px !important; }
     [data-kf-sticker-empty] { display: grid !important; min-height: 112px !important; place-items: center !important; padding: 18px !important; color: var(--kf-text-muted) !important; font-size: 12px !important; line-height: 1.45 !important; text-align: center !important; }
     [data-kf-sticker-empty] strong { display: block !important; margin-bottom: 3px !important; color: var(--kf-text) !important; font-size: 13px !important; }
 
@@ -2432,21 +2478,25 @@ const SITE_CSS = `
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
+    html[data-kf-sticker-view="removed"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel button[data-kf-sticker-key][data-kf-sticker-native="true"] { display: none !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
+    html[data-kf-sticker-view="removed"] #chat-emotes-picker-panel [data-kf-sticker-native-group],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-group] { display: none !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
+    html[data-kf-sticker-view="removed"] #chat-emotes-picker-panel [data-kf-sticker-native-list],
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-native-list] { display: none !important; }
     html[data-kf-sticker-view="all"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
     html[data-kf-sticker-view="pinned"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
     html[data-kf-sticker-view="recent"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
     html[data-kf-sticker-view="locked"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
+    html[data-kf-sticker-view="removed"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ *,
     html[data-kf-sticker-view="group"] #chat-emotes-picker-panel [data-kf-sticker-organizer] ~ * { display: none !important; }
     #chat-emotes-picker-panel button[data-kf-sticker-hidden="true"][data-kf-sticker-native="true"] { display: none !important; }
     #chat-emotes-picker-panel button[data-kf-sticker-locked="true"][data-kf-sticker-native="true"] { display: none !important; }
@@ -2757,6 +2807,7 @@ function applySettingsAttributes() {
   root.dataset.kfEmoteHeight = content.emotePickerHeight;
   root.dataset.kfQuickEmoteBar = content.quickEmoteBar;
   root.dataset.kfQuickEmoteLimit = content.quickEmoteLimit;
+  root.dataset.kfEmoteDockSource = content.emoteDockSource;
   root.dataset.kfFocusVisible = String(accessibility.focusVisible);
   root.dataset.kfLargeTargets = String(accessibility.largeTargets);
   // The mod's own chrome lives in a shadow root, where a selector rooted at
@@ -4884,7 +4935,7 @@ function sameStickerRecord(a, b) {
  * Writing the whole ~0.5 MB library on every scan cycle was the jank source, so
  * merges from chat and the picker debounce the write. Direct user actions (pin,
  * hide, remove, assign) still persist synchronously through
- * saveStickerOrganization; only the continuous background merges are deferred.
+ * commitPickerStickerChange; only the continuous background merges are deferred.
  */
 let stickerPersistTimer = 0;
 function flushStickerPersist() {
@@ -5462,6 +5513,18 @@ function stickerDescriptors(picker) {
     if (descriptors.has(key) || !stickerSubscriptionLocked(stored)) continue;
     descriptors.set(key, { ...stored, available: false, locked: true, originals: [] });
   }
+  // Removal is a reversible filing state, not deletion. A removed emote may no
+  // longer be present in Kick's current picker, but its saved record still has
+  // enough artwork and provenance to render a real recovery tile.
+  for (const [key, stored] of state.stickerPreferences.library) {
+    if (descriptors.has(key) || !state.stickerPreferences.hidden.has(key)) continue;
+    descriptors.set(key, {
+      ...stored,
+      available: false,
+      locked: stickerSubscriptionLocked(stored),
+      originals: [],
+    });
+  }
 
   for (const descriptor of descriptors.values()) {
     const hidden = state.stickerPreferences.hidden.has(descriptor.key);
@@ -5524,6 +5587,7 @@ function stickerProxyMarkup(descriptor, view) {
   const locked = descriptor.locked === true;
   const pinned = !locked && isFavorited(descriptor.key);
   const hidden = state.stickerPreferences.hidden.has(descriptor.key);
+  const inspected = state.runtime.stickerDetailKey === descriptor.key;
   const selected = state.runtime.stickerPickerSelection.has(descriptor.key);
   const organizing = state.runtime.stickerPickerOrganizing;
   const reorderable = stickerViewCanReorder(view) && !hidden && !locked;
@@ -5531,13 +5595,10 @@ function stickerProxyMarkup(descriptor, view) {
   const safeKey = escapeHtml(descriptor.key);
   const safeName = escapeHtml(descriptor.name);
   const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
-  const sourceSlug = favoriteScope(descriptor.sourceSlug);
-  const sourceLabel = sourceSlug ? trf('Open {name} on Kick', { name: sourceSlug }) : '';
-  const sourceText = sourceSlug ? trf('View {name}', { name: sourceSlug }) : '';
-  const sourceLink = sourceSlug
-    ? `<a href="/${encodeURIComponent(sourceSlug)}" data-kf-sticker-source aria-label="${escapeHtml(sourceLabel)}" title="${escapeHtml(sourceLabel)}">${uiIcon('externalLink')}<span>${escapeHtml(sourceText)}</span></a>`
-    : '';
-  const title = locked
+  const unavailable = locked || hidden;
+  const title = hidden
+    ? trf('{name} is removed. Open manage to restore it.', { name: descriptor.name })
+    : locked
     ? trf('{name} is unavailable until you resubscribe.', { name: descriptor.name })
     : trf(
       reorderable
@@ -5547,122 +5608,20 @@ function stickerProxyMarkup(descriptor, view) {
     );
   // The state stamp is what lets a favorite toggle patch this tile in place
   // instead of re-serialising the window it sits in.
-  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-pinned="${pinned}" data-kf-sticker-locked="${locked}" data-kf-sticker-selected="${selected}" data-kf-sticker-state="${pinned}:${hidden}" data-kf-sticker-reorderable="${reorderable}"${dragging ? ' data-kf-sticker-dragging="true"' : ''}${scope ? ' data-kf-sticker-scoped="true"' : ''}>
-    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" data-kf-sticker-proxy draggable="${reorderable}"${locked ? ' aria-disabled="true"' : (organizing ? ` aria-pressed="${selected}"` : '')} aria-label="${escapeHtml(trf(locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name: descriptor.name }))}" title="${escapeHtml(title)}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy" draggable="false"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
+  return `<div data-kf-sticker-item="true" data-kf-sticker-key="${safeKey}" data-kf-sticker-hidden="${hidden}" data-kf-sticker-pinned="${pinned}" data-kf-sticker-locked="${locked}" data-kf-sticker-inspected="${inspected}" data-kf-sticker-selected="${selected}" data-kf-sticker-state="${pinned}:${hidden}:${inspected}" data-kf-sticker-reorderable="${reorderable}"${dragging ? ' data-kf-sticker-dragging="true"' : ''}${scope ? ' data-kf-sticker-scoped="true"' : ''}>
+    <button type="button" data-kf-sticker-action="send" data-kf-sticker-key="${safeKey}" data-kf-sticker-proxy draggable="${reorderable}"${unavailable ? ' aria-disabled="true"' : (organizing ? ` aria-pressed="${selected}"` : '')} aria-label="${escapeHtml(trf(hidden ? 'Removed emote {name}' : locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name: descriptor.name }))}" title="${escapeHtml(title)}"><img src="${escapeHtml(descriptor.src)}" alt="${safeName}" loading="lazy" draggable="false"${emoteImageAttrs(descriptor)}>${rarityBadge(descriptor)}</button>
     <span data-kf-sticker-check aria-hidden="true">${uiIcon('check')}</span>
-    <div data-kf-sticker-tools data-kf-open="false" role="group" aria-label="${escapeHtml(trf('Actions for {name}', { name: descriptor.name }))}">
-      ${locked ? '' : `<button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}" aria-label="${escapeHtml(trf(pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}">${uiIcon('star')}<span>${escapeHtml(tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite'))}</span></button>`}
-      ${sourceLink}
-      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf(hidden ? 'Restore {name}' : 'Remove {name}', { name: descriptor.name }))}" title="${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}">${uiIcon(hidden ? 'reset' : 'trash')}<span>${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}</span></button>
-    </div>
+    <button type="button" data-kf-sticker-manage-tile data-kf-sticker-action="details" data-kf-sticker-key="${safeKey}" aria-expanded="${inspected}" aria-label="${escapeHtml(trf('Manage {name}', { name: descriptor.name }))}" title="${escapeHtml(trf('Manage {name}', { name: descriptor.name }))}">${uiIcon('edit')}</button>
   </div>`;
 }
 
-function clearStickerActionHideTimer() {
-  clearTimeout(state.runtime.stickerActionHideTimer);
-  state.runtime.stickerActionHideTimer = 0;
-}
-
-function hideStickerTileActions() {
-  clearStickerActionHideTimer();
-  const tools = state.runtime.stickerActionTools;
-  if (!tools) return;
-  tools.dataset.kfOpen = 'false';
-  tools.style.removeProperty('left');
-  tools.style.removeProperty('top');
-  tools.style.removeProperty('visibility');
-  delete tools.dataset.kfSide;
-  closeAnchoredSurface(tools);
-  state.runtime.stickerActionTools = null;
-}
-
-function prepareStickerTileActions(scope) {
-  for (const tools of scope?.querySelectorAll?.('[data-kf-sticker-tools]') || []) {
-    if (tools.dataset.kfStickerActionsReady === 'true') continue;
-    if (typeof tools.showPopover === 'function') {
-      tools.setAttribute('popover', 'manual');
-      tools.dataset.kfStickerTopLayer = 'true';
-    }
-    tools.dataset.kfStickerActionsReady = 'true';
-  }
-}
-
-function showStickerTileActions(tile) {
-  const organizer = tile?.closest?.('[data-kf-sticker-organizer]');
-  if (!organizer || organizer.dataset.kfStickerOrganizing === 'true' || organizer.dataset.kfStickerDragging === 'true') {
-    hideStickerTileActions();
-    return;
-  }
-  const tools = tile.querySelector('[data-kf-sticker-tools]');
-  const proxy = tile.querySelector('[data-kf-sticker-proxy]');
-  if (!tools || !proxy) return;
-  clearStickerActionHideTimer();
-  if (state.runtime.stickerActionTools !== tools) hideStickerTileActions();
-  state.runtime.stickerActionTools = tools;
-  tools.dataset.kfOpen = 'true';
-  tools.style.removeProperty('left');
-  tools.style.removeProperty('top');
-  tools.style.visibility = 'hidden';
-  if (tools.dataset.kfStickerTopLayer === 'true') {
-    try {
-      if (!tools.matches(':popover-open')) tools.showPopover();
-    } catch {
-      // A disconnected tile cannot enter the top layer. The normal fixed
-      // positioning path remains available for a connected fallback.
-    }
-  }
-  // Measured after entering the top layer so Larger targets and translated
-  // labels both participate in the edge decision.
-  const anchor = proxy.getBoundingClientRect();
-  const box = tools.getBoundingClientRect();
-  const gap = 6;
-  const right = anchor.right + gap;
-  const left = right + box.width <= window.innerWidth - 8
-    ? right
-    : Math.max(8, anchor.left - box.width - gap);
-  const top = Math.min(
-    Math.max(8, anchor.top + ((anchor.height - box.height) / 2)),
-    Math.max(8, window.innerHeight - box.height - 8),
-  );
-  // Inline important beats the stylesheet's inset reset, which is itself
-  // important so Kick utility classes cannot center the popover.
-  tools.style.setProperty('left', `${left}px`, 'important');
-  tools.style.setProperty('top', `${top}px`, 'important');
-  tools.dataset.kfSide = left === right ? 'right' : 'left';
-  tools.style.visibility = 'visible';
-}
-
-function scheduleStickerTileActionsHide(tile) {
-  clearStickerActionHideTimer();
-  state.runtime.stickerActionHideTimer = window.setTimeout(() => {
-    state.runtime.stickerActionHideTimer = 0;
-    const active = deepActiveElement();
-    if (tile?.matches?.(':hover') || (active && tile?.contains?.(active))) return;
-    hideStickerTileActions();
-  }, 140);
-}
-
-function onStickerTileActionEnter(event) {
-  const tile = event.target?.closest?.('[data-kf-sticker-item]');
-  if (tile) showStickerTileActions(tile);
-}
-
-function onStickerTileActionLeave(event) {
-  const tile = event.target?.closest?.('[data-kf-sticker-item]');
-  if (!tile || tile.contains(event.relatedTarget)) return;
-  scheduleStickerTileActionsHide(tile);
-}
-
-function stickerActionFocusReturn(target, event) {
-  if (event.detail !== 0 || !target?.matches?.(':focus')) return null;
-  return target.closest?.('[data-kf-sticker-item]')?.querySelector?.('[data-kf-sticker-proxy]') || null;
-}
-
-function restoreStickerActionFocus(target, organizer) {
-  if (!target) return;
+function restoreStickerDetailFocus(organizer, key, open) {
   requestAnimationFrame(() => {
-    if (restoreFocus(target)) return;
-    restoreFocus(organizer?.querySelector?.('[data-kf-sticker-item] [data-kf-sticker-proxy], [data-kf-sticker-view][data-active="true"]'));
+    const selector = open
+      ? '[data-kf-sticker-detail-close]'
+      : `[data-kf-sticker-item][data-kf-sticker-key="${CSS.escape(key)}"] [data-kf-sticker-manage-tile]`;
+    restoreFocus(organizer?.querySelector?.(selector)
+      || organizer?.querySelector?.('[data-kf-sticker-view][data-active="true"]'));
   });
 }
 
@@ -5742,7 +5701,6 @@ function onStickerDragStart(event) {
     event.preventDefault();
     return;
   }
-  hideStickerTileActions();
   clearStickerDragTarget();
   state.runtime.stickerDragKey = key;
   organizer.dataset.kfStickerDragging = 'true';
@@ -5798,7 +5756,6 @@ function onStickerDragEnd(event) {
 }
 
 function removeStickerOrganizer() {
-  hideStickerTileActions();
   for (const organizer of document.querySelectorAll('[data-kf-sticker-organizer]')) {
     finishStickerDrag(organizer, false);
     organizer.remove();
@@ -5807,6 +5764,78 @@ function removeStickerOrganizer() {
 
 function stickerGroupById(id) {
   return state.stickerPreferences.groups.find((group) => group.id === id) || null;
+}
+
+function moveStickerGroup(id, delta) {
+  const index = state.stickerPreferences.groups.findIndex((group) => group.id === id);
+  const target = index + (Number(delta) < 0 ? -1 : 1);
+  if (index < 0 || target < 0 || target >= state.stickerPreferences.groups.length) return;
+  mutateStickerOrganization(() => {
+    const groups = [...state.stickerPreferences.groups];
+    [groups[index], groups[target]] = [groups[target], groups[index]];
+    state.stickerPreferences.groups = groups;
+  }, target < index ? 'Group moved earlier.' : 'Group moved later.', 'Group order restored.');
+}
+
+function stickerDetailMarkup(descriptors) {
+  const descriptor = descriptors.find((entry) => entry.key === state.runtime.stickerDetailKey);
+  if (!descriptor) {
+    state.runtime.stickerDetailKey = '';
+    return '';
+  }
+  const hidden = state.stickerPreferences.hidden.has(descriptor.key);
+  const locked = descriptor.locked === true;
+  const pinned = !locked && isFavorited(descriptor.key);
+  const scope = pinned ? favoriteScopeOf(descriptor.key) : '';
+  const groupId = state.stickerPreferences.assignments.get(descriptor.key) || '';
+  const group = stickerGroupById(groupId);
+  const nativeGroup = descriptor.nativeGroups?.filter(Boolean).join(', ') || descriptor.sourceSlug || tr('Read from the page');
+  const status = hidden
+    ? tr('Removed')
+    : locked
+      ? emoteAccessLabel('locked')
+      : group
+        ? group.name
+        : emoteAccessLabel(descriptor.access || 'observed');
+  const safeKey = escapeHtml(descriptor.key);
+  const sourceSlug = favoriteScope(descriptor.sourceSlug);
+  const sourceLabel = sourceSlug ? trf('Open {name} on Kick', { name: sourceSlug }) : '';
+  const sourceLink = sourceSlug
+    ? `<a href="/${encodeURIComponent(sourceSlug)}" data-kf-sticker-source aria-label="${escapeHtml(sourceLabel)}" title="${escapeHtml(sourceLabel)}">${uiIcon('externalLink')}<span>${escapeHtml(tr('Kick'))}</span></a>`
+    : '';
+  const groupOptions = [`<option value=""${groupId ? '' : ' selected'}>${escapeHtml(tr('Ungrouped'))}</option>`, ...state.stickerPreferences.groups.map((entry) => `<option value="${escapeHtml(entry.id)}"${entry.id === groupId ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`)].join('');
+  const favoriteLabel = tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite');
+  return `<section data-kf-sticker-detail data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Manage {name}', { name: descriptor.name }))}">
+    <span data-kf-sticker-detail-art><img src="${escapeHtml(descriptor.src)}" alt="" loading="lazy"${emoteImageAttrs(descriptor)}></span>
+    <div data-kf-sticker-detail-copy><strong data-kf-no-translate>${escapeHtml(descriptor.name)}</strong><span title="${escapeHtml(nativeGroup)}">${escapeHtml(status)} · ${escapeHtml(nativeGroup)}</span></div>
+    <button type="button" data-kf-sticker-detail-close data-kf-sticker-action="close-details" data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(tr('Close emote details'))}">${uiIcon('close')}</button>
+    <div data-kf-sticker-detail-actions>
+      ${hidden || locked ? '' : `<button type="button" data-kf-sticker-action="pin" data-kf-sticker-key="${safeKey}" aria-pressed="${pinned}">${uiIcon('star')}<span>${escapeHtml(favoriteLabel)}</span></button>`}
+      ${sourceLink}
+      <select data-kf-sticker-direct-group data-kf-sticker-key="${safeKey}" aria-label="${escapeHtml(trf('Custom group for {name}', { name: descriptor.name }))}"${hidden ? ' disabled' : ''}>${groupOptions}</select>
+      <button type="button" data-kf-sticker-action="hide" data-kf-sticker-key="${safeKey}">${uiIcon(hidden ? 'reset' : 'trash')}<span>${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}</span></button>
+    </div>
+  </section>`;
+}
+
+function assignPickerStickerGroup(select) {
+  const key = select.dataset.kfStickerKey;
+  if (!key || !state.stickerPreferences.library.has(key)) return;
+  const previous = state.stickerPreferences.assignments.get(key) || '';
+  const groupId = stickerGroupById(select.value) ? select.value : '';
+  if (groupId) state.stickerPreferences.assignments.set(key, groupId);
+  else state.stickerPreferences.assignments.delete(key);
+  commitPickerStickerChange();
+  requestAnimationFrame(() => stickerPicker()?.querySelector(`[data-kf-sticker-direct-group][data-kf-sticker-key="${CSS.escape(key)}"]`)?.focus?.());
+  showToast('Emote moved.', false, [{
+    label: 'Undo',
+    onClick: () => {
+      if (previous) state.stickerPreferences.assignments.set(key, previous);
+      else state.stickerPreferences.assignments.delete(key);
+      commitPickerStickerChange();
+      showToast('Emote group changes restored.');
+    },
+  }]);
 }
 
 function pickerStickerGroupPanelMarkup(descriptors) {
@@ -5831,7 +5860,7 @@ function pickerStickerGroupPanelMarkup(descriptors) {
     ? descriptors.filter((descriptor) => state.stickerPreferences.assignments.get(descriptor.key) === active.id).length
     : 0;
   const summary = active && !editor
-    ? `<div data-kf-sticker-group-summary><span>${escapeHtml(trf('{count} in {name}', { count: activeCount, name: active.name }))}</span><div data-kf-sticker-group-actions><button type="button" data-kf-sticker-group-rename="${escapeHtml(active.id)}">${uiIcon('edit')}${escapeHtml(tr('Rename'))}</button><button type="button" data-kf-sticker-group-delete="${escapeHtml(active.id)}">${uiIcon('trash')}${escapeHtml(tr('Delete'))}</button></div></div>`
+    ? `<div data-kf-sticker-group-summary><span>${escapeHtml(trf('{count} in {name}', { count: activeCount, name: active.name }))}</span><div data-kf-sticker-group-actions><button type="button" data-kf-sticker-group-move="up" data-kf-sticker-group-id="${escapeHtml(active.id)}"${groups.indexOf(active) === 0 ? ' disabled' : ''}>${escapeHtml(tr('Earlier'))}</button><button type="button" data-kf-sticker-group-move="down" data-kf-sticker-group-id="${escapeHtml(active.id)}"${groups.indexOf(active) === groups.length - 1 ? ' disabled' : ''}>${escapeHtml(tr('Later'))}</button><button type="button" data-kf-sticker-group-rename="${escapeHtml(active.id)}">${uiIcon('edit')}${escapeHtml(tr('Rename'))}</button><button type="button" data-kf-sticker-group-delete="${escapeHtml(active.id)}">${uiIcon('trash')}${escapeHtml(tr('Delete'))}</button></div></div>`
     : '';
   return `<section data-kf-sticker-group-panel aria-label="${escapeHtml(tr('Custom emote groups'))}"><div data-kf-sticker-group-list>${chips}${create}</div>${editorMarkup}${summary}</section>`;
 }
@@ -5948,6 +5977,8 @@ function renderStickerOrganizer() {
     organizer.addEventListener('change', (event) => {
       const select = event.target.closest?.('select[data-kf-sticker-bulk-group]');
       if (select) state.runtime.stickerPickerBulkGroup = select.value;
+      const directGroup = event.target.closest?.('select[data-kf-sticker-direct-group]');
+      if (directGroup) assignPickerStickerGroup(directGroup);
     });
     organizer.addEventListener('dragstart', onStickerDragStart);
     organizer.addEventListener('dragover', onStickerDragOver);
@@ -5961,19 +5992,23 @@ function renderStickerOrganizer() {
   const previousGridScrollTop = state.runtime.stickerGridScrollTop;
   state.runtime.stickerGridScrollTop = null;
 
-  const query = String(search?.value || '').trim().toLowerCase();
-  const showHidden = state.stickerPreferences.showHidden;
-  const matches = (descriptor) => (!query || descriptor.name.toLowerCase().includes(query))
-    && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key));
+  const query = String(search?.value || '').trim();
+  const groupNameFor = (descriptor) => stickerGroupById(state.stickerPreferences.assignments.get(descriptor.key))?.name || '';
+  const rank = (descriptor) => stickerSearchRank(descriptor, query, groupNameFor(descriptor));
+  const matches = (descriptor) => Number.isFinite(rank(descriptor));
   const available = descriptors.filter((descriptor) => !descriptor.locked
-    && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key)));
+    && !state.stickerPreferences.hidden.has(descriptor.key));
   const locked = descriptors.filter((descriptor) => descriptor.locked
-    && (showHidden || !state.stickerPreferences.hidden.has(descriptor.key)));
+    && !state.stickerPreferences.hidden.has(descriptor.key));
+  const removed = descriptors.filter((descriptor) => state.stickerPreferences.hidden.has(descriptor.key));
   const allVisible = available.filter(matches);
   const lockedVisible = locked.filter(matches);
+  const removedVisible = removed.filter(matches)
+    .sort((left, right) => rank(left) - rank(right) || left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
   const manualOrder = orderedStickerKeys(allVisible.map((descriptor) => descriptor.key), state.stickerPreferences.order || []);
   const byKey = new Map(allVisible.map((descriptor) => [descriptor.key, descriptor]));
   const manuallyOrdered = manualOrder.map((key) => byKey.get(key)).filter(Boolean);
+  if (query) manuallyOrdered.sort((left, right) => rank(left) - rank(right));
   // Favorites render in their explicit order, not in picker order — that
   // ordering is the whole point, and the picker's own order is Kick's.
   const favoriteOrder = favoriteKeysInOrder();
@@ -6009,6 +6044,8 @@ function renderStickerOrganizer() {
   const view = state.stickerPreferences.view;
   const visible = view === 'locked'
     ? lockedOrdered
+    : view === 'removed'
+      ? removedVisible
     : view === 'pinned'
     ? allVisible.filter((descriptor) => isFavorited(descriptor.key)).sort(byFavoriteOrder)
     : view === 'recent'
@@ -6020,7 +6057,7 @@ function renderStickerOrganizer() {
 
   const chrome = organizer.querySelector('[data-kf-sticker-chrome]');
   const gridHost = organizer.querySelector('[data-kf-sticker-grid-host]');
-  organizer.dataset.kfStickerOrganizing = String(state.runtime.stickerPickerOrganizing && view !== 'native' && view !== 'locked');
+  organizer.dataset.kfStickerOrganizing = String(state.runtime.stickerPickerOrganizing && !['native', 'locked', 'removed'].includes(view));
 
   // The chrome and the grid carry separate signatures. Toggling one favorite
   // changes a count, which is cheap; re-serialising a library at the 2400 cap
@@ -6029,7 +6066,6 @@ function renderStickerOrganizer() {
     activeLocale(),
     view,
     state.stickerPreferences.activeGroup,
-    String(showHidden),
     query,
     String(visible.length),
     String(allVisible.length),
@@ -6039,6 +6075,7 @@ function renderStickerOrganizer() {
     String(state.runtime.stickerPickerOrganizing),
     state.runtime.stickerPickerGroupEditor,
     state.runtime.stickerPickerBulkGroup,
+    state.runtime.stickerDetailKey,
     // Order is part of the signature: reordering changes nothing else, so
     // without it the shelf would keep the stale arrangement on screen.
     favoriteOrder.join(','),
@@ -6056,7 +6093,11 @@ function renderStickerOrganizer() {
     return;
   }
   chrome.dataset.kfStickerSignature = signature;
-  const countLabel = view === 'locked'
+  const countLabel = view === 'removed'
+    ? (query
+      ? trf('{shown} of {total} removed', { shown: visible.length, total: removed.length })
+      : trf('{count} removed', { count: removed.length }))
+    : view === 'locked'
     ? (query
       ? trf('{shown} of {total} locked', { shown: visible.length, total: locked.length })
       : trf('{count} locked', { count: locked.length }))
@@ -6070,18 +6111,21 @@ function renderStickerOrganizer() {
   setMarkup(chrome, `
     <div data-kf-sticker-topline>
       <div data-kf-sticker-heading><strong>${escapeHtml(tr('Your emotes'))}</strong><span data-kf-sticker-count title="${escapeHtml(countLabel + lockedLabel)}">${escapeHtml(countLabel + lockedLabel)}</span></div>
-      <div data-kf-sticker-top-actions><button type="button" data-kf-sticker-organize aria-pressed="${state.runtime.stickerPickerOrganizing}"${view === 'locked' ? ' disabled' : ''}>${uiIcon('check')}<span>${escapeHtml(tr(state.runtime.stickerPickerOrganizing ? 'Done' : 'Organize'))}</span></button><button type="button" data-kf-sticker-manage="true">${uiIcon('folder')}<span>${escapeHtml(tr('Library'))}</span></button></div>
+      <div data-kf-sticker-top-actions><button type="button" data-kf-sticker-organize aria-pressed="${state.runtime.stickerPickerOrganizing}"${['locked', 'removed'].includes(view) ? ' disabled' : ''}>${uiIcon('check')}<span>${escapeHtml(tr(state.runtime.stickerPickerOrganizing ? 'Done' : 'Organize'))}</span></button><button type="button" data-kf-sticker-manage="true">${uiIcon('folder')}<span>${escapeHtml(tr('Library'))}</span></button></div>
     </div>
     <div data-kf-sticker-tabs role="group" aria-label="${escapeHtml(tr('Emote views'))}">
       ${tab('pinned', tr('Favorites'), favoriteCount(new Set(available.map((descriptor) => descriptor.key))))}
       ${unavailableCount || view === 'locked' ? tab('locked', tr('Locked'), unavailableCount) : ''}
       ${tab('recent', tr('Recent'), recent.length)}
-      ${tab('all', tr('All'), allVisible.length)}
+      ${tab('all', tr('All'), available.length)}
       ${groupTab}
+      ${removed.length || view === 'removed' ? tab('removed', tr('Removed'), removed.length) : ''}
       ${tab('native', tr('Kick'))}
     </div>
+    ${stickerDetailMarkup(descriptors)}
+    ${view === 'removed' && removed.length ? `<div data-kf-sticker-recovery><span>${escapeHtml(tr('Removed emotes stay saved until you restore them.'))}</span><button type="button" data-kf-sticker-restore-all>${escapeHtml(tr('Restore all'))}</button></div>` : ''}
     ${view === 'group' ? pickerStickerGroupPanelMarkup(available) : ''}
-    ${state.runtime.stickerPickerOrganizing && view !== 'native' && view !== 'locked' ? pickerStickerBatchMarkup() : ''}`);
+    ${state.runtime.stickerPickerOrganizing && !['native', 'locked', 'removed'].includes(view) ? pickerStickerBatchMarkup() : ''}`);
   renderStickerGrid(gridHost, visible, view);
   patchStickerSelection(organizer);
   restoreStickerGridScroll(organizer, previousGridScrollTop);
@@ -6133,9 +6177,11 @@ function renderStickerGrid(gridHost, visible, view) {
     const message = searching
       ? [tr('No emotes found'), tr('Try a different search or clear the search field.')]
       : view === 'pinned'
-      ? [tr('No favorites yet'), tr('Open All, hover or focus an emote, then choose Favorite.')]
+      ? [tr('No favorites yet'), tr('Open All, choose Manage on an emote, then choose Favorite.')]
       : view === 'recent'
         ? [tr('No recent emotes yet'), tr('Emotes you send in this channel will appear here.')]
+        : view === 'removed'
+          ? [tr('Nothing removed'), tr('Emotes you remove will stay recoverable here.')]
         : view === 'group' && !state.stickerPreferences.groups.length
           ? [tr('Create your first group'), tr('Use New group above, then select emotes and move them into it.')]
           : view === 'group'
@@ -6155,11 +6201,9 @@ function renderStickerGrid(gridHost, visible, view) {
   if (gridHost.dataset.kfStickerGridSignature === signature) {
     // Same tiles, possibly different state on one of them.
     patchStickerTileStates(gridHost);
-    prepareStickerTileActions(gridHost);
     return;
   }
   const scrollTop = Number.isFinite(grid?.scrollTop) ? grid.scrollTop : null;
-  hideStickerTileActions();
   gridHost.dataset.kfStickerGridSignature = signature;
   gridHost.dataset.kfStickerWindow = `${slice.start}-${slice.end}`;
   setMarkup(gridHost, `<div data-kf-sticker-grid data-kf-sticker-total="${visible.length}">${
@@ -6171,13 +6215,11 @@ function renderStickerGrid(gridHost, visible, view) {
   // the viewer scrolled, so putting it back is what makes the swap invisible.
   const next = gridHost.querySelector('[data-kf-sticker-grid]');
   if (next && scrollTop !== null) next.scrollTop = scrollTop;
-  prepareStickerTileActions(gridHost);
   measureEmoteAspect(gridHost);
 }
 
 function setStickerGridHost(gridHost, signature, markup) {
   if (gridHost.dataset.kfStickerGridSignature === signature) return;
-  hideStickerTileActions();
   gridHost.dataset.kfStickerGridSignature = signature;
   delete gridHost.dataset.kfStickerWindow;
   setMarkup(gridHost, markup);
@@ -6195,7 +6237,8 @@ function patchStickerSelection(organizer) {
     if (!proxy) continue;
     const name = proxy.querySelector('img')?.getAttribute('alt') || 'emote';
     const locked = tile.dataset.kfStickerLocked === 'true';
-    if (locked) {
+    const hidden = state.stickerPreferences.hidden.has(key);
+    if (locked || hidden) {
       proxy.setAttribute('aria-disabled', 'true');
       proxy.removeAttribute('aria-pressed');
     } else {
@@ -6203,11 +6246,13 @@ function patchStickerSelection(organizer) {
       if (organizing) proxy.setAttribute('aria-pressed', String(active));
       else proxy.removeAttribute('aria-pressed');
     }
-    proxy.setAttribute('aria-label', trf(locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name }));
+    proxy.setAttribute('aria-label', trf(hidden ? 'Removed emote {name}' : locked ? 'Unavailable emote {name}' : (organizing ? 'Select emote {name}' : 'Use emote {name}'), { name }));
     const reorderable = tile.dataset.kfStickerReorderable === 'true';
-    proxy.title = locked
-      ? trf('{name} is unavailable until you resubscribe.', { name })
-      : trf(
+    proxy.title = hidden
+      ? trf('{name} is removed. Open manage to restore it.', { name })
+      : locked
+        ? trf('{name} is unavailable until you resubscribe.', { name })
+        : trf(
         reorderable
           ? (organizing ? 'Select {name}. Drag to rearrange.' : 'Use {name}. Drag to rearrange.')
           : (organizing ? 'Select {name}' : 'Use {name}'),
@@ -6243,32 +6288,17 @@ function patchStickerTileStates(gridHost) {
     const key = tile.dataset.kfStickerKey;
     const pinned = tile.dataset.kfStickerLocked !== 'true' && isFavorited(key);
     const hidden = state.stickerPreferences.hidden.has(key);
-    const stamp = `${pinned}:${hidden}`;
+    const inspected = state.runtime.stickerDetailKey === key;
+    const stamp = `${pinned}:${hidden}:${inspected}`;
     if (tile.dataset.kfStickerState === stamp) continue;
     tile.dataset.kfStickerState = stamp;
     tile.dataset.kfStickerHidden = String(hidden);
     tile.dataset.kfStickerPinned = String(pinned);
-    const name = tile.querySelector('img')?.getAttribute('alt') || 'emote';
-    const pin = tile.querySelector('[data-kf-sticker-action="pin"]');
-    if (pin) {
-      pin.setAttribute('aria-pressed', String(pinned));
-      const scope = pinned ? favoriteScopeOf(key) : '';
-      const pinLabel = tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite');
-      setMarkup(pin, `${uiIcon('star')}<span>${escapeHtml(pinLabel)}</span>`);
-      pin.setAttribute('aria-label', trf(
-        pinned ? (scope ? 'Remove this-channel favorite {name}' : 'Remove favorite {name}') : 'Favorite {name}',
-        { name },
-      ));
-      pin.title = tr(pinned ? (scope ? 'Remove favorite (this channel)' : 'Remove favorite') : 'Favorite');
-      tile.dataset.kfStickerScoped = scope ? 'true' : '';
-      if (!scope) delete tile.dataset.kfStickerScoped;
-    }
-    const hide = tile.querySelector('[data-kf-sticker-action="hide"]');
-    if (hide) {
-      setMarkup(hide, `${uiIcon(hidden ? 'reset' : 'trash')}<span>${escapeHtml(tr(hidden ? 'Restore' : 'Remove'))}</span>`);
-      hide.setAttribute('aria-label', trf(hidden ? 'Restore {name}' : 'Remove {name}', { name }));
-      hide.title = tr(hidden ? 'Restore' : 'Remove');
-    }
+    tile.dataset.kfStickerInspected = String(inspected);
+    tile.querySelector('[data-kf-sticker-manage-tile]')?.setAttribute('aria-expanded', String(inspected));
+    const scope = pinned ? favoriteScopeOf(key) : '';
+    tile.dataset.kfStickerScoped = scope ? 'true' : '';
+    if (!scope) delete tile.dataset.kfStickerScoped;
   }
 }
 
@@ -6283,7 +6313,6 @@ function bindStickerGridScroll(gridHost) {
   gridHost.addEventListener('scroll', (event) => {
     const grid = event.target;
     if (!grid?.dataset || grid.dataset.kfStickerTotal === undefined) return;
-    hideStickerTileActions();
     const total = Number(grid.dataset.kfStickerTotal) || 0;
     const [start, end] = String(gridHost.dataset.kfStickerWindow || '0-0').split('-').map(Number);
     if (end - start >= total) return; // everything is rendered; nothing to move
@@ -6311,6 +6340,8 @@ function resetStickerPreferences(options = {}) {
   state.runtime.stickerPickerBulkGroup = '';
   state.runtime.stickerPickerOrganizing = false;
   state.runtime.stickerPickerGroupEditor = '';
+  state.runtime.stickerDetailKey = '';
+  state.runtime.emoteDockSignature = '';
   state.stickerPreferences = {
     favorites: [],
     order: [],
@@ -6350,7 +6381,44 @@ function commitPickerStickerChange() {
   persistStickerPreferences();
   applySettingsAttributes();
   renderStickerOrganizer();
+  if (state.modal && !state.modal.hidden && state.currentPage === 'emotes') renderSettingsPage();
   scheduleApply(0);
+}
+
+function stickerOrganizationSnapshot() {
+  return {
+    favorites: state.stickerPreferences.favorites.map((entry) => ({ ...entry })),
+    order: [...(state.stickerPreferences.order || [])],
+    hidden: new Set(state.stickerPreferences.hidden),
+    view: state.stickerPreferences.view,
+    activeGroup: state.stickerPreferences.activeGroup,
+    groups: state.stickerPreferences.groups.map((group) => ({ ...group })),
+    assignments: new Map(state.stickerPreferences.assignments),
+  };
+}
+
+function restoreStickerOrganization(snapshot) {
+  state.stickerPreferences.favorites = snapshot.favorites.map((entry) => ({ ...entry }));
+  state.stickerPreferences.order = [...snapshot.order];
+  state.stickerPreferences.hidden = new Set(snapshot.hidden);
+  state.stickerPreferences.view = snapshot.view;
+  state.stickerPreferences.activeGroup = snapshot.activeGroup;
+  state.stickerPreferences.groups = snapshot.groups.map((group) => ({ ...group }));
+  state.stickerPreferences.assignments = new Map(snapshot.assignments);
+}
+
+function mutateStickerOrganization(mutate, message, undoMessage = 'Emote organization restored.') {
+  const before = stickerOrganizationSnapshot();
+  mutate();
+  commitPickerStickerChange();
+  showToast(message, false, [{
+    label: 'Undo',
+    onClick: () => {
+      restoreStickerOrganization(before);
+      commitPickerStickerChange();
+      showToast(undoMessage);
+    },
+  }]);
 }
 
 function focusPickerStickerGroupInput(organizer) {
@@ -6500,7 +6568,6 @@ function editPickerStickerSelection(action) {
   };
   for (const key of keys) {
     state.stickerPreferences.hidden.add(key);
-    state.stickerPreferences.assignments.delete(key);
   }
   state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((favorite) => !selected.has(favorite.key));
   selected.clear();
@@ -6520,12 +6587,12 @@ function editPickerStickerSelection(action) {
 
 function handleStickerAction(event) {
   const target = event.target.closest?.([
-    '[data-kf-sticker-action]', '[data-kf-sticker-view]', '[data-kf-sticker-show-hidden]',
+    '[data-kf-sticker-action]', '[data-kf-sticker-view]',
     '[data-kf-sticker-reset]', '[data-kf-sticker-manage]', '[data-kf-sticker-organize]',
-    '[data-kf-sticker-group-create]', '[data-kf-sticker-group-rename]', '[data-kf-sticker-group-delete]',
+    '[data-kf-sticker-group-create]', '[data-kf-sticker-group-rename]', '[data-kf-sticker-group-delete]', '[data-kf-sticker-group-move]',
     '[data-kf-sticker-group-save]', '[data-kf-sticker-group-cancel]', '[data-kf-sticker-select-shown]',
     '[data-kf-sticker-clear-selection]', '[data-kf-sticker-batch-move]', '[data-kf-sticker-batch-remove]',
-    '[data-kf-sticker-batch-reorder]',
+    '[data-kf-sticker-batch-reorder]', '[data-kf-sticker-restore-all]',
   ].join(', '));
   if (!target || !target.closest?.('[data-kf-sticker-organizer]')) return;
   event.preventDefault();
@@ -6533,8 +6600,8 @@ function handleStickerAction(event) {
   const organizer = target.closest('[data-kf-sticker-organizer]');
   const key = target.dataset.kfStickerKey;
   const action = target.dataset.kfStickerAction;
-  const focusReturn = stickerActionFocusReturn(target, event);
   if (target.dataset.kfStickerManage) {
+    state.runtime.emoteReturnContext = { source: 'picker' };
     openSettings('emotes');
     return;
   }
@@ -6542,7 +6609,7 @@ function handleStickerAction(event) {
     state.runtime.stickerPickerOrganizing = !state.runtime.stickerPickerOrganizing;
     if (!state.runtime.stickerPickerOrganizing) state.runtime.stickerPickerSelection.clear();
     else {
-      if (state.stickerPreferences.view === 'native') state.stickerPreferences.view = 'all';
+      if (['native', 'locked', 'removed'].includes(state.stickerPreferences.view)) state.stickerPreferences.view = 'all';
       if (!stickerGroupById(state.runtime.stickerPickerBulkGroup)) {
         state.runtime.stickerPickerBulkGroup = state.stickerPreferences.activeGroup || '';
       }
@@ -6565,6 +6632,10 @@ function handleStickerAction(event) {
   }
   if (target.hasAttribute('data-kf-sticker-group-delete')) {
     deletePickerStickerGroup(target.dataset.kfStickerGroupDelete);
+    return;
+  }
+  if (target.hasAttribute('data-kf-sticker-group-move')) {
+    moveStickerGroup(target.dataset.kfStickerGroupId, target.dataset.kfStickerGroupMove === 'up' ? -1 : 1);
     return;
   }
   if (target.hasAttribute('data-kf-sticker-group-save')) {
@@ -6596,6 +6667,36 @@ function handleStickerAction(event) {
     editPickerStickerSelection(target.dataset.kfStickerBatchReorder === 'up' ? 'earlier' : 'later');
     return;
   }
+  if (target.hasAttribute('data-kf-sticker-restore-all')) {
+    const previous = new Set(state.stickerPreferences.hidden);
+    state.stickerPreferences.hidden.clear();
+    state.runtime.stickerDetailKey = '';
+    commitPickerStickerChange();
+    showToast('Removed emotes restored.', false, [{
+      label: 'Undo',
+      onClick: () => {
+        state.stickerPreferences.hidden = previous;
+        commitPickerStickerChange();
+        showToast('Removal state restored.');
+      },
+    }]);
+    return;
+  }
+  if (action === 'details' && key) {
+    rememberStickerGridScroll(target);
+    const open = state.runtime.stickerDetailKey !== key;
+    state.runtime.stickerDetailKey = open ? key : '';
+    renderStickerOrganizer();
+    restoreStickerDetailFocus(organizer, key, open);
+    return;
+  }
+  if (action === 'close-details') {
+    const detailKey = key || state.runtime.stickerDetailKey;
+    state.runtime.stickerDetailKey = '';
+    renderStickerOrganizer();
+    restoreStickerDetailFocus(organizer, detailKey, false);
+    return;
+  }
   if (action === 'send') {
     if (key === state.runtime.stickerDragSuppressKey && Date.now() <= state.runtime.stickerDragSuppressClickUntil) {
       state.runtime.stickerDragSuppressKey = '';
@@ -6606,13 +6707,16 @@ function handleStickerAction(event) {
       showToast('This subscription emote is unavailable. Open its source profile to resubscribe.', true);
       return;
     }
+    if (state.stickerPreferences.hidden.has(key)) {
+      showToast('Restore this emote before using it.', true);
+      return;
+    }
     if (state.runtime.stickerPickerOrganizing) {
       if (state.runtime.stickerPickerSelection.has(key)) state.runtime.stickerPickerSelection.delete(key);
       else state.runtime.stickerPickerSelection.add(key);
       patchStickerSelection(organizer);
       return;
     }
-    hideStickerTileActions();
     const original = state.stickerCatalog.get(key)?.originals?.find((button) => button.isConnected);
     original?.click?.();
     return;
@@ -6627,9 +6731,8 @@ function handleStickerAction(event) {
     if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
     const name = state.stickerCatalog.get(key)?.name || 'Emote';
     const message = isFavorited(key) ? trf('Favorited {name}.', { name }) : trf('Removed {name} from favorites.', { name });
-    hideStickerTileActions();
     commitPickerStickerChange();
-    restoreStickerActionFocus(focusReturn, organizer);
+    restoreStickerDetailFocus(organizer, key, true);
     showToast(message, false, [{
       label: 'Undo',
       onClick: () => {
@@ -6655,9 +6758,9 @@ function handleStickerAction(event) {
     const name = state.stickerCatalog.get(key)?.name || 'Emote';
     if (hidden) {
       state.stickerPreferences.hidden.delete(key);
-      hideStickerTileActions();
+      state.runtime.stickerDetailKey = '';
       commitPickerStickerChange();
-      restoreStickerActionFocus(focusReturn, organizer);
+      restoreStickerDetailFocus(organizer, key, false);
       showToast(trf('Restored {name}.', { name }));
     } else {
       const previous = {
@@ -6667,10 +6770,8 @@ function handleStickerAction(event) {
       };
       state.stickerPreferences.hidden.add(key);
       state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
-      state.stickerPreferences.assignments.delete(key);
-      hideStickerTileActions();
       commitPickerStickerChange();
-      restoreStickerActionFocus(focusReturn, organizer);
+      restoreStickerDetailFocus(organizer, key, true);
       showToast(trf('Removed {name}.', { name }), false, [{
         label: 'Undo',
         onClick: () => {
@@ -6686,6 +6787,7 @@ function handleStickerAction(event) {
     return;
   } else if (target.dataset.kfStickerView) {
     state.stickerPreferences.view = target.dataset.kfStickerView;
+    state.runtime.stickerDetailKey = '';
     state.stickerPreferences.activeGroup = target.dataset.kfStickerGroup || state.stickerPreferences.activeGroup;
     state.runtime.stickerGridAnchor = 0;
     state.runtime.stickerGridScrollTop = 0;
@@ -6698,16 +6800,12 @@ function handleStickerAction(event) {
     } else if (state.stickerPreferences.view !== 'group') {
       state.runtime.stickerPickerGroupEditor = '';
     }
-    if (state.stickerPreferences.view === 'native' || state.stickerPreferences.view === 'locked') {
+    if (['native', 'locked', 'removed'].includes(state.stickerPreferences.view)) {
       state.runtime.stickerPickerOrganizing = false;
       state.runtime.stickerPickerSelection.clear();
     }
     commitPickerStickerChange();
     if (state.runtime.stickerPickerGroupEditor) focusPickerStickerGroupInput(organizer);
-    return;
-  } else if (target.dataset.kfStickerShowHidden) {
-    state.stickerPreferences.showHidden = !state.stickerPreferences.showHidden;
-    commitPickerStickerChange();
     return;
   } else if (target.dataset.kfStickerReset) {
     resetStickerPreferences({ keepLibrary: true });
@@ -7839,6 +7937,7 @@ async function runApplyCycle() {
     applyPlayerResilience();
     applyChatPause();
     syncComposerRecallControl();
+    renderComposerEmoteDock();
     observeChatStickerDiscovery();
     // Fire-and-forget: every live path already falls back to the DOM, so a
     // rejected promise here must never interrupt the apply cycle.
@@ -7950,12 +8049,9 @@ function installRuntimeInteractions() {
   document.addEventListener('click', handleCardAction, true);
   document.addEventListener('click', handleSearchAction, true);
   document.addEventListener('click', handleStickerAction, true);
-  document.addEventListener('pointerover', onStickerTileActionEnter, true);
-  document.addEventListener('pointerout', onStickerTileActionLeave, true);
-  document.addEventListener('focusin', onStickerTileActionEnter, true);
-  document.addEventListener('focusout', onStickerTileActionLeave, true);
   document.addEventListener('click', handleChatStickerSave, true);
   document.addEventListener('keydown', handleChatStickerSave, true);
+  document.addEventListener('click', handleComposerEmoteDock, true);
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('[data-kf-chat-pause]');
     if (!button) return;
@@ -8631,9 +8727,11 @@ const UI_CSS = `
   .kf-sticker-library-controls .kf-select { width: 100%; height: 40px; }
   .kf-sticker-group-builder { display: grid; gap: 7px; }
   .kf-sticker-group-list { display: grid; gap: 7px; margin-top: 10px; }
-  .kf-sticker-group-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px; align-items: center; }
+  .kf-sticker-group-row { display: grid; gap: 5px; }
   .kf-sticker-group-row .kf-text { min-height: 34px; padding-block: 6px; }
-  .kf-sticker-group-row > span, .kf-sticker-group-empty { color: var(--muted); font-size: 10px; }
+  .kf-sticker-group-row-actions { display: flex; min-width: 0; align-items: center; gap: 4px; }
+  .kf-sticker-group-row-actions > span { min-width: 18px; margin-right: auto; color: var(--muted); font-size: 10px; }
+  .kf-sticker-group-empty { color: var(--muted); font-size: 10px; }
   .kf-sticker-library-bulk { display: grid; grid-template-columns: auto auto auto minmax(120px, 1fr) auto auto; gap: 6px; align-items: center; margin-top: 9px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
   .kf-sticker-library-bulk > strong { color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
   .kf-sticker-library-bulk .kf-select { min-width: 0; width: 100%; }
@@ -9410,7 +9508,6 @@ const TRANSLATIONS = {
   'Favorite': ['Favorito', 'Favorito'],
   'Favorites': ['Favoritos', 'Favoritos'],
   'Locked': ['Bloqueados', 'Bloqueados'],
-  'Actions for {name}': ['Acciones para {name}', 'Ações para {name}'],
   'All': ['Todos', 'Todos'],
   'Kick': ['Kick', 'Kick'],
   'Kick groups': ['Grupos de Kick', 'Grupos da Kick'],
@@ -9418,7 +9515,7 @@ const TRANSLATIONS = {
   'No emotes found': ['No se encontraron emotes', 'Nenhum emote encontrado'],
   'Try a different search or clear the search field.': ['Prueba otra búsqueda o borra el campo de búsqueda.', 'Tente outra busca ou limpe o campo de busca.'],
   'No favorites yet': ['Aún no hay favoritos', 'Ainda não há favoritos'],
-  'Open All, hover or focus an emote, then choose Favorite.': ['Abre Todos, pasa el cursor o enfoca un emote y elige Favorito.', 'Abra Todos, passe o cursor ou foque um emote e escolha Favorito.'],
+  'Open All, choose Manage on an emote, then choose Favorite.': ['Abre Todos, elige Gestionar en un emote y después Favorito.', 'Abra Todos, escolha Gerenciar em um emote e depois Favorito.'],
   'No recent emotes yet': ['Aún no hay emotes recientes', 'Ainda não há emotes recentes'],
   'Emotes you send in this channel will appear here.': ['Los emotes que envíes en este canal aparecerán aquí.', 'Os emotes que você enviar neste canal aparecerão aqui.'],
   'Create your first group': ['Crea tu primer grupo', 'Crie seu primeiro grupo'],
@@ -9429,7 +9526,7 @@ const TRANSLATIONS = {
   '{count} selected emote': ['{count} emote seleccionado', '{count} emote selecionado'],
   '{count} selected emotes': ['{count} emotes seleccionados', '{count} emotes selecionados'],
   'Organize': ['Organizar', 'Organizar'],
-  'Remove this-channel favorite {name}': ['Quitar {name} de los favoritos de este canal', 'Remover {name} dos favoritos deste canal'],
+  'Manage {name}': ['Gestionar {name}', 'Gerenciar {name}'],
   'Emote suggestions': ['Sugerencias de emotes', 'Sugestões de emotes'],
   'Removed {name} from the grid ({count} of {max})': ['Se quitó {name} de la cuadrícula ({count} de {max})', '{name} foi removido da grade ({count} de {max})'],
   'Added {name} to the grid ({count} of {max})': ['Se añadió {name} a la cuadrícula ({count} de {max})', '{name} foi adicionado à grade ({count} de {max})'],
@@ -9451,11 +9548,14 @@ const TRANSLATIONS = {
   'Use {name}': ['Usar {name}', 'Usar {name}'],
   'Use {name}. Drag to rearrange.': ['Usar {name}. Arrastra para reordenar.', 'Usar {name}. Arraste para reorganizar.'],
   'Select {name}. Drag to rearrange.': ['Seleccionar {name}. Arrastra para reordenar.', 'Selecionar {name}. Arraste para reorganizar.'],
+  '{name} is removed. Open manage to restore it.': ['{name} está eliminado. Abre Gestionar para restaurarlo.', '{name} está removido. Abra Gerenciar para restaurá-lo.'],
   '{count} in {name}': ['{count} en {name}', '{count} em {name}'],
   '{shown} of {total} available': ['{shown} de {total} disponibles', '{shown} de {total} disponíveis'],
   '{count} available': ['{count} disponibles', '{count} disponíveis'],
   '{shown} of {total} locked': ['{shown} de {total} bloqueados', '{shown} de {total} bloqueados'],
   '{count} locked': ['{count} bloqueados', '{count} bloqueados'],
+  '{shown} of {total} removed': ['{shown} de {total} eliminados', '{shown} de {total} removidos'],
+  '{count} removed': ['{count} eliminados', '{count} removidos'],
   ', {count} locked by Kick': [', {count} bloqueados por Kick', ', {count} bloqueados pela Kick'],
   '{name} is unavailable until you resubscribe.': ['{name} no está disponible hasta que te vuelvas a suscribir.', '{name} fica indisponível até você assinar novamente.'],
   'This subscription emote is unavailable. Open its source profile to resubscribe.': ['Este emote de suscripción no está disponible. Abre el perfil de origen para volver a suscribirte.', 'Este emote de assinatura está indisponível. Abra o perfil de origem para assinar novamente.'],
@@ -9474,16 +9574,19 @@ const TRANSLATIONS = {
   'Channel favorites stay before global favorites.': ['Los favoritos del canal permanecen antes que los favoritos globales.', 'Os favoritos do canal ficam antes dos favoritos globais.'],
   'Emote group changes restored.': ['Se restauraron los cambios de grupos de emotes.', 'As alterações dos grupos de emotes foram restauradas.'],
   'Removed emotes restored.': ['Se restauraron los emotes eliminados.', 'Os emotes removidos foram restaurados.'],
+  'Removal state restored.': ['Se restauró el estado de eliminación.', 'O estado de remoção foi restaurado.'],
   'Favorite change restored.': ['Se restauró el cambio de favorito.', 'A alteração de favorito foi restaurada.'],
   'Emote changes reset.': ['Se restablecieron los cambios de emotes.', 'As alterações de emotes foram redefinidas.'],
   'Emote moved earlier.': ['El emote se movió antes.', 'O emote foi movido para antes.'],
   'Emote moved later.': ['El emote se movió después.', 'O emote foi movido para depois.'],
+  'Restore this emote before using it.': ['Restaura este emote antes de usarlo.', 'Restaure este emote antes de usá-lo.'],
   'emote moved.': ['emote movido.', 'emote movido.'],
   'emotes moved.': ['emotes movidos.', 'emotes movidos.'],
   'emote removed.': ['emote eliminado.', 'emote removido.'],
   'emotes removed.': ['emotes eliminados.', 'emotes removidos.'],
   'Move selected emotes to group': ['Mover los emotes seleccionados al grupo', 'Mover os emotes selecionados para o grupo'],
   'Emote views': ['Vistas de emotes', 'Visualizações de emotes'],
+  'Close emote details': ['Cerrar detalles del emote', 'Fechar detalhes do emote'],
   'Kick rarity, matched by {basis}': ['Rareza de Kick, encontrada por {basis}', 'Raridade da Kick, encontrada por {basis}'],
   'Insert {name}': ['Insertar {name}', 'Inserir {name}'],
   'Open {name} artwork': ['Abrir la imagen de {name}', 'Abrir a imagem de {name}'],
@@ -9493,7 +9596,6 @@ const TRANSLATIONS = {
   'Rename {name}': ['Cambiar el nombre de {name}', 'Renomear {name}'],
   'Show {name} again': ['Mostrar {name} de nuevo', 'Mostrar {name} novamente'],
   'Open {name} on Kick': ['Abrir {name} en Kick', 'Abrir {name} na Kick'],
-  'View {name}': ['Ver {name}', 'Ver {name}'],
   'Remove {name} from the grid': ['Quitar {name} de la cuadrícula', 'Remover {name} da grade'],
   'Copy a link to board {name}': ['Copiar un enlace al tablero {name}', 'Copiar um link para o painel {name}'],
   'Delete board {name}': ['Eliminar el tablero {name}', 'Excluir o painel {name}'],
@@ -9537,6 +9639,7 @@ const TRANSLATIONS = {
   'Diagnostic summary copied.': ['Resumen de diagnóstico copiado.', 'Resumo de diagnóstico copiado.'],
   'Clipboard access was unavailable.': ['El acceso al portapapeles no estaba disponible.', 'O acesso à área de transferência não estava disponível.'],
   'Close settings': ['Cerrar configuración', 'Fechar configurações'],
+  'Back to chat': ['Volver al chat', 'Voltar ao chat'],
   'Reset page': ['Restablecer página', 'Redefinir página'],
   'Export settings': ['Exportar configuración', 'Exportar configurações'],
   'Done': ['Listo', 'Concluído'],
@@ -9938,10 +10041,12 @@ const TRANSLATIONS = {
   'Short': ['Baja', 'Baixa'],
   'Medium': ['Media', 'Média'],
   'Tall': ['Alta', 'Alta'],
-  'Quick emote strip': ['Barra de emotes rápidos', 'Faixa de emotes rápidos'],
-  'Hide it, use 24 pixel controls, or keep Kick’s size.': ['Ocúltala, usa controles de 24 píxeles o conserva el tamaño de Kick.', 'Oculte, use controles de 24 pixels ou mantenha o tamanho do Kick.'],
-  'Quick emotes shown': ['Emotes rápidos visibles', 'Emotes rápidos exibidos'],
-  'Limit the strip without changing saved choices.': ['Limita la barra sin cambiar las opciones guardadas.', 'Limite a faixa sem mudar as escolhas salvas.'],
+  'Chat emote dock': ['Panel de emotes del chat', 'Painel de emotes do chat'],
+  'Keep saved emotes beside the message box. It inserts a plain emote name at your cursor and never sends.': ['Mantén los emotes guardados junto al cuadro de mensaje. Inserta el nombre del emote donde está el cursor y nunca lo envía.', 'Mantenha os emotes salvos ao lado da caixa de mensagem. Ele insere o nome do emote no cursor e nunca envia.'],
+  'Emotes in the dock': ['Emotes del panel', 'Emotes no painel'],
+  'Choose favorites, recent emotes from this channel, or favorites followed by recent emotes.': ['Elige favoritos, emotes recientes de este canal o favoritos seguidos de emotes recientes.', 'Escolha favoritos, emotes recentes deste canal ou favoritos seguidos de emotes recentes.'],
+  'Dock size': ['Tamaño del panel', 'Tamanho do painel'],
+  'Limit the dock without changing saved favorites or history.': ['Limita el panel sin cambiar los favoritos guardados ni el historial.', 'Limite o painel sem mudar os favoritos salvos nem o histórico.'],
   'Click chat emotes to save': ['Haz clic en los emotes del chat para guardarlos', 'Clique nos emotes do chat para salvar'],
   'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.': ['Haz clic en cualquier emote del chat para añadirlo a tus favoritos. Si Kick lo marca explícitamente como restringido a seguidores, el mismo clic sigue su canal de origen; el acceso de suscriptor nunca se omite.', 'Clique em qualquer emote do chat para adicioná-lo aos favoritos. Se o Kick o marcar explicitamente como restrito a seguidores, o mesmo clique segue o canal de origem; o acesso de assinante nunca é contornado.'],
   'Highlight chat keywords': ['Resaltar palabras clave del chat', 'Destacar palavras-chave do chat'],
@@ -9963,6 +10068,9 @@ const TRANSLATIONS = {
   'Freeze animated emotes': ['Congelar los emotes animados', 'Congelar os emotes animados'],
   'Read-only here. Kick blocks sending from an embedded chat; open the channel to talk.': ['Solo lectura aquí. Kick impide enviar desde un chat incrustado; abre el canal para hablar.', 'Somente leitura aqui. O Kick impede o envio a partir de um chat incorporado; abra o canal para falar.'],
   'Emote favorites, removals, and custom groups reset.': ['Se restablecieron los favoritos, las eliminaciones y los grupos personalizados de emotes.', 'Favoritos, remoções e grupos personalizados de emotes redefinidos.'],
+  'Removed emotes stay saved until you restore them.': ['Los emotes eliminados siguen guardados hasta que los restaures.', 'Os emotes removidos ficam salvos até você restaurá-los.'],
+  'Nothing removed': ['No hay emotes eliminados', 'Nenhum emote removido'],
+  'Emotes you remove will stay recoverable here.': ['Los emotes que elimines se podrán recuperar aquí.', 'Os emotes que você remover poderão ser recuperados aqui.'],
   'The emote could not be saved. The error log on the Content & Ads page says why.': ['No se pudo guardar el emote. El registro de errores de la página Contenido y anuncios dice por qué.', 'Não foi possível salvar o emote. O registro de erros da página Conteúdo e anúncios diz por quê.'],
   'Open a channel page first.': ['Abre primero la página de un canal.', 'Abra primeiro a página de um canal.'],
   'Local channel tools saved.': ['Herramientas locales del canal guardadas.', 'Ferramentas locais do canal salvas.'],
@@ -10050,7 +10158,7 @@ const TRANSLATIONS = {
   'Chat keywords for this channel': ['Palabras clave del chat para este canal', 'Palavras-chave do chat para este canal'],
   'Why I follow this channel…': ['Por qué sigo este canal…', 'Por que eu sigo este canal…'],
   'Private channel note': ['Nota privada del canal', 'Nota privada do canal'],
-  'Search emotes or Kick groups': ['Buscar emotes o grupos de Kick', 'Buscar emotes ou grupos do Kick'],
+  'Search names, sources, or groups': ['Buscar nombres, fuentes o grupos', 'Buscar nomes, fontes ou grupos'],
   'Search recorded emotes': ['Buscar emotes registrados', 'Buscar emotes registrados'],
   'Filter recorded emotes': ['Filtrar emotes registrados', 'Filtrar emotes registrados'],
   'Group name': ['Nombre del grupo', 'Nome do grupo'],
@@ -10509,6 +10617,7 @@ const settingsSurface = createSettings({
   stickerChangedSinceCapture,
   storageDiagnostics,
   storageHealth,
+  syncEmoteReturnControl,
   TELEMETRY_HOSTS,
   tr,
   trf,
@@ -10665,12 +10774,17 @@ function protectionRows() {
 }
 
 function applyStickerLibrarySearch(value = state.runtime.stickerLibraryQuery) {
-  const query = String(value || '').trim().toLowerCase();
+  const query = String(value || '').trim();
   state.runtime.stickerLibraryQuery = query;
   const items = [...(state.shadow?.querySelectorAll('[data-kf-sticker-library-item]') || [])];
   let visible = 0;
   for (const item of items) {
-    item.hidden = Boolean(query) && !String(item.dataset.kfStickerSearch || '').includes(query);
+    const sticker = state.stickerPreferences.library.get(item.dataset.kfStickerKey);
+    const groupId = state.stickerPreferences.assignments.get(item.dataset.kfStickerKey);
+    const groupName = stickerGroupById(groupId)?.name || '';
+    const rank = stickerSearchRank(sticker, query, groupName);
+    item.hidden = Boolean(query) && !Number.isFinite(rank);
+    item.style.order = query && Number.isFinite(rank) ? String(rank) : '';
     if (!item.hidden) visible += 1;
   }
   for (const group of state.shadow?.querySelectorAll('[data-kf-my-emote-group]') || []) {
@@ -11050,14 +11164,6 @@ function cleanCustomStickerGroupName(value) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 }
 
-function saveStickerOrganization(message) {
-  persistStickerPreferences();
-  applySettingsAttributes();
-  renderSettingsPage();
-  scheduleApply(0);
-  showToast(message);
-}
-
 function createStickerGroup() {
   const input = state.shadow?.querySelector('[data-kf-new-sticker-group]');
   const name = cleanCustomStickerGroupName(input?.value);
@@ -11075,10 +11181,9 @@ function createStickerGroup() {
     return;
   }
   const id = `group_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  state.stickerPreferences.groups.push({ id, name });
   state.runtime.stickerLibraryFilter = 'all';
   state.runtime.stickerLibraryBulkGroup = id;
-  saveStickerOrganization(`Created emote group “${name}”.`);
+  mutateStickerOrganization(() => state.stickerPreferences.groups.push({ id, name }), `Created emote group “${name}”.`, 'New group removed.');
 }
 
 function renameStickerGroup(target) {
@@ -11094,61 +11199,63 @@ function renameStickerGroup(target) {
     showToast('That emote group already exists.', true);
     return;
   }
-  group.name = name;
-  saveStickerOrganization('Emote group renamed.');
+  mutateStickerOrganization(() => { group.name = name; }, 'Emote group renamed.', 'Group name restored.');
 }
 
 function deleteStickerGroup(target) {
   const id = target.dataset.kfStickerGroupId;
   const group = state.stickerPreferences.groups.find((entry) => entry.id === id);
   if (!group) return;
-  state.stickerPreferences.groups = state.stickerPreferences.groups.filter((entry) => entry.id !== id);
-  state.stickerPreferences.assignments = new Map([...state.stickerPreferences.assignments].filter(([, groupId]) => groupId !== id));
-  if (state.stickerPreferences.activeGroup === id) {
-    state.stickerPreferences.activeGroup = '';
-    state.stickerPreferences.view = 'all';
-  }
   if (state.runtime.stickerLibraryFilter === `group:${id}`) state.runtime.stickerLibraryFilter = 'all';
   if (state.runtime.stickerLibraryBulkGroup === id) state.runtime.stickerLibraryBulkGroup = '';
-  saveStickerOrganization(`Deleted emote group “${group.name}”.`);
+  mutateStickerOrganization(() => {
+    state.stickerPreferences.groups = state.stickerPreferences.groups.filter((entry) => entry.id !== id);
+    state.stickerPreferences.assignments = new Map([...state.stickerPreferences.assignments].filter(([, groupId]) => groupId !== id));
+    if (state.stickerPreferences.activeGroup === id) {
+      state.stickerPreferences.activeGroup = '';
+      state.stickerPreferences.view = 'all';
+    }
+  }, `Deleted emote group “${group.name}”.`, 'Emote group restored.');
 }
 
 function toggleLibrarySticker(target, kind) {
   const key = target.dataset.kfStickerKey;
   if (!state.stickerPreferences.library.has(key)) return;
   if (kind === 'favorite') {
-    const scope = isFavorited(key) ? favoriteScopeOf(key) : newFavoriteChannel();
-    state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferences.favorites, key, scope);
-    if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
-    saveStickerOrganization(isFavorited(key) ? 'Emote favorited.' : 'Emote favorite removed.');
+    const willFavorite = !isFavorited(key);
+    mutateStickerOrganization(() => {
+      const scope = isFavorited(key) ? favoriteScopeOf(key) : newFavoriteChannel();
+      state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferences.favorites, key, scope);
+      if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
+    }, willFavorite ? 'Emote favorited.' : 'Emote favorite removed.', 'Favorite change restored.');
     return;
   }
-  // Remove frees the library slot for real: delete the record, remember the key
-  // so a live scan does not re-record it, and drop any favorite or assignment
-  // that referenced it. Restore is a bulk action in the Removed view.
-  state.stickerPreferences.hidden.add(key);
-  state.stickerPreferences.library.delete(key);
-  state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
-  state.stickerPreferences.assignments.delete(key);
-  saveStickerOrganization('Emote removed and its slot freed.');
+  const restoring = state.stickerPreferences.hidden.has(key);
+  mutateStickerOrganization(() => {
+    if (restoring) state.stickerPreferences.hidden.delete(key);
+    else {
+      state.stickerPreferences.hidden.add(key);
+      state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
+    }
+  }, restoring ? 'Emote restored.' : 'Emote removed. Its details remain saved.', 'Removal change restored.');
 }
 
 function restoreRemovedStickers() {
   if (!state.stickerPreferences.hidden.size) return;
-  state.stickerPreferences.hidden = new Set();
-  saveStickerOrganization('Removed emotes will return to the library as they are seen again.');
+  mutateStickerOrganization(() => { state.stickerPreferences.hidden = new Set(); }, 'Removed emotes restored.', 'Removal state restored.');
 }
 
 function assignLibrarySticker(selectElement) {
   const key = selectElement.dataset.kfStickerAssignment;
   const groupId = selectElement.value;
   if (!state.stickerPreferences.library.has(key)) return;
-  if (groupId && state.stickerPreferences.groups.some((group) => group.id === groupId)) {
-    state.stickerPreferences.assignments.set(key, groupId);
-  } else {
-    state.stickerPreferences.assignments.delete(key);
-  }
-  saveStickerOrganization(groupId ? 'Emote assigned to custom group.' : 'Emote moved to Ungrouped.');
+  mutateStickerOrganization(() => {
+    if (groupId && state.stickerPreferences.groups.some((group) => group.id === groupId)) {
+      state.stickerPreferences.assignments.set(key, groupId);
+    } else {
+      state.stickerPreferences.assignments.delete(key);
+    }
+  }, groupId ? 'Emote assigned to custom group.' : 'Emote moved.', 'Emote group changes restored.');
 }
 
 function editLibrarySelection(action, target) {
@@ -11175,20 +11282,20 @@ function editLibrarySelection(action, target) {
   }
   const keys = [...selected].filter((key) => state.stickerPreferences.library.has(key));
   if (!keys.length) return;
-  if (action === 'move') {
-    const group = state.runtime.stickerLibraryBulkGroup;
-    if (group && !state.stickerPreferences.groups.some((entry) => entry.id === group)) return;
-    for (const key of keys) if (group) state.stickerPreferences.assignments.set(key, group); else state.stickerPreferences.assignments.delete(key);
-  } else {
-    for (const key of keys) {
-      state.stickerPreferences.hidden.add(key);
-      state.stickerPreferences.library.delete(key);
-      state.stickerPreferences.assignments.delete(key);
-    }
-    state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => !selected.has(entry.key));
-  }
+  const group = state.runtime.stickerLibraryBulkGroup;
+  if (action === 'move' && group && !state.stickerPreferences.groups.some((entry) => entry.id === group)) return;
+  const restoring = action === 'restore';
   selected.clear();
-  saveStickerOrganization(`${keys.length} ${plural(keys.length, action === 'move' ? 'emote moved.' : 'emote removed.', action === 'move' ? 'emotes moved.' : 'emotes removed.')}`);
+  mutateStickerOrganization(() => {
+    if (action === 'move') {
+      for (const key of keys) if (group) state.stickerPreferences.assignments.set(key, group); else state.stickerPreferences.assignments.delete(key);
+    } else if (restoring) {
+      for (const key of keys) state.stickerPreferences.hidden.delete(key);
+    } else {
+      for (const key of keys) state.stickerPreferences.hidden.add(key);
+      state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => !keys.includes(entry.key));
+    }
+  }, `${keys.length} ${plural(keys.length, action === 'move' ? 'emote moved.' : restoring ? 'emote restored.' : 'emote removed.', action === 'move' ? 'emotes moved.' : restoring ? 'emotes restored.' : 'emotes removed.')}`, 'Emote organization restored.');
 }
 
 function selectViewingPreset(presetId) {
@@ -11243,6 +11350,10 @@ function onInterfaceClick(event) {
   else if (action === 'open-command') openCommandMenu();
   else if (action === 'toggle-panic') togglePanicSwitch();
   else if (action === 'close-settings') closeSettings();
+  else if (action === 'back-to-chat-emotes') {
+    closeSettings();
+    requestAnimationFrame(() => chatMessageInput()?.focus?.());
+  }
   else if (action === 'reset-page') resetSettings('page');
   else if (action === 'reset-all') resetSettings('all');
   else if (action === 'export') exportSettings();
@@ -11447,11 +11558,13 @@ function onInterfaceClick(event) {
   else if (action === 'create-sticker-group') createStickerGroup();
   else if (action === 'rename-sticker-group') renameStickerGroup(actionTarget);
   else if (action === 'delete-sticker-group') deleteStickerGroup(actionTarget);
+  else if (action === 'move-sticker-group') moveStickerGroup(actionTarget.dataset.kfStickerGroupId, actionTarget.dataset.direction === 'up' ? -1 : 1);
   else if (action === 'select-library-sticker') editLibrarySelection('toggle', actionTarget);
   else if (action === 'select-visible-stickers') editLibrarySelection('shown');
   else if (action === 'clear-library-selection') editLibrarySelection('clear');
   else if (action === 'move-selected-stickers') editLibrarySelection('move');
   else if (action === 'remove-selected-stickers') editLibrarySelection('remove');
+  else if (action === 'restore-selected-stickers') editLibrarySelection('restore');
   else if (action === 'favorite-library-sticker') toggleLibrarySticker(actionTarget, 'favorite');
   else if (action === 'remove-library-sticker') toggleLibrarySticker(actionTarget, 'remove');
   else if (action === 'restore-removed-stickers') restoreRemovedStickers();
@@ -11610,6 +11723,26 @@ function queueSettingsNavAlignment() {
   settingsNavFrame = requestAnimationFrame(alignCurrentSettingsNav);
 }
 
+function syncEmoteReturnControl() {
+  const footer = state.shadow?.querySelector('.kf-footer-right');
+  if (!footer) return;
+  let control = footer.querySelector('[data-kf-emote-return]');
+  const visible = Boolean(state.runtime.emoteReturnContext) && state.currentPage === 'emotes';
+  if (!visible) {
+    control?.remove();
+    return;
+  }
+  if (!control) {
+    control = document.createElement('button');
+    control.type = 'button';
+    control.className = 'kf-button';
+    control.dataset.action = 'back-to-chat-emotes';
+    control.dataset.kfEmoteReturn = 'true';
+    control.textContent = tr('Back to chat');
+    footer.prepend(control);
+  }
+}
+
 function openSettings(page = state.currentPage) {
   if (!state.modal) return;
   closeCommandMenu();
@@ -11638,6 +11771,8 @@ function closeSettings() {
   if (!restoreFocus(state.lastFocused)) {
     restoreFocus(state.headerControlHost?.shadowRoot?.querySelector('[data-kf-header-focus]'));
   }
+  state.runtime.emoteReturnContext = null;
+  syncEmoteReturnControl();
 }
 
 // A factory reset clears every private store the registry marks reset:true, but
@@ -12528,6 +12663,103 @@ function chatMessageInput() {
   return null;
 }
 
+function releaseEmoteDock(holder) {
+  holder?.querySelector?.('[data-kf-emote-dock]')?.remove();
+  if (holder?.dataset) {
+    delete holder.dataset.kfEmoteDockHost;
+    delete holder.dataset.kfEmoteDockSignature;
+  }
+}
+
+function renderComposerEmoteDock() {
+  const input = chatMessageInput();
+  const room = input?.closest?.(CHAT_ROOM_SELECTOR);
+  for (const holder of document.querySelectorAll('#quick-emotes-holder[data-kf-emote-dock-host="true"]')) {
+    if (!room?.contains(holder)) releaseEmoteDock(holder);
+  }
+  if (!room || !state.settings.content.organizeChatStickers || state.settings.content.quickEmoteBar === 'hidden') {
+    for (const holder of document.querySelectorAll('#quick-emotes-holder[data-kf-emote-dock-host="true"]')) releaseEmoteDock(holder);
+    return;
+  }
+  const holder = room.querySelector('#quick-emotes-holder');
+  if (!holder) return;
+  const usable = [...state.stickerPreferences.library.values()].filter((sticker) => (
+    !state.stickerPreferences.hidden.has(sticker.key)
+    && !stickerSubscriptionLocked(sticker)
+    && emoteInsertionPlan(sticker).ok
+  ));
+  if (!usable.length) {
+    releaseEmoteDock(holder);
+    return;
+  }
+  const byKey = new Map(usable.map((sticker) => [sticker.key, sticker]));
+  const byId = new Map();
+  for (const sticker of usable) if (sticker.id && !byId.has(String(sticker.id))) byId.set(String(sticker.id), sticker.key);
+  const recent = recentEmoteUsage(state.emoteUsage, {
+    channel: state.live.slug || currentChannelSlug(),
+    limit: STICKER_USAGE_SECTION_LIMIT * 3,
+  }).map((entry) => byId.get(String(entry.id))).filter(Boolean);
+  const limit = state.settings.content.quickEmoteLimit === 'all'
+    ? 24
+    : Number(state.settings.content.quickEmoteLimit) || 6;
+  const keys = selectEmoteDockKeys({
+    favorites: favoriteKeysInOrder(),
+    recent,
+    available: [...byKey.keys()],
+    mode: state.settings.content.emoteDockSource,
+    limit,
+  });
+  const modeLabel = state.settings.content.emoteDockSource === 'favorites'
+    ? tr('Favorites')
+    : state.settings.content.emoteDockSource === 'recent'
+      ? tr('Recent')
+      : tr('Emotes');
+  const signature = [
+    activeLocale(), state.settings.content.emoteDockSource, String(limit),
+    ...keys.map((key) => {
+      const sticker = byKey.get(key);
+      return `${key}:${sticker?.name}:${sticker?.src}:${isFavorited(key)}`;
+    }),
+  ].join('\u0001');
+  let dock = holder.querySelector('[data-kf-emote-dock]');
+  if (!dock) {
+    dock = document.createElement('div');
+    dock.dataset.kfEmoteDock = 'true';
+    holder.prepend(dock);
+  }
+  holder.dataset.kfEmoteDockHost = 'true';
+  if (holder.dataset.kfEmoteDockSignature === signature) return;
+  holder.dataset.kfEmoteDockSignature = signature;
+  state.runtime.emoteDockSignature = signature;
+  const empty = state.settings.content.emoteDockSource === 'recent'
+    ? tr('No recent emotes yet')
+    : tr('No favorites yet');
+  setMarkup(dock, `<span data-kf-emote-dock-label>${escapeHtml(modeLabel)}</span><div data-kf-emote-dock-track>${keys.length
+    ? keys.map((key) => {
+      const sticker = byKey.get(key);
+      return `<button type="button" data-kf-emote-dock-emote data-kf-sticker-key="${escapeHtml(key)}" data-kf-favorite="${isFavorited(key)}" aria-label="${escapeHtml(trf('Type the name {name} into chat', { name: sticker.name }))}" title="${escapeHtml(sticker.name)}"><img src="${escapeHtml(sticker.src)}" alt="" loading="lazy"${emoteImageAttrs(sticker)}></button>`;
+    }).join('')
+    : `<span data-kf-emote-dock-label>${escapeHtml(empty)}</span>`}</div><button type="button" data-kf-emote-dock-manage aria-label="${escapeHtml(tr('Organize chat emotes'))}" title="${escapeHtml(tr('Organize chat emotes'))}">${uiIcon('folder')}</button>`);
+  measureEmoteAspect(dock);
+}
+
+function handleComposerEmoteDock(event) {
+  const manage = event.target?.closest?.('[data-kf-emote-dock-manage]');
+  const emote = event.target?.closest?.('[data-kf-emote-dock-emote]');
+  if (!manage && !emote) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (manage) {
+    state.runtime.emoteReturnContext = { source: 'dock' };
+    openSettings('emotes');
+    return;
+  }
+  const sticker = libraryStickerFor(emote);
+  const room = emote.closest(CHAT_ROOM_SELECTOR);
+  const input = room ? validChatComposer(room.querySelector(CHAT_COMPOSER_SELECTOR)) : null;
+  typeStickerNameIntoComposer(sticker, input, { trailingSpace: true });
+}
+
 function composerInputFor(node) {
   return validChatComposer(node?.closest?.(CHAT_COMPOSER_SELECTOR));
 }
@@ -12676,34 +12908,39 @@ function onComposerSendClick(event) {
  * DOM, and a message assembled that way is not one the user composed. No
  * synthetic Enter, no send-button click, anywhere in this path.
  */
+function typeStickerNameIntoComposer(sticker, input, options = {}) {
+  const plan = emoteInsertionPlan(sticker);
+  if (!plan.ok) {
+    showToast('That emote has no plain name to type.', true);
+    return false;
+  }
+  if (!input) {
+    showToast('Open a channel chat first.', true);
+    return false;
+  }
+  const text = options.trailingSpace ? `${plan.text} ` : plan.text;
+  input.focus();
+  if (!document.execCommand('insertText', false, text)) {
+    showToast('Kick’s chat box did not accept the text. The name is on your clipboard instead.', true);
+    copyText(plan.text);
+    return false;
+  }
+  showToast(plan.warning ? `Typed ${plan.text}. ${plan.warning}` : `Added ${plan.text} to your message.`, Boolean(plan.warning));
+  return true;
+}
+
 function insertStickerName(target) {
   // The setting gates the action, not just the button. Hiding a control is
   // presentation; this path types into someone's message box.
   if (!state.settings.content.insertEmoteName) return;
   const sticker = libraryStickerFor(target);
-  const plan = emoteInsertionPlan(sticker);
-  if (!plan.ok) {
-    showToast('That emote has no plain name to type.', true);
-    return;
-  }
   // The only button that reaches here lives on the Settings emotes page, and
   // the page behind an open modal is inert, so Kick's composer was not
   // focusable and every press fell through to the clipboard fallback. Typing
   // into chat is also a request to be looking at chat, so Settings closes
   // first rather than the page being made reachable underneath it.
   closeSettings();
-  const input = chatMessageInput();
-  if (!input) {
-    showToast('Open a channel chat first.', true);
-    return;
-  }
-  input.focus();
-  if (!document.execCommand('insertText', false, plan.text)) {
-    showToast('Kick’s chat box did not accept the text. The name is on your clipboard instead.', true);
-    copyText(plan.text);
-    return;
-  }
-  showToast(plan.warning ? `Typed ${plan.text}. ${plan.warning}` : `Typed ${plan.text} at your cursor.`, Boolean(plan.warning));
+  typeStickerNameIntoComposer(sticker, chatMessageInput());
 }
 
 async function copyText(text) {

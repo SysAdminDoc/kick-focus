@@ -68,6 +68,7 @@ export function createSettings(host) {
     stickerChangedSinceCapture,
     storageDiagnostics,
     storageHealth,
+    syncEmoteReturnControl = () => {},
     TELEMETRY_HOSTS,
     tr,
     trf,
@@ -449,7 +450,8 @@ export function createSettings(host) {
     const groupId = state.stickerPreferences.assignments.get(sticker.key) || '';
     const chosen = state.runtime.stickerLibrarySelection.has(sticker.key);
     const nativeGroups = sticker.nativeGroups.length ? sticker.nativeGroups.join(', ') : 'Unknown Kick group';
-    const searchText = `${sticker.name} ${nativeGroups} ${sticker.sourceSlug || ''}`.toLowerCase();
+    const customGroup = state.stickerPreferences.groups.find((group) => group.id === groupId)?.name || '';
+    const searchText = `${sticker.name} ${nativeGroups} ${sticker.sourceSlug || ''} ${customGroup}`.toLowerCase();
     // Shared with the chat hover card, so the two cannot describe the same
     // emote differently.
     const accessLabel = emoteAccessLabel(sticker.access);
@@ -505,11 +507,11 @@ export function createSettings(host) {
     ];
     const chosen = state.runtime.stickerLibrarySelection;
     for (const key of chosen) if (!state.stickerPreferences.library.has(key)) chosen.delete(key);
-    const groupRows = state.stickerPreferences.groups.map((group) => {
+    const groupRows = state.stickerPreferences.groups.map((group, index, groups) => {
       const count = [...state.stickerPreferences.assignments.values()].filter((groupId) => groupId === group.id).length;
       return `<div class="kf-sticker-group-row">
         <input class="kf-text" value="${escapeHtml(group.name)}" maxlength="60" data-kf-sticker-group-name="${escapeHtml(group.id)}" aria-label="${escapeHtml(trf('Rename {name}', { name: group.name }))}">
-        <span>${count}</span><button type="button" class="kf-button kf-button-small kf-danger" data-action="delete-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}" aria-label="${escapeHtml(trf('Delete group {name}', { name: group.name }))}">Delete</button>
+        <div class="kf-sticker-group-row-actions"><span>${count}</span><button type="button" class="kf-button kf-button-small" data-action="move-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}" data-direction="up"${index === 0 ? ' disabled' : ''}>Earlier</button><button type="button" class="kf-button kf-button-small" data-action="move-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}" data-direction="down"${index === groups.length - 1 ? ' disabled' : ''}>Later</button><button type="button" class="kf-button kf-button-small kf-danger" data-action="delete-sticker-group" data-kf-sticker-group-id="${escapeHtml(group.id)}" aria-label="${escapeHtml(trf('Delete group {name}', { name: group.name }))}">Delete</button></div>
       </div>`;
     }).join('');
     const cards = library.map(stickerLibraryCard).join('');
@@ -530,10 +532,10 @@ export function createSettings(host) {
       <div class="kf-sticker-library-workspace">
         <aside class="kf-sticker-group-panel" aria-label="Custom emote groups"><div class="kf-sticker-group-heading"><h4>Groups</h4><span data-kf-no-translate>${state.stickerPreferences.groups.length}/${STICKER_GROUP_LIMIT}</span></div><p>Create a group, then select emotes and move them together.</p><div class="kf-sticker-group-builder"><input class="kf-text" maxlength="60" data-kf-new-sticker-group placeholder="Group name" aria-label="New emote group name"><button type="button" class="kf-button kf-button-primary" data-action="create-sticker-group">Create group</button></div>${groupRows ? `<div class="kf-sticker-group-list">${groupRows}</div>` : '<div class="kf-sticker-group-empty">No groups yet.</div>'}</aside>
         <div class="kf-sticker-library-main">
-          <div class="kf-sticker-library-controls"><input class="kf-text" type="search" value="${escapeHtml(state.runtime.stickerLibraryQuery)}" data-kf-sticker-library-search placeholder="Search emotes or Kick groups" aria-label="Search recorded emotes"><select class="kf-select" data-kf-sticker-library-filter aria-label="Filter recorded emotes">${filters.map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(filter, value) ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div>
-          <div class="kf-sticker-library-bulk" aria-live="polite"><strong>${chosen.size} selected</strong><button type="button" class="kf-button kf-button-small" data-action="select-visible-stickers">Select shown</button><button type="button" class="kf-button kf-button-small" data-action="clear-library-selection"${disabled}>Clear</button><select class="kf-select" data-kf-sticker-bulk-group aria-label="Group for selected emotes"${disabled}>${stickerGroupOptions(state.runtime.stickerLibraryBulkGroup)}</select><button type="button" class="kf-button kf-button-small kf-button-primary" data-action="move-selected-stickers"${disabled}>Move</button><button type="button" class="kf-button kf-button-small kf-danger" data-action="remove-selected-stickers"${disabled}>Remove</button></div>
+          <div class="kf-sticker-library-controls"><input class="kf-text" type="search" value="${escapeHtml(state.runtime.stickerLibraryQuery)}" data-kf-sticker-library-search placeholder="Search names, sources, or groups" aria-label="Search recorded emotes"><select class="kf-select" data-kf-sticker-library-filter aria-label="Filter recorded emotes">${filters.map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(filter, value) ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div>
+          <div class="kf-sticker-library-bulk" aria-live="polite"><strong>${chosen.size} selected</strong><button type="button" class="kf-button kf-button-small" data-action="select-visible-stickers">Select shown</button><button type="button" class="kf-button kf-button-small" data-action="clear-library-selection"${disabled}>Clear</button><select class="kf-select" data-kf-sticker-bulk-group aria-label="Group for selected emotes"${disabled}>${stickerGroupOptions(state.runtime.stickerLibraryBulkGroup)}</select><button type="button" class="kf-button kf-button-small kf-button-primary" data-action="move-selected-stickers"${disabled}>Move</button><button type="button" class="kf-button kf-button-small${filter === 'removed' ? '' : ' kf-danger'}" data-action="${filter === 'removed' ? 'restore-selected-stickers' : 'remove-selected-stickers'}"${disabled}>${filter === 'removed' ? 'Restore' : 'Remove'}</button></div>
           <div class="kf-sticker-library-meta"><span data-kf-sticker-library-visible>${library.length} shown</span><span>New emotes save automatically.</span></div>
-          ${filter === 'mine' ? (groupedCards || `<div class="kf-notice">${myEmotesEmpty}</div>`) : filter === 'removed' ? `<div class="kf-notice">${state.stickerPreferences.hidden.size} removed. These emotes can return after you restore them and Kick shows them again.${state.stickerPreferences.hidden.size ? ' <button type="button" class="kf-button kf-button-small" data-action="restore-removed-stickers">Restore all</button>' : ''}</div>` : cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No emotes match this view.' : 'Open Kick’s emote picker or watch chat to start the library.'}</div>`}
+          ${filter === 'mine' ? (groupedCards || `<div class="kf-notice">${myEmotesEmpty}</div>`) : filter === 'removed' ? `${state.stickerPreferences.hidden.size ? '<div class="kf-notice"><span>Removed emotes stay saved until you restore them.</span><button type="button" class="kf-button kf-button-small" data-action="restore-removed-stickers">Restore all</button></div>' : ''}${cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : '<div class="kf-notice">Nothing removed</div>'}` : cards ? `<div class="kf-sticker-library-grid">${cards}</div>` : `<div class="kf-notice">${state.stickerPreferences.library.size ? 'No emotes match this view.' : 'Open Kick’s emote picker or watch chat to start the library.'}</div>`}
         </div>
       </div>
     </section>`;
@@ -658,8 +660,9 @@ export function createSettings(host) {
           ${row('Organize chat emotes', 'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.', toggle('content.organizeChatStickers', value.organizeChatStickers, { label: 'Organize chat emotes' }))}
           ${row('Emote picker density', 'Compact fits eight emotes per row at 340 px. Roomy makes each emote larger.', segmented('content.emotePickerDensity', value.emotePickerDensity, [['compact', 'Compact'], ['balanced', 'Balanced'], ['roomy', 'Roomy']]))}
           ${row('Emote picker height', 'Choose how much of the library stays visible before it scrolls.', segmented('content.emotePickerHeight', value.emotePickerHeight, [['short', 'Short'], ['medium', 'Medium'], ['tall', 'Tall']]))}
-          ${row('Quick emote strip', 'Hide it, use 24 pixel controls, or keep Kick’s size.', segmented('content.quickEmoteBar', value.quickEmoteBar, [['hidden', 'Hidden'], ['compact', 'Compact'], ['standard', 'Standard']]))}
-          ${row('Quick emotes shown', 'Limit the strip without changing saved choices.', segmented('content.quickEmoteLimit', value.quickEmoteLimit, [['4', '4'], ['6', '6'], ['8', '8'], ['10', '10'], ['all', 'All']]))}
+          ${row('Chat emote dock', 'Keep saved emotes beside the message box. It inserts a plain emote name at your cursor and never sends.', segmented('content.quickEmoteBar', value.quickEmoteBar, [['hidden', 'Hidden'], ['compact', 'Compact'], ['standard', 'Standard']]))}
+          ${row('Emotes in the dock', 'Choose favorites, recent emotes from this channel, or favorites followed by recent emotes.', segmented('content.emoteDockSource', value.emoteDockSource, [['mixed', 'Mixed'], ['favorites', 'Favorites'], ['recent', 'Recent']]))}
+          ${row('Dock size', 'Limit the dock without changing saved favorites or history.', segmented('content.quickEmoteLimit', value.quickEmoteLimit, [['4', '4'], ['6', '6'], ['8', '8'], ['10', '10'], ['all', 'All']]))}
           ${row('Click chat emotes to save', 'Click any emote in chat to add it to your favorites. If Kick explicitly marks it as follow-gated, the same click follows its source channel; subscriber access is never bypassed.', toggle('content.clickChatEmotes', value.clickChatEmotes, { label: 'Click chat emotes to save' }))}
           ${row('Type an emote name into chat', 'Adds a Type in chat action beside Copy name in the emote library. It types the plain name at your cursor and stops. Never the wire token, never an id, and it never sends the message.', toggle('content.insertEmoteName', value.insertEmoteName, { label: 'Type an emote name into chat' }))}
           ${row('Suggest emotes as you type', 'Typing a colon and two or more letters in chat offers matching emotes from your library, ranked by what you actually send here. Click one to put its plain name at your cursor. Suggestions are clicked, never accepted with a key, so nothing you type is ever captured, and it never sends the message.', toggle('content.emoteAutocomplete', value.emoteAutocomplete, { label: 'Suggest emotes as you type' }))}
@@ -964,6 +967,7 @@ export function createSettings(host) {
       state.shadow.querySelector('[data-kf-settings-shell]').dataset.kfCurrentPage = 'search';
       page.scrollTop = 0;
       syncSettingsChrome();
+      syncEmoteReturnControl();
       localizeInterface();
       return;
     }
@@ -996,6 +1000,7 @@ export function createSettings(host) {
     // offer a reset that would refuse. Search is not a page and cannot inherit
     // a stale active nav item or reset action from the page underneath it.
     syncSettingsChrome();
+    syncEmoteReturnControl();
     localizeInterface();
     if (state.currentPage === 'emotes') applyStickerLibrarySearch();
     if (state.currentPage === 'content') renderChatHistoryResults();

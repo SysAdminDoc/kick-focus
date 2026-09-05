@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AD_HOSTS, TELEMETRY_HOSTS, cancellableTelemetryHosts, VERSION } from '../src/core.mjs';
 import { renderIcon } from './icons.mjs';
-import { stripComments } from './strip-comments.mjs';
+import { compactCssTemplates, stripComments } from './strip-comments.mjs';
 import { createZip } from './zip.mjs';
 import { requireSupportedEngine } from './engine.mjs';
 
@@ -45,7 +45,7 @@ const GUARD = `if (window.__kickFocusBooted) return;\nwindow.__kickFocusBooted =
  * ceiling — see SIZE_BUDGETS in check.mjs — while the artifact is generated and
  * nobody edits it. The prose stays in `src/`, where it is read.
  */
-const bundled = (source) => stripComments(source)
+const bundled = (source) => compactCssTemplates(stripComments(source))
   .replace(/^import\s[\s\S]*?from\s+'[^']*';[^\S\n]*\n/gm, '')
   .replace(/^export\s+/gm, '');
 
@@ -60,11 +60,7 @@ const bundledMultistream = bundled(multistream)
   .replaceAll('__KICK_FOCUS_ICON__', iconData);
 const bundledSettings = bundled(settings)
   .replaceAll('__KICK_FOCUS_PREVIEW__', previewData);
-const bundledRuntime = stripComments(runtime)
-  // CSS remains readable in source but ships without thousands of indentation
-  // bytes that otherwise consume the userscript's seeded-library headroom.
-  .replace(/(const SITE_CSS = `)([\s\S]*?)(`;)/, (_, open, css, close) =>
-    `${open}${css.replace(/\s*\n\s*/g, ' ')}${close}`)
+const bundledRuntime = compactCssTemplates(stripComments(runtime))
   .replaceAll('__KICK_FOCUS_ICON__', iconData)
   .replaceAll('__KICK_FOCUS_PREVIEW__', previewData);
 // Concat order is the dependency order: everything a module imports must have

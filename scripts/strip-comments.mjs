@@ -222,3 +222,92 @@ export function stripComments(source) {
   lines.push(line);
   return lines.join('\n');
 }
+
+/**
+ * Collapse generated stylesheet templates without touching markup templates.
+ *
+ * The source stays readable. Only NAME_CSS template literals qualify, using
+ * the same declaration rule as the comment scanner above. CSS strings and
+ * JavaScript interpolations are copied exactly, since whitespace can be data
+ * in either one.
+ */
+export function compactCssTemplates(source) {
+  const compactCss = (css) => {
+    let output = '';
+    let pendingSpace = false;
+    let quote = '';
+
+    const interpolationEnd = (start) => {
+      let depth = 1;
+      let cursor = start + 2;
+      let string = '';
+      while (cursor < css.length && depth > 0) {
+        const character = css[cursor];
+        if (string) {
+          if (character === '\\') cursor += 2;
+          else {
+            if (character === string) string = '';
+            cursor += 1;
+          }
+          continue;
+        }
+        if (character === '"' || character === "'" || character === '`') {
+          string = character;
+          cursor += 1;
+          continue;
+        }
+        if (character === '{') depth += 1;
+        else if (character === '}') depth -= 1;
+        cursor += 1;
+      }
+      return cursor;
+    };
+
+    const trimBefore = new Set(['{', '}', ';', ',', '>', '~', '=', '!', ')', ']']);
+    const trimAfter = new Set(['{', '}', ';', ',', '>', '~', '=', ':', '(', '[']);
+    for (let index = 0; index < css.length; index += 1) {
+      const character = css[index];
+      if (quote) {
+        output += character;
+        if (character === '\\' && index + 1 < css.length) output += css[++index];
+        else if (character === quote) quote = '';
+        continue;
+      }
+      if (character === '"' || character === "'") {
+        if (pendingSpace && output && !trimAfter.has(output.at(-1))) output += ' ';
+        pendingSpace = false;
+        quote = character;
+        output += character;
+        continue;
+      }
+      if (character === '$' && css[index + 1] === '{') {
+        if (pendingSpace && output && !trimAfter.has(output.at(-1))) output += ' ';
+        pendingSpace = false;
+        const end = interpolationEnd(index);
+        output += css.slice(index, end);
+        index = end - 1;
+        continue;
+      }
+      if (/\s/.test(character)) {
+        pendingSpace = true;
+        continue;
+      }
+      if (trimBefore.has(character)) {
+        output = output.replace(/\s+$/, '');
+        pendingSpace = false;
+      } else if (pendingSpace && output && !trimAfter.has(output.at(-1))) {
+        output += ' ';
+        pendingSpace = false;
+      } else {
+        pendingSpace = false;
+      }
+      output += character;
+    }
+    return output.trim().replace(/;}/g, '}');
+  };
+
+  return source.replace(
+    /(\b(?:const|let|var)\s+[A-Za-z_$][\w$]*_CSS\s*=\s*`)([\s\S]*?)(`)/g,
+    (_, open, css, close) => `${open}${compactCss(css)}${close}`,
+  );
+}

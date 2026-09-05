@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { stripComments } from '../scripts/strip-comments.mjs';
+import { compactCssTemplates, stripComments } from '../scripts/strip-comments.mjs';
 
 /**
  * The stripper runs over every shipped module, so the interesting cases are the
@@ -135,4 +135,24 @@ test('a CSS template loses its comments and a markup template keeps its content'
   const interpolated = stripComments('const UI_CSS = `a { b: ${/* gone */ value}; }`;');
   assert.equal(interpolated.includes('gone'), false);
   assert.match(interpolated, /\$\{\s*value\}/, 'the interpolated expression survives the strip');
+});
+
+test('every CSS template compacts without changing strings or interpolations', { tags: ['unit'] }, () => {
+  const source = [
+    'const SITE_CSS = `',
+    '  .a > .b, .c { color: red; content: "a  b"; width: calc(100% - 2px); }',
+    '  a :hover { display: ${choose({ nested: true })}; }',
+    '`;',
+    'const TOOLTIP_CSS = `\n  :host { padding: 4px; }\n`;',
+    'const MARKUP = `\n  <p>keep  this</p>\n`;',
+  ].join('\n');
+  const compacted = compactCssTemplates(source);
+
+  assert.match(compacted, /\.a>\.b,\.c\{color:red;content:"a  b";width:calc\(100% - 2px\)}/);
+  assert.match(compacted, /a :hover\{display:\$\{choose\(\{ nested: true \}\)\}}/,
+    'selector whitespace and interpolation source must survive');
+  assert.match(compacted, /const TOOLTIP_CSS = `:host\{padding:4px}`/,
+    'a second CSS template must be discovered automatically');
+  assert.ok(compacted.includes('<p>keep  this</p>'), 'non-CSS template content must stay byte-for-byte');
+  assert.equal(compactCssTemplates(compacted), compacted, 'CSS compaction must be stable');
 });
