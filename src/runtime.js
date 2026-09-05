@@ -2709,6 +2709,39 @@ const SITE_CSS = `
     }
   }
 
+  /* Windows High Contrast, for the surfaces this build puts inside Kick's own
+     page. The panel has its own block in UI_CSS; these live here because they
+     are styled from the site sheet and would otherwise be the only parts of
+     the emote workspace with no boundary at all. Forced colors drops custom
+     backgrounds and box-shadows, and every one of these states says something
+     the user needs: which emotes are selected, which are favorited, which are
+     removed, and which dock emote is a favorite. */
+  @media (forced-colors: active) {
+    [data-kf-sticker-item][data-kf-sticker-selected="true"] [data-kf-sticker-proxy],
+    [data-kf-emote-dock-emote][data-kf-favorite="true"] {
+      outline: 2px solid Highlight !important;
+      outline-offset: 1px !important;
+    }
+    /* Favorited and selected are different states and must not look alike, but
+       forced colors offers no second accent to spend on that — LinkText is the
+       system colour for links and means something else. So the distinction is
+       the outline style rather than another colour. */
+    [data-kf-sticker-item][data-kf-sticker-pinned="true"] [data-kf-sticker-proxy] {
+      outline: 3px double Highlight !important;
+      outline-offset: 1px !important;
+    }
+    [data-kf-sticker-item][data-kf-sticker-hidden="true"] [data-kf-sticker-proxy],
+    [data-kf-sticker-item][data-kf-sticker-locked="true"] [data-kf-sticker-proxy] {
+      outline: 1px dashed GrayText !important;
+      opacity: 1 !important;
+    }
+    [data-kf-sticker-organizer], [data-kf-emote-dock] { border: 1px solid CanvasText !important; }
+    /* A highlighted chat message is marked only by an inset rule down its left
+       edge and a tinted background. Forced colors removes both, so the one
+       message the reader asked to be able to find looked like every other. */
+    [data-kf-highlighted="true"] { outline: 2px solid Highlight !important; outline-offset: -2px !important; }
+  }
+
 `;
 
 function applySettingsAttributes() {
@@ -8873,6 +8906,26 @@ const UI_CSS = `
     [aria-checked="true"], [aria-selected="true"], [aria-pressed="true"], [aria-current="page"] {
       outline: 2px solid Highlight;
       outline-offset: 1px;
+    }
+    /* States this build marks with its own attribute rather than an ARIA one.
+       Both draw their only boundary as an inset shadow, which forced colors
+       removes: a selected Library emote became indistinguishable from an
+       unselected one, and the multi-stream tile that owns the audio lost the
+       only thing saying so. */
+    .kf-sticker-library-item[data-selected="true"],
+    .kf-ms-tile[data-kf-multistream-focused="true"] {
+      outline: 2px solid Highlight;
+      outline-offset: 1px;
+    }
+    /* A toast is a floating surface whose only edge is its elevation shadow,
+       so in forced colors it ran straight into the page behind it. */
+    .kf-toast { border: 1px solid CanvasText; }
+    /* Disabled has to stay legible and still read as disabled. Forced colors
+       already recolours the text to GrayText; the border has to follow, or a
+       disabled control keeps a full-strength edge and reads as available. */
+    button:disabled, [aria-disabled="true"], .kf-button:disabled {
+      border-color: GrayText;
+      color: GrayText;
     }
   }
 

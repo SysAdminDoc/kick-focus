@@ -18,6 +18,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Windows High Contrast no longer erases the states this build marks with a coloured glow. A selected emote in the Library, a favourited one, a removed one, the multi-stream tile that owns the audio, a highlighted chat message and the toasts all had edges that High Contrast throws away, so they looked identical to everything around them.
+
 - Every surface this build adds to a Kick page now declares which language it is written in. Kick’s document says English, so translated labels dropped into it were being read aloud with English pronunciation — the emote dock, the card action buttons, and the emote organizer were all doing this.
 
 - A second Kick tab can no longer quietly undo your emote changes. Every save is stamped with which tab wrote it, a save built on state another tab has already moved past is refused rather than allowed to overwrite it, and the change is re-applied on top of theirs so both survive. Tabs now also notice each other’s emote changes without being reloaded.

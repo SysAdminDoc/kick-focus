@@ -187,6 +187,63 @@ const composerWriters = (source) => {
 };
 const COMPOSER_WRITERS = ['acceptEmoteCompletion', 'replaceComposerText', 'typeStickerNameIntoComposer'];
 
+/**
+ * A state drawn only as a shadow disappears in Windows High Contrast.
+ *
+ * Forced colors replaces backgrounds and suppresses `box-shadow`, so a
+ * selected emote, a favorited one, the multi-stream tile that owns the audio
+ * and a highlighted chat message all looked exactly like their neighbours —
+ * the one accessibility failure that is invisible on an ordinary screen.
+ *
+ * The rule is written against the next state somebody adds rather than the
+ * four that were wrong: any `[state="true"]` selector that draws a shadow has
+ * to be named inside a `forced-colors: active` block in the same stylesheet.
+ * The block is read by brace depth rather than to end of file, because reading
+ * past it counted every later selector as covered and the first version of
+ * this check passed for that reason.
+ */
+const forcedColorsGaps = (source) => {
+  const template = (name) => {
+    const open = `const ${name} = \``;
+    const start = source.indexOf(open);
+    if (start < 0) return '';
+    const from = start + open.length;
+    let index = from;
+    while (index < source.length) {
+      if (source[index] === '\\') { index += 2; continue; }
+      if (source[index] === '`') break;
+      index += 1;
+    }
+    return source.slice(from, index);
+  };
+  const state = /\[((?:aria|data)-[a-z-]+)="true"\]/g;
+  const gaps = [];
+  for (const name of ['SITE_CSS', 'UI_CSS']) {
+    const css = template(name);
+    if (!css) continue;
+    const drawn = new Set();
+    for (const line of css.split('\n')) {
+      if (!line.includes('box-shadow') || /box-shadow:\s*none/.test(line)) continue;
+      for (const match of line.matchAll(state)) drawn.add(match[1]);
+    }
+    const covered = new Set();
+    let at = css.indexOf('@media (forced-colors: active)');
+    while (at >= 0) {
+      const opens = css.indexOf('{', at);
+      let depth = 0;
+      let end = opens;
+      for (; end < css.length; end += 1) {
+        if (css[end] === '{') depth += 1;
+        else if (css[end] === '}') { depth -= 1; if (depth === 0) break; }
+      }
+      for (const match of css.slice(opens, end).matchAll(state)) covered.add(match[1]);
+      at = css.indexOf('@media (forced-colors: active)', end);
+    }
+    for (const attribute of drawn) if (!covered.has(attribute)) gaps.push(`${name}: ${attribute}`);
+  }
+  return gaps;
+};
+
 const shadowAccessibilityWired = (bundle) => {
   const flags = hostKeyedAccessibility(bundle);
   return flags.has('large-targets') && flags.has('reduce-motion');
@@ -2097,6 +2154,7 @@ const checks = [
     stickerInverseIsShared(runtimeModuleSource)],
   ['only the three deliberate insertion paths can write to the viewer’s draft',
     composerWriters(runtimeModuleSource).join() === COMPOSER_WRITERS.join()],
+  ['every state drawn as a shadow survives Windows High Contrast', forcedColorsGaps(runtimeModuleSource).length === 0],
   ['every byte region is in the baseline and inside its growth allowance', regionFailures.length === 0],
   ['the measured regions sum to the whole artifact, so none can hide',
     regionMeasurement.regions.reduce((sum, region) => sum + region.bytes, 0) === regionMeasurement.total],
@@ -2142,6 +2200,23 @@ const redProbes = [
   ['size budget accepts an artifact exactly at its budget',
     overBudgetIn([['a.js', 'x'.repeat(10), 10, 'test']]).length === 0],
   ['size budget accepts the real artifacts', overBudgetIn(SIZE_BUDGETS).length === 0],
+  ['forced-colors gate would catch a new state drawn only as a shadow',
+    forcedColorsGaps([
+      'const SITE_CSS = `',
+      '  [data-kf-new-thing="true"] { box-shadow: inset 3px 0 0 red; }',
+      '`;',
+    ].join('\n')).length === 1],
+  // The state named outside the block, so a gate that read past the closing
+  // brace would call it covered. That is what the first version of this did.
+  ['forced-colors gate would catch a block that only looks like it covers the state',
+    forcedColorsGaps([
+      'const UI_CSS = `',
+      '  [data-kf-thing="true"] { box-shadow: inset 0 0 0 1px red; }',
+      '  @media (forced-colors: active) { .other { border: 1px solid CanvasText; } }',
+      '  [data-kf-thing="true"] { color: red; }',
+      '`;',
+    ].join('\n')).length === 1],
+  ['forced-colors gate accepts the real stylesheets', forcedColorsGaps(runtimeModuleSource).length === 0],
   ['composer-write gate would catch a render path gaining a write to the draft',
     composerWriters([
       'function renderStickerOrganizer() {',

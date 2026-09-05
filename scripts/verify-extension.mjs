@@ -4969,6 +4969,70 @@ try {
         ? `page contrast ${pageMetrics.map((metric) => metric?.ratio).join('/')}; popup contrast ${popupSample.title}/${popupSample.note}/${popupSample.button} with boundary custom accent; popup theme=${popupSample.theme}`
         : pageSample.why);
   }
+  // Windows High Contrast, emulated. Forced colors throws away this build's
+  // palette and suppresses every box-shadow, so a control whose only edge was
+  // a shadow has no edge at all — and that is invisible on an ordinary screen,
+  // which is why it needs a machine to look.
+  await pageClient.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'forced-colors', value: 'active' }],
+  });
+  await sleep(400);
+  const forced = await evaluate(pageClient, `(async () => {
+    const host = document.getElementById('kick-focus-root');
+    const shadow = await __kfWait(() => host && host.shadowRoot);
+    if (!shadow) return { ok: false, why: 'the settings shadow host never appeared' };
+    // Forced colors recolours borders; it only *suppresses* box-shadow. So
+    // sampling controls that already carry a real border proves nothing —
+    // the first version of this check did exactly that and stayed green with
+    // the panel's forced-colors rule deleted. What actually breaks is a state
+    // whose only marker is a shadow, so the test is whether a state still
+    // looks different from its absence.
+    // outline-width computes to 3px on anything with no outline at all,
+    // because the initial value is 'medium'. Reading it alone compared an
+    // invisible 3px against a real 2px and called the real one missing, so the
+    // style has to gate the width.
+    const ring = (node) => {
+      const style = getComputedStyle(node);
+      if (!style.outlineStyle || style.outlineStyle === 'none') return 0;
+      return Math.max(...String(style.outlineWidth).split(' ').map((part) => parseFloat(part) || 0));
+    };
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0';
+    const pair = (markup) => {
+      probe.innerHTML = markup;
+      return [...probe.children].map(ring);
+    };
+    shadow.appendChild(probe);
+    const cases = [
+      ['selected Library emote', '<div class="kf-sticker-library-item"></div><div class="kf-sticker-library-item" data-selected="true"></div>'],
+      ['focused multi-stream tile', '<div class="kf-ms-tile"></div><div class="kf-ms-tile" data-kf-multistream-focused="true"></div>'],
+      ['pressed segmented control', '<div class="kf-segmented"><button></button><button aria-pressed="true"></button></div>'],
+    ];
+    const missing = [];
+    for (const [label, markup] of cases) {
+      const widths = label === 'pressed segmented control'
+        ? (() => { probe.innerHTML = markup; return [...probe.querySelectorAll('button')].map(ring); })()
+        : pair(markup);
+      if (!(widths[1] > widths[0])) missing.push(label + ' (' + widths[0] + ' vs ' + widths[1] + ')');
+    }
+    probe.remove();
+    return {
+      ok: true,
+      forced: matchMedia('(forced-colors: active)').matches,
+      sampled: cases.length,
+      missing,
+    };
+  })()`);
+  const forcedSample = forced.value || {};
+  recordProbe('a state marked only by a shadow is still visible under Windows High Contrast', forcedSample,
+    forcedSample.ok === true && forcedSample.forced === true
+      && Array.isArray(forcedSample.missing) && forcedSample.missing.length === 0,
+    forcedSample.ok
+      ? `forced-colors active=${forcedSample.forced}, ${forcedSample.sampled} control(s) sampled, edgeless: ${forcedSample.missing?.join(', ') || 'none'}`
+      : forcedSample.why);
+  await pageClient.send('Emulation.setEmulatedMedia', { features: [] });
+  await sleep(200);
+
   await evaluate(pageClient, `(async () => {
     const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
     document.documentElement.dataset.kfTheme = '${originalPageTheme}';
