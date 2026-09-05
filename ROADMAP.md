@@ -199,15 +199,6 @@ None open.
   Acceptance: Each committed command carries a stable writer ID, per-writer sequence, and command ID; userscript and companion modes observe external changes without reload; concurrent favorites and edits to different groups converge; a stale writer cannot erase a newer change; a true same-field conflict follows one documented deterministic rule and reports it locally; two-tab tests cover reconnect and tab closure.
   Complexity: L
 
-- [ ] P1: R-124: Add a compact channel-aware favorites shelf above the native comment input
-  Why: Frequent commenters should reach their most-used emotes without opening the full catalog, while the native composer must remain the source of truth.
-  Evidence: src/runtime.js native composer delegation; https://chromewebstore.google.com/detail/wesutil/igdnndpfofcemcoellnefdflnmcchmle; https://github.com/jakubn11/kick-third-party-emotes; https://github.com/Xzensi/NipahTV
-  Touches: src/runtime.js profile composer adapter and shelf, src/core.mjs bounded preference, translations, picker tests, browser verifier
-  Acceptance: An opt-in shelf shows current-channel favorites first and fills remaining slots from global favorites in stable order; one activation delegates insertion to the native composer and never sends; the shelf hides when empty, can be collapsed from the same surface, follows route and entitlement changes, has readable names and standard keyboard behavior, and fits without covering host controls at 1440, 900, and 680 pixels.
-  Complexity: M
-
-### P2, profile comment emote organization and polish
-
 - [ ] P2: R-126: Search emotes by name, source, native group, and custom group with stable ranking
   Why: Picker search currently matches only the descriptor name while the Library considers more context, so the same catalog can return different results.
   Evidence: src/runtime.js picker filter; src/settings.mjs Library filter; src/storage.mjs normalized descriptor fields; https://www.w3.org/WAI/ARIA/apg/patterns/combobox/

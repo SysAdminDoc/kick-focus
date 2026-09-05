@@ -6,6 +6,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Added
 
+- The chat emote dock can be dismissed from the dock itself, with one step of undo. Hiding it previously meant knowing it came from a setting, opening settings, and finding the control.
+
 - The signed-in verification matrix now covers Channel points and Kick level. The Viewer page has always rendered a card for each, but neither had an entry, so a logged-out run named nothing for them and a signed-in run checked nothing. Both now print what a session would assert, and a run against a real profile asserts it.
 
 ### Added

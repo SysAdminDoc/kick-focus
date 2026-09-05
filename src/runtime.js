@@ -2001,7 +2001,7 @@ const SITE_CSS = `
     [data-kf-emote-dock-label] { color: var(--kf-text-muted) !important; font-size: 10px !important; font-weight: 760 !important; white-space: nowrap !important; }
     [data-kf-emote-dock-track] { display: flex !important; min-width: 0 !important; align-items: center !important; gap: 3px !important; overflow-x: auto !important; scrollbar-width: none !important; }
     [data-kf-emote-dock-track]::-webkit-scrollbar { display: none !important; }
-    [data-kf-emote-dock-emote], [data-kf-emote-dock-manage] {
+    [data-kf-emote-dock-emote], [data-kf-emote-dock-manage], [data-kf-emote-dock-collapse] {
       display: grid !important;
       width: 30px !important;
       min-width: 30px !important;
@@ -2017,14 +2017,14 @@ const SITE_CSS = `
       cursor: pointer !important;
     }
     [data-kf-emote-dock-emote]:hover, [data-kf-emote-dock-emote]:focus-visible,
-    [data-kf-emote-dock-manage]:hover, [data-kf-emote-dock-manage]:focus-visible { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; }
+    [data-kf-emote-dock-manage]:hover, [data-kf-emote-dock-collapse]:hover, [data-kf-emote-dock-manage]:focus-visible, [data-kf-emote-dock-collapse]:focus-visible { border-color: var(--kf-accent) !important; background: rgba(var(--kf-accent-rgb), .1) !important; color: var(--kf-accent) !important; }
     [data-kf-emote-dock-emote][data-kf-favorite="true"] { border-color: rgba(var(--kf-accent-rgb), .58) !important; box-shadow: inset 0 -2px 0 var(--kf-accent) !important; }
     [data-kf-emote-dock-emote] img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
-    [data-kf-emote-dock-manage] .kf-icon { width: 15px !important; height: 15px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; }
+    [data-kf-emote-dock-manage] .kf-icon, [data-kf-emote-dock-collapse] .kf-icon { width: 15px !important; height: 15px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; }
     html[data-kf-quick-emote-bar="standard"] [data-kf-emote-dock-emote],
-    html[data-kf-quick-emote-bar="standard"] [data-kf-emote-dock-manage] { width: 38px !important; min-width: 38px !important; height: 38px !important; min-height: 38px !important; flex-basis: 38px !important; padding: 5px !important; }
+    html[data-kf-quick-emote-bar="standard"] [data-kf-emote-dock-manage], html[data-kf-quick-emote-bar="standard"] [data-kf-emote-dock-collapse] { width: 38px !important; min-width: 38px !important; height: 38px !important; min-height: 38px !important; flex-basis: 38px !important; padding: 5px !important; }
     html[data-kf-large-targets="true"] [data-kf-emote-dock-emote],
-    html[data-kf-large-targets="true"] [data-kf-emote-dock-manage] { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; flex-basis: 40px !important; }
+    html[data-kf-large-targets="true"] [data-kf-emote-dock-manage], html[data-kf-large-targets="true"] [data-kf-emote-dock-collapse] { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; flex-basis: 40px !important; }
 
     #chat-emotes-picker-panel {
       --kf-emote-tile-height: 40px;
@@ -9794,6 +9794,9 @@ const TRANSLATIONS = {
   'Open help and recovery': ['Abrir ayuda y recuperación', 'Abrir ajuda e recuperação'],
   'Chat updates resumed': ['Actualizaciones del chat reanudadas', 'Atualizações do chat retomadas'],
   'Organize chat emotes': ['Organizar los emotes del chat', 'Organizar os emotes do chat'],
+  'Hide the emote dock': ['Ocultar la barra de emotes', 'Ocultar a barra de emotes'],
+  'Emote dock hidden.': ['Barra de emotes oculta.', 'Barra de emotes ocultada.'],
+  'Emote dock restored.': ['Barra de emotes restaurada.', 'Barra de emotes restaurada.'],
   'Continuously record emotes from live chat and Kick’s picker, then add favorites, removals, search, and custom groups.': ['Registra continuamente los emotes del chat en vivo y del selector de Kick, y añade favoritos, eliminaciones, búsqueda y grupos personalizados.', 'Registra continuamente os emotes do chat ao vivo e do seletor do Kick, e adiciona favoritos, remoções, busca e grupos personalizados.'],
   'Emote picker density': ['Densidad del selector de emotes', 'Densidade do seletor de emotes'],
   'Compact fits eight emotes per row at 340 px. Roomy makes each emote larger.': ['Compacta muestra ocho emotes por fila a 340 px. Espaciosa agranda cada emote.', 'Compacta mostra oito emotes por linha a 340 px. Espaçosa aumenta cada emote.'],
@@ -12503,16 +12506,32 @@ function renderComposerEmoteDock() {
       const sticker = byKey.get(key);
       return `<button type="button" data-kf-emote-dock-emote data-kf-sticker-key="${escapeHtml(key)}" data-kf-favorite="${isFavorited(key)}" aria-label="${escapeHtml(trf('Type the name {name} into chat', { name: sticker.name }))}" title="${escapeHtml(sticker.name)}"><img src="${escapeHtml(sticker.src)}" alt="" loading="lazy"${emoteImageAttrs(sticker)}></button>`;
     }).join('')
-    : `<span data-kf-emote-dock-label>${escapeHtml(empty)}</span>`}</div><button type="button" data-kf-emote-dock-manage aria-label="${escapeHtml(tr('Organize chat emotes'))}" title="${escapeHtml(tr('Organize chat emotes'))}">${uiIcon('folder')}</button>`);
+    : `<span data-kf-emote-dock-label>${escapeHtml(empty)}</span>`}</div><button type="button" data-kf-emote-dock-manage aria-label="${escapeHtml(tr('Organize chat emotes'))}" title="${escapeHtml(tr('Organize chat emotes'))}">${uiIcon('folder')}</button><button type="button" data-kf-emote-dock-collapse aria-label="${escapeHtml(tr('Hide the emote dock'))}" title="${escapeHtml(tr('Hide the emote dock'))}">${uiIcon('close')}</button>`);
   measureEmoteAspect(dock);
 }
 
 function handleComposerEmoteDock(event) {
   const manage = event.target?.closest?.('[data-kf-emote-dock-manage]');
+  const collapse = event.target?.closest?.('[data-kf-emote-dock-collapse]');
   const emote = event.target?.closest?.('[data-kf-emote-dock-emote]');
-  if (!manage && !emote) return;
+  if (!manage && !collapse && !emote) return;
   event.preventDefault();
   event.stopPropagation();
+  if (collapse) {
+    // Dismissable from the dock itself. Hiding it used to mean knowing it came
+    // from a setting, opening settings, and finding the control — which is a
+    // long way to go to close something that is in your way.
+    const previous = state.settings.content.quickEmoteBar;
+    updateSetting('content.quickEmoteBar', 'hidden');
+    showToast(tr('Emote dock hidden.'), false, [{
+      label: 'Undo',
+      onClick: () => {
+        updateSetting('content.quickEmoteBar', previous);
+        showToast(tr('Emote dock restored.'));
+      },
+    }]);
+    return;
+  }
   if (manage) {
     state.runtime.emoteReturnContext = { source: 'dock' };
     openSettings('emotes');
