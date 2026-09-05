@@ -5380,6 +5380,49 @@ function stickerProxyMarkup(descriptor, view) {
   </div>`;
 }
 
+/**
+ * The organizer controls a rebuild can take the keyboard away from.
+ *
+ * Ordered most specific first, because several of these sit on the same
+ * element: a group's Earlier button carries both `-group-move` and
+ * `-group-id`, and keying on the first attribute alone would send focus to a
+ * different group's button of the same name.
+ */
+const STICKER_CHROME_FOCUS_ATTRIBUTES = [
+  'data-kf-sticker-view', 'data-kf-sticker-organize', 'data-kf-sticker-manage',
+  'data-kf-sticker-group-create', 'data-kf-sticker-group-rename', 'data-kf-sticker-group-delete',
+  'data-kf-sticker-group-move', 'data-kf-sticker-group-save', 'data-kf-sticker-group-cancel',
+  'data-kf-sticker-select-shown', 'data-kf-sticker-clear-selection', 'data-kf-sticker-batch-move',
+  'data-kf-sticker-batch-remove', 'data-kf-sticker-batch-reorder', 'data-kf-sticker-restore-all',
+  'data-kf-sticker-detail-close', 'data-kf-sticker-reset',
+];
+
+/**
+ * A key for whatever chrome control has focus, stable across a rebuild.
+ *
+ * `setMarkup(chrome, …)` replaces the whole header — tabs, counts, Organize,
+ * the batch bar — so pressing a view tab moved focus to the body and the next
+ * Tab started again from the top of the page. Every one of these controls
+ * survives the rebuild as an equivalent element, so the fix is to say which
+ * one it was in terms that outlive the node.
+ */
+function stickerChromeFocusKey(chrome) {
+  const active = deepActiveElement();
+  if (!active?.getAttribute || !chrome?.contains?.(active)) return '';
+  for (const attribute of STICKER_CHROME_FOCUS_ATTRIBUTES) {
+    if (!active.hasAttribute(attribute)) continue;
+    const value = active.getAttribute(attribute);
+    let selector = value ? `[${attribute}="${CSS.escape(value)}"]` : `[${attribute}]`;
+    // Qualifiers that separate one instance of a repeated control from another.
+    for (const qualifier of ['data-kf-sticker-group-id', 'data-kf-sticker-key']) {
+      const owned = active.getAttribute(qualifier);
+      if (owned) selector += `[${qualifier}="${CSS.escape(owned)}"]`;
+    }
+    return selector;
+  }
+  return '';
+}
+
 function restoreStickerDetailFocus(organizer, key, open) {
   requestAnimationFrame(() => {
     const selector = open
@@ -5840,6 +5883,8 @@ function renderStickerOrganizer() {
     return;
   }
   chrome.dataset.kfStickerSignature = signature;
+  // Captured before the rebuild that is about to discard the focused node.
+  const chromeFocusKey = stickerChromeFocusKey(chrome);
   const countLabel = view === 'removed'
     ? (query
       ? trf('{shown} of {total} removed', { shown: visible.length, total: removed.length })
@@ -5873,6 +5918,14 @@ function renderStickerOrganizer() {
     ${view === 'removed' && removed.length ? `<div data-kf-sticker-recovery><span>${escapeHtml(tr('Removed emotes stay saved until you restore them.'))}</span><button type="button" data-kf-sticker-restore-all>${escapeHtml(tr('Restore all'))}</button></div>` : ''}
     ${view === 'group' ? pickerStickerGroupPanelMarkup(available) : ''}
     ${state.runtime.stickerPickerOrganizing && !['native', 'locked', 'removed'].includes(view) ? pickerStickerBatchMarkup() : ''}`);
+  // Put the keyboard back on the equivalent control. A control the rebuild
+  // legitimately removed — the batch bar after leaving Organize, Restore all
+  // once nothing is removed — has no equivalent, and focus falls to the active
+  // view tab rather than to the document body.
+  if (chromeFocusKey) {
+    restoreFocus(chrome.querySelector(chromeFocusKey)
+      || chrome.querySelector('[data-kf-sticker-view][data-active="true"]'));
+  }
   renderStickerGrid(gridHost, visible, view);
   patchStickerSelection(organizer);
   restoreStickerGridScroll(organizer, previousGridScrollTop);

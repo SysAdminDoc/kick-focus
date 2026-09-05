@@ -14,6 +14,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Pressing a view tab, Organize, or a group control in the emote picker no longer throws the keyboard back to the top of the page. The header rebuilds itself when its contents change, and focus now lands on the same control afterwards; where a control genuinely went away, focus falls to the active view rather than to nothing.
+
 - Undo in the emote picker now puts everything back. Every change to your emote organization goes through one recorder, so undoing a change restores the whole arrangement rather than the one part the code behind that particular button happened to remember. Two cases were plainly wrong before: favouriting an emote you had removed brought it back, and undoing that left it visible with the star restored; and reordering a favourite, restoring one removed emote, or renaming a group offered no undo at all.
 - Undo also puts the organizer back where it was, so undoing a batch change no longer leaves your selection cleared and the destination group forgotten.
 
