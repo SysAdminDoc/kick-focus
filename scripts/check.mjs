@@ -128,6 +128,37 @@ for (const [bundleName, bundleSource] of bundleTargets) {
  */
 const hostKeyedAccessibility = (bundle) =>
   new Set([...String(bundle).matchAll(/:host\(\[data-kf-(large-targets|reduce-motion)="true"\]\)/g)].map((match) => match[1]));
+/**
+ * The emote snapshot and its inverse have to name the same fields.
+ *
+ * This is the shape of a bug that shipped: the picker's favourite toggle also
+ * cleared the emote's removed state, its hand-written Undo restored only
+ * `favorites`, and pressing Undo put the star back while leaving the emote
+ * visible. Nothing could catch that, because each caller carried its own idea
+ * of what the inverse was. There is one snapshot now, and this asserts that
+ * whatever it records is exactly what the restore puts back — a field added to
+ * one and forgotten in the other is the same defect wearing a new name.
+ */
+const stickerSnapshotFields = (source) => {
+  const snapshot = /function stickerOrganizationSnapshot\(\)\s*\{([\s\S]*?)\n\}/.exec(source);
+  const restore = /function restoreStickerOrganization\(snapshot\)\s*\{([\s\S]*?)\n\}/.exec(source);
+  if (!snapshot || !restore) return { captured: [], restored: [] };
+  // Read against the source, not the bundle: the build strips code indentation,
+  // so an indentation-anchored key match silently found nothing there and the
+  // comparison passed by comparing two empty lists.
+  const captured = [...new Set([...snapshot[1].matchAll(/(\w+):\s/g)].map((match) => match[1]))];
+  const restored = [...new Set([...restore[1].matchAll(/snapshot\.(\w+)/g)].map((match) => match[1]))];
+  return { captured: captured.sort(), restored: restored.sort() };
+};
+const stickerInverseIsShared = (source) => {
+  const fields = stickerSnapshotFields(source);
+  if (!fields.captured.length) return false;
+  if (fields.captured.join() !== fields.restored.join()) return false;
+  // One inverse, applied in one place. Every call site that restores emote
+  // organization by hand is a second opinion about what undo means.
+  return (source.match(/restoreStickerOrganization\(/g) || []).length === 2;
+};
+
 const shadowAccessibilityWired = (bundle) => {
   const flags = hostKeyedAccessibility(bundle);
   return flags.has('large-targets') && flags.has('reduce-motion');
@@ -2034,6 +2065,8 @@ const checks = [
     .every((host) => !firefoxManifest.permissions.some((perm) => perm.includes(host)))],
   ['Firefox declares no data collection', firefoxManifest.browser_specific_settings?.gecko
     ?.data_collection_permissions?.required?.[0] === 'none'],
+  ['the emote snapshot and its inverse name the same fields, and there is one inverse',
+    stickerInverseIsShared(runtimeModuleSource)],
   ['every byte region is in the baseline and inside its growth allowance', regionFailures.length === 0],
   ['the measured regions sum to the whole artifact, so none can hide',
     regionMeasurement.regions.reduce((sum, region) => sum + region.bytes, 0) === regionMeasurement.total],
@@ -2079,6 +2112,24 @@ const redProbes = [
   ['size budget accepts an artifact exactly at its budget',
     overBudgetIn([['a.js', 'x'.repeat(10), 10, 'test']]).length === 0],
   ['size budget accepts the real artifacts', overBudgetIn(SIZE_BUDGETS).length === 0],
+  ['emote-inverse gate would catch a field captured but never restored',
+    !stickerInverseIsShared([
+      'function stickerOrganizationSnapshot() {',
+      '  return { favorites: a, hidden: b };', '}',
+      'function restoreStickerOrganization(snapshot) {',
+      '  state.x = snapshot.favorites;', '}',
+      'restoreStickerOrganization(before);',
+    ].join('\n'))],
+  ['emote-inverse gate would catch a second hand-written inverse',
+    !stickerInverseIsShared([
+      'function stickerOrganizationSnapshot() {',
+      '  return { favorites: a };', '}',
+      'function restoreStickerOrganization(snapshot) {',
+      '  state.x = snapshot.favorites;', '}',
+      'restoreStickerOrganization(before);',
+      'restoreStickerOrganization(mine);',
+    ].join('\n'))],
+  ['emote-inverse gate accepts the real runtime', stickerInverseIsShared(runtimeModuleSource)],
   ['byte-region gate would catch a region growing past the allowance',
     compareToBaseline({ total: 10, regions: [{ name: 'TRANSLATIONS', bytes: 1 }] },
       { regions: [{ name: 'TRANSLATIONS', bytes: 1 - REGION_GROWTH_ALLOWANCE - 1 }] }).length === 1],

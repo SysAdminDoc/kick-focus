@@ -5426,34 +5426,22 @@ function placePickerSticker(key, targetKey, after) {
     }
     const previous = [...state.stickerPreferences.favorites];
     const next = placeStickerFavorite(previous, key, scope, targetKey, after);
+    // A drop that changes nothing is not a command: no write, no toast, no
+    // undo slot spent on it.
     if (sameStickerOrder(favoritesForChannel(previous, favoriteChannel()), favoritesForChannel(next, favoriteChannel()))) return false;
-    state.stickerPreferences.favorites = next;
-    commitPickerStickerChange();
-    showToast('Emote moved.', false, [{
-      label: 'Undo',
-      onClick: () => {
-        state.stickerPreferences.favorites = previous;
-        commitPickerStickerChange();
-        showToast('Favorite order restored.');
-      },
-    }]);
+    mutateStickerOrganization(() => {
+      state.stickerPreferences.favorites = next;
+    }, 'Emote moved.', 'Favorite order restored.');
     return true;
   }
 
-  const previous = [...(state.stickerPreferences.order || [])];
-  const fallback = orderedStickerKeys([...state.stickerCatalog.keys()], previous);
-  const next = moveStickerOrder(previous, key, targetKey, after, fallback);
-  if (sameStickerOrder(fallback, orderedStickerKeys(fallback, next))) return false;
-  state.stickerPreferences.order = next;
-  commitPickerStickerChange();
-  showToast('Emote moved.', false, [{
-    label: 'Undo',
-    onClick: () => {
-      state.stickerPreferences.order = previous;
-      commitPickerStickerChange();
-      showToast('Emote order restored.');
-    },
-  }]);
+  const previousOrder = [...(state.stickerPreferences.order || [])];
+  const fallback = orderedStickerKeys([...state.stickerCatalog.keys()], previousOrder);
+  const nextOrder = moveStickerOrder(previousOrder, key, targetKey, after, fallback);
+  if (sameStickerOrder(fallback, orderedStickerKeys(fallback, nextOrder))) return false;
+  mutateStickerOrganization(() => {
+    state.stickerPreferences.order = nextOrder;
+  }, 'Emote moved.', 'Emote order restored.');
   return true;
 }
 
@@ -5586,21 +5574,15 @@ function stickerDetailMarkup(descriptors) {
 function assignPickerStickerGroup(select) {
   const key = select.dataset.kfStickerKey;
   if (!key || !state.stickerPreferences.library.has(key)) return;
-  const previous = state.stickerPreferences.assignments.get(key) || '';
   const groupId = stickerGroupById(select.value) ? select.value : '';
-  if (groupId) state.stickerPreferences.assignments.set(key, groupId);
-  else state.stickerPreferences.assignments.delete(key);
-  commitPickerStickerChange();
-  requestAnimationFrame(() => stickerPicker()?.querySelector(`[data-kf-sticker-direct-group][data-kf-sticker-key="${CSS.escape(key)}"]`)?.focus?.());
-  showToast('Emote moved.', false, [{
-    label: 'Undo',
-    onClick: () => {
-      if (previous) state.stickerPreferences.assignments.set(key, previous);
-      else state.stickerPreferences.assignments.delete(key);
-      commitPickerStickerChange();
-      showToast('Emote group changes restored.');
-    },
-  }]);
+  // Choosing the group it is already in is a no-op, not a command.
+  if ((state.stickerPreferences.assignments.get(key) || '') === groupId) return;
+  const refocus = () => requestAnimationFrame(() => stickerPicker()
+    ?.querySelector(`[data-kf-sticker-direct-group][data-kf-sticker-key="${CSS.escape(key)}"]`)?.focus?.());
+  mutateStickerOrganization(() => {
+    if (groupId) state.stickerPreferences.assignments.set(key, groupId);
+    else state.stickerPreferences.assignments.delete(key);
+  }, 'Emote moved.', 'Emote group changes restored.', refocus);
 }
 
 function pickerStickerGroupPanelMarkup(descriptors) {
@@ -6150,6 +6132,16 @@ function commitPickerStickerChange() {
   scheduleApply(0);
 }
 
+/**
+ * Everything an emote-organization command can change, persisted and on screen.
+ *
+ * The last three are the organizer's own mode rather than stored preferences,
+ * and they are here because a batch command clears the selection and a group
+ * delete clears the destination: an Undo that put the data back but left the
+ * user in a different mode had not undone the thing they saw happen. The
+ * Library never sets them, so restoring them there rewrites current values
+ * with themselves.
+ */
 function stickerOrganizationSnapshot() {
   return {
     favorites: state.stickerPreferences.favorites.map((entry) => ({ ...entry })),
@@ -6159,6 +6151,9 @@ function stickerOrganizationSnapshot() {
     activeGroup: state.stickerPreferences.activeGroup,
     groups: state.stickerPreferences.groups.map((group) => ({ ...group })),
     assignments: new Map(state.stickerPreferences.assignments),
+    bulkGroup: state.runtime.stickerPickerBulkGroup,
+    groupEditor: state.runtime.stickerPickerGroupEditor,
+    selection: new Set(state.runtime.stickerPickerSelection),
   };
 }
 
@@ -6170,17 +6165,44 @@ function restoreStickerOrganization(snapshot) {
   state.stickerPreferences.activeGroup = snapshot.activeGroup;
   state.stickerPreferences.groups = snapshot.groups.map((group) => ({ ...group }));
   state.stickerPreferences.assignments = new Map(snapshot.assignments);
+  // Older snapshots predate the organizer-mode fields, so each is restored
+  // only when the snapshot actually carries it.
+  if ('bulkGroup' in snapshot) state.runtime.stickerPickerBulkGroup = snapshot.bulkGroup;
+  if ('groupEditor' in snapshot) state.runtime.stickerPickerGroupEditor = snapshot.groupEditor;
+  if (snapshot.selection) {
+    state.runtime.stickerPickerSelection.clear();
+    for (const key of snapshot.selection) state.runtime.stickerPickerSelection.add(key);
+  }
 }
 
-function mutateStickerOrganization(mutate, message, undoMessage = 'Emote organization restored.') {
+/**
+ * The one way this build changes emote organization, and the one inverse.
+ *
+ * Every surface used to roll its own. The picker captured whichever fields the
+ * author of that branch had in mind — favourites for a favourite toggle, the
+ * removed set for Restore all, three of the seven for a removal — while the
+ * Library captured the whole snapshot. Two of those were wrong rather than
+ * merely inconsistent: favouriting an emote also clears it from the removed
+ * set, and an Undo holding only `favorites` put the star back while leaving
+ * the emote visible; reordering a favourite offered no Undo at all.
+ *
+ * `stickerOrganizationSnapshot` records all seven fields, so the inverse is
+ * the same whatever the action was, and there is nothing for a caller to get
+ * partially right. `afterCommit` exists because several picker actions have to
+ * put focus back on the tile they just re-rendered, and that has to happen on
+ * the undo path too or Undo silently moves focus to the top of the grid.
+ */
+function mutateStickerOrganization(mutate, message, undoMessage = 'Emote organization restored.', afterCommit = null) {
   const before = stickerOrganizationSnapshot();
   mutate();
   commitPickerStickerChange();
+  afterCommit?.();
   showToast(message, false, [{
     label: 'Undo',
     onClick: () => {
       restoreStickerOrganization(before);
       commitPickerStickerChange();
+      afterCommit?.();
       showToast(undoMessage);
     },
   }]);
@@ -6224,53 +6246,32 @@ function savePickerStickerGroup(organizer, editor) {
   }
   const group = stickerGroupById(editor);
   if (!group) return;
-  const previous = group.name;
-  group.name = name;
-  state.runtime.stickerPickerGroupEditor = '';
-  commitPickerStickerChange();
-  showToast('Emote group renamed.', false, [{
-    label: 'Undo',
-    onClick: () => {
-      const current = stickerGroupById(editor);
-      if (!current) return;
-      current.name = previous;
-      commitPickerStickerChange();
-      showToast('Group name restored.');
-    },
-  }]);
+  // Renaming a group to the name it already has writes nothing.
+  if (group.name === name) {
+    state.runtime.stickerPickerGroupEditor = '';
+    commitPickerStickerChange();
+    return;
+  }
+  mutateStickerOrganization(() => {
+    stickerGroupById(editor).name = name;
+    state.runtime.stickerPickerGroupEditor = '';
+  }, 'Emote group renamed.', 'Group name restored.');
 }
 
 function deletePickerStickerGroup(id) {
   const index = state.stickerPreferences.groups.findIndex((group) => group.id === id);
   if (index < 0) return;
-  const group = state.stickerPreferences.groups[index];
-  const assignments = [...state.stickerPreferences.assignments].filter(([, groupId]) => groupId === id);
-  const previous = {
-    activeGroup: state.stickerPreferences.activeGroup,
-    view: state.stickerPreferences.view,
-    bulkGroup: state.runtime.stickerPickerBulkGroup,
-  };
-  state.stickerPreferences.groups.splice(index, 1);
-  state.stickerPreferences.assignments = new Map([...state.stickerPreferences.assignments].filter(([, groupId]) => groupId !== id));
-  if (state.stickerPreferences.activeGroup === id) {
-    state.stickerPreferences.activeGroup = state.stickerPreferences.groups[0]?.id || '';
-    state.stickerPreferences.view = state.stickerPreferences.activeGroup ? 'group' : 'all';
-  }
-  if (state.runtime.stickerPickerBulkGroup === id) state.runtime.stickerPickerBulkGroup = '';
-  state.runtime.stickerPickerGroupEditor = '';
-  commitPickerStickerChange();
-  showToast(trf('Deleted emote group {name}.', { name: group.name }), false, [{
-    label: 'Undo',
-    onClick: () => {
-      state.stickerPreferences.groups.splice(Math.min(index, state.stickerPreferences.groups.length), 0, group);
-      for (const [key, groupId] of assignments) state.stickerPreferences.assignments.set(key, groupId);
-      state.stickerPreferences.activeGroup = previous.activeGroup;
-      state.stickerPreferences.view = previous.view;
-      state.runtime.stickerPickerBulkGroup = previous.bulkGroup;
-      commitPickerStickerChange();
-      showToast('Emote group restored.');
-    },
-  }]);
+  const name = state.stickerPreferences.groups[index].name;
+  mutateStickerOrganization(() => {
+    state.stickerPreferences.groups.splice(index, 1);
+    state.stickerPreferences.assignments = new Map([...state.stickerPreferences.assignments].filter(([, groupId]) => groupId !== id));
+    if (state.stickerPreferences.activeGroup === id) {
+      state.stickerPreferences.activeGroup = state.stickerPreferences.groups[0]?.id || '';
+      state.stickerPreferences.view = state.stickerPreferences.activeGroup ? 'group' : 'all';
+    }
+    if (state.runtime.stickerPickerBulkGroup === id) state.runtime.stickerPickerBulkGroup = '';
+    state.runtime.stickerPickerGroupEditor = '';
+  }, trf('Deleted emote group {name}.', { name }), 'Emote group restored.');
 }
 
 function editPickerStickerSelection(action) {
@@ -6305,49 +6306,23 @@ function editPickerStickerSelection(action) {
     return;
   }
   if (action === 'move') {
-    const previous = new Map(state.stickerPreferences.assignments);
     const groupId = stickerGroupById(state.runtime.stickerPickerBulkGroup)
       ? state.runtime.stickerPickerBulkGroup
       : '';
-    for (const key of keys) {
-      if (groupId) state.stickerPreferences.assignments.set(key, groupId);
-      else state.stickerPreferences.assignments.delete(key);
-    }
-    selected.clear();
-    commitPickerStickerChange();
-    showToast(`${keys.length} ${plural(keys.length, 'emote moved.', 'emotes moved.')}`, false, [{
-      label: 'Undo',
-      onClick: () => {
-        state.stickerPreferences.assignments = previous;
-        commitPickerStickerChange();
-        showToast('Emote group changes restored.');
-      },
-    }]);
+    mutateStickerOrganization(() => {
+      for (const key of keys) {
+        if (groupId) state.stickerPreferences.assignments.set(key, groupId);
+        else state.stickerPreferences.assignments.delete(key);
+      }
+      selected.clear();
+    }, `${keys.length} ${plural(keys.length, 'emote moved.', 'emotes moved.')}`, 'Emote group changes restored.');
     return;
   }
-  const previous = {
-    hidden: new Set(state.stickerPreferences.hidden),
-    favorites: [...state.stickerPreferences.favorites],
-    order: [...(state.stickerPreferences.order || [])],
-    assignments: new Map(state.stickerPreferences.assignments),
-  };
-  for (const key of keys) {
-    state.stickerPreferences.hidden.add(key);
-  }
-  state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((favorite) => !selected.has(favorite.key));
-  selected.clear();
-  commitPickerStickerChange();
-  showToast(`${keys.length} ${plural(keys.length, 'emote removed.', 'emotes removed.')}`, false, [{
-    label: 'Undo',
-    onClick: () => {
-      state.stickerPreferences.hidden = previous.hidden;
-      state.stickerPreferences.favorites = previous.favorites;
-      state.stickerPreferences.order = previous.order;
-      state.stickerPreferences.assignments = previous.assignments;
-      commitPickerStickerChange();
-      showToast('Removed emotes restored.');
-    },
-  }]);
+  mutateStickerOrganization(() => {
+    for (const key of keys) state.stickerPreferences.hidden.add(key);
+    state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((favorite) => !selected.has(favorite.key));
+    selected.clear();
+  }, `${keys.length} ${plural(keys.length, 'emote removed.', 'emotes removed.')}`, 'Removed emotes restored.');
 }
 
 function handleStickerAction(event) {
@@ -6433,18 +6408,10 @@ function handleStickerAction(event) {
     return;
   }
   if (target.hasAttribute('data-kf-sticker-restore-all')) {
-    const previous = new Set(state.stickerPreferences.hidden);
-    state.stickerPreferences.hidden.clear();
-    state.runtime.stickerDetailKey = '';
-    commitPickerStickerChange();
-    showToast('Removed emotes restored.', false, [{
-      label: 'Undo',
-      onClick: () => {
-        state.stickerPreferences.hidden = previous;
-        commitPickerStickerChange();
-        showToast('Removal state restored.');
-      },
-    }]);
+    mutateStickerOrganization(() => {
+      state.stickerPreferences.hidden.clear();
+      state.runtime.stickerDetailKey = '';
+    }, 'Removed emotes restored.', 'Removal state restored.');
     return;
   }
   if (action === 'details' && key) {
@@ -6488,66 +6455,53 @@ function handleStickerAction(event) {
   }
   if ((action === 'pin' || action === 'hide') && key) rememberStickerGridScroll(target);
   if (action === 'pin' && key) {
-    const previous = [...state.stickerPreferences.favorites];
     // Removing clears whichever scope this channel actually sees it through, so
     // un-favoriting a global from a channel page does not silently do nothing.
     const scope = isFavorited(key) ? favoriteScopeOf(key) : newFavoriteChannel();
-    state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferences.favorites, key, scope);
-    if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
     const name = state.stickerCatalog.get(key)?.name || 'Emote';
-    const message = isFavorited(key) ? trf('Favorited {name}.', { name }) : trf('Removed {name} from favorites.', { name });
-    commitPickerStickerChange();
-    restoreStickerDetailFocus(organizer, key, true);
-    showToast(message, false, [{
-      label: 'Undo',
-      onClick: () => {
-        state.stickerPreferences.favorites = previous;
-        commitPickerStickerChange();
-        showToast('Favorite change restored.');
-      },
-    }]);
+    // Decided before the mutation, because the message describes what the
+    // press does and reading it back afterwards made it depend on the same
+    // state the mutation had just changed.
+    const willFavorite = !isFavorited(key);
+    mutateStickerOrganization(() => {
+      state.stickerPreferences.favorites = toggleStickerFavorite(state.stickerPreferences.favorites, key, scope);
+      // Favouriting something that was removed brings it back; that is the
+      // half the old inverse dropped.
+      if (isFavorited(key)) state.stickerPreferences.hidden.delete(key);
+    }, willFavorite ? trf('Favorited {name}.', { name }) : trf('Removed {name} from favorites.', { name }),
+    'Favorite change restored.',
+    () => restoreStickerDetailFocus(organizer, key, true));
     return;
   } else if (action === 'move-favorite' && key) {
     const earlier = target.dataset.kfStickerMove === 'up';
-    state.stickerPreferences.favorites = moveStickerFavorite(
-      state.stickerPreferences.favorites,
-      key,
-      favoriteScopeOf(key),
-      earlier ? -1 : 1,
-    );
-    commitPickerStickerChange();
-    showToast(earlier ? 'Emote moved earlier.' : 'Emote moved later.');
+    mutateStickerOrganization(() => {
+      state.stickerPreferences.favorites = moveStickerFavorite(
+        state.stickerPreferences.favorites,
+        key,
+        favoriteScopeOf(key),
+        earlier ? -1 : 1,
+      );
+    }, earlier ? 'Emote moved earlier.' : 'Emote moved later.', 'Favorite order restored.');
     return;
   } else if (action === 'hide' && key) {
     const hidden = state.stickerPreferences.hidden.has(key);
     const name = state.stickerCatalog.get(key)?.name || 'Emote';
     if (hidden) {
-      state.stickerPreferences.hidden.delete(key);
-      state.runtime.stickerDetailKey = '';
-      commitPickerStickerChange();
-      restoreStickerDetailFocus(organizer, key, false);
-      showToast(trf('Restored {name}.', { name }));
+      // Restoring one emote is a mutation like any other, and used to be the
+      // only one with no way back: it reported "Restored {name}." and offered
+      // nothing, so a mis-aimed restore could only be undone by removing the
+      // emote again and hoping that was what had been there.
+      mutateStickerOrganization(() => {
+        state.stickerPreferences.hidden.delete(key);
+        state.runtime.stickerDetailKey = '';
+      }, trf('Restored {name}.', { name }), trf('Removed {name}.', { name }),
+      () => restoreStickerDetailFocus(organizer, key, false));
     } else {
-      const previous = {
-        favorites: [...state.stickerPreferences.favorites],
-        order: [...(state.stickerPreferences.order || [])],
-        assignment: state.stickerPreferences.assignments.get(key) || '',
-      };
-      state.stickerPreferences.hidden.add(key);
-      state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
-      commitPickerStickerChange();
-      restoreStickerDetailFocus(organizer, key, true);
-      showToast(trf('Removed {name}.', { name }), false, [{
-        label: 'Undo',
-        onClick: () => {
-          state.stickerPreferences.hidden.delete(key);
-          state.stickerPreferences.favorites = previous.favorites;
-          state.stickerPreferences.order = previous.order;
-          if (previous.assignment) state.stickerPreferences.assignments.set(key, previous.assignment);
-          commitPickerStickerChange();
-          showToast(trf('Restored {name}.', { name }));
-        },
-      }]);
+      mutateStickerOrganization(() => {
+        state.stickerPreferences.hidden.add(key);
+        state.stickerPreferences.favorites = state.stickerPreferences.favorites.filter((entry) => entry.key !== key);
+      }, trf('Removed {name}.', { name }), trf('Restored {name}.', { name }),
+      () => restoreStickerDetailFocus(organizer, key, true));
     }
     return;
   } else if (target.dataset.kfStickerView) {

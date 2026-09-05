@@ -14,6 +14,9 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Undo in the emote picker now puts everything back. Every change to your emote organization goes through one recorder, so undoing a change restores the whole arrangement rather than the one part the code behind that particular button happened to remember. Two cases were plainly wrong before: favouriting an emote you had removed brought it back, and undoing that left it visible with the star restored; and reordering a favourite, restoring one removed emote, or renaming a group offered no undo at all.
+- Undo also puts the organizer back where it was, so undoing a batch change no longer leaves your selection cleared and the destination group forgotten.
+
 - The search results header and the Drops empty state now speak the language you chose. Both write into Kick's own page rather than this build's panel, so the translator that walks the panel never reached them, and every one of their strings rendered in English for Spanish and Portuguese readers even though the translations were already written. Both surfaces also declare their own language now, so a screen reader stops announcing them with English pronunciation.
 - The built userscript now reports test coverage. Its 13,681-line runtime had never appeared in a coverage report at all, because the boot tests evaluated it as an unnamed script and the reporter discards those, so the project percentage was an average over the smaller half of the code. The two numbers are measured in separate runs and judged separately, since the bundle contains the modules the other number covers.
 - A new gate refuses any copy typed straight into a surface this build writes into Kick's page, and it knows which surfaces those are, so a third one cannot arrive without someone deciding how it gets translated.
