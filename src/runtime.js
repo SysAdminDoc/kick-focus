@@ -5618,8 +5618,13 @@ function assignPickerStickerGroup(select) {
   const key = select.dataset.kfStickerKey;
   if (!key || !state.stickerPreferences.library.has(key)) return;
   const groupId = stickerGroupById(select.value) ? select.value : '';
-  // Choosing the group it is already in is a no-op, not a command.
-  if ((state.stickerPreferences.assignments.get(key) || '') === groupId) return;
+  // Choosing the group it is already in is a no-op, not a command — and it is
+  // reported, because a select that snaps back with no word is indistinguishable
+  // from one that failed to save.
+  if ((state.stickerPreferences.assignments.get(key) || '') === groupId) {
+    showToast(tr('That emote is already in this group.'));
+    return;
+  }
   const refocus = () => requestAnimationFrame(() => stickerPicker()
     ?.querySelector(`[data-kf-sticker-direct-group][data-kf-sticker-key="${CSS.escape(key)}"]`)?.focus?.());
   mutateStickerOrganization(() => {
@@ -6306,10 +6311,12 @@ function savePickerStickerGroup(organizer, editor) {
   }
   const group = stickerGroupById(editor);
   if (!group) return;
-  // Renaming a group to the name it already has writes nothing.
+  // Renaming a group to the name it already has writes nothing, and says so.
+  // A command that quietly does nothing reads as a command that failed.
   if (group.name === name) {
     state.runtime.stickerPickerGroupEditor = '';
     commitPickerStickerChange();
+    showToast(tr('That group already has this name.'));
     return;
   }
   mutateStickerOrganization(() => {
@@ -9350,6 +9357,8 @@ const TRANSLATIONS = {
   'Restored {name}.': ['Se restauró {name}.', '{name} foi restaurado.'],
   'Removed {name}.': ['Se quitó {name}.', '{name} foi removido.'],
   'Emote group renamed.': ['Se cambió el nombre del grupo de emotes.', 'O grupo de emotes foi renomeado.'],
+  'That group already has this name.': ['Ese grupo ya se llama así.', 'Esse grupo já tem esse nome.'],
+  'That emote is already in this group.': ['Ese emote ya está en este grupo.', 'Esse emote já está neste grupo.'],
   'Group name restored.': ['Se restauró el nombre del grupo.', 'O nome do grupo foi restaurado.'],
   'Emote group restored.': ['Se restauró el grupo de emotes.', 'O grupo de emotes foi restaurado.'],
   'Favorite order restored.': ['Se restauró el orden de favoritos.', 'A ordem dos favoritos foi restaurada.'],

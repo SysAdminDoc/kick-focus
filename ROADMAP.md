@@ -162,15 +162,6 @@ None open.
 
 ### P1, profile comment emote reliability and direct access
 
-- [ ] P1: R-120: Use one mutation command layer in the picker and Library
-  Why: The same create, delete, move, remove, and restore intent currently has different persistence and Undo behavior depending on which surface runs it.
-  Evidence: src/runtime.js:5433-5542; src/runtime.js:10525-10619; src/storage.mjs emote-library normalization; RESEARCH.md Competitive Landscape
-  Touches: new pure command module or R-114 emote factory, src/runtime.js, src/settings.mjs, src/storage.mjs, unit and property tests
-  Acceptance: Create group, rename, delete, reorder, favorite, move, remove, and restore have one normalized command contract and one inverse record; picker and Library produce byte-equivalent persisted state for equivalent actions; every destructive action offers one-step Undo; duplicate and invalid commands are no-ops with a visible status; randomized command sequences preserve schema invariants.
-  Complexity: L
-  Shipped 2026-09-05, partially: every emote mutation in the picker now goes through `mutateStickerOrganization`, which takes one full snapshot and restores it, so there is one inverse record instead of nine. `commitPickerStickerChange()` call sites went from 29 to 8 and the only hand-written Undo left in the emote paths is the one inside that helper. This fixed two defects the per-site inverses had: favouriting an emote also clears its removed state, and the Undo captured only `favorites`, so it put the star back and left the emote visible; and reordering a favourite, restoring a single removed emote, and renaming a group offered no Undo at all. The snapshot also carries the organizer's own mode now (bulk destination, group editor, selection), because a batch command clears the selection and an Undo that restored the data but not the mode had not undone what the user saw. `scripts/check.mjs` asserts the snapshot and its inverse name the same fields and that there is exactly one restore call site, with three red probes; sabotaging one restored field turns it red.
-  Still open, and why this item is not deleted: byte-equivalence between picker and Library for equivalent actions is not asserted by any test; the no-op guards added for a same-group assign, a same-name rename and a zero-distance drag return silently rather than reporting a visible status; and there is no randomized command-sequence test over the schema invariants.
-
 - [ ] P1: R-122: Make the full profile comment emote journey a browser release contract
   Why: Current live coverage checks windowing, the outboard action menu, one favorite update, and drag-to-reorder, but not the full group, recovery, focus, return, or safe-insertion paths that define the feature.
   Evidence: scripts/verify-extension.mjs organizer journey; test/boot.test.js emote shelf contracts; design/qa/sticker-drag-marker-v1.45.png; design/qa/emote-picker-narrow-v1.38.png

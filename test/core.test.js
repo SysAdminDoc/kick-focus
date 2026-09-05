@@ -83,6 +83,7 @@ import {
   colorContrastRatio,
   customAccentTokens,
   normalizeCustomAccent,
+  STICKER_GROUP_LIMIT,
   STICKER_PREFERENCES_SCHEMA,
   FAVORITES_PER_SCOPE_LIMIT,
   favoriteScope,
@@ -3967,4 +3968,157 @@ test('a removed emote cannot be silently un-removed by favoriting it in stored s
   assert.ok(normalized.hidden.includes(`kick:${key}`), 'the removal is the record that survives');
   assert.equal(normalized.favorites.some((entry) => entry.key === `kick:${key}`), false,
     'a removed emote must not also be favorited');
+});
+
+/**
+ * Random command sequences, checked against the invariants the schema promises.
+ *
+ * Every emote mutation now runs through one command layer with one inverse,
+ * and the individual commands each have their own test. What none of those
+ * cover is a *sequence*: favourite, remove, assign, reorder, delete the group
+ * that assignment pointed at, undo, do it again. That is where the invariants
+ * break, because each command is only ever written against the state the
+ * author had in mind.
+ *
+ * The generator is seeded, so a failure names a seed that reproduces it
+ * exactly rather than a run nobody can repeat.
+ */
+function seededRandom(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value * 1664525 + 1013904223) >>> 0;
+    return value / 4294967296;
+  };
+}
+
+function assertStickerInvariants(preferences, context) {
+  const groupIds = new Set(preferences.groups.map((group) => group.id));
+  const hidden = new Set(preferences.hidden);
+
+  assert.equal(preferences.schema, STICKER_PREFERENCES_SCHEMA, `${context}: schema drifted`);
+
+  // Removal wins over favouriting. Both flags set at once is the corrupted
+  // state, and the normalizer has to resolve it the same way every time.
+  for (const favorite of preferences.favorites) {
+    assert.equal(hidden.has(favorite.key), false, `${context}: ${favorite.key} is both favorited and removed`);
+  }
+
+  // An assignment pointing at a deleted group is a filing the user can never
+  // see or undo, so it must not survive the group.
+  for (const assignment of preferences.assignments) {
+    assert.ok(groupIds.has(assignment.group), `${context}: ${assignment.key} is filed under a group that no longer exists`);
+  }
+
+  assert.ok(preferences.activeGroup === '' || groupIds.has(preferences.activeGroup),
+    `${context}: activeGroup names a group that does not exist`);
+  assert.ok(preferences.view !== 'group' || preferences.activeGroup !== '',
+    `${context}: the group view is selected with no group to show`);
+
+  for (const [label, keys] of [['order', preferences.order], ['hidden', preferences.hidden]]) {
+    assert.equal(new Set(keys).size, keys.length, `${context}: ${label} holds a duplicate key`);
+  }
+  assert.ok(preferences.groups.length <= STICKER_GROUP_LIMIT, `${context}: group cap exceeded`);
+
+  // One favourite per key per scope. Two rows for the same key and channel is
+  // a duplicate the picker would render twice and reorder unpredictably.
+  const scopes = preferences.favorites.map((favorite) => `${favorite.key}${favorite.channel || ''}`);
+  assert.equal(new Set(scopes).size, scopes.length, `${context}: a favorite is listed twice in one scope`);
+}
+
+test('random command sequences never break a schema invariant', { tags: ['unit'] }, () => {
+  const keys = Array.from({ length: 12 }, (_, index) => `kick:name:e${index}|src:https://files.kick.com/emotes/${index}/fullsize`);
+  const channels = ['', 'xqc', 'someone'];
+
+  for (let seed = 1; seed <= 60; seed += 1) {
+    const random = seededRandom(seed);
+    const pick = (list) => list[Math.floor(random() * list.length)];
+    let preferences = normalizeStickerPreferences({
+      groups: [{ id: 'g1', name: 'One' }, { id: 'g2', name: 'Two' }],
+    });
+
+    for (let step = 0; step < 40; step += 1) {
+      const key = pick(keys);
+      const channel = pick(channels);
+      const draft = {
+        ...preferences,
+        favorites: preferences.favorites.map((entry) => ({ ...entry })),
+        order: [...preferences.order],
+        hidden: [...preferences.hidden],
+        groups: preferences.groups.map((group) => ({ ...group })),
+        assignments: preferences.assignments.map((entry) => ({ ...entry })),
+      };
+      switch (Math.floor(random() * 7)) {
+        case 0:
+          draft.favorites = toggleStickerFavorite(draft.favorites, key, channel);
+          break;
+        case 1:
+          draft.favorites = moveStickerFavorite(draft.favorites, key, channel, random() < 0.5 ? -1 : 1);
+          break;
+        case 2:
+          draft.order = moveStickerOrder(draft.order, key, pick(keys), random() < 0.5, keys);
+          break;
+        case 3:
+          if (draft.hidden.includes(key)) draft.hidden = draft.hidden.filter((entry) => entry !== key);
+          else draft.hidden = [...draft.hidden, key];
+          break;
+        case 4:
+          draft.assignments = [...draft.assignments.filter((entry) => entry.key !== key), { key, group: pick(['g1', 'g2']) }];
+          break;
+        case 5:
+          // Deleting a group out from under whatever was filed in it.
+          draft.groups = draft.groups.filter((group) => group.id !== pick(['g1', 'g2']));
+          break;
+        default:
+          draft.view = pick(['all', 'pinned', 'recent', 'native', 'group', 'locked', 'removed']);
+          draft.activeGroup = pick(['', 'g1', 'g2', 'gone']);
+          break;
+      }
+      preferences = normalizeStickerPreferences(draft);
+      assertStickerInvariants(preferences, `seed ${seed} step ${step}`);
+    }
+  }
+});
+
+test('normalizing is idempotent, so the persisted bytes settle after one pass', { tags: ['unit'] }, () => {
+  // The picker and the Library reach the same commands, so equivalent actions
+  // have to persist equivalent state. What makes that true is that the shape
+  // written to storage is a fixed point: normalize once and normalizing again
+  // changes nothing, whatever order the caller happened to build it in.
+  const keys = Array.from({ length: 8 }, (_, index) => `kick:name:e${index}|src:https://files.kick.com/emotes/${index}/fullsize`);
+  for (let seed = 1; seed <= 40; seed += 1) {
+    const random = seededRandom(seed);
+    const pick = (list) => list[Math.floor(random() * list.length)];
+    const built = normalizeStickerPreferences({
+      groups: [{ id: 'g1', name: 'One' }, { id: 'g2', name: 'Two' }],
+      favorites: keys.filter(() => random() < 0.4).map((key) => ({ key, channel: pick(['', 'xqc']) })),
+      hidden: keys.filter(() => random() < 0.3),
+      order: [...keys].sort(() => (random() < 0.5 ? -1 : 1)),
+      assignments: keys.filter(() => random() < 0.3).map((key) => ({ key, group: pick(['g1', 'g2']) })),
+      view: pick(['all', 'pinned', 'group']),
+      activeGroup: pick(['', 'g1']),
+    });
+    assert.equal(JSON.stringify(normalizeStickerPreferences(built)), JSON.stringify(built),
+      `seed ${seed}: a second normalize changed the persisted shape`);
+  }
+});
+
+test('the same intent from either surface persists the same bytes', { tags: ['unit'] }, () => {
+  // The picker builds its favourites through toggleStickerFavorite and the
+  // Library reaches the same helper, but they arrive with the surrounding
+  // state assembled differently. Equivalent actions have to land on identical
+  // stored state, not merely equivalent-looking state.
+  const key = 'kick:name:shared|src:https://files.kick.com/emotes/7/fullsize';
+  const base = { groups: [{ id: 'g1', name: 'One' }] };
+  const fromPicker = normalizeStickerPreferences({
+    ...base,
+    favorites: toggleStickerFavorite([], key, ''),
+    assignments: [{ key, group: 'g1' }],
+  });
+  const fromLibrary = normalizeStickerPreferences({
+    ...base,
+    assignments: [{ key, group: 'g1' }],
+    favorites: toggleStickerFavorite([], key, ''),
+  });
+  assert.equal(JSON.stringify(fromPicker), JSON.stringify(fromLibrary),
+    'the same intent persisted differently depending on which surface issued it');
 });

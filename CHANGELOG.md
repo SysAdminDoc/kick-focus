@@ -18,6 +18,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Renaming a group to the name it already has, or filing an emote into the group it is already in, now says so instead of doing nothing quietly. A command that silently does nothing reads as one that failed.
+
 - Nothing the emote picker does while rebuilding itself can reach a half-written message. The three deliberate insertion paths are the only code allowed to write to the composer, and the build now refuses any other.
 
 - The multi-stream button in Kick’s header announced itself in English to Spanish and Portuguese readers. Its name and tooltip sat translated in the dictionary and nothing ever looked them up, and the same was true of the add-to-multi-stream button’s tooltip. The button count beside them was also assembled in English word order.
