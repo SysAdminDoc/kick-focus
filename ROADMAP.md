@@ -280,13 +280,6 @@ Cross-references to existing work: R-153 is what makes R-147's central claim mea
   Acceptance: Every visual boundary the panel, picker, toasts, command menu and multistream board draw only as a shadow has a forced-colors counterpart using a system colour keyword; selected, pressed and disabled states stay distinguishable without relying on custom colour; a check fails when a new shadow-only boundary is added with no forced-colors rule beside it; and the browser gate captures the settings shell and picker with forced-colors emulated and asserts no control loses its edge.
   Complexity: M
 
-- [ ] P2: R-160: Publish a security contact and a drift-report intake
-  Why: The repository is public with issues enabled and has no `.github/` directory, `SECURITY.md`, `CONTRIBUTING.md`, or issue template. The whole product position is trust — no remote code, read-only, local-only — and the one thing a user cannot do is report either a vulnerability or a Kick DOM break in a form the drift gates could consume. The About page already produces a sanitized diagnostics block and a compatibility self-test summary, so the intake exists; nothing asks for it.
-  Evidence: no .github directory in the tree; zero issues, pull requests and discussions as of 2026-09-04; the settings Compatibility self-test row in src/settings.mjs; the copy-diagnostics action in src/runtime.js; README.md Distribution and listing posture
-  Touches: new SECURITY.md, new .github/ISSUE_TEMPLATE files, README.md
-  Acceptance: `SECURITY.md` names a disclosure address, what is in scope, and the fact that no server or account exists to attack; a bug template asks for browser and version, userscript manager and version, build version, route, and the two blocks the About page already produces, and says in the form that both are sanitized; the templates add no GitHub Actions workflow; and the README links both from the sections a reader reaches first.
-  Complexity: S
-
 - [ ] P2: R-164: Cover the search meta and Drops empty state with a real render
   Why: Neither surface has a single behavioral assertion anywhere — no fixture test, no live-gate check, no artifact contract. R-152 could only be verified statically, so the markup could stop mounting, mount into the wrong container, or lose its Clear control and every gate would stay green. `test/fixtures/drops.html` and `test/fixtures/search.html` already exist and are unused by these paths.
   Evidence: grep for `applySearchEnhancements`, `applyDropsEnhancements`, `kf-search-meta` and `kf-drops-empty` across test/ and scripts/verify-extension.mjs returns only the i18n gate added on 2026-09-05
