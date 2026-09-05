@@ -105,6 +105,10 @@ export const SIGNED_IN_JOURNEYS = Object.freeze([
     why: 'the points counter is per-account and per-channel, so a logged-out channel page renders no value node at all and the Viewer card can only report that it has not been read',
     expects: Object.freeze(['[data-testid="channel-points-value"]']),
     reads: Object.freeze(['DOM: the channel points value node, and the unrounded figure in its title attribute']),
+    // Points are a per-channel feature the broadcaster can leave off, so a
+    // signed-in run against a channel that does not use them is a correct
+    // build with nothing to see. Absent is reported, not failed.
+    absentWhy: 'this channel does not run channel points for this account, so there is no value node to read',
     mutates: false,
   }),
   Object.freeze({
@@ -117,8 +121,16 @@ export const SIGNED_IN_JOURNEYS = Object.freeze([
     // card says "not read yet" the rest of the time. A journey that implied a
     // standalone read would describe a feature that does not exist.
     why: 'the level figure exists only inside the daily reward dialog, which Kick renders for a session and not for an anonymous visitor, so nothing offers the number on a logged-out page',
-    expects: Object.freeze(['button[aria-label="Claim Your Daily Reward"]', '[role="dialog"][aria-labelledby]']),
-    reads: Object.freeze(['DOM: the reward dialog text, parsed for the level and streak figures']),
+    // Only the trigger. The dialog this build reads is the one the trigger's
+    // own `aria-controls` names, verified by its labelled heading and marked
+    // by this build when it opened it — none of which a selector list can
+    // state, and asserting a bare `[role="dialog"]` would pass on Kick's
+    // unrelated privacy dialog instead.
+    expects: Object.freeze(['button[aria-label="Claim Your Daily Reward"]']),
+    reads: Object.freeze(['DOM: the reward dialog named by the trigger aria-controls, parsed for the level and streak figures']),
+    // The trigger is gone once the day's reward has been claimed, so a run
+    // after claiming is a correct build with nothing to assert.
+    absentWhy: 'the daily reward for this account has already been claimed, so Kick renders no reward trigger to open',
     mutates: false,
   }),
   Object.freeze({

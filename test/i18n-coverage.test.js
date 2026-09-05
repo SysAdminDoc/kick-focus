@@ -317,21 +317,40 @@ test('no toast or announcement carries prose a dictionary never sees', { tags: [
     `${offenders.length} toast template(s) hold untranslatable prose: ${offenders.join(' | ')}`);
 });
 
+
 /**
- * Copy written into Kick's own document, where the translator cannot reach it.
+ * Copy written where `localizeInterface` will never walk it.
  *
  * `localizeInterface(root = state.shadow)` is only ever called with its
- * default, so it walks this build's shadow roots and nothing else. A surface
- * that writes markup into the *page* is therefore outside the DOM pass, and a
- * bare literal there stays English no matter what the dictionary holds. That
- * is not the same bug the `markup prose` scanner catches: measured 2026-09-05,
- * every one of the search and Drops strings already had an es and pt entry, so
- * that gate was green while both surfaces rendered English. Having a key and
- * reaching a lookup are different claims, and this is the second one.
+ * default, so it walks the settings shadow root and nothing else — not Kick's
+ * document, and not this build's five other shadow roots. Markup written
+ * anywhere else has to be translated at write time, or immediately re-set
+ * through `tr()`, or it stays English whatever the dictionary holds.
  *
- * Comments are stripped before the classification so a comment that merely
- * mentions a shadow root cannot exempt a function from the rule.
+ * That is a different claim from the `markup prose` scanner above, which only
+ * proves a key exists. Measured 2026-09-05: the search and Drops surfaces and
+ * four strings on the header control all had es and pt entries while rendering
+ * English, and every gate in this file was green.
+ *
+ * Three earlier versions of this gate were wrong in ways worth recording,
+ * because each looked correct:
+ *
+ *  - It required two adjacent words, so `<dt>Active</dt>`, `>View</a>` and
+ *    `>Clear</button>` were invisible — five of the fourteen strings the fix
+ *    that introduced this gate had just repaired.
+ *  - It excluded any function whose text matched /shadow/i, meaning to skip
+ *    shadow roots. A `box-shadow` in an inline style, or any identifier
+ *    containing the word, silently removed a function from the scan *and* from
+ *    the completeness check, so both halves went quiet together.
+ *  - Its red probe re-typed the offender pattern instead of sharing it, so
+ *    blanking the real pattern left the probe still passing.
+ *
+ * The rule below is the one the criterion actually states, and it is inverted:
+ * every writer is scanned unless it is named as one the walker reaches.
  */
+const MARKUP_TEXT = /<(?:h[1-6]|p|span|strong|small|b|li|td|th|dt|dd|button|div|aside|a|summary|label|option)\b[^<>]*>([^<>{}$`]*[A-Za-z]{2,}[^<>{}$`]*)</g;
+const MARKUP_ATTRIBUTE = /(?<=\s)(?:aria-label|title|placeholder)="((?:[^"\\$`]|\\.)*[A-Za-z]{2,}(?:[^"\\$`]|\\.)*)"/g;
+
 function topLevelFunctions(source) {
   const lines = source.split('\n');
   const found = [];
@@ -354,61 +373,104 @@ function topLevelFunctions(source) {
   return found;
 }
 
-/** Writes its own markup into Kick's document rather than into a shadow root. */
-function writesIntoPageDom(body) {
-  return body.includes('setMarkup(')
-    && /\.(?:append|prepend|before|after|insertBefore)\(/.test(body)
-    && /document\.querySelector|document\.getElementById|findProbe\(document/.test(body)
-    && !/shadow/i.test(body);
-}
+/**
+ * The only writers whose markup `localizeInterface` walks afterwards.
+ *
+ * Both write into `state.shadow` itself, so their literals are looked up by
+ * the DOM pass and the `markup prose` scanner above is the right gate for
+ * them. Everything else that calls `setMarkup` is scanned. Adding a name here
+ * is a claim that the walker reaches it, and is the one way copy can be typed
+ * literally — which is why the list is two entries long and stays that way.
+ */
+const WALKED_BY_LOCALIZE = ['buildInterface', 'renderCommands'];
 
 /**
- * The page-DOM writers this build has, listed so a new one cannot arrive
- * unnoticed. Adding a third surface that writes into Kick's document is a
- * decision about translation, so the gate makes it an explicit one.
+ * Literals a writer puts on screen that no translator will ever see.
+ *
+ * A literal is acceptable when the same string is handed to `tr()` somewhere
+ * in the file, because that is what the surfaces outside the walker do: they
+ * paint English on first mount and correct it on the next sync pass. The
+ * lookup does not have to be in the same function — the header control is
+ * written by `ensureHeaderQuickControl` and re-labelled by `syncQuickButton`
+ * and `syncHeaderMultiState` — but it does have to exist. That is exactly what
+ * was missing on 2026-09-05: `Multi-stream` and `Open Kick Focus multi-stream`
+ * had dictionary entries, sat in the markup, and were passed to `tr()` by
+ * nothing, so both rendered English in Spanish and Portuguese.
  */
-const PAGE_DOM_WRITERS = ['applySearchEnhancements', 'applyDropsEnhancements', 'renderComposerEmoteDock'];
-
-test('no surface written into Kick’s document carries a bare literal', { tags: ['unit'] }, async () => {
-  const source = stripComments(await readFile(resolve(root, 'src/runtime.js'), 'utf8'));
-  const writers = topLevelFunctions(source).filter((entry) => writesIntoPageDom(entry.text));
-  assert.deepEqual(writers.map((entry) => entry.name).sort(), [...PAGE_DOM_WRITERS].sort(),
-    'the set of functions writing markup into the page changed; classify the new one and translate its copy at write time');
-
+function untranslatedLiterals(body, lookups) {
   const offenders = [];
-  for (const writer of writers) {
-    // Prose typed between tags, and prose in an attribute a user can hear.
-    for (const [kind, pattern] of [
-      ['text', /<(?:h[1-6]|p|span|strong|small|b|li|td|th|dt|dd|button|div|aside|a|summary)\b[^<>]*>([^<>{}$`]*[A-Za-z]{2,}[ ][A-Za-z]{2,}[^<>{}$`]*)</g],
-      ['attribute', /(?<=\s)(?:aria-label|title|placeholder)="((?:[^"\$`]|\.)*[A-Za-z]{2,}(?:[^"\$`]|\.)*)"/g],
-    ]) {
-      for (const match of writer.text.matchAll(pattern)) {
-        const value = match[1].trim();
-        if (value) offenders.push(`${writer.name} ${kind}: ${value.slice(0, 60)}`);
-      }
+  for (const [kind, pattern] of [['text', MARKUP_TEXT], ['attribute', MARKUP_ATTRIBUTE]]) {
+    for (const match of body.matchAll(pattern)) {
+      const value = match[1].trim();
+      if (!value || EXEMPT.has(value) || lookups.has(value)) continue;
+      offenders.push(`${kind}: ${value.slice(0, 60)}`);
     }
   }
+  return offenders;
+}
+
+/** Every string this file actually asks the translator for. */
+function translatorLookups(source) {
+  const found = new Set();
+  for (const pattern of [/\btrf?\(\s*'((?:[^'\\]|\\.)*)'/g, /\btrf?\(\s*[^;'"`]{0,200}\?\s*'((?:[^'\\]|\\.)*)'\s*:\s*'((?:[^'\\]|\\.)*)'/g]) {
+    for (const match of source.matchAll(pattern)) {
+      for (const value of match.slice(1)) if (value) found.add(value.replaceAll("\\'", "'"));
+    }
+  }
+  return found;
+}
+
+function pageDomOffenders(source) {
+  const stripped = stripComments(source);
+  const lookups = translatorLookups(stripped);
+  const writers = topLevelFunctions(stripped)
+    .filter((entry) => entry.text.includes('setMarkup(') && !WALKED_BY_LOCALIZE.includes(entry.name));
+  return writers.flatMap((writer) => untranslatedLiterals(writer.text, lookups).map((offender) => `${writer.name} ${offender}`));
+}
+
+test('no surface outside the translator’s reach carries a bare literal', { tags: ['unit'] }, async () => {
+  const offenders = pageDomOffenders(await readFile(resolve(root, 'src/runtime.js'), 'utf8'));
   assert.deepEqual(offenders, [],
-    `${offenders.length} string(s) reach Kick’s document without a translator: ${offenders.join(' | ')}`);
+    `${offenders.length} string(s) render without a translator: ${offenders.join(' | ')}`);
 });
 
-expectFailure('a bare literal written into the page fails the page-DOM translation gate', { tags: ['unit'] }, async () => {
-  // The gate above is only worth having if it can go red. Plant exactly the
-  // defect it exists to catch — the shape the search meta had on 2026-09-05,
-  // a heading typed straight into the markup — and run the same rule over it.
-  const planted = `function applySearchEnhancements() {
-  const main = document.querySelector('main');
-  const meta = document.createElement('div');
-  main.prepend(meta);
-  setMarkup(meta, \`<strong>Search results</strong>\`);
-}
-`;
-  const writers = topLevelFunctions(planted).filter((entry) => writesIntoPageDom(entry.text));
-  const offenders = [];
-  for (const writer of writers) {
-    for (const match of writer.text.matchAll(/<(?:h[1-6]|p|span|strong|small|b|li|td|th|dt|dd|button|div|aside|a|summary)\b[^<>]*>([^<>{}$`]*[A-Za-z]{2,}[ ][A-Za-z]{2,}[^<>{}$`]*)</g)) {
-      offenders.push(match[1].trim());
-    }
+test('the writers exempted from that rule are the ones the walker actually reaches', { tags: ['unit'] }, async () => {
+  // The exemption is load-bearing, so it is asserted rather than trusted: each
+  // name has to exist and has to write into the settings shadow root.
+  const source = stripComments(await readFile(resolve(root, 'src/runtime.js'), 'utf8'));
+  const byName = new Map(topLevelFunctions(source).map((entry) => [entry.name, entry.text]));
+  for (const name of WALKED_BY_LOCALIZE) {
+    const body = byName.get(name);
+    assert.ok(body, `${name} is exempted from the page-DOM rule but no longer exists`);
+    assert.ok(/setMarkup\((?:shadow|state\.shadow|state\.commandList)\b/.test(body),
+      `${name} is exempted as walked by localizeInterface, but does not write into the settings shadow root`);
   }
-  assert.deepEqual(offenders, [], `planted literal was not caught: ${offenders.join(' | ')}`);
+});
+
+expectFailure('a bare literal outside the translator’s reach fails the gate', { tags: ['unit'] }, () => {
+  // Shares MARKUP_TEXT and pageDomOffenders with the test above rather than
+  // re-typing them: a probe with its own copy of the pattern goes on passing
+  // when the real one is blanked, which is how the first version of this probe
+  // proved nothing. Both planted strings are single words, the shape the
+  // earlier two-word pattern could not see.
+  const planted = [
+    'function renderSomething() {',
+    '  const host = document.querySelector(\'main\');',
+    '  setMarkup(host, `<dd><a href="/x">View</a></dd><button title="Clear">Clear</button>`);',
+    '}',
+  ].join('\n');
+  const offenders = pageDomOffenders(planted);
+  assert.deepEqual(offenders, [], `planted literals were not caught: ${offenders.join(' | ')}`);
+});
+
+expectFailure('exempting a writer the walker does not reach fails the gate', { tags: ['unit'] }, () => {
+  const source = [
+    'function notWalked() {',
+    '  const host = document.querySelector(\'main\');',
+    '  setMarkup(host, `<p>hello</p>`);',
+    '}',
+  ].join('\n');
+  const byName = new Map(topLevelFunctions(source).map((entry) => [entry.name, entry.text]));
+  assert.ok(/setMarkup\((?:shadow|state\.shadow|state\.commandList)\b/.test(byName.get('notWalked')),
+    'notWalked is exempted as walked by localizeInterface, but does not write into the settings shadow root');
 });

@@ -51,6 +51,12 @@ test('every journey says why a session is needed, in words somebody can act on',
     assert.ok(/\s/.test(journey.why.trim()), `${journey.id} gives a single word as its reason`);
     assert.ok(journey.route.startsWith('/'), `${journey.id} names ${journey.route}, which is not a path`);
     assert.ok(journey.expects.length > 0, `${journey.id} asserts nothing, so a signed-in run would prove nothing`);
+    // A journey allowed to report "nothing here" has to say what state that
+    // means, or it is an assertion that can never fail.
+    if ('absentWhy' in journey) {
+      assert.ok(typeof journey.absentWhy === 'string' && journey.absentWhy.length > 25 && /\s/.test(journey.absentWhy.trim()),
+        `${journey.id} may report itself absent but gives no usable reason: "${journey.absentWhy}"`);
+    }
     for (const selector of journey.expects) {
       assert.ok(/[[.#]|,| /.test(selector), `${journey.id} expects "${selector}", which is too broad to mean anything`);
     }

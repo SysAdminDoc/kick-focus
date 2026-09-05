@@ -9935,13 +9935,13 @@ const TRANSLATIONS = {
   'Channel name or kick.com URL': ['Nombre del canal o URL de kick.com', 'Nome do canal ou URL do kick.com'],
   'Channel to hide': ['Canal que ocultar', 'Canal a ocultar'],
   'Open Kick Focus multi-stream': ['Abrir la multitransmisión de Kick Focus', 'Abrir a multitransmissão do Kick Focus'],
+  'Multi ({count})': ['Multi ({count})', 'Multi ({count})'],
   'Multi-stream': ['Multitransmisión', 'Multitransmissão'],
   'Stats': ['Estadísticas', 'Estatísticas'],
   'Open {channel} stats in StreamerStats': ['Abrir las estadísticas de {channel} en StreamerStats', 'Abrir as estatísticas de {channel} no StreamerStats'],
   'Opened {channel} in StreamerStats.': ['Se abrió {channel} en StreamerStats.', '{channel} foi aberto no StreamerStats.'],
   'The browser blocked the stats popup.': ['El navegador bloqueó la ventana emergente de estadísticas.', 'O navegador bloqueou a janela de estatísticas.'],
   'Open tab': ['Abrir pestaña', 'Abrir aba'],
-  'Add this channel to Kick Focus multi-stream': ['Añadir este canal a la multitransmisión de Kick Focus', 'Adicionar este canal à multitransmissão do Kick Focus'],
   'Add to multi-stream': ['Añadir a la multitransmisión', 'Adicionar à multitransmissão'],
   'Undo': ['Deshacer', 'Desfazer'],
   'Dismiss': ['Cerrar', 'Fechar'],
@@ -13397,7 +13397,7 @@ function ensureHeaderQuickControl() {
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2.5" y="3.5" width="8.5" height="7" rx="1.5"/><rect x="13" y="3.5" width="8.5" height="7" rx="1.5"/><rect x="2.5" y="13" width="8.5" height="7" rx="1.5"/><rect x="13" y="13" width="8.5" height="7" rx="1.5"/></svg>
         <span data-kf-header-multi-label>Multi</span>
       </button>
-      <button type="button" data-kf-header-add-multi class="kf-header-add" hidden aria-label="Add this channel to Kick Focus multi-stream" title="Add to multi-stream">
+      <button type="button" data-kf-header-add-multi class="kf-header-add" hidden>
         <span data-kf-header-add-icon aria-hidden="true">+</span>
         <span data-kf-header-add-label>Multi</span>
       </button>
@@ -13443,6 +13443,7 @@ function ensureHeaderQuickControl() {
     state.headerControlHost = host;
     state.headerControlButton = button;
     state.headerAddMultiButton = shadow.querySelector('[data-kf-header-add-multi]');
+    state.headerMultiButton = shadow.querySelector('[data-kf-header-multi]');
     state.headerMultiLabel = shadow.querySelector('[data-kf-header-multi-label]');
     state.headerCommandsButton = shadow.querySelector('[data-kf-header-commands]');
     state.headerCommandsLabel = shadow.querySelector('[data-kf-header-commands-label]');
@@ -13463,7 +13464,18 @@ function ensureHeaderQuickControl() {
  */
 function syncHeaderMultiState() {
   const count = state.multistream.streams.length;
-  if (state.headerMultiLabel) state.headerMultiLabel.textContent = count ? `Multi (${count})` : 'Multi';
+  if (state.headerMultiLabel) {
+    state.headerMultiLabel.textContent = count ? trf('Multi ({count})', { count }) : tr('Multi');
+  }
+  // This host is its own shadow root, so localizeInterface never walks it and
+  // the markup literals are only ever the English first paint. Every other
+  // control here is re-set through tr(); these two were missed, so the
+  // multi-stream button announced itself in English to a Spanish reader while
+  // both strings sat translated in the dictionary, read by nothing.
+  if (state.headerMultiButton) {
+    state.headerMultiButton.setAttribute('aria-label', tr('Open Kick Focus multi-stream'));
+    state.headerMultiButton.title = tr('Multi-stream');
+  }
   const button = state.headerAddMultiButton;
   if (!button) return;
   const slug = currentChannelSlug();
@@ -13478,6 +13490,10 @@ function syncHeaderMultiState() {
   button.setAttribute('aria-label', trf(inGrid
     ? 'Remove {name} from Kick Focus multi-stream'
     : 'Add {name} to Kick Focus multi-stream', { name: slug }));
+  // The button mounts with no name and stays hidden until this runs, so the
+  // only text it ever shows is translated. It used to carry two English
+  // attributes in the markup instead, and nothing replaced the title.
+  button.title = tr(inGrid ? 'In Multi' : 'Add to multi-stream');
 }
 
 function syncQuickButton() {

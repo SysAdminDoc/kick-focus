@@ -3199,8 +3199,18 @@ try {
     // Landing somewhere else means Kick bounced the route, which for these is
     // the session expiring mid-run rather than the expectation being wrong.
     const bounced = seen.ok && seen.landed !== journey.route && !journey.route.startsWith('/x');
+    // Some surfaces only exist in a state the run cannot create: the reward
+    // trigger is gone once the day's reward is claimed, and channel points are
+    // a per-channel feature the broadcaster can leave off. A journey that says
+    // so carries `absentWhy`, and finding none of its selectors is reported
+    // rather than failed — otherwise a correct build goes red for running at
+    // the wrong time of day. Finding *some* of them still has to pass or fail
+    // on its own merits, so this only covers the wholly-absent case.
+    const wholly = Boolean(journey.absentWhy) && seen.ok === true
+      && (seen.counts || []).length > 0 && missing.length === (seen.counts || []).length;
     recordProbe(label,
-      bounced ? { skip: `Kick redirected ${journey.route} to ${seen.landed}, so this run's session no longer reaches it` } : {},
+      bounced ? { skip: `Kick redirected ${journey.route} to ${seen.landed}, so this run's session no longer reaches it` }
+      : wholly ? { skip: `${journey.absentWhy}; nothing to assert on ${journey.route} this run` } : {},
       seen.ok === true && seen.mounted === true && missing.length === 0,
       seen.ok
         ? `mounted on ${seen.landed}; ${(seen.counts || []).map(([selector, count]) => `${count}x ${selector}`).join('; ')}`

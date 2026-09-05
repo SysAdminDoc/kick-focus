@@ -45,9 +45,13 @@ const FILE_FLOORS = {
  * without a byte of source changing. So the suite runs twice — once as before,
  * once with `KF_COVER_BUNDLE=1` — and the two numbers are judged apart.
  *
- * These floors start at what the boot tests actually reach today. They are a
- * ratchet like the others: the way to move them is to drive more of the
- * runtime from a test, never to lower the number.
+ * These floors start at what the boot tests actually reach today, and the band
+ * above them is deliberately thin — a third of a point on lines — because that
+ * thinness is what makes the number a guard rather than a decoration. Measured
+ * 2026-09-05: skipping two of the eight boot scenarios takes branches from
+ * 38.24% to 37.38% and the run goes red. They are a ratchet like the others:
+ * the way to move them is to drive more of the runtime from a test, never to
+ * lower the number.
  */
 const BUNDLE_FLOORS = { lines: 20, branches: 38, functions: 10 };
 
@@ -78,7 +82,12 @@ function parseRow(line) {
   return { name, lines, branches, functions };
 }
 
-const { code, output } = await run(process.execPath, ['--test', '--experimental-test-coverage']);
+// Cleared explicitly, not merely left unset. `run` merges over `process.env`,
+// so a developer who exports KF_COVER_BUNDLE to look at the bundle run, or a
+// CI job that sets it, folded the bundle into this run's weighted total and
+// the project floors then judged a number that meant something else — the
+// exact confusion the two-run split exists to prevent.
+const { code, output } = await run(process.execPath, ['--test', '--experimental-test-coverage'], { KF_COVER_BUNDLE: '' });
 if (code !== 0) {
   console.error(output.split('\n').filter((line) => /^ℹ (tests|fail)|^✖/.test(line)).slice(0, 12).join('\n'));
   console.error('\nThe suite failed, so coverage was not judged. Fix the tests first.');
