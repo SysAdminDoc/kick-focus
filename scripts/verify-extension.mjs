@@ -592,12 +592,11 @@ try {
     await evaluate(pageClient, "document.querySelector('[data-kf-all-live-follows-probe]')?.remove()");
   }
 
-  // R-87: exercise the document-level hover and focus handlers on the real
-  // Kick page. A synthetic followed row is used only when the signed-in rail is
-  // genuinely empty. If Kick rendered a native row, that row itself must be
-  // tagged or the probe fails. A deliberately hidden rail is a skip because the
-  // feature must not punch through the user's layout choice.
-  const followingPreviewProbe = await evaluate(pageClient, `(async () => {
+  // A followed channel is an ordinary sidebar control. Hover and focus used to
+  // create a full-size profile tooltip here, so exercise both input paths on a
+  // real row or an exact synthetic fallback and require the retired host,
+  // marker, and tooltip relationship to stay absent.
+  const noFollowedPopupProbe = await evaluate(pageClient, `(async () => {
     const sidebarProbes = ${JSON.stringify(LOCATOR_PROBES.sidebar)};
     let sidebar = null;
     for (const probe of sidebarProbes) {
@@ -612,28 +611,23 @@ try {
       || document.documentElement.dataset.kfSidebar === 'hidden') {
       return { skip: 'the followed-channel rail is hidden on this run' };
     }
-    const ready = await __kfWait(() => document.getElementById('kick-focus-root')?.dataset.kfFollowingPreviewReady === 'true');
-    if (!ready) return { ok: false, why: 'the preview interaction lifecycle never reported ready' };
-    const settle = (ms = 90) => new Promise((done) => setTimeout(done, ms));
-    const nativeMarkers = () => [...sidebar.querySelectorAll('[data-testid^="sidebar-following-channel-"]')];
-    let row = await __kfWait(() => sidebar.querySelector('[data-kf-following-preview="true"]'), { timeout: 1200 });
-    const nativeMarkerCount = nativeMarkers().length;
-    let synthetic = false;
-    if (!row && nativeMarkerCount) {
-      const marker = nativeMarkers()[0];
+    const nativeMarkers = [...sidebar.querySelectorAll('[data-testid^="sidebar-following-channel-"]')];
+    let row = null;
+    const marker = nativeMarkers[0];
+    if (marker) {
       row = marker.matches('a[href], button, [role="link"], [tabindex]')
         ? marker
         : marker.querySelector('a[href], button, [role="link"], [tabindex]')
           || marker.closest('a[href], button, [role="link"], [tabindex]');
-      if (!row) return { ok: false, why: nativeMarkerCount + ' native followed row(s) rendered without a usable control' };
     }
+    let synthetic = false;
     if (!row) {
       synthetic = true;
       row = document.createElement('button');
       row.type = 'button';
       row.dataset.testid = 'sidebar-following-channel-kf-probe';
-      row.dataset.kfLivePreviewProbe = 'true';
-      row.setAttribute('aria-label', 'Preview geometry probe');
+      row.dataset.kfNoPopupProbe = 'true';
+      row.setAttribute('aria-label', 'Followed channel popup probe');
       row.style.cssText = 'display:flex;width:200px;height:42px;align-items:center';
       const image = document.createElement('img');
       image.alt = '';
@@ -644,142 +638,36 @@ try {
       sidebar.append(row);
       await image.decode().catch(() => {});
     }
-    if (!row) return { ok: false, why: 'a visible followed row exposed no preview control' };
+    if (!row) return { ok: false, why: nativeMarkers.length + ' native followed row(s) rendered without a usable control' };
+    const before = Boolean(document.getElementById('kick-focus-following-preview'));
     row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
-    await __kfWait(() => document.getElementById('kick-focus-following-preview')?.dataset.kfOpen === 'true', { timeout: 2500 });
-    const host = document.getElementById('kick-focus-following-preview');
-    const hoverBox = host?.getBoundingClientRect();
-    const hoverOpen = host?.dataset.kfOpen === 'true' && host.hidden === false;
-    const onScreen = Boolean(hoverBox)
-      && hoverBox.left >= 0 && hoverBox.top >= 0
-      && hoverBox.right <= innerWidth && hoverBox.bottom <= innerHeight;
-    if (!synthetic) await __kfWait(() => host?.dataset.kfSource === 'fullsize-profile', { timeout: 5000 });
-    const sourceResolved = synthetic
-      ? host?.dataset.kfSource === 'existing-image'
-      : host?.dataset.kfSource === 'fullsize-profile';
-    row.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+    row.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, relatedTarget: document.body }));
     row.focus();
     row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
-    await settle();
-    const focusOpen = host?.dataset.kfOpen === 'true' && row.getAttribute('aria-describedby')?.includes(host.id);
-    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-    row.dispatchEvent(escape);
-    await settle(30);
+    await new Promise((done) => setTimeout(done, 500));
+    const host = document.getElementById('kick-focus-following-preview');
+    const tagged = Boolean(row.closest('[data-kf-following-preview], [data-kf-following-preview-name], [data-kf-following-preview-context]'));
+    const described = (row.getAttribute('aria-describedby') || '').split(/\s+/).includes('kick-focus-following-preview');
+    host?.remove();
+    if (synthetic) row.remove();
     return {
       ok: true,
       synthetic,
-      nativeMarkers: nativeMarkerCount,
-      tagged: row.dataset.kfFollowingPreview === 'true',
-      hoverOpen,
-      focusOpen,
-      focusReturned: document.activeElement === row,
-      escapePrevented: escape.defaultPrevented,
-      escapeClosed: host?.hidden === true && host?.dataset.kfOpen !== 'true',
-      onScreen,
-      sourceResolved,
-      source: host?.dataset.kfSource || '',
-      width: Math.round(hoverBox?.width || 0),
-      height: Math.round(hoverBox?.height || 0),
+      nativeMarkers: nativeMarkers.length,
+      before,
+      popup: Boolean(host),
+      tagged,
+      described,
     };
   })()`);
-  const followingPreview = followingPreviewProbe.value || {};
-  recordProbe('followed-channel preview opens by hover and focus, stays on-screen, and Escape closes it', followingPreview,
-    followingPreview.ok === true && followingPreview.tagged === true
-      && followingPreview.hoverOpen === true && followingPreview.focusOpen === true
-      && followingPreview.focusReturned === true
-      && followingPreview.escapePrevented === true && followingPreview.escapeClosed === true
-      && followingPreview.onScreen === true && followingPreview.sourceResolved === true
-      && followingPreview.width > 0 && followingPreview.height > 0,
-    followingPreview.ok
-      ? `${followingPreview.synthetic ? 'synthetic empty-rail fallback' : `${followingPreview.nativeMarkers} native row(s)`}, source=${followingPreview.source}, tagged=${followingPreview.tagged}, ${followingPreview.width}x${followingPreview.height}px, hover=${followingPreview.hoverOpen}, focus=${followingPreview.focusOpen}, focus returned=${followingPreview.focusReturned}, Escape=${followingPreview.escapeClosed}, on-screen=${followingPreview.onScreen}`
-      : followingPreview.why);
-
-  if (!followingPreview.skip) {
-    await pageClient.send('Emulation.setEmulatedMedia', { features: [] });
-    const ordinaryFollowingPreviewProbe = await evaluate(pageClient, `(async () => {
-      const shadow = await __kfWait(() => document.getElementById('kick-focus-root')?.shadowRoot);
-      if (!shadow) return { ok: false, why: 'the preview controls disappeared before the motion-preference pass' };
-      const settle = (ms = 160) => new Promise((done) => setTimeout(done, ms));
-      shadow.querySelector('[data-kf-quick]')?.click();
-      await settle();
-      shadow.querySelector('[data-page="accessibility"]')?.click();
-      await settle();
-      const control = shadow.querySelector('[data-set="accessibility.reduceMotion"]');
-      if (!control) return { ok: false, why: 'the Reduced Motion control is unavailable' };
-      const restoreReducedMotion = control.getAttribute('aria-checked') === 'true';
-      if (restoreReducedMotion) { control.click(); await settle(450); }
-      shadow.querySelector('[data-action="close-settings"]')?.click();
-      await settle(80);
-      // Opening Accessibility can rerender Kick's followed rail. Reacquire the
-      // live row instead of focusing a detached node retained from before it.
-      const row = document.querySelector('[data-kf-live-preview-probe], [data-kf-following-preview="true"]');
-      if (!row) return { ok: false, why: 'the followed row disappeared before the ordinary-image pass' };
-      row.focus();
-      row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
-      await __kfWait(() => document.getElementById('kick-focus-following-preview')?.dataset.kfOpen === 'true', { timeout: 1600 });
-      const host = document.getElementById('kick-focus-following-preview');
-      return {
-        ok: true,
-        restoreReducedMotion,
-        open: host?.dataset.kfOpen === 'true',
-        imageMode: host?.dataset.kfStatic === 'false'
-          && host.querySelector('img')?.hidden === false
-          && host.querySelector('canvas')?.hidden === true,
-      };
-    })()`);
-    const ordinaryFollowingPreview = ordinaryFollowingPreviewProbe.value || {};
-    record('followed-channel preview uses its ordinary image when neither motion preference is enabled',
-      ordinaryFollowingPreview.ok === true && ordinaryFollowingPreview.open === true
-        && ordinaryFollowingPreview.imageMode === true,
-      ordinaryFollowingPreview.ok
-        ? `open=${ordinaryFollowingPreview.open}, ordinary image=${ordinaryFollowingPreview.imageMode}`
-        : ordinaryFollowingPreview.why);
-    await pageClient.send('Emulation.setEmulatedMedia', {
-      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
-    });
-    const reducedFollowingPreviewProbe = await evaluate(pageClient, `(async () => {
-      const row = document.querySelector('[data-kf-live-preview-probe], [data-kf-following-preview="true"]');
-      if (!row) return { ok: false, why: 'the followed row disappeared before the reduced-motion pass' };
-      row.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
-      row.blur();
-      await new Promise((done) => setTimeout(done, 80));
-      row.focus();
-      row.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: document.body }));
-      await __kfWait(() => {
-        const host = document.getElementById('kick-focus-following-preview');
-        return host?.dataset.kfOpen === 'true' && host.dataset.kfStatic === 'true';
-      }, { timeout: 1600 });
-      const host = document.getElementById('kick-focus-following-preview');
-      const result = {
-        ok: true,
-        open: host?.dataset.kfOpen === 'true',
-        staticFrame: host?.dataset.kfStatic === 'true'
-          && host.querySelector('canvas')?.hidden === false
-          && host.querySelector('img')?.hidden === true,
-      };
-      if (${ordinaryFollowingPreview.restoreReducedMotion === true}) {
-        const shadow = document.getElementById('kick-focus-root')?.shadowRoot;
-        shadow?.querySelector('[data-kf-quick]')?.click();
-        await new Promise((done) => setTimeout(done, 160));
-        shadow?.querySelector('[data-page="accessibility"]')?.click();
-        await new Promise((done) => setTimeout(done, 160));
-        const control = shadow?.querySelector('[data-set="accessibility.reduceMotion"]');
-        if (control?.getAttribute('aria-checked') !== 'true') control?.click();
-        await new Promise((done) => setTimeout(done, 450));
-        shadow?.querySelector('[data-action="close-settings"]')?.click();
-      }
-      document.querySelector('[data-kf-live-preview-probe]')?.remove();
-      return result;
-    })()`);
-    await pageClient.send('Emulation.setEmulatedMedia', { features: [] });
-    const reducedFollowingPreview = reducedFollowingPreviewProbe.value || {};
-    record('followed-channel preview uses a canvas still under prefers-reduced-motion',
-      reducedFollowingPreview.ok === true && reducedFollowingPreview.open === true
-        && reducedFollowingPreview.staticFrame === true,
-      reducedFollowingPreview.ok
-        ? `open=${reducedFollowingPreview.open}, static canvas=${reducedFollowingPreview.staticFrame}`
-        : reducedFollowingPreview.why);
-  }
+  const noFollowedPopup = noFollowedPopupProbe.value || {};
+  recordProbe('followed-channel hover and focus never open a Kick Focus popup', noFollowedPopup,
+    noFollowedPopup.ok === true && noFollowedPopup.before === false
+      && noFollowedPopup.popup === false && noFollowedPopup.tagged === false
+      && noFollowedPopup.described === false,
+    noFollowedPopup.ok
+      ? `${noFollowedPopup.synthetic ? 'synthetic empty-rail fallback' : `${noFollowedPopup.nativeMarkers} native row(s)`}; popup=${noFollowedPopup.popup}, marker=${noFollowedPopup.tagged}, tooltip relation=${noFollowedPopup.described}`
+      : noFollowedPopup.why);
 
   // R-83: a discovery clock is useful only if it comes from data Kick already
   // sent, stays paired with Kick's own LIVE marker, and fits the card. The

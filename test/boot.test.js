@@ -564,17 +564,20 @@ test('reset recovery persists without a timer and the page keyboard stays with K
     'the floating Focus fallback must clear a narrow chat composer');
   assert.match(source, /state\.quickButton\.hidden = !shouldShow \|\| headerMounted \|\| pickerVisible/,
     'the floating Focus fallback must leave a narrow open emote picker unobstructed');
-  const previewScrollStart = source.indexOf('function onFollowingPreviewScroll');
-  const previewScrollHandler = source.slice(previewScrollStart, source.indexOf('\n}\n\nfunction onFollowingPreviewKeydown', previewScrollStart));
-  assert.match(previewScrollHandler, /document\.activeElement[\s\S]*hideFollowingPreview\(\);[\s\S]*requestAnimationFrame[\s\S]*showFollowingPreview\(row\)/,
-    'focus-driven sidebar scrolling must reposition the followed-channel preview instead of dismissing it');
-  assert.match(source, /addEventListener\('scroll', guard\('following preview scroll', onFollowingPreviewScroll\), true\)/,
-    'sidebar scrolling must use the focus-aware followed-preview handler');
   const privateReset = source.slice(source.indexOf('function clearPrivateData'), source.indexOf('\n}\n\n/**', source.indexOf('function clearPrivateData')));
   assert.doesNotMatch(privateReset, /REWARD_STATE_KEY|state\.reward/,
     'full reset still deletes reward history that its undo snapshot cannot restore');
   assert.match(source, /Local reward check history is also kept so reset cannot make a handled reward look due again\./,
     'the reset copy must explain why reward history stays');
+});
+
+test('followed sidebar rows install no hover or focus popup', { tags: ['artifact'] }, async () => {
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  assert.doesNotMatch(source,
+    /kick-focus-following-preview|kfFollowingPreview|followingPreview|FollowingPreview|floatingPreviewPosition|kickProfileFullsizeUrl|fullsize-profile/,
+    'the retired followed-channel popup still has shipped code');
+  assert.match(source, /findAllProbe\(sidebar, 'followedChannelControl'\)\.elements/,
+    'removing the popup also removed the row identity used by all-live expansion');
 });
 
 test('the emote shelf is styled by the sheet that can actually reach it', { tags: ['artifact'] }, async () => {
@@ -804,8 +807,8 @@ test('the emote hover card is described to a screen reader, not hidden from one'
   assert.doesNotMatch(block, /aria-hidden/, 'the card must not be hidden from assistive technology');
   assert.match(block, /setAttribute\('role', 'tooltip'\)/, 'the card needs a role that says what it is');
 
-  // Two-way, like the followed-channel preview beside it: one card is reused
-  // for every emote, so whoever opens it has to claim it and give it back.
+  // One card is reused for every emote, so whoever opens it has to claim it
+  // and give it back.
   assert.match(source, /function setChatEmoteDescription/);
   for (const state of ['true', 'false']) {
     assert.ok(source.includes(`setChatEmoteDescription(image, ${state})`)

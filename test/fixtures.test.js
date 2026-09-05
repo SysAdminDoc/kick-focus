@@ -476,11 +476,11 @@ for (const [name, entry] of Object.entries(FIXTURE_CONTRACT)) {
     }
   });
 
-  if (entry.followingPreview) {
-    test(`fixture ${name} resolves the followed-channel preview control`, { tags: ['unit'] }, () => {
+  if (entry.followedChannelControl) {
+    test(`fixture ${name} resolves the followed-channel control`, { tags: ['unit'] }, () => {
       const document = parseFixture(fixtureSource(name));
-      const result = findAllProbe(document, 'followingPreviewControl');
-      assert.equal(result.probe, entry.followingPreview);
+      const result = findAllProbe(document, 'followedChannelControl');
+      assert.equal(result.probe, entry.followedChannelControl);
       assert.equal(result.elements.length, 1);
       const row = result.elements[0];
       const marker = row.closest('[data-testid^="sidebar-following-channel-"]');

@@ -1,4 +1,4 @@
-export const VERSION = '1.47.0';
+export const VERSION = '1.48.0';
 export const SETTINGS_SCHEMA = 7;
 
 /**
@@ -11,6 +11,10 @@ export const SETTINGS_SCHEMA = 7;
  * in the changelog if they care.
  */
 export const VERSION_NOTES = Object.freeze({
+  '1.48.0': Object.freeze({
+    summary: 'Sidebar channel rows no longer open hover or focus popups.',
+    defaults: Object.freeze([]),
+  }),
   '1.47.0': Object.freeze({
     summary: 'All live follows now stay visible in the sidebar.',
     defaults: Object.freeze([]),
@@ -1546,49 +1550,6 @@ export function formatChatTime(at, locale = undefined) {
   if (!Number.isFinite(at)) return '';
   try {
     return new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
-  } catch {
-    return '';
-  }
-}
-
-/**
- * Place a floating preview beside its rail row without letting it leave the
- * viewport. The right side is preferred because Kick's followed rail normally
- * hugs the left edge; the left side is the fallback for mirrored layouts.
- */
-export function floatingPreviewPosition(anchor = {}, preview = {}, viewport = {}, gap = 12) {
-  const number = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
-  const padding = Math.max(0, number(gap, 12));
-  const viewportWidth = Math.max(0, number(viewport.width));
-  const viewportHeight = Math.max(0, number(viewport.height));
-  const previewWidth = Math.max(0, number(preview.width));
-  const previewHeight = Math.max(0, number(preview.height));
-  const anchorLeft = number(anchor.left);
-  const anchorRight = number(anchor.right, anchorLeft + number(anchor.width));
-  const anchorTop = number(anchor.top);
-  const anchorHeight = Math.max(0, number(anchor.height, number(anchor.bottom) - anchorTop));
-  const right = anchorRight + padding;
-  const left = anchorLeft - padding - previewWidth;
-  const side = right + previewWidth <= viewportWidth - padding || left < padding ? 'right' : 'left';
-  const maxLeft = Math.max(padding, viewportWidth - previewWidth - padding);
-  const maxTop = Math.max(padding, viewportHeight - previewHeight - padding);
-  return Object.freeze({
-    left: Math.round(Math.min(maxLeft, Math.max(padding, side === 'right' ? right : left))),
-    top: Math.round(Math.min(maxTop, Math.max(padding, anchorTop + (anchorHeight - previewHeight) / 2))),
-    side,
-  });
-}
-
-/** Upgrade only Kick's known profile conversion URLs to their full-size asset. */
-export function kickProfileFullsizeUrl(value) {
-  try {
-    const url = new URL(String(value || ''));
-    const conversion = /^\/images\/user\/\d+\/profile_image\/conversion\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}-(?:thumb|thumbnail|small|medium|fullsize)\.webp$/i;
-    if (url.origin !== 'https://files.kick.com' || url.username || url.password || !conversion.test(url.pathname)) return '';
-    url.pathname = url.pathname.replace(/-(?:thumb|thumbnail|small|medium|fullsize)\.webp$/i, '-fullsize.webp');
-    url.search = '';
-    url.hash = '';
-    return url.href;
   } catch {
     return '';
   }

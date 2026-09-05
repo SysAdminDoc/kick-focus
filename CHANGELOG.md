@@ -4,6 +4,17 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+## 1.48.0, 2026-09-05
+
+### Removed
+
+- Followed-channel rows no longer open a Kick Focus popup on hover or keyboard focus. The profile preview, full-size image request, still canvas, tooltip relationship, and its document-level interaction listeners are gone.
+
+### Changed
+
+- The sidebar remains a plain list of Kick's channel links while the automatic all-live expansion from v1.47.0 stays in place.
+- Paused chat keeps its last safe reading position when Kick replaces the entire visible message window instead of slipping back to the live edge.
+
 ## 1.47.0, 2026-09-05
 
 ### Changed

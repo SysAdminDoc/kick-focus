@@ -137,24 +137,24 @@ test('a hideable probe resolves through its ordered fallbacks', { tags: ['unit']
   assert.deepEqual(findAllProbe(new FakeNode(), 'playerPip'), { elements: [], probe: null });
 });
 
-test('followed-channel preview probes resolve direct, wrapper, and owner controls in order', { tags: ['unit'] }, () => {
+test('followed-channel probes resolve direct, wrapper, and owner controls in order', { tags: ['unit'] }, () => {
   const nestedLink = new FakeNode();
   const directButton = new FakeNode();
   const ownerLink = new FakeNode();
-  const selectors = LOCATOR_PROBES.followingPreviewControl.map((probe) => probe.selector);
+  const selectors = LOCATOR_PROBES.followedChannelControl.map((probe) => probe.selector);
 
   const current = new FakeNode({ all: { [selectors[0]]: [directButton] } });
-  assert.deepEqual(findAllProbe(current, 'followingPreviewControl'), {
+  assert.deepEqual(findAllProbe(current, 'followedChannelControl'), {
     elements: [directButton], probe: 'following-marker-control',
   });
 
   const wrapper = new FakeNode({ all: { [selectors[1]]: [nestedLink] } });
-  assert.deepEqual(findAllProbe(wrapper, 'followingPreviewControl'), {
+  assert.deepEqual(findAllProbe(wrapper, 'followedChannelControl'), {
     elements: [nestedLink], probe: 'following-descendant-link',
   });
 
   const ancestor = new FakeNode({ all: { [selectors[3]]: [ownerLink] } });
-  assert.deepEqual(findAllProbe(ancestor, 'followingPreviewControl'), {
+  assert.deepEqual(findAllProbe(ancestor, 'followedChannelControl'), {
     elements: [ownerLink], probe: 'following-control-owner',
   });
 });

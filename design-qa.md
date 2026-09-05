@@ -37,11 +37,7 @@ The emote pass verified six 24-pixel quick controls, eight 34-pixel compact colu
 
 The first compact-shell pass reclaimed both rails but left the player shorter than the available viewport. The second pass assigned that height to the player and tightened the channel metadata row. It also corrected the chat overlay layer, the wrapped quick-emote limit selector, and the picker-open pin.
 
-The followed-channel comparison uses the same viewport and row on both sides. The left half enlarges Kick's 75 × 75 sidebar thumbnail. The right half loads the matching 350 × 350 `fullsize.webp` profile asset, keeps the still-canvas path for Reduced Motion, and displays the clean channel name.
-
 - Full shell comparison: `design/qa/comparison-compact-shell-v1.44.png`
-- Followed preview comparison, thumbnail on the left and full-resolution asset on the right: `design/qa/comparison-following-preview-v1.44.png`
-- Final followed preview: `design/screenshots/following-preview.png`
 - Final channel capture: `design/screenshots/compact-channel-layout.png`
 - Layout settings: `design/screenshots/settings-layout.png`
 - Compact emote settings: `design/screenshots/settings-content-emotes.png`

@@ -16,8 +16,6 @@ import {
   buildChatHistoryExport,
   dropChatMessage,
   formatChatTime,
-  floatingPreviewPosition,
-  kickProfileFullsizeUrl,
   advanceSessionWatchTime,
   sessionWatchCandidateState,
   selectSessionWatchOwner,
@@ -3754,39 +3752,6 @@ test('composer recall is a five-message private memory ring', { tags: ['unit'] }
   assert.deepEqual(appendComposerRecall(messages, '/w friend private'), messages);
   assert.deepEqual(appendComposerRecall(messages, 'private composer', true), messages);
   assert.equal(normalizeSettings({ content: { chatComposerRecall: true } }).content.chatComposerRecall, true);
-});
-
-test('following preview placement prefers the rail edge and clamps to the viewport', { tags: ['unit'] }, () => {
-  assert.deepEqual(
-    floatingPreviewPosition(
-      { left: 12, right: 228, top: 640, height: 40 },
-      { width: 320, height: 214 },
-      { width: 1280, height: 720 },
-    ),
-    { left: 240, top: 494, side: 'right' },
-  );
-  assert.deepEqual(
-    floatingPreviewPosition(
-      { left: 1080, right: 1268, top: 2, height: 40 },
-      { width: 320, height: 214 },
-      { width: 1280, height: 720 },
-    ),
-    { left: 748, top: 12, side: 'left' },
-  );
-});
-
-test('following previews upgrade only exact Kick profile conversions to full-size artwork', { tags: ['unit'] }, () => {
-  const base = 'https://files.kick.com/images/user/1329939/profile_image/conversion/2e5379d9-f81e-44a5-8b49-50a82666a5cd';
-  assert.equal(kickProfileFullsizeUrl(`${base}-thumb.webp`), `${base}-fullsize.webp`);
-  assert.equal(kickProfileFullsizeUrl(`${base}-medium.webp?cache=1#fragment`), `${base}-fullsize.webp`);
-  assert.equal(kickProfileFullsizeUrl(`${base}-fullsize.webp`), `${base}-fullsize.webp`);
-  for (const unsafe of [
-    `http://files.kick.com${new URL(base).pathname}-thumb.webp`,
-    `https://files.kick.com.evil.example${new URL(base).pathname}-thumb.webp`,
-    `https://user@files.kick.com${new URL(base).pathname}-thumb.webp`,
-    'data:image/webp;base64,AAAA',
-    'https://files.kick.com/images/user/not-a-number/profile_image/conversion/not-a-uuid-thumb.webp',
-  ]) assert.equal(kickProfileFullsizeUrl(unsafe), '');
 });
 
 test('a whisper, an unidentifiable message, and a repeat are all refused', { tags: ['unit'] }, () => {

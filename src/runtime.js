@@ -133,8 +133,6 @@ const state = {
   headerControlButton: null,
   profileStatsHost: null,
   profileStatsButton: null,
-  followingPreview: null,
-  followingPreviewRow: null,
   chatResizeCleanup: null,
   chatSeparator: null,
   lastFocused: null,
@@ -160,6 +158,7 @@ const state = {
     chatScrollIntentUntil: 0,
     chatScrollLastTop: 0,
     chatScrollTop: null,
+    chatScrollBottomDistance: null,
     chatScrollAnchor: null,
     chatScrollIgnoreUntil: 0,
     chatScrollHoldTimer: 0,
@@ -171,7 +170,6 @@ const state = {
     layoutRoute: '',
     applyRunning: false,
     applyQueued: false,
-    followingPreviewInteractions: false,
     followingExpandSignature: '',
     presenceRequested: false,
     stickerGridScrollTop: null,
@@ -1267,66 +1265,6 @@ const SITE_CSS = `
 
     html[data-kf-route] #sidebar-wrapper [data-testid="sidebar-show-less-following"] {
       display: none !important;
-    }
-
-    #kick-focus-following-preview {
-      position: fixed !important;
-      z-index: 2147483000 !important;
-      width: min(320px, calc(100vw - 24px)) !important;
-      margin: 0 !important;
-      overflow: hidden !important;
-      border: 1px solid rgba(255,255,255,.12) !important;
-      border-radius: 10px !important;
-      background: var(--kf-panel, #0b100d) !important;
-      box-shadow: 0 20px 54px rgba(0,0,0,.58), 0 2px 12px rgba(0,0,0,.3) !important;
-      color: var(--kf-text, #f5f8f6) !important;
-      opacity: 0 !important;
-      transform: translateX(-4px) scale(.985) !important;
-      transform-origin: center left !important;
-      pointer-events: none !important;
-      transition: opacity 120ms ease, transform 120ms ease !important;
-    }
-
-    #kick-focus-following-preview[hidden] { display: none !important; }
-    #kick-focus-following-preview[data-kf-open="true"] {
-      opacity: 1 !important;
-      transform: translateX(0) scale(1) !important;
-    }
-    #kick-focus-following-preview[data-kf-side="left"] { transform-origin: center right !important; }
-    #kick-focus-following-preview > :is(img, canvas) {
-      display: block !important;
-      width: 100% !important;
-      aspect-ratio: 16 / 9 !important;
-      object-fit: cover !important;
-      background: var(--kf-panel-raised, #111713) !important;
-    }
-    #kick-focus-following-preview > :is(img, canvas)[hidden] { display: none !important; }
-    #kick-focus-following-preview figcaption {
-      display: flex !important;
-      min-height: 42px !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      gap: 12px !important;
-      padding: 9px 11px 10px !important;
-      border-top: 1px solid rgba(255,255,255,.08) !important;
-      background: var(--kf-surface-hover, #171f1a) !important;
-      font: 500 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-    }
-    #kick-focus-following-preview strong {
-      min-width: 0 !important;
-      overflow: hidden !important;
-      color: #f7f9f8 !important;
-      font-size: 14px !important;
-      font-weight: 720 !important;
-      letter-spacing: -.012em !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    #kick-focus-following-preview figcaption span {
-      flex: 0 0 auto !important;
-      color: rgba(247,249,248,.56) !important;
-      font-size: 11px !important;
-      letter-spacing: .02em !important;
     }
 
     #sidebar-wrapper :is(button, a):focus-visible,
@@ -2620,7 +2558,6 @@ const SITE_CSS = `
   @media (prefers-reduced-motion: reduce) {
     html[data-kf-sidebar="autohide"] #sidebar-wrapper,
     html[data-kf-chat="autohide"] [data-kf-chat-panel] { transition: none !important; }
-    #kick-focus-following-preview { transition: none !important; transform: none !important; }
   }
 
   /* Badges Kick's own markup omits. badges_v2 carries collectible and global
@@ -3772,264 +3709,11 @@ function syncAllLiveFollows() {
     return;
   }
   if (more.disabled || more.getAttribute?.('aria-disabled') === 'true') return;
-  const rows = findAllProbe(sidebar, 'followingPreviewControl').elements;
+  const rows = findAllProbe(sidebar, 'followedChannelControl').elements;
   const signature = `${rows.length}:${rows.map((row) => cardPath(row)).filter(Boolean).join('|')}`;
   if (signature === state.runtime.followingExpandSignature) return;
   state.runtime.followingExpandSignature = signature;
   more.click();
-}
-
-/** The stable marker owner around a followed-channel control. */
-function followingPreviewOwner(row) {
-  const markerSelector = '[data-testid^="sidebar-following-channel-"]';
-  if (row?.matches?.(markerSelector)) return row;
-  const wrapper = row?.closest?.(markerSelector);
-  if (wrapper) return wrapper;
-  // Older Kick shells put the marker below the link. In that shape the link is
-  // the useful owner because its image can be a sibling of the marked child.
-  if (row?.querySelector?.(markerSelector)) return row;
-  return row?.closest?.('li') || row;
-}
-
-/** The already-loaded image Kick placed inside a followed-channel row. */
-function followingPreviewSource(row) {
-  const owner = followingPreviewOwner(row);
-  const images = [...(owner?.querySelectorAll?.('img') || [])]
-    .filter((image) => image.currentSrc || image.getAttribute?.('src'))
-    .sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
-  return images[0] || null;
-}
-
-/**
- * Mark only live followed-channel controls that already carry a thumbnail.
- * A preview may upgrade that exact Kick conversion URL to its full-size form.
- */
-function tagFollowingPreviewRows() {
-  if (state.runtime.sidebarHidden || state.runtime.focus || state.runtime.theater
-    || state.settings.layout.sidebar === 'hidden') {
-    hideFollowingPreview();
-    return;
-  }
-  const sidebar = findProbe(document, 'sidebar').element;
-  if (!sidebar) {
-    hideFollowingPreview();
-    return;
-  }
-  const tagged = new Set();
-  const rows = findAllProbe(sidebar, 'followingPreviewControl').elements;
-  for (const row of rows) {
-    if (!row || !sidebar.contains(row) || !followingPreviewSource(row)) continue;
-    tagged.add(row);
-    if (row.dataset.kfFollowingPreview !== 'true') row.dataset.kfFollowingPreview = 'true';
-  }
-  for (const marker of sidebar.querySelectorAll?.('[data-kf-following-preview]') || []) {
-    if (!tagged.has(marker)) delete marker.dataset.kfFollowingPreview;
-  }
-  if (state.followingPreviewRow && !state.followingPreviewRow.matches?.('[data-kf-following-preview="true"]')) {
-    hideFollowingPreview();
-  }
-}
-
-/** Whether one DOM mutation added or removed part of a followed-channel row. */
-function followingPreviewMutation(mutations) {
-  const markerSelector = '[data-testid^="sidebar-following-channel-"]';
-  for (const mutation of mutations || []) {
-    for (const node of [...(mutation.addedNodes || []), ...(mutation.removedNodes || [])]) {
-      if (node?.nodeType !== 1) continue;
-      if (node.matches?.(markerSelector) || node.querySelector?.(markerSelector)
-        || node.closest?.(markerSelector)) return true;
-    }
-  }
-  return false;
-}
-
-function ensureFollowingPreview() {
-  if (state.followingPreview?.isConnected) return state.followingPreview;
-  const host = document.createElement('figure');
-  host.id = 'kick-focus-following-preview';
-  host.lang = activeLocale();
-  host.hidden = true;
-  host.setAttribute('role', 'tooltip');
-  host.setAttribute('aria-live', 'off');
-  const image = document.createElement('img');
-  image.alt = '';
-  image.decoding = 'async';
-  const canvas = document.createElement('canvas');
-  canvas.width = 640;
-  canvas.height = 360;
-  canvas.hidden = true;
-  canvas.setAttribute('aria-hidden', 'true');
-  const caption = document.createElement('figcaption');
-  const name = document.createElement('strong');
-  name.dataset.kfFollowingPreviewName = 'true';
-  const context = document.createElement('span');
-  context.dataset.kfFollowingPreviewContext = 'true';
-  caption.append(name, context);
-  host.append(image, canvas, caption);
-  document.body.append(host);
-  state.followingPreview = host;
-  return host;
-}
-
-function followingPreviewLabel(row) {
-  const channel = cardPath(row).split('/').filter(Boolean)[0];
-  if (channel) return channel.slice(0, 80);
-  const ownLabel = row.getAttribute?.('aria-label') || row.getAttribute?.('title') || row.textContent || '';
-  const text = ownLabel.replace(/\s+/g, ' ').trim();
-  if (text) return text.slice(0, 80);
-  return tr('Following');
-}
-
-function snapshotFollowingImage(source, canvas) {
-  if (!source?.complete || !source.naturalWidth || !source.naturalHeight) return false;
-  const targetWidth = canvas.width;
-  const targetHeight = canvas.height;
-  const scale = Math.max(targetWidth / source.naturalWidth, targetHeight / source.naturalHeight);
-  const width = source.naturalWidth * scale;
-  const height = source.naturalHeight * scale;
-  try {
-    const context = canvas.getContext('2d');
-    context.clearRect(0, 0, targetWidth, targetHeight);
-    context.drawImage(source, (targetWidth - width) / 2, (targetHeight - height) / 2, width, height);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function setFollowingPreviewDescription(row, enabled) {
-  if (!row) return;
-  const tokens = new Set((row.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
-  if (enabled) tokens.add('kick-focus-following-preview');
-  else tokens.delete('kick-focus-following-preview');
-  if (tokens.size) row.setAttribute('aria-describedby', [...tokens].join(' '));
-  else row.removeAttribute('aria-describedby');
-}
-
-function showFollowingPreview(row) {
-  if (!row?.matches?.('[data-kf-following-preview="true"]') || state.runtime.suspended) return;
-  const source = followingPreviewSource(row);
-  if (!source) return;
-  const reducedMotion = state.settings.accessibility.reduceMotion
-    || matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const host = ensureFollowingPreview();
-  const image = host.querySelector('img');
-  const canvas = host.querySelector('canvas');
-  const thumbnail = source.currentSrc || source.getAttribute('src');
-  const fullsize = kickProfileFullsizeUrl(thumbnail);
-  const label = followingPreviewLabel(row);
-  host.querySelector('[data-kf-following-preview-name]').textContent = label;
-  host.querySelector('[data-kf-following-preview-context]').textContent = tr('Following');
-  host.dataset.kfStatic = String(reducedMotion);
-  host.hidden = false;
-  host.style.visibility = 'hidden';
-  host.dataset.kfOpen = 'true';
-  if (state.followingPreviewRow !== row) setFollowingPreviewDescription(state.followingPreviewRow, false);
-  state.followingPreviewRow = row;
-  setFollowingPreviewDescription(row, true);
-  if (reducedMotion && !snapshotFollowingImage(source, canvas)) {
-    hideFollowingPreview();
-    state.followingPreviewRow = row;
-    source.addEventListener('load', () => {
-      if (state.followingPreviewRow === row) showFollowingPreview(row);
-    }, { once: true });
-    return;
-  }
-  image.hidden = reducedMotion;
-  canvas.hidden = !reducedMotion;
-  host.dataset.kfSource = fullsize ? 'fullsize-profile-loading' : 'existing-image';
-  image.onload = () => {
-    if (state.followingPreviewRow !== row) return;
-    if (reducedMotion) snapshotFollowingImage(image, canvas);
-    host.dataset.kfSource = image.currentSrc === fullsize ? 'fullsize-profile' : fullsize ? 'thumbnail-fallback' : 'existing-image';
-  };
-  image.onerror = () => {
-    if (state.followingPreviewRow === row && fullsize && image.src !== thumbnail) image.src = thumbnail;
-  };
-  image.src = fullsize || thumbnail;
-  if (image.complete && image.naturalWidth) image.onload();
-  const position = floatingPreviewPosition(
-    row.getBoundingClientRect(),
-    host.getBoundingClientRect(),
-    { width: innerWidth, height: innerHeight },
-  );
-  host.style.left = `${position.left}px`;
-  host.style.top = `${position.top}px`;
-  host.dataset.kfSide = position.side;
-  host.style.visibility = 'visible';
-}
-
-function hideFollowingPreview() {
-  const host = state.followingPreview;
-  setFollowingPreviewDescription(state.followingPreviewRow, false);
-  state.followingPreviewRow = null;
-  if (!host) return;
-  delete host.dataset.kfOpen;
-  host.hidden = true;
-}
-
-function followingPreviewRowFromEvent(event) {
-  const target = event.target;
-  const tagged = target?.closest?.('[data-kf-following-preview="true"]');
-  if (tagged) return tagged;
-  // A cold or backgrounded page can defer the mutation-driven apply pass.
-  // Resolve the same ordered controls at the moment a real hover or focus
-  // arrives so an interaction never depends on that scheduling detail.
-  const sidebar = findProbe(document, 'sidebar').element;
-  if (!sidebar || !target || !sidebar.contains(target)) return null;
-  const row = findAllProbe(sidebar, 'followingPreviewControl').elements
-    .find((candidate) => candidate === target || candidate.contains?.(target));
-  if (!row || !followingPreviewSource(row)) return null;
-  row.dataset.kfFollowingPreview = 'true';
-  return row;
-}
-
-function onFollowingPreviewEnter(event) {
-  const row = followingPreviewRowFromEvent(event);
-  if (!row || (event.relatedTarget && row.contains(event.relatedTarget))) return;
-  showFollowingPreview(row);
-}
-
-function onFollowingPreviewLeave(event) {
-  const row = followingPreviewRowFromEvent(event) || state.followingPreviewRow;
-  if (!row || row !== state.followingPreviewRow || (event.relatedTarget && row.contains(event.relatedTarget))) return;
-  hideFollowingPreview();
-}
-
-function onFollowingPreviewScroll() {
-  const row = state.followingPreviewRow;
-  const active = document.activeElement;
-  const keepForFocus = row?.isConnected && (active === row || row.contains?.(active));
-  hideFollowingPreview();
-  if (!keepForFocus) return;
-  requestAnimationFrame(() => {
-    const current = document.activeElement;
-    if (row.isConnected && (current === row || row.contains?.(current))) showFollowingPreview(row);
-  });
-}
-
-function onFollowingPreviewKeydown(event) {
-  if (event.key !== 'Escape' || event.defaultPrevented
-    || state.followingPreview?.dataset.kfOpen !== 'true') return;
-  event.preventDefault();
-  event.stopPropagation();
-  hideFollowingPreview();
-}
-
-function installFollowingPreviewInteractions() {
-  if (state.runtime.followingPreviewInteractions) return;
-  state.runtime.followingPreviewInteractions = true;
-  document.addEventListener('mouseover', guard('following preview', onFollowingPreviewEnter), true);
-  document.addEventListener('focusin', guard('following preview', onFollowingPreviewEnter), true);
-  document.addEventListener('mouseout', guard('following preview', onFollowingPreviewLeave), true);
-  document.addEventListener('focusout', guard('following preview', onFollowingPreviewLeave), true);
-  document.addEventListener('keydown', guard('following preview', onFollowingPreviewKeydown), true);
-  document.addEventListener('scroll', guard('following preview scroll', onFollowingPreviewScroll), true);
-  document.addEventListener('wheel', hideFollowingPreview, true);
-  window.addEventListener('resize', hideFollowingPreview);
-  window.addEventListener('blur', hideFollowingPreview);
-  const root = document.getElementById('kick-focus-root');
-  if (root) root.dataset.kfFollowingPreviewReady = 'true';
 }
 
 function applySearchEnhancements() {
@@ -4584,6 +4268,29 @@ function chatScrollAnchorStillMatches(messages, anchor) {
   return false;
 }
 
+function chatScrollBottomDistance(messages) {
+  const distance = messages.scrollHeight - messages.scrollTop - messages.clientHeight;
+  return Number.isFinite(distance) ? Math.max(0, distance) : 0;
+}
+
+/**
+ * Remember only safer fallback positions while an actual message row is held.
+ *
+ * Kick can replace the entire visible row window in one render. A later row
+ * must never move the fallback toward live chat, and a temporary scroll-range
+ * contraction must not erase how far back the reader was.
+ */
+function rememberPausedChatFallback(messages) {
+  const top = messages.scrollTop;
+  const distance = chatScrollBottomDistance(messages);
+  state.runtime.chatScrollTop = Number.isFinite(state.runtime.chatScrollTop)
+    ? Math.min(state.runtime.chatScrollTop, top)
+    : top;
+  state.runtime.chatScrollBottomDistance = Number.isFinite(state.runtime.chatScrollBottomDistance)
+    ? Math.max(state.runtime.chatScrollBottomDistance, distance)
+    : distance;
+}
+
 function restorePausedChatPosition(messages) {
   const anchor = state.runtime.chatScrollAnchor;
   if (chatScrollAnchorStillMatches(messages, anchor)) {
@@ -4594,18 +4301,25 @@ function restorePausedChatPosition(messages) {
       state.runtime.chatScrollIgnoreUntil = Date.now() + 80;
       messages.scrollTop += adjustment;
     }
-    state.runtime.chatScrollTop = messages.scrollTop;
+    rememberPausedChatFallback(messages);
     return;
   }
 
   // The anchored row was one of the rows Kick recycled. Restoring the last
-  // stable scrollTop avoids a visible jump, then a fresh visible row becomes
-  // the anchor for later mutations.
-  if (Number.isFinite(state.runtime.chatScrollTop) && Math.abs(messages.scrollTop - state.runtime.chatScrollTop) > 0.5) {
+  // safe scrollTop avoids a jump toward live chat. The distance guard covers a
+  // virtual-window reset that temporarily makes that old pixel unreachable.
+  const stableTop = state.runtime.chatScrollTop;
+  if (Number.isFinite(stableTop) && Math.abs(messages.scrollTop - stableTop) > 0.5) {
     state.runtime.chatScrollIgnoreUntil = Date.now() + 80;
-    messages.scrollTop = state.runtime.chatScrollTop;
+    messages.scrollTop = stableTop;
   }
-  state.runtime.chatScrollTop = messages.scrollTop;
+  const minimumDistance = state.runtime.chatScrollBottomDistance;
+  const currentDistance = chatScrollBottomDistance(messages);
+  if (Number.isFinite(minimumDistance) && currentDistance < minimumDistance - 0.5) {
+    state.runtime.chatScrollIgnoreUntil = Date.now() + 80;
+    messages.scrollTop = Math.max(0, messages.scrollHeight - messages.clientHeight - minimumDistance);
+  }
+  rememberPausedChatFallback(messages);
   state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
 }
 
@@ -4698,6 +4412,7 @@ function armChatScrollPause(messages) {
     if (state.runtime.chatPaused) {
       if (movedUp && Date.now() < state.runtime.chatScrollIntentUntil) {
         state.runtime.chatScrollTop = top;
+        state.runtime.chatScrollBottomDistance = chatScrollBottomDistance(messages);
         state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
       } else if (Math.abs(top - previousTop) > 2) {
         schedulePausedChatRestore(messages);
@@ -4776,6 +4491,7 @@ function applyChatPause() {
     state.runtime.chatPauseNode = null;
     state.runtime.chatScrollAnchor = null;
     state.runtime.chatScrollTop = null;
+    state.runtime.chatScrollBottomDistance = null;
     const previousAriaLive = messages.dataset.kfPreviousAriaLive;
     if (previousAriaLive && previousAriaLive !== '__none__') messages.setAttribute('aria-live', previousAriaLive);
     else messages.removeAttribute('aria-live');
@@ -4805,10 +4521,12 @@ function applyChatPause() {
       state.observers.chat = null;
       state.runtime.chatPauseNode = messages;
       state.runtime.chatScrollTop = messages.scrollTop;
+      state.runtime.chatScrollBottomDistance = chatScrollBottomDistance(messages);
       state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
     }
     if (!state.observers.chat) {
       state.runtime.chatScrollTop = messages.scrollTop;
+      state.runtime.chatScrollBottomDistance = chatScrollBottomDistance(messages);
       state.runtime.chatScrollAnchor = captureChatScrollAnchor(messages);
       state.observers.chat = new MutationObserver(() => schedulePausedChatRestore(messages));
       state.observers.chat.observe(messages, {
@@ -4832,6 +4550,7 @@ function applyChatPause() {
     state.runtime.chatPauseNode = null;
     state.runtime.chatScrollAnchor = null;
     state.runtime.chatScrollTop = null;
+    state.runtime.chatScrollBottomDistance = null;
     delete messages.dataset.kfChatPaused;
     const previousAriaLive = messages.dataset.kfPreviousAriaLive;
     if (previousAriaLive && previousAriaLive !== '__none__') messages.setAttribute('aria-live', previousAriaLive);
@@ -5362,10 +5081,9 @@ function chatEmoteTooltipHost() {
 /**
  * Point an emote at the card describing it, or stop pointing at it.
  *
- * The same two-way token set the followed-channel preview uses: the card is
- * one element reused for every emote, so the emote under the pointer has to
- * claim it and give it back. Merging into whatever Kick already put on the
- * element rather than overwriting, because this is Kick's img.
+ * The card is one element reused for every emote, so the emote under the
+ * pointer has to claim it and give it back. Merge into whatever Kick already
+ * put on the element rather than overwriting, because this is Kick's img.
  */
 function setChatEmoteDescription(image, enabled) {
   if (!image?.getAttribute) return;
@@ -7356,7 +7074,6 @@ function videoIsVisible(video) {
 // VIDEO_CHANNEL_PLAYER_SELECTOR and VIDEO_PLAYER_SELECTOR come from
 // compatibility.mjs, which is where the drift check that samples by them lives.
 const VIDEO_PREVIEW_SELECTOR = [
-  '#kick-focus-following-preview',
   '[data-testid*="preview" i]',
   '[data-preview]',
   '[class*="player-preview" i]',
@@ -7959,7 +7676,6 @@ async function runApplyCycle() {
     applyContentFilters();
     syncNativeSidebar();
     syncAllLiveFollows();
-    tagFollowingPreviewRows();
     applyRailVisibility();
     applySearchEnhancements();
     applyDropsEnhancements();
@@ -8062,15 +7778,7 @@ function installSpaHooks() {
 
 function installDocumentObserver() {
   if (state.observers.document) return;
-  state.observers.document = new MutationObserver((mutations) => {
-    // The full apply cycle deliberately yields. Preview controls are tiny and
-    // interaction-bound, so tag their rare mutations before joining that
-    // queue; otherwise a hover can arrive while the new row is still waiting.
-    if (followingPreviewMutation(mutations)) {
-      try { tagFollowingPreviewRows(); } catch (error) { logAppError('following preview observer', error); }
-    }
-    scheduleApply(80);
-  });
+  state.observers.document = new MutationObserver(() => scheduleApply(80));
   state.observers.document.observe(document.documentElement, { childList: true, subtree: true });
 }
 
@@ -10351,7 +10059,7 @@ function applyInterfaceLanguage() {
   // host is built during boot, and a `const` declared this far down the file
   // would still be in its temporal dead zone when that runs. Function
   // declarations hoist; `const` does not. See test/boot.test.js.
-  for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control', 'kick-focus-streamer-stats', 'kick-focus-following-preview']) {
+  for (const id of ['kick-focus-root', 'kick-focus-emote-complete', 'kick-focus-emote-tooltip', 'kick-focus-header-control', 'kick-focus-streamer-stats']) {
     const host = document.getElementById(id);
     if (host && host.lang !== locale) host.lang = locale;
   }
@@ -13054,9 +12762,6 @@ function clearEnhancedPage() {
   state.chatResizeCleanup = null;
   clearStickerUI();
   stopSessionWatchTime();
-  hideFollowingPreview();
-  state.followingPreview?.remove?.();
-  state.followingPreview = null;
   disconnectChatStickerObserver();
   if (root.dataset.kfManagedSidebar === 'true') {
     findProbe(document, 'sidebarExpand').element?.click?.();
@@ -13067,7 +12772,7 @@ function clearEnhancedPage() {
   for (const property of ['--kf-chat-width', '--kf-thumb-saturation', '--kf-caption-opacity', '--kf-text-scale', '--color-primary-base', '--color-surface-base', '--color-surface-highest', '--color-surface-lowest']) {
     root.style.removeProperty(property);
   }
-  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization], [data-kf-following-preview], [data-kf-composer-recall]')) {
+  for (const node of document.querySelectorAll('[data-kf-chat-separator], [data-kf-chat-panel], [data-kf-channel-row], [data-kf-filtered], [data-kf-mature], [data-kf-ad-shell], [data-kf-watched], [data-kf-live-card], [data-kf-dismissed], [data-kf-highlighted], [data-kf-player], [data-kf-player-resize-ready], [data-kf-card-actions], [data-kf-card-uptime], [data-kf-card-uptime-owner], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-native-drops-empty], [data-kf-monetization], [data-kf-composer-recall]')) {
     if (node.matches?.('[data-kf-card-actions], [data-kf-card-uptime], [data-kf-uptime], [data-kf-vod-expiry], [data-kf-chat-pause], [data-kf-chat-status], [data-kf-playback-diagnostics], [data-kf-search-meta], [data-kf-drops-empty], [data-kf-composer-recall]')) node.remove();
     else {
       for (const key of Object.keys(node.dataset || {})) if (key.startsWith('kf')) delete node.dataset[key];
@@ -13114,6 +12819,7 @@ function clearEnhancedPage() {
   state.runtime.chatPauseNode = null;
   state.runtime.chatScrollAnchor = null;
   state.runtime.chatScrollTop = null;
+  state.runtime.chatScrollBottomDistance = null;
   if (state.modal) state.modal.hidden = true;
   if (state.command) state.command.hidden = true;
   // The grid was left open on top of a page this had just made reachable
@@ -13931,7 +13637,6 @@ function startWhenBodyExists() {
     return;
   }
   buildInterface();
-  installFollowingPreviewInteractions();
   installRuntimeInteractions();
   installDocumentObserver();
   installRemoteBlocklistTimer();

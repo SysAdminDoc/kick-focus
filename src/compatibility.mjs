@@ -42,8 +42,8 @@ export const LOCATOR_PROBES = Object.freeze({
   ]),
   // The stable shape puts the followed-channel test id on the control. Keep
   // wrapper and owner shapes as ordered fallbacks so a markup change becomes
-  // visible without turning an unrelated sidebar control into a preview target.
-  followingPreviewControl: Object.freeze([
+  // visible without treating an unrelated sidebar control as a followed row.
+  followedChannelControl: Object.freeze([
     Object.freeze({
       id: 'following-marker-control',
       selector: 'a[data-testid^="sidebar-following-channel-"][href], button[data-testid^="sidebar-following-channel-"], [role="link"][data-testid^="sidebar-following-channel-"], [tabindex][data-testid^="sidebar-following-channel-"]',
