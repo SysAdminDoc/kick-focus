@@ -7,6 +7,7 @@ All notable changes are documented here. Dates use ISO 8601.
 ### Fixed
 
 - The search results header and the Drops empty state now speak the language you chose. Both write into Kick's own page rather than this build's panel, so the translator that walks the panel never reached them, and every one of their strings rendered in English for Spanish and Portuguese readers even though the translations were already written. Both surfaces also declare their own language now, so a screen reader stops announcing them with English pronunciation.
+- The built userscript now reports test coverage. Its 13,681-line runtime had never appeared in a coverage report at all, because the boot tests evaluated it as an unnamed script and the reporter discards those, so the project percentage was an average over the smaller half of the code. The two numbers are measured in separate runs and judged separately, since the bundle contains the modules the other number covers.
 - A new gate refuses any copy typed straight into a surface this build writes into Kick's page, and it knows which surfaces those are, so a third one cannot arrive without someone deciding how it gets translated.
 
 ## 1.48.0, 2026-09-05

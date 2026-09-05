@@ -206,25 +206,11 @@ None open.
 
 ### P2, profile comment emote organization and polish
 
-- [ ] P2: R-125: Let users reorder custom groups without drag-only interaction
-  Why: Groups append in creation order and cannot be rearranged, so an active collection can remain behind old groups permanently.
-  Evidence: src/runtime.js custom group create and delete paths; src/storage.mjs group normalization; https://www.w3.org/TR/WCAG22/
-  Touches: shared mutation commands from R-120, picker and Library group controls, import and export normalization, translations, tests
-  Acceptance: Each custom group has visible Move earlier and Move later controls in picker and Library; controls disable at the boundaries, preserve selection, and offer Undo; order survives reload, import, export, and two-tab convergence; pointer use is optional and no drag gesture is required.
-  Complexity: S
-
 - [ ] P2: R-126: Search emotes by name, source, native group, and custom group with stable ranking
   Why: Picker search currently matches only the descriptor name while the Library considers more context, so the same catalog can return different results.
   Evidence: src/runtime.js picker filter; src/settings.mjs Library filter; src/storage.mjs normalized descriptor fields; https://www.w3.org/WAI/ARIA/apg/patterns/combobox/
   Touches: shared pure search index and ranker, picker and Library renderers, translations, search tests, performance probe
   Acceptance: Both surfaces normalize the same searchable fields; exact name ranks before prefix, then token, then substring; ties prefer current-profile availability, favorites, recent use, and stable catalog order; custom and native group matches are visibly explained; across 100 deterministic queries over 2,400 fixtures, pure search stays at or below 16 ms at p95 on the supported Node 24 baseline; no remote provider or fuzzy dependency is added.
-  Complexity: M
-
-- [ ] P2: R-127: Assign one emote to a group directly from its tile
-  Why: Moving a single emote currently requires entering Organize, selecting it, choosing a destination, and pressing Move.
-  Evidence: src/runtime.js:5162-5542; design/qa/emote-picker-all-v1.38.png
-  Touches: tile management menu, mutation commands from R-120, picker and Library, translations, browser tests
-  Acceptance: A visible tile action opens an accessible group menu with current membership; one action moves or removes the emote from a custom group without entering batch mode; the result is announced, offers Undo, retains focus on the tile, and uses the same command as Library and batch organization.
   Complexity: M
 
 - [ ] P2: R-128: Give the Library an explicit Back to comment return path
@@ -309,14 +295,6 @@ Added from the research recorded in [RESEARCH.md](RESEARCH.md). The pass began a
 Cross-references to existing work: R-153 is what makes R-147's central claim measurable, because a coverage figure for the bundle is the only way to show whether `onInterfaceClick` is reached at all. R-154 is the missing precondition for [Roadmap_Blocked.md](Roadmap_Blocked.md)'s R-55, whose stated blocker — no signed-in session — expired when the daily-reward fixture was captured on 2026-08-27; on completion, move R-55 back here rather than leaving it recorded as blocked. Inline notes were added above to R-105, R-115, and R-117.
 
 ### P1
-
-- [ ] P1: R-153: Make the built bundle report coverage
-  Why: `src/runtime.js` is 13,681 lines and 395 top-level functions, 57.8% of the concatenated source by line and 59.8% by byte, and contributes nothing to the coverage table, so the global floor is measured over the importable modules and the build scripts only. It is listed as uncoverable, but it is not: `test/boot.test.js` already evaluates the bundle, it just does so without a filename, so Node's reporter discards it.
-  Evidence: test/coverage.test.js:25-31; test/boot.test.js:173 and :206 plus six sibling `vm.runInNewContext(bundle, context)` calls; scripts/coverage-floors.mjs; probed 2026-09-04 — passing a `filename` option pointing at dist/kick-focus.user.js makes `node --test --experimental-test-coverage` list the bundle, and a bare context alone already reports 15.80% lines, 33.33% branches and 0.14% functions
-  Touches: test/boot.test.js, scripts/coverage-floors.mjs, test/coverage.test.js, package.json
-  Acceptance: The coverage table lists the built userscript; a floor for it is set from the measured baseline and ratchets upward only; the `runtime.js` entry in `UNCOVERABLE` is replaced by that measurement or by a reason that is still true after it; deleting a boot scenario lowers the reported figure, proven by a red probe; and the floors command stays under the current runtime budget on this machine.
-  Caveat the implementer has to handle: the bundle contains the importable modules as well, so its figure overlaps the existing project row and must not be folded into the global average. Give it its own row and its own floor, and say in `coverage-floors.mjs` why the two numbers cover the same code twice, or the global percentage silently starts meaning something else.
-  Complexity: M
 
 - [ ] P1: R-154: Add Channel points and Level to the signed-in journey matrix
   Why: The Viewer Hub renders both cards, but neither has a journey, so an anonymous run emits no skip naming them and a signed-in run asserts nothing about them. That is why R-55 cannot move: its blocker is no longer a missing session — one was used to capture the daily-reward fixture on 2026-08-27 — it is that nothing tells that run which selectors to record. Level compounds it: it is read only from the reward dialog's own figures, so the card reports "not read yet" whenever that dialog is closed, and Channel points is read from the DOM on a channel route only.

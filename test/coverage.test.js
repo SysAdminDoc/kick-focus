@@ -25,10 +25,17 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const UNCOVERABLE = new Map([
   // Not an ES module: it has no imports or exports, because the build
   // concatenates it after core/api/compatibility into one IIFE. Importing it
-  // here would throw on the first undefined symbol. It is covered instead by
-  // boot.test.js, which evaluates the built bundle, by the artifact gates in
-  // scripts/check.mjs, and by the live browser gate.
-  ['runtime.js', 'concatenated into the bundle, not importable; covered by boot.test.js and the live gate'],
+  // here would throw on the first undefined symbol.
+  //
+  // Unimportable is not the same as unmeasured, and until 2026-09-05 this line
+  // was used as if it were. boot.test.js evaluates the built bundle, so the
+  // code does run under the suite; it simply ran as `evalmachine.<anonymous>`,
+  // which the coverage reporter discards. Those tests now name the script, and
+  // `scripts/coverage-floors.mjs` judges the bundle against its own floor in
+  // its own run. So the honest statement is narrower than it used to be: this
+  // file cannot be imported, and its coverage is reported against the artifact
+  // rather than against this path.
+  ['runtime.js', 'concatenated into the bundle, not importable; measured as dist/kick-focus.user.js under a bundle floor in scripts/coverage-floors.mjs'],
   // Extension entry points. Each runs against browser globals that do not exist
   // in node (`chrome.declarativeNetRequest`, the service-worker scope, the
   // popup document), so importing them here would prove only that a stub was

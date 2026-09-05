@@ -10,6 +10,25 @@ import { readArtifact } from '../scripts/artifact-freshness.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
+ * The name the bundle runs under, which is what puts it in the coverage table.
+ *
+ * `vm.runInNewContext(code, context)` compiles under `evalmachine.<anonymous>`,
+ * and Node's coverage reporter drops anything that is not a real file. So
+ * `src/runtime.js` — 13,681 lines, 58% of the concatenated source — was
+ * measured by nothing, and the project floor was an average over the other
+ * 42% plus the build scripts.
+ *
+ * Naming the script is the whole fix, but it cannot be on by default: the
+ * bundle *contains* the seven importable modules, so a run that measures both
+ * counts that code twice and reports a weighted total for neither. Measured
+ * 2026-09-05, turning it on unconditionally moved the project line from 96.09%
+ * to 52.83% while nothing about the code changed. `scripts/coverage-floors.mjs`
+ * therefore runs the suite twice and judges the two numbers apart.
+ */
+const BUNDLE_PATH = resolve(root, 'dist/kick-focus.user.js');
+const BUNDLE_RUN_OPTIONS = process.env.KF_COVER_BUNDLE === '1' ? { filename: BUNDLE_PATH } : {};
+
+/**
  * A stub DOM node that answers every method the boot path calls. It never
  * models real layout — it only has to let the concatenated bundle evaluate its
  * module-level declarations and run its bootstrap without throwing, so a
@@ -170,7 +189,7 @@ function makeBootEnvironment(extras = {}) {
 test('the built bundle boots in a stubbed environment without a TDZ or bad const order', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
@@ -203,7 +222,7 @@ test('with the Navigation API, route changes come from the browser and history i
   const context = makeBootEnvironment({ navigation });
   const originalPush = context.history.pushState;
   const originalReplace = context.history.replaceState;
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
 
   assert.equal(context.window.__kickFocusBooted, true);
   assert.equal(typeof listeners.currententrychange, 'function', 'listens for currententrychange');
@@ -221,7 +240,7 @@ test('without the Navigation API the history wrapper is the fallback and still f
   const context = makeBootEnvironment();
   assert.equal(context.navigation, undefined);
   const originalPush = context.history.pushState;
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
   assert.notEqual(context.history.pushState, originalPush, 'pushState is wrapped as the fallback');
   context.history.pushState(null, '', '/somewhere');
   assert.ok(context.window.__dispatched.includes('kick-focus:routechange'), 'the wrapper raises the route event');
@@ -235,7 +254,7 @@ test('with constructable stylesheets the site CSS is adopted once and no <style>
   }
   const context = makeBootEnvironment({ CSSStyleSheet: FakeSheet });
   context.document.adoptedStyleSheets = [];
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
 
   assert.equal(context.window.__kickFocusBooted, true);
   assert.equal(constructed.length, 1, 'the site sheet is parsed exactly once');
@@ -251,7 +270,7 @@ test('without constructable stylesheets the site CSS falls back to a <style> ele
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   assert.equal(context.CSSStyleSheet, undefined);
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
   assert.equal(context.window.__kickFocusBooted, true);
   assert.equal(context.document.__created.filter((tag) => tag === 'style').length, 1,
     'exactly one fallback <style> element for the site CSS');
@@ -271,7 +290,7 @@ test('under enforced Trusted Types the bundle takes its own policy, never the de
     },
   };
   const context = makeBootEnvironment({ trustedTypes });
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
 
   assert.equal(context.window.__kickFocusBooted, true, 'enforcement must not stop the build from booting');
   assert.deepEqual(created, ['kick-focus'], 'exactly one policy, under this build’s own name');
@@ -283,7 +302,7 @@ test('a page without Trusted Types boots without reaching for the API', { tags: 
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();
   assert.equal(context.trustedTypes, undefined);
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
@@ -299,7 +318,7 @@ test('the adopted sheet carries one hide rule per catalog entry', { tags: ['arti
   }
   const context = makeBootEnvironment({ CSSStyleSheet: FakeSheet });
   context.document.adoptedStyleSheets = [];
-  vm.runInNewContext(bundle, context);
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
 
   const css = constructed[0].text;
   const rules = [...css.matchAll(/html\[data-kf-hidden~="([a-z0-9-]+)"\] \[data-kf-element="([a-z0-9-]+)"\]/g)];
