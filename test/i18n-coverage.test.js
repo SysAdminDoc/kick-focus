@@ -474,3 +474,38 @@ expectFailure('exempting a writer the walker does not reach fails the gate', { t
   assert.ok(/setMarkup\((?:shadow|state\.shadow|state\.commandList)\b/.test(byName.get('notWalked')),
     'notWalked is exempted as walked by localizeInterface, but does not write into the settings shadow root');
 });
+
+test('a surface this build creates inside Kick’s document says what language it is in', { tags: ['unit'] }, async () => {
+  // Kick's document is lang="en". Copy translated at write time and dropped
+  // into it inherits English, so a screen reader announces Spanish with
+  // English pronunciation — WCAG 2.2 SC 3.1.2, and the one accessibility
+  // failure that is invisible on screen. `applyInterfaceLanguage` stamps the
+  // shadow hosts; nothing stamped the surfaces written straight into the page,
+  // and on 2026-09-05 three of them declared nothing at all.
+  const source = stripComments(await readFile(resolve(root, 'src/runtime.js'), 'utf8'));
+  const silent = topLevelFunctions(source)
+    .filter((entry) => entry.text.includes('setMarkup(')
+      && !WALKED_BY_LOCALIZE.includes(entry.name)
+      && /document\.createElement\(/.test(entry.text)
+      && !/\.lang = /.test(entry.text))
+    .map((entry) => entry.name);
+  assert.deepEqual(silent, [],
+    `${silent.length} surface(s) build their own element inside Kick’s document and declare no language: ${silent.join(', ')}`);
+});
+
+expectFailure('a page surface that declares no language fails the gate', { tags: ['unit'] }, () => {
+  const planted = [
+    'function makesAHost() {',
+    '  const host = document.createElement("div");',
+    '  document.querySelector("main").append(host);',
+    '  setMarkup(host, `<p>x</p>`);',
+    '}',
+  ].join('\n');
+  const silent = topLevelFunctions(planted)
+    .filter((entry) => entry.text.includes('setMarkup(')
+      && !WALKED_BY_LOCALIZE.includes(entry.name)
+      && /document\.createElement\(/.test(entry.text)
+      && !/\.lang = /.test(entry.text))
+    .map((entry) => entry.name);
+  assert.deepEqual(silent, [], `planted host was not caught: ${silent.join(', ')}`);
+});

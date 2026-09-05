@@ -18,6 +18,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Every surface this build adds to a Kick page now declares which language it is written in. Kick’s document says English, so translated labels dropped into it were being read aloud with English pronunciation — the emote dock, the card action buttons, and the emote organizer were all doing this.
+
 - A second Kick tab can no longer quietly undo your emote changes. Every save is stamped with which tab wrote it, a save built on state another tab has already moved past is refused rather than allowed to overwrite it, and the change is re-applied on top of theirs so both survive. Tabs now also notice each other’s emote changes without being reloaded.
 
 - Renaming a group to the name it already has, or filing an emote into the group it is already in, now says so instead of doing nothing quietly. A command that silently does nothing reads as one that failed.

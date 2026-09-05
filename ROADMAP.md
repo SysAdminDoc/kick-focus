@@ -287,20 +287,6 @@ Cross-references to existing work: R-153 is what makes R-147's central claim mea
   Acceptance: `SECURITY.md` names a disclosure address, what is in scope, and the fact that no server or account exists to attack; a bug template asks for browser and version, userscript manager and version, build version, route, and the two blocks the About page already produces, and says in the form that both are sanitized; the templates add no GitHub Actions workflow; and the README links both from the sections a reader reaches first.
   Complexity: S
 
-- [ ] P2: R-161: Bring design-qa.md's verification block up to the shipped release
-  Why: It records the v1.42.0 run — 463 tests, 213 checks, 91 probes, 858,234 bytes — while the project has shipped v1.43.0 through v1.47.0 since. The same line reports 91,766 bytes below the injection ceiling, a figure measured against the 950,000 budget rather than the 1,000,000 ceiling, so it conflates the two numbers the build deliberately keeps apart. The file's own v1.45 sections above it are current, which makes the stale block read as if it were too.
-  Evidence: design-qa.md:191; src/runtime.js:1070-1071 the two distinct constants; dist/kick-focus.user.js measured 886,138 bytes on 2026-09-04, 13,862 below the 950,000 budget and 63,862 below the 1,000,000 ceiling after the 50,000-byte seed allowance
-  Touches: design-qa.md
-  Acceptance: The verification block states the shipped release's counts and byte figures, names budget and ceiling as two separate numbers with the seed allowance shown, and dates the run; nothing in the file attributes a v1.42.0 measurement to the current build.
-  Complexity: S
-
-- [ ] P2: R-163: Declare the language of the composer emote dock
-  Why: `renderComposerEmoteDock` writes its label, empty state and accessible names into Kick's own document and translates all of them at write time, but it never sets `lang` on the dock. Kick's document is `lang="en"`, so a Spanish or Portuguese label inherits English and a screen reader announces it with English pronunciation — the same WCAG 2.2 SC 3.1.2 failure the search and Drops surfaces just fixed. Found 2026-09-05 while landing R-152.
-  Evidence: src/runtime.js renderComposerEmoteDock; src/runtime.js applyInterfaceLanguage stamps `lang` on the six shadow hosts and does not reach page-DOM surfaces
-  Touches: src/runtime.js renderComposerEmoteDock, test/i18n-coverage.test.js
-  Acceptance: The dock element carries `lang` set to the active locale, it is updated when the language changes (the locale is already in its signature), and the page-DOM gate asserts that every surface it classifies as a page-DOM writer declares a language.
-  Complexity: S
-
 - [ ] P2: R-164: Cover the search meta and Drops empty state with a real render
   Why: Neither surface has a single behavioral assertion anywhere — no fixture test, no live-gate check, no artifact contract. R-152 could only be verified statically, so the markup could stop mounting, mount into the wrong container, or lose its Clear control and every gate would stay green. `test/fixtures/drops.html` and `test/fixtures/search.html` already exist and are unused by these paths.
   Evidence: grep for `applySearchEnhancements`, `applyDropsEnhancements`, `kf-search-meta` and `kf-drops-empty` across test/ and scripts/verify-extension.mjs returns only the i18n gate added on 2026-09-05

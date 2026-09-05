@@ -3622,6 +3622,10 @@ function applyCardActions(node) {
   const signature = `${activeLocale()}:${favorite}:${dismissed}:${slug}:${inMulti}:${label}`;
   if (actions.dataset.kfCardSignature === signature) return;
   actions.dataset.kfCardSignature = signature;
+  // Injected into Kick's lang="en" document, so the language of these
+  // labels has to be declared or a screen reader reads Spanish with English
+  // pronunciation. The locale is already part of the signature above.
+  actions.lang = activeLocale();
   setMarkup(actions, `
     <button type="button" data-kf-card-action="favorite" data-active="${favorite}" aria-label="${escapeHtml(trf(favorite ? 'Remove favorite {name}' : 'Favorite {name}', { name }))}">${favorite ? '★' : '☆'}</button>
     ${multiChip}
@@ -5931,6 +5935,10 @@ function renderStickerOrganizer() {
     restoreStickerGridScroll(organizer, previousGridScrollTop);
     return;
   }
+  // Kick's picker is inside a lang="en" document and every label here is
+  // translated at write time, so the organizer declares what language it is
+  // actually in. Set on each render so a language change carries.
+  organizer.lang = activeLocale();
   chrome.dataset.kfStickerSignature = signature;
   // Captured before the rebuild that is about to discard the focused node.
   const chromeFocusKey = stickerChromeFocusKey(chrome);
@@ -12582,6 +12590,11 @@ function renderComposerEmoteDock() {
     dock.dataset.kfEmoteDock = 'true';
     holder.prepend(dock);
   }
+  // Kick's document is lang="en" and this sits inside it, so a Spanish label
+  // here inherits English and a screen reader reads it with English
+  // pronunciation — WCAG 2.2 SC 3.1.2. The locale is already in the signature
+  // below, so this follows a language change with the rest of the dock.
+  dock.lang = activeLocale();
   holder.dataset.kfEmoteDockHost = 'true';
   if (holder.dataset.kfEmoteDockSignature === signature) return;
   holder.dataset.kfEmoteDockSignature = signature;

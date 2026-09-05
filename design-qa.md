@@ -186,9 +186,9 @@ No actionable P0, P1, or P2 visual differences remain.
 - Enabled composer recall, verified its disabled empty state, recorded two public sends, cycled both from the visible control, and checked the focused control at 1440 and 680 pixels.
 - Scrolled the About page to the destructive section and verified the reset explanation, action alignment, wrapping, and separation from the storage table.
 - Ran all seven settings pages at 1440 × 900, 900 × 800, 680 × 760, and 375 × 812. The second pass found a fixed Appearance control column and an oversized protection log at 375 pixels. Appearance now stacks those controls, long request paths wrap inside a fixed table, and the repeated matrix has no clipped page control or page-level horizontal overflow.
-- Ran the packaged v1.42.0 companion at 1440 × 900 and 1920 × 1080. Chromium passed 98 of 98 asserted checks at each viewport with 15 documented anonymous-session skips. Firefox passed 8 of 8 asserted checks with one documented popup-navigation skip.
+- Ran the packaged v1.48.0 companion on 2026-09-05. Chromium passed 105 of 105 asserted checks with 13 documented skips, twelve of them anonymous-session journeys and one a discovery surface Kick did not render. Firefox passed 8 of 8 asserted checks with one documented popup-navigation skip.
 - Compared the final 1440-pixel Home capture beside `design/mockups/kick-home-premium.png` at equal height. The canvas, navigation, featured stream, chat rail, category grid, and Focus entry point stay inside the viewport with no clipped controls or broken spacing.
-- Ran 463 tests, 213 artifact checks, and 91 deliberate negative probes. The userscript is 858,234 bytes, leaving 91,766 bytes below its injection ceiling after the library seed allowance.
+- Ran 498 tests, 219 artifact checks, and 104 deliberate negative probes on 2026-09-05. The userscript is 892,689 bytes. With the 50,000-byte library seed allowance that is 942,689 bytes: 7,311 below the 950,000-byte injection budget the build enforces, and 57,311 below the 1,000,000-byte ceiling the budget sits under. Those are two different numbers and this line used to report one of them against the other name.
 - Browser console inspection after the final build returned no warnings or errors.
 
 ## Main Kick theme, v1.31.0
