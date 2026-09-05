@@ -4718,6 +4718,19 @@ try {
         window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
         await settle(450);
       }
+      // The click is not the claim. This build refuses to count a reward until
+      // Kick has confirmed it — the action becoming Share beside the printed
+      // reset boundary — and seeing that takes another observation pass after
+      // the dialog transitions. Leaving the loop the instant the click landed
+      // read the outcome one pass before the mechanism could produce it, so
+      // the check reported finalAction=Claim with no record and failed on
+      // every run while the product was doing exactly what it should.
+      for (let confirm = 0; confirm < 10; confirm += 1) {
+        const pending = JSON.parse(localStorage.getItem('kick-focus:reward-claims') || 'null');
+        if (Number(pending?.lastClaimAt) > 0) break;
+        window.dispatchEvent(new CustomEvent('kick-focus:routechange'));
+        await settle(300);
+      }
       const ready = {
         clicks,
         passes: readyPasses,
