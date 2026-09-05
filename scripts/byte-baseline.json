@@ -1,0 +1,54 @@
+{
+  "artifact": "dist/kick-focus.user.js",
+  "total": 888279,
+  "regions": [
+    {
+      "name": "TRANSLATIONS",
+      "bytes": 118541
+    },
+    {
+      "name": "SITE_CSS",
+      "bytes": 65642
+    },
+    {
+      "name": "UI_CSS",
+      "bytes": 53894
+    },
+    {
+      "name": "PREVIEW_DATA_URI",
+      "bytes": 19907
+    },
+    {
+      "name": "EMOTE_COMPLETION_CSS",
+      "bytes": 1239
+    },
+    {
+      "name": "HEADER_BUTTON_BASE_CSS",
+      "bytes": 1201
+    },
+    {
+      "name": "HEADER_CONTROL_CSS",
+      "bytes": 1048
+    },
+    {
+      "name": "TOOLTIP_CSS",
+      "bytes": 890
+    },
+    {
+      "name": "POPOUT_CSS",
+      "bytes": 460
+    },
+    {
+      "name": "ICON_DATA_URI",
+      "bytes": 290
+    },
+    {
+      "name": "PROFILE_STATS_CSS",
+      "bytes": 194
+    },
+    {
+      "name": "remainder",
+      "bytes": 624973
+    }
+  ]
+}

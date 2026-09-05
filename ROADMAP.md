@@ -296,15 +296,6 @@ Cross-references to existing work: R-153 is what makes R-147's central claim mea
 
 ### P1
 
-- [ ] P1: R-155: Give the byte budget attribution and a release-over-release ratchet
-  Why: The build prints one total, and the gate fails only at the cliff. Nothing says where growth came from, so a release that adds 12,000 bytes of dictionary and one that adds 12,000 bytes of CSS look identical until the build stops. Measured 2026-09-04 against the 886,138-byte artifact: `TRANSLATIONS` is 118,396 bytes, `SITE_CSS` 65,623 and `UI_CSS` 53,877 — 27% of it in three constants nobody is currently accountable for. Headroom is 13,862 bytes, and the compaction lever that bought most of it is now spent, so the next reclaim has to be a product decision rather than a build trick.
-  Evidence: scripts/build.mjs prints one number per artifact; scripts/check.mjs size and injection budgets; src/runtime.js:1070-1071 BUNDLE_BYTE_CEILING and INJECTION_BYTE_BUDGET; measured region sizes 2026-09-04
-  Touches: scripts/build.mjs, scripts/check.mjs, a checked-in baseline file, test/boot.test.js, README.md
-  Acceptance: The build prints UTF-8 bytes per source module and per named region — each `_CSS` template, the dictionary, and the remainder — measured with `Buffer.byteLength`; a committed baseline records the previous release's figures; the gate fails when any region grows by more than a documented threshold without the baseline being updated in the same change; the About panel and the README report the same numbers the build enforces; and the whole report is derived, so a new region cannot be omitted from it silently.
-  Complexity: M
-
-### P2
-
 - [ ] P2: R-156: Surface unrecognized third-party origins in the protection log
   Why: The ad and telemetry host lists are eleven hand-curated entries with no upstream to inherit from, because mainstream filter lists still carry no kick.com ad rules. `report()` fires only when a classification is blocked, so a request to a Kick ad host nobody has added yet is classified allowed and then discarded. The protection log can therefore only ever show what the build already knew.
   Evidence: src/core.mjs:413 AD_HOSTS and :424 TELEMETRY_HOSTS; src/core.mjs:2444 the blocked branch of classifyRequest; src/runtime.js:872, :970 and :989 gate reporting on the blocked flag; src/runtime.js:607 recordProtection caps at 20 entries

@@ -5,6 +5,7 @@ import { AD_HOSTS, TELEMETRY_HOSTS, cancellableTelemetryHosts, VERSION } from '.
 import { renderIcon } from './icons.mjs';
 import { compactCssTemplates, stripComments } from './strip-comments.mjs';
 import { createZip } from './zip.mjs';
+import { measureRegions } from './byte-report.mjs';
 import { requireSupportedEngine } from './engine.mjs';
 
 requireSupportedEngine();
@@ -92,6 +93,22 @@ await writeFile(resolve(root, 'dist/kick-focus.user.js'), userscript, 'utf8');
 // only when the budget gate in check.mjs finally trips. The userscript is the
 // one with a real ceiling — see SIZE_BUDGETS there for the number and why.
 console.log(`Built dist/kick-focus.user.js (${userscriptBytes.toLocaleString('en-US')} bytes)`);
+// One total says the file grew; it never says which part of it did. Both
+// breakdowns print every build so that is visible in the log while it is still
+// cheap to act on, rather than only when the budget gate in check.mjs trips.
+// Modules are measured after stripping and compaction, because what has a
+// ceiling is the shipped bytes, not the readable source they came from.
+const bundledModules = [
+  ['core.mjs', bundledCore], ['api.mjs', bundledApi], ['compatibility.mjs', bundledCompatibility],
+  ['storage.mjs', bundledStorage], ['live.mjs', bundledLive], ['multistream.mjs', bundledMultistream],
+  ['settings.mjs', bundledSettings], ['runtime.js', bundledRuntime],
+];
+for (const [name, text] of [...bundledModules].sort((left, right) => Buffer.byteLength(right[1], 'utf8') - Buffer.byteLength(left[1], 'utf8'))) {
+  console.log(`  module ${name.padEnd(20)} ${String(Buffer.byteLength(text, 'utf8').toLocaleString('en-US')).padStart(9)} B`);
+}
+for (const region of measureRegions(userscript).regions.filter((entry) => entry.name !== 'remainder').slice(0, 4)) {
+  console.log(`  region ${region.name.padEnd(20)} ${String(region.bytes.toLocaleString('en-US')).padStart(9)} B`);
+}
 
 // ---------------------------------------------------------------------------
 // Companion extension

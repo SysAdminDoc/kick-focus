@@ -5,6 +5,7 @@ import { AD_HOSTS, TELEMETRY_HOSTS, TELEMETRY_NO_CANCEL_HOSTS, cancellableTeleme
 import { LIBRARY_SEED_BYTES } from '../src/storage.mjs';
 import { ONLY_ACCOUNT_WRITE, SIGNED_IN_JOURNEYS } from './signed-in-journeys.mjs';
 import { requireSupportedEngine, SUPPORTED_ENGINE } from './engine.mjs';
+import { compareToBaseline, measureRegions, REGION_GROWTH_ALLOWANCE } from './byte-report.mjs';
 
 // Before anything is judged: a gate run on an unsupported interpreter proves
 // nothing about the one this ships for.
@@ -681,6 +682,20 @@ const overInjectionBudget = (userscript, seedBudget) => injectionFootprint(users
 const footprint = injectionFootprint(source, LIBRARY_SEED_BYTES);
 const injectionReserve = INJECTION_CEILING - footprint;
 console.log(`INFO userscript ${byteLength(source).toLocaleString('en-US')} B + library seed budget ${LIBRARY_SEED_BYTES.toLocaleString('en-US')} B = ${footprint.toLocaleString('en-US')} B; ${injectionReserve.toLocaleString('en-US')} B reserved below the ${INJECTION_CEILING.toLocaleString('en-US')} B injection ceiling`);
+
+/**
+ * Which region grew, judged against the committed baseline.
+ *
+ * The footprint check above is a cliff: it says nothing at all until the day
+ * it says no. This is the gradient underneath it. Regions are derived from the
+ * artifact, so a new CSS template is a region the moment it exists and shows
+ * up here as absent from the baseline rather than quietly joining the
+ * remainder. Regenerate with `node scripts/byte-report.mjs --write`.
+ */
+const byteBaseline = JSON.parse(await read('scripts/byte-baseline.json'));
+const regionMeasurement = measureRegions(source);
+const regionFailures = compareToBaseline(regionMeasurement, byteBaseline);
+for (const failure of regionFailures) console.log(`WARN byte baseline: ${failure}`);
 
 const sourceFiles = await Promise.all(
   [...moduleFiles, 'src/runtime.js', 'scripts/check.mjs', 'scripts/build.mjs', 'scripts/verify-extension.mjs', 'scripts/verify-firefox.mjs']
@@ -2019,6 +2034,9 @@ const checks = [
     .every((host) => !firefoxManifest.permissions.some((perm) => perm.includes(host)))],
   ['Firefox declares no data collection', firefoxManifest.browser_specific_settings?.gecko
     ?.data_collection_permissions?.required?.[0] === 'none'],
+  ['every byte region is in the baseline and inside its growth allowance', regionFailures.length === 0],
+  ['the measured regions sum to the whole artifact, so none can hide',
+    regionMeasurement.regions.reduce((sum, region) => sum + region.bytes, 0) === regionMeasurement.total],
 ];
 
 // Red probes: crafted-bad inputs each de-vacuumed gate must reject. If a gate
@@ -2061,6 +2079,15 @@ const redProbes = [
   ['size budget accepts an artifact exactly at its budget',
     overBudgetIn([['a.js', 'x'.repeat(10), 10, 'test']]).length === 0],
   ['size budget accepts the real artifacts', overBudgetIn(SIZE_BUDGETS).length === 0],
+  ['byte-region gate would catch a region growing past the allowance',
+    compareToBaseline({ total: 10, regions: [{ name: 'TRANSLATIONS', bytes: 1 }] },
+      { regions: [{ name: 'TRANSLATIONS', bytes: 1 - REGION_GROWTH_ALLOWANCE - 1 }] }).length === 1],
+  ['byte-region gate would catch a region the baseline has never seen',
+    compareToBaseline({ total: 10, regions: [{ name: 'BRAND_NEW_CSS', bytes: 10 }] }, { regions: [] }).length === 1],
+  ['byte-region gate would catch a region that left the artifact',
+    compareToBaseline({ total: 0, regions: [] }, { regions: [{ name: 'GONE_CSS', bytes: 10 }] }).length === 1],
+  ['byte-region gate accepts a region that shrank', compareToBaseline(
+    { total: 10, regions: [{ name: 'UI_CSS', bytes: 5 }] }, { regions: [{ name: 'UI_CSS', bytes: 500 }] }).length === 0],
   // Both halves of the sum, because either one alone is the blind spot the
   // gate exists to close: a file that fits until its storage is counted, and a
   // seed budget nobody would notice growing beside a small file.
