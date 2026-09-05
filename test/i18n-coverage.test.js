@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from '../scripts/strip-comments.mjs';
 import { DISCOVERY_ROUTE_LABELS, EMOTE_ACCESS_LABELS, HIDEABLE_ELEMENTS, HIDEABLE_GROUPS, IMPORT_ERROR_MESSAGES, IMPORT_NOTE_MESSAGES, STORAGE_STORES, VIEWER_HUB_REASONS, VIEWER_HUB_REWARD_WORDS, VIEWER_HUB_TITLES } from '../src/core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -314,4 +315,100 @@ test('no toast or announcement carries prose a dictionary never sees', { tags: [
   }
   assert.deepEqual(offenders, [],
     `${offenders.length} toast template(s) hold untranslatable prose: ${offenders.join(' | ')}`);
+});
+
+/**
+ * Copy written into Kick's own document, where the translator cannot reach it.
+ *
+ * `localizeInterface(root = state.shadow)` is only ever called with its
+ * default, so it walks this build's shadow roots and nothing else. A surface
+ * that writes markup into the *page* is therefore outside the DOM pass, and a
+ * bare literal there stays English no matter what the dictionary holds. That
+ * is not the same bug the `markup prose` scanner catches: measured 2026-09-05,
+ * every one of the search and Drops strings already had an es and pt entry, so
+ * that gate was green while both surfaces rendered English. Having a key and
+ * reaching a lookup are different claims, and this is the second one.
+ *
+ * Comments are stripped before the classification so a comment that merely
+ * mentions a shadow root cannot exempt a function from the rule.
+ */
+function topLevelFunctions(source) {
+  const lines = source.split('\n');
+  const found = [];
+  let current = null;
+  let depth = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!current) {
+      const match = /^function ([A-Za-z0-9_$]+)\(/.exec(line);
+      if (match) { current = { name: match[1], text: '' }; depth = 0; }
+    }
+    if (!current) continue;
+    current.text += `${line}\n`;
+    for (const character of line) {
+      if (character === '{') depth += 1;
+      else if (character === '}') depth -= 1;
+    }
+    if (depth === 0 && /^\}/.test(line)) { found.push(current); current = null; }
+  }
+  return found;
+}
+
+/** Writes its own markup into Kick's document rather than into a shadow root. */
+function writesIntoPageDom(body) {
+  return body.includes('setMarkup(')
+    && /\.(?:append|prepend|before|after|insertBefore)\(/.test(body)
+    && /document\.querySelector|document\.getElementById|findProbe\(document/.test(body)
+    && !/shadow/i.test(body);
+}
+
+/**
+ * The page-DOM writers this build has, listed so a new one cannot arrive
+ * unnoticed. Adding a third surface that writes into Kick's document is a
+ * decision about translation, so the gate makes it an explicit one.
+ */
+const PAGE_DOM_WRITERS = ['applySearchEnhancements', 'applyDropsEnhancements', 'renderComposerEmoteDock'];
+
+test('no surface written into Kick’s document carries a bare literal', { tags: ['unit'] }, async () => {
+  const source = stripComments(await readFile(resolve(root, 'src/runtime.js'), 'utf8'));
+  const writers = topLevelFunctions(source).filter((entry) => writesIntoPageDom(entry.text));
+  assert.deepEqual(writers.map((entry) => entry.name).sort(), [...PAGE_DOM_WRITERS].sort(),
+    'the set of functions writing markup into the page changed; classify the new one and translate its copy at write time');
+
+  const offenders = [];
+  for (const writer of writers) {
+    // Prose typed between tags, and prose in an attribute a user can hear.
+    for (const [kind, pattern] of [
+      ['text', /<(?:h[1-6]|p|span|strong|small|b|li|td|th|dt|dd|button|div|aside|a|summary)\b[^<>]*>([^<>{}$`]*[A-Za-z]{2,}[ ][A-Za-z]{2,}[^<>{}$`]*)</g],
+      ['attribute', /(?<=\s)(?:aria-label|title|placeholder)="((?:[^"\$`]|\.)*[A-Za-z]{2,}(?:[^"\$`]|\.)*)"/g],
+    ]) {
+      for (const match of writer.text.matchAll(pattern)) {
+        const value = match[1].trim();
+        if (value) offenders.push(`${writer.name} ${kind}: ${value.slice(0, 60)}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [],
+    `${offenders.length} string(s) reach Kick’s document without a translator: ${offenders.join(' | ')}`);
+});
+
+expectFailure('a bare literal written into the page fails the page-DOM translation gate', { tags: ['unit'] }, async () => {
+  // The gate above is only worth having if it can go red. Plant exactly the
+  // defect it exists to catch — the shape the search meta had on 2026-09-05,
+  // a heading typed straight into the markup — and run the same rule over it.
+  const planted = `function applySearchEnhancements() {
+  const main = document.querySelector('main');
+  const meta = document.createElement('div');
+  main.prepend(meta);
+  setMarkup(meta, \`<strong>Search results</strong>\`);
+}
+`;
+  const writers = topLevelFunctions(planted).filter((entry) => writesIntoPageDom(entry.text));
+  const offenders = [];
+  for (const writer of writers) {
+    for (const match of writer.text.matchAll(/<(?:h[1-6]|p|span|strong|small|b|li|td|th|dt|dd|button|div|aside|a|summary)\b[^<>]*>([^<>{}$`]*[A-Za-z]{2,}[ ][A-Za-z]{2,}[^<>{}$`]*)</g)) {
+      offenders.push(match[1].trim());
+    }
+  }
+  assert.deepEqual(offenders, [], `planted literal was not caught: ${offenders.join(' | ')}`);
 });

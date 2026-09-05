@@ -310,13 +310,6 @@ Cross-references to existing work: R-153 is what makes R-147's central claim mea
 
 ### P1
 
-- [ ] P1: R-152: Translate the search and Drops surfaces, and gate copy written into the page
-  Why: `applySearchEnhancements` and `applyDropsEnhancements` write about 24 literal English strings into the page DOM — "Search results", "Clear", the Clear search label, "Campaign status", "No open campaigns", "Browse eligible streams", "Reward activity", "How drops work", the three step headings and their captions, and the rest. `localizeInterface` is only ever called with its default `state.shadow` root, so it never walks any of them. Every one already has a dictionary entry, so the translations exist and nothing reads them. The i18n-coverage gate stays green because it proves a key exists, not that the runtime looks it up, which is the same blind spot commit `2ecf337` closed for settings markup one layer in.
-  Evidence: src/runtime.js:3718 applySearchEnhancements and its markup at :3740; src/runtime.js:3755 applyDropsEnhancements and its markup at :3782-3796; src/runtime.js:10033 localizeInterface and its five call sites; dictionary entries at src/runtime.js:9101, :9839, :9843, :9849; src/runtime.js:3578 does it correctly with the locale in its rebuild signature; src/runtime.js:13446 states the rule for the header shadow; commit 2ecf337
-  Touches: src/runtime.js search and drops enhancers, test/i18n-coverage.test.js scanners, scripts/check.mjs
-  Acceptance: Every user-visible string on both surfaces reaches the DOM through `tr`, `trf` or `plural`; interpolated sentences are `trf` templates so a locale can move the placeholder; both surfaces rebuild when the interface language changes, the way card actions already do; the host element carries `lang`; and a gate fails on a whole-literal user-visible string inside a `setMarkup` template whose target root `localizeInterface` does not walk, proven by a red probe that plants one.
-  Complexity: M
-
 - [ ] P1: R-153: Make the built bundle report coverage
   Why: `src/runtime.js` is 13,681 lines and 395 top-level functions, 57.8% of the concatenated source by line and 59.8% by byte, and contributes nothing to the coverage table, so the global floor is measured over the importable modules and the build scripts only. It is listed as uncoverable, but it is not: `test/boot.test.js` already evaluates the bundle, it just does so without a filename, so Node's reporter discards it.
   Evidence: test/coverage.test.js:25-31; test/boot.test.js:173 and :206 plus six sibling `vm.runInNewContext(bundle, context)` calls; scripts/coverage-floors.mjs; probed 2026-09-04 — passing a `filename` option pointing at dist/kick-focus.user.js makes `node --test --experimental-test-coverage` list the bundle, and a bare context alone already reports 15.80% lines, 33.33% branches and 0.14% functions
@@ -375,6 +368,20 @@ Cross-references to existing work: R-153 is what makes R-147's central claim mea
   Touches: design-qa.md
   Acceptance: The verification block states the shipped release's counts and byte figures, names budget and ceiling as two separate numbers with the seed allowance shown, and dates the run; nothing in the file attributes a v1.42.0 measurement to the current build.
   Complexity: S
+
+- [ ] P2: R-163: Declare the language of the composer emote dock
+  Why: `renderComposerEmoteDock` writes its label, empty state and accessible names into Kick's own document and translates all of them at write time, but it never sets `lang` on the dock. Kick's document is `lang="en"`, so a Spanish or Portuguese label inherits English and a screen reader announces it with English pronunciation — the same WCAG 2.2 SC 3.1.2 failure the search and Drops surfaces just fixed. Found 2026-09-05 while landing R-152.
+  Evidence: src/runtime.js renderComposerEmoteDock; src/runtime.js applyInterfaceLanguage stamps `lang` on the six shadow hosts and does not reach page-DOM surfaces
+  Touches: src/runtime.js renderComposerEmoteDock, test/i18n-coverage.test.js
+  Acceptance: The dock element carries `lang` set to the active locale, it is updated when the language changes (the locale is already in its signature), and the page-DOM gate asserts that every surface it classifies as a page-DOM writer declares a language.
+  Complexity: S
+
+- [ ] P2: R-164: Cover the search meta and Drops empty state with a real render
+  Why: Neither surface has a single behavioral assertion anywhere — no fixture test, no live-gate check, no artifact contract. R-152 could only be verified statically, so the markup could stop mounting, mount into the wrong container, or lose its Clear control and every gate would stay green. `test/fixtures/drops.html` and `test/fixtures/search.html` already exist and are unused by these paths.
+  Evidence: grep for `applySearchEnhancements`, `applyDropsEnhancements`, `kf-search-meta` and `kf-drops-empty` across test/ and scripts/verify-extension.mjs returns only the i18n gate added on 2026-09-05
+  Touches: test/fixtures.test.js or a boot-level render, test/fixtures/search.html, test/fixtures/drops.html, scripts/verify-extension.mjs
+  Acceptance: A test renders both surfaces against their fixtures and asserts the mounted node, its container, the result count, the Clear control's presence only when a query exists, and that switching the interface language changes the rendered text; the Drops assertions cover the empty state only, since that is the only state the enhancer claims.
+  Complexity: M
 
 ### P3
 

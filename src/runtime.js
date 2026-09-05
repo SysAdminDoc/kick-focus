@@ -3738,7 +3738,14 @@ function applySearchEnhancements() {
     const container = first && !first.matches?.('input, select, textarea, button, img, video') ? first : main;
     container.prepend(meta);
   }
-  setMarkup(meta, `<div><strong>${query ? `Search results for “${escapeHtml(query)}”` : 'Search results'}</strong><span>${count} ${plural(count, 'result loaded', 'results loaded')}</span></div>${query ? '<button type="button" data-kf-clear-search aria-label="Clear search">Clear</button>' : ''}`);
+  // This node lives in Kick's document, not in a shadow root, so
+  // `localizeInterface` never walks it — every string has to be translated at
+  // write time or it stays English in es and pt. Kick's document is
+  // `lang="en"`, so the element also has to declare the language it is now
+  // actually written in (WCAG 2.2 SC 3.1.2).
+  meta.lang = activeLocale();
+  const heading = query ? trf('Search results for “{query}”', { query }) : tr('Search results');
+  setMarkup(meta, `<div><strong>${escapeHtml(heading)}</strong><span>${count} ${plural(count, 'result loaded', 'results loaded')}</span></div>${query ? `<button type="button" data-kf-clear-search aria-label="${escapeHtml(tr('Clear search'))}">${escapeHtml(tr('Clear'))}</button>` : ''}`);
 }
 
 function handleSearchAction(event) {
@@ -3770,32 +3777,42 @@ function applyDropsEnhancements() {
   const owner = empty.parentElement;
   if (!owner) return;
   owner.dataset.kfNativeDropsEmpty = 'true';
-  if (existing?.parentElement === owner) return;
+  // The panel mounts once and is then left alone, so the locale it was written
+  // in is part of what makes it current. Without this the language setting
+  // changes every other surface and leaves this one in the old language until
+  // the route is left and re-entered.
+  const locale = activeLocale();
+  if (existing?.parentElement === owner && existing.dataset.kfDropsLocale === locale) return;
   existing?.remove();
   const enhanced = document.createElement('section');
   enhanced.dataset.kfDropsEmpty = 'true';
+  enhanced.dataset.kfDropsLocale = locale;
+  // Page DOM, not a shadow root: `localizeInterface` never reaches this, so
+  // every string is translated at write time and the section declares its own
+  // language against Kick's `lang="en"` document (WCAG 2.2 SC 3.1.2).
+  enhanced.lang = locale;
   setMarkup(enhanced, `
     <div data-kf-drops-primary>
-      <span data-kf-drops-eyebrow>Campaign status</span>
-      <h3>No open campaigns</h3>
-      <p>Campaigns appear here when a reward is available.</p>
+      <span data-kf-drops-eyebrow>${escapeHtml(tr('Campaign status'))}</span>
+      <h3>${escapeHtml(tr('No open campaigns'))}</h3>
+      <p>${escapeHtml(tr('Campaigns appear here when a reward is available.'))}</p>
       <div data-kf-drops-actions>
-        <a href="/browse">Browse eligible streams</a>
-        <a href="/drops/coming-soon">View coming soon</a>
+        <a href="/browse">${escapeHtml(tr('Browse eligible streams'))}</a>
+        <a href="/drops/coming-soon">${escapeHtml(tr('View coming soon'))}</a>
       </div>
     </div>
-    <aside data-kf-drops-activity aria-label="Reward activity">
-      <strong>Reward activity</strong>
+    <aside data-kf-drops-activity aria-label="${escapeHtml(tr('Reward activity'))}">
+      <strong>${escapeHtml(tr('Reward activity'))}</strong>
       <dl>
-        <div><dt>Active</dt><dd>0</dd></div>
-        <div><dt>Claimed</dt><dd><a href="/drops/claimed">View</a></dd></div>
-        <div><dt>Expired</dt><dd><a href="/drops/expired">View</a></dd></div>
+        <div><dt>${escapeHtml(tr('Active'))}</dt><dd>0</dd></div>
+        <div><dt>${escapeHtml(tr('Claimed'))}</dt><dd><a href="/drops/claimed">${escapeHtml(tr('View'))}</a></dd></div>
+        <div><dt>${escapeHtml(tr('Expired'))}</dt><dd><a href="/drops/expired">${escapeHtml(tr('View'))}</a></dd></div>
       </dl>
     </aside>
-    <ol data-kf-drops-steps aria-label="How drops work">
-      <li><span>1</span><div><strong>Watch eligible streams</strong><small>Pick an active campaign.</small></div></li>
-      <li><span>2</span><div><strong>Track progress</strong><small>Keep watching to advance.</small></div></li>
-      <li><span>3</span><div><strong>Claim your reward</strong><small>Claim it before time runs out.</small></div></li>
+    <ol data-kf-drops-steps aria-label="${escapeHtml(tr('How drops work'))}">
+      <li><span>1</span><div><strong>${escapeHtml(tr('Watch eligible streams'))}</strong><small>${escapeHtml(tr('Pick an active campaign.'))}</small></div></li>
+      <li><span>2</span><div><strong>${escapeHtml(tr('Track progress'))}</strong><small>${escapeHtml(tr('Keep watching to advance.'))}</small></div></li>
+      <li><span>3</span><div><strong>${escapeHtml(tr('Claim your reward'))}</strong><small>${escapeHtml(tr('Claim it before time runs out.'))}</small></div></li>
     </ol>`);
   owner.append(enhanced);
 }
@@ -9135,6 +9152,7 @@ const TRANSLATIONS = {
   'Name this view': ['Nombre de la vista', 'Nome da vista'],
   'Category pages': ['Páginas de categoría', 'Páginas de categoria'],
   'Search results': ['Resultados de búsqueda', 'Resultados da procura'],
+  'Search results for “{query}”': ['Resultados de búsqueda de “{query}”', 'Resultados da procura de “{query}”'],
   'Show message times': ['Mostrar la hora de los mensajes', 'Mostrar a hora das mensagens'],
   'Reveals the timestamp Kick already renders on every message and keeps hidden. It is Kick’s own value, so scrolling back shows when a message was sent rather than when this build first saw it.': ['Muestra la marca de hora que Kick ya dibuja en cada mensaje y mantiene oculta. Es el valor de Kick, así que al subir por el chat verás cuándo se envió el mensaje y no cuándo lo vio esta extensión.', 'Mostra a marca de hora que a Kick já desenha em cada mensagem e mantém escondida. É o valor da própria Kick, por isso ao subir no chat vês quando a mensagem foi enviada e não quando esta extensão a viu.'],
   'People worth noticing': ['Personas que quieres notar', 'Pessoas que queres notar'],

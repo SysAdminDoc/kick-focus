@@ -4,6 +4,11 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Fixed
+
+- The search results header and the Drops empty state now speak the language you chose. Both write into Kick's own page rather than this build's panel, so the translator that walks the panel never reached them, and every one of their strings rendered in English for Spanish and Portuguese readers even though the translations were already written. Both surfaces also declare their own language now, so a screen reader stops announcing them with English pronunciation.
+- A new gate refuses any copy typed straight into a surface this build writes into Kick's page, and it knows which surfaces those are, so a third one cannot arrive without someone deciding how it gets translated.
+
 ## 1.48.0, 2026-09-05
 
 ### Removed
