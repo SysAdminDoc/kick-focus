@@ -2862,6 +2862,46 @@ export function monetizationKind({ text = '', ariaLabel = '', title = '', testId
 export const STICKER_PREFERENCES_SCHEMA = 11;
 
 /**
+ * Who wrote the emote library last, so a second tab cannot quietly undo you.
+ *
+ * Every commit rewrites the whole normalized value. That is fine while one tab
+ * is writing and silently destructive when two are: a tab that loaded before
+ * your last change holds a state without it, and its next favourite writes
+ * that state back. Your change is gone, with no error and nothing to notice by.
+ *
+ * The stamp makes it detectable. A writer id stable for the life of a tab, and
+ * a sequence that only goes up within that tab. Sequences are never compared
+ * *across* writers — two tabs count independently, so "theirs is lower" says
+ * nothing about which happened first. The only question with an answer is
+ * whether the stored stamp is still the one this tab last saw.
+ *
+ * The stamp rides beside the normalized value rather than inside it, because
+ * `normalizeStickerPreferences` returns a fixed shape and would drop it.
+ */
+export function stampStickerCommit(value, writer, sequence) {
+  const id = String(writer || '').slice(0, 64);
+  const raw = Number(sequence);
+  const count = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  return { ...value, commit: { writer: id, sequence: count } };
+}
+
+/** The stamp on a stored value. An unstamped value predates stamping. */
+export function stickerCommitStamp(value) {
+  const commit = value && typeof value === 'object' ? value.commit : null;
+  if (!commit || typeof commit !== 'object') return { writer: '', sequence: 0 };
+  const writer = typeof commit.writer === 'string' ? commit.writer.slice(0, 64) : '';
+  const raw = Number(commit.sequence);
+  return { writer, sequence: Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0 };
+}
+
+/** Two stamps describe the same commit. */
+export function sameStickerCommit(left, right) {
+  return Boolean(left) && Boolean(right)
+    && left.writer === right.writer && left.sequence === right.sequence;
+}
+
+
+/**
  * The platform an emote key belongs to.
  *
  * Keys were `id:<id>` or `name:<name>|src:<url>`, which says nothing about

@@ -40,9 +40,20 @@ const storageHealth = { failures: {}, lastError: '', librarySeed: { truncated: 0
  * file — which is precisely what the boot gate caught when it was.
  */
 const libraryStore = createLibraryStore({
-  readFallback: () => normalizeStickerPreferences(gmGet(STICKER_PREFERENCES_KEY, {})),
+  // The commit stamp is carried back out past normalization on purpose.
+  // `normalizeStickerPreferences` returns a fixed shape and drops anything
+  // else, so reading through it alone would hand the store a stamp of nothing
+  // every time and the stale-write check could never fire.
+  readFallback: () => {
+    const raw = gmGet(STICKER_PREFERENCES_KEY, {});
+    const value = normalizeStickerPreferences(raw);
+    return raw && typeof raw === 'object' && raw.commit ? { ...value, commit: raw.commit } : value;
+  },
   writeFallback: (seed) => gmSet(STICKER_PREFERENCES_KEY, seed),
   onError: (stage, error) => logAppError(`library storage (${stage})`, error),
+  // Stable for the life of the tab, and only ever compared for equality, so
+  // it identifies a writer without saying anything about who is using it.
+  writer: `t${Math.random().toString(36).slice(2, 10)}`,
 });
 const ROUTE_EVENT = 'kick-focus:routechange';
 const AD_SHELL_SELECTORS = [
@@ -191,6 +202,8 @@ const state = {
     // so selecting a few emotes beside chat never leaks into Settings.
     stickerPickerSelection: new Set(),
     stickerPickerVisibleKeys: [],
+    lastStickerWriteWasStale: false,
+    stickerChannel: null,
     stickerPickerBulkGroup: '',
     stickerPickerOrganizing: false,
     stickerPickerGroupEditor: '',
@@ -3143,10 +3156,41 @@ function readStickerPreferences() {
   return stickerPreferencesFromValue(libraryStore.readSync());
 }
 
+/**
+ * Tell the other tabs, so they do not have to be reloaded to notice.
+ *
+ * Same origin by construction and carries nothing: the message is a nudge to
+ * re-read the store, not a copy of the state. That keeps the emote library out
+ * of a channel any script on the page could listen to, and means a tab that
+ * missed a message is only ever one commit behind rather than holding
+ * something it was told and cannot verify.
+ */
+function stickerSyncChannel() {
+  if (state.runtime.stickerChannel || typeof BroadcastChannel !== 'function') return state.runtime.stickerChannel;
+  try {
+    state.runtime.stickerChannel = new BroadcastChannel('kick-focus:emotes');
+    state.runtime.stickerChannel.addEventListener('message', guard('emote sync', () => {
+      state.stickerPreferences = readStickerPreferences();
+      applySettingsAttributes();
+      renderStickerOrganizer();
+      if (state.modal && !state.modal.hidden && state.currentPage === 'emotes') renderSettingsPage();
+      scheduleApply(0);
+    }));
+  } catch {
+    state.runtime.stickerChannel = null;
+  }
+  return state.runtime.stickerChannel;
+}
+
 function persistStickerPreferences() {
   const value = stickerPreferencesValue();
   state.stickerPreferences = stickerPreferencesFromValue(value);
-  noteLibrarySeed(libraryStore.write(value), value);
+  const result = libraryStore.write(value);
+  noteLibrarySeed(result, value);
+  state.runtime.lastStickerWriteWasStale = result.foreign === true;
+  if (result.ok) {
+    try { stickerSyncChannel()?.postMessage({ type: 'emotes-changed' }); } catch { /* a tab that misses it re-reads on its next commit */ }
+  }
   return value;
 }
 
@@ -6261,6 +6305,18 @@ function mutateStickerOrganization(mutate, message, undoMessage = 'Emote organiz
   const before = stickerOrganizationSnapshot();
   mutate();
   commitPickerStickerChange();
+  // Another tab wrote while this one was holding its state, so the commit was
+  // refused rather than allowed to erase it. Take their state, run this
+  // command again on top of it, and commit that — which is the only order in
+  // which both changes survive. Once: if it is still contested the second
+  // time, two tabs are being driven at the same instant and the report is
+  // more use than a third attempt.
+  if (state.runtime.lastStickerWriteWasStale) {
+    state.stickerPreferences = readStickerPreferences();
+    mutate();
+    commitPickerStickerChange();
+    if (state.runtime.lastStickerWriteWasStale) showToast(tr('Another tab changed your emotes first. Check them before continuing.'), true);
+  }
   afterCommit?.();
   showToast(message, false, [{
     label: 'Undo',
@@ -9356,6 +9412,7 @@ const TRANSLATIONS = {
   'Removed {name} from favorites.': ['Se quitó {name} de favoritos.', '{name} foi removido dos favoritos.'],
   'Restored {name}.': ['Se restauró {name}.', '{name} foi restaurado.'],
   'Removed {name}.': ['Se quitó {name}.', '{name} foi removido.'],
+  'Another tab changed your emotes first. Check them before continuing.': ['Otra pestaña cambió tus emotes antes. Revísalos antes de continuar.', 'Outro separador alterou os teus emotes primeiro. Verifica-os antes de continuar.'],
   'Emote group renamed.': ['Se cambió el nombre del grupo de emotes.', 'O grupo de emotes foi renomeado.'],
   'That group already has this name.': ['Ese grupo ya se llama así.', 'Esse grupo já tem esse nome.'],
   'That emote is already in this group.': ['Ese emote ya está en este grupo.', 'Esse emote já está neste grupo.'],

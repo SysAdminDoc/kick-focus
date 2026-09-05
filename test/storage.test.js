@@ -299,7 +299,11 @@ test('the full record goes to the database and comes back merged', { tags: ['uni
 
   const merged = await store.hydrate();
   assert.equal(merged.library.length, 300, 'boot gets the whole library back');
-  assert.deepEqual(merged, value);
+  // The stored record now also carries who wrote it and their sequence, which
+  // is what lets a second tab tell a state it has seen from one it has not.
+  // Asserted rather than stripped: the stamp is part of the record, and a
+  // write that stopped carrying it would put the overwrite bug back.
+  assert.deepEqual(merged, { ...value, commit: { writer: 'unknown', sequence: 1 } });
 });
 
 test('rapid writes coalesce instead of queueing one transaction each', { tags: ['unit'] }, async () => {
@@ -348,4 +352,116 @@ test('junk in either half is handled rather than propagated', { tags: ['unit'] }
   assert.deepEqual(mergeHydratedLibrary({ library: [{ name: 'no key' }] }, { library: [] }).library, []);
   assert.equal(isSeedPartial(null), false);
   assert.equal(isSeedPartial({ library: [] }), false);
+});
+
+/**
+ * Two tabs, one origin, one shared record.
+ *
+ * A store instance is a tab. They share the synchronous half the way two tabs
+ * of the same site share `localStorage`, which is the whole reason the bug
+ * exists: every commit rewrites the entire value, so a tab holding state from
+ * before your last change writes that state back and your change is gone with
+ * nothing to notice by.
+ */
+function makeSharedPair(overrides = {}) {
+  let shared = overrides.initial ?? {};
+  const errors = [];
+  const open = (writer) => createLibraryStore({
+    readFallback: () => shared,
+    writeFallback: (seed) => { shared = seed; return true; },
+    indexedDB: overrides.idb === undefined ? fakeIndexedDB() : overrides.idb,
+    seedLimit: overrides.seedLimit ?? 50,
+    onError: (stage, error) => errors.push([stage, error?.message]),
+    writer,
+  });
+  return { open, errors, shared: () => shared };
+}
+
+test('a tab holding stale state is refused rather than allowed to erase a newer change', { tags: ['unit'] }, () => {
+  const { open, shared } = makeSharedPair();
+  const first = open('tab-a');
+  const second = open('tab-b');
+
+  // Both tabs read the same starting point, so both believe they are current.
+  first.readSync();
+  second.readSync();
+
+  // Tab A saves. Tab B's held state now predates it and knows nothing of it.
+  assert.equal(first.write(preferences(libraryOf(3))).foreign, false, 'the first write is uncontested');
+  assert.equal(shared().library.length, 3);
+
+  const refused = second.write(preferences(libraryOf(1)));
+  assert.equal(refused.foreign, true, 'the stale write is reported as contested');
+  assert.equal(refused.ok, false, 'and it does not land');
+  assert.equal(shared().library.length, 3, 'tab A’s change is still there');
+});
+
+test('a tab that re-reads first is current again and its write lands', { tags: ['unit'] }, () => {
+  // The reconcile path: read what the other tab wrote, apply your own change
+  // on top, and commit that. This is the mechanism the picker uses after a
+  // refused commit, checked here without a browser.
+  const { open, shared } = makeSharedPair();
+  const first = open('tab-a');
+  const second = open('tab-b');
+  first.readSync();
+  second.readSync();
+
+  first.write(preferences(libraryOf(3)));
+  assert.equal(second.write(preferences(libraryOf(1))).foreign, true);
+
+  second.readSync();
+  const retried = second.write(preferences(libraryOf(7)));
+  assert.equal(retried.foreign, false, 'after catching up the write is uncontested');
+  assert.equal(retried.ok, true);
+  assert.equal(shared().library.length, 7);
+});
+
+test('a tab writing repeatedly never contends with itself', { tags: ['unit'] }, () => {
+  // The library is rewritten on every emote observed in chat, so a busy
+  // channel is hundreds of writes a minute from one tab. None of them may be
+  // reported as a conflict, or the reconcile path would run constantly.
+  const { open } = makeSharedPair();
+  const only = open('tab-a');
+  only.readSync();
+  for (let index = 1; index <= 25; index += 1) {
+    assert.equal(only.write(preferences(libraryOf(index))).foreign, false, `write ${index} contended with itself`);
+  }
+});
+
+test('upgrading from a build with no stamp protects both tabs from the first write onward', { tags: ['unit'] }, () => {
+  // Whatever is in storage on upgrade carries no stamp, and an unstamped
+  // record is indistinguishable from no record at all — so it cannot be
+  // treated as contested, or every upgrading user's first save would be
+  // refused. Protection begins where it can: boot reads, the first write
+  // stamps, and from that moment a second tab holding the pre-stamp state is
+  // caught. This asserts that boundary rather than pretending it is earlier.
+  const { open, shared } = makeSharedPair({ initial: preferences(libraryOf(4)) });
+  const first = open('tab-a');
+  const second = open('tab-b');
+  first.readSync();
+  second.readSync();
+
+  assert.equal(first.write(preferences(libraryOf(9))).foreign, false, 'the upgrade write is not refused');
+  assert.equal(shared().library.length, 9);
+
+  // Tab B still holds the unstamped state it read. From here it is caught.
+  const refused = second.write(preferences(libraryOf(1)));
+  assert.equal(refused.foreign, true, 'the pre-stamp tab is caught once a stamp exists');
+  assert.equal(shared().library.length, 9, 'tab A’s change survives');
+});
+
+test('a closed tab leaves nothing that blocks the survivor', { tags: ['unit'] }, () => {
+  // Tab closure is just a store that stops being written to. The survivor must
+  // not be permanently contested by a stamp nobody will ever advance again.
+  const { open, shared } = makeSharedPair();
+  const closing = open('tab-a');
+  const survivor = open('tab-b');
+  closing.readSync();
+  survivor.readSync();
+  closing.write(preferences(libraryOf(5)));
+  // Tab A is gone. Tab B catches up once and then owns the record.
+  survivor.readSync();
+  assert.equal(survivor.write(preferences(libraryOf(6))).foreign, false);
+  assert.equal(survivor.write(preferences(libraryOf(8))).foreign, false, 'and stays uncontested afterwards');
+  assert.equal(shared().library.length, 8);
 });

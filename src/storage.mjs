@@ -17,6 +17,8 @@
 // and the schema is two object stores.
 // ---------------------------------------------------------------------------
 
+import { sameStickerCommit, stampStickerCommit, stickerCommitStamp } from './core.mjs';
+
 export const LIBRARY_DB_NAME = 'kick-focus';
 export const LIBRARY_DB_VERSION = 1;
 export const LIBRARY_STORE = 'library';
@@ -236,7 +238,16 @@ export function createLibraryStore(host) {
     indexedDB: factory = null,
     seedLimit = LIBRARY_SEED_LIMIT,
     onError = () => {},
+    // Stable for the life of this tab. The host supplies it because the store
+    // has no business reaching for crypto, and the tests need it fixed.
+    writer = 'unknown',
   } = host;
+
+  // The stamp this tab last wrote or read. A stored stamp that is not this one
+  // means another tab has written since, and a commit built on the state we
+  // were holding would erase it.
+  let seen = { writer: '', sequence: 0 };
+  let sequence = 0;
 
   let database = null;
   let opened = false;
@@ -255,7 +266,11 @@ export function createLibraryStore(host) {
 
   /** What boot reads: synchronous, and complete enough to render. */
   function readSync() {
-    return readFallback();
+    const value = readFallback();
+    // Reading is how a tab catches up. Whatever it just read is now the state
+    // it is allowed to write on top of.
+    seen = stickerCommitStamp(value);
+    return value;
   }
 
   /**
@@ -282,11 +297,23 @@ export function createLibraryStore(host) {
    * it and coalesced, because the library is rewritten on every observation.
    */
   function write(value) {
-    const plan = planLibraryPersist(value, { seedLimit });
+    // Refuse rather than overwrite. The caller built `value` from the state it
+    // was holding, and if another tab has written since, that state is missing
+    // their change — writing it back is how the change disappears. Reporting
+    // instead lets the caller re-read and re-apply its own command on top,
+    // which is the only order in which both survive.
+    const current = stickerCommitStamp(readFallback());
+    if (!sameStickerCommit(current, seen)) {
+      return { ok: false, truncated: 0, provider: provider(), foreign: true };
+    }
+    sequence += 1;
+    const stamped = stampStickerCommit(value, writer, sequence);
+    const plan = planLibraryPersist(stamped, { seedLimit });
     const ok = writeFallback(plan.seed);
+    if (ok) seen = { writer, sequence };
     queued = plan.full;
     void flush();
-    return { ok, truncated: plan.truncated, provider: provider() };
+    return { ok, truncated: plan.truncated, provider: provider(), foreign: false };
   }
 
   /**
