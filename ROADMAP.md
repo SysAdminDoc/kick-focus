@@ -296,13 +296,6 @@ Cross-references to existing work: R-153 is what makes R-147's central claim mea
 
 ### P1
 
-- [ ] P1: R-154: Add Channel points and Level to the signed-in journey matrix
-  Why: The Viewer Hub renders both cards, but neither has a journey, so an anonymous run emits no skip naming them and a signed-in run asserts nothing about them. That is why R-55 cannot move: its blocker is no longer a missing session — one was used to capture the daily-reward fixture on 2026-08-27 — it is that nothing tells that run which selectors to record. Level compounds it: it is read only from the reward dialog's own figures, so the card reports "not read yet" whenever that dialog is closed, and Channel points is read from the DOM on a channel route only.
-  Evidence: scripts/signed-in-journeys.mjs, eight entries and no points or level; src/core.mjs:1059 VIEWER_HUB_TITLES; src/runtime.js:10738 readRewardDialogFigures; src/runtime.js:10721 readChannelPoints; Roadmap_Blocked.md R-55
-  Touches: scripts/signed-in-journeys.mjs, scripts/verify-extension.mjs, scripts/release-checklist.mjs, test/signed-in.test.js
-  Acceptance: Two journeys exist with why, expects, reads and `mutates: false`, and both pass the existing rule that a skip reason may not be a bare noun; an anonymous run prints one skip each naming the route and selectors a signed-in run would assert; a `KF_USER_DATA_DIR` run asserts them; the release checklist prints both; and neither journey records a balance, level number, display name, or any account identifier.
-  Complexity: S
-
 - [ ] P1: R-155: Give the byte budget attribution and a release-over-release ratchet
   Why: The build prints one total, and the gate fails only at the cliff. Nothing says where growth came from, so a release that adds 12,000 bytes of dictionary and one that adds 12,000 bytes of CSS look identical until the build stops. Measured 2026-09-04 against the 886,138-byte artifact: `TRANSLATIONS` is 118,396 bytes, `SITE_CSS` 65,623 and `UI_CSS` 53,877 — 27% of it in three constants nobody is currently accountable for. Headroom is 13,862 bytes, and the compaction lever that bought most of it is now spent, so the next reclaim has to be a product decision rather than a build trick.
   Evidence: scripts/build.mjs prints one number per artifact; scripts/check.mjs size and injection budgets; src/runtime.js:1070-1071 BUNDLE_BYTE_CEILING and INJECTION_BYTE_BUDGET; measured region sizes 2026-09-04

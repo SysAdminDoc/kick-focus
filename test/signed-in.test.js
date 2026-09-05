@@ -16,6 +16,12 @@ import { ONLY_ACCOUNT_WRITE, SIGNED_IN_JOURNEYS } from '../scripts/signed-in-jou
 const EXPECTED_JOURNEYS = [
   'account-menu', 'daily-reward', 'profile', 'preferences',
   'notifications', 'drops', 'collectibles', 'emote-catalog',
+  // The two loyalty readings the Viewer page renders cards for. Added
+  // 2026-09-05: both cards existed and neither had a journey, so an anonymous
+  // run named nothing for them and a signed-in run asserted nothing about
+  // them — which is why the loyalty item in Roadmap_Blocked.md could not move
+  // even once a signed-in session was available.
+  'channel-points', 'level',
 ];
 
 test('the matrix covers every signed-in surface this build touches', { tags: ['unit'] }, () => {

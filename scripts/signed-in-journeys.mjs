@@ -99,6 +99,29 @@ export const SIGNED_IN_JOURNEYS = Object.freeze([
     mutates: false,
   }),
   Object.freeze({
+    id: 'channel-points',
+    title: 'Channel points',
+    route: '/xqc',
+    why: 'the points counter is per-account and per-channel, so a logged-out channel page renders no value node at all and the Viewer card can only report that it has not been read',
+    expects: Object.freeze(['[data-testid="channel-points-value"]']),
+    reads: Object.freeze(['DOM: the channel points value node, and the unrounded figure in its title attribute']),
+    mutates: false,
+  }),
+  Object.freeze({
+    id: 'level',
+    title: 'Kick level',
+    route: '/',
+    // Deliberately narrower than "read the account's level". The build has no
+    // endpoint for it: the figure is parsed out of the reward dialog's own
+    // text, so it is readable only while that dialog is open, and the Viewer
+    // card says "not read yet" the rest of the time. A journey that implied a
+    // standalone read would describe a feature that does not exist.
+    why: 'the level figure exists only inside the daily reward dialog, which Kick renders for a session and not for an anonymous visitor, so nothing offers the number on a logged-out page',
+    expects: Object.freeze(['button[aria-label="Claim Your Daily Reward"]', '[role="dialog"][aria-labelledby]']),
+    reads: Object.freeze(['DOM: the reward dialog text, parsed for the level and streak figures']),
+    mutates: false,
+  }),
+  Object.freeze({
     id: 'emote-catalog',
     title: 'Authenticated emote catalog',
     route: '/xqc',

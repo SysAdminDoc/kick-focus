@@ -4,6 +4,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ## Unreleased
 
+### Added
+
+- The signed-in verification matrix now covers Channel points and Kick level. The Viewer page has always rendered a card for each, but neither had an entry, so a logged-out run named nothing for them and a signed-in run checked nothing. Both now print what a session would assert, and a run against a real profile asserts it.
+
 ### Fixed
 
 - The search results header and the Drops empty state now speak the language you chose. Both write into Kick's own page rather than this build's panel, so the translator that walks the panel never reached them, and every one of their strings rendered in English for Spanish and Portuguese readers even though the translations were already written. Both surfaces also declare their own language now, so a screen reader stops announcing them with English pronunciation.
