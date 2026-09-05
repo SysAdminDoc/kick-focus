@@ -1,23 +1,77 @@
 <!doctype html>
 <html lang="en">
   <body>
-    <div class="group/main" data-sidebar="true" data-chat="true">
-      <nav data-testid="top-nav"><div data-testid="top-nav-actions"><button type="button">Rewards</button><button type="button">Profile</button></div></nav>
-      <aside id="sidebar-wrapper" data-nosnippet="true">
-        <button data-testid="sidebar-collapse" aria-controls="sidebar-wrapper" aria-expanded="true">Menu</button>
-        <a data-testid="sidebar-home" href="https://kick.com/">Home</a>
-      </aside>
-      <main id="main-container">
-        <section data-testid="featured-livestreams">
-          <div data-testid="livestream-results-card"><a href="https://kick.com/creator-one">Creator One</a></div>
-          <div data-testid="livestream-results-card"><a href="https://kick.com/creator-two">Creator Two</a></div>
-        </section>
-      </main>
+    <div class="group/main" data-sidebar="true" data-chat="true" data-theatre="false">
+      <nav>
+        <div>
+          <button aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar-wrapper" data-testid="sidebar-collapse"></button>
+        </div>
+      </nav>
       <div>
-        <div id="chatroom-messages"></div>
+        <div id="sidebar-wrapper" data-nosnippet="true">
+          <ul>
+            <li>
+              <a data-state="active" data-testid="sidebar-home" href="/">a</a>
+            </li>
+            <li>
+              <a data-state="inactive" data-testid="sidebar-browse" href="/browse">a</a>
+            </li>
+            <li>
+              <button data-testid="sidebar-following">button</button>
+            </li>
+          </ul>
+          <div>
+            <div>
+              <section>
+                <button>
+                  <a data-testid="sidebar-recommended-channel-1" data-state="false" href="/odablock">a</a>
+                </button>
+                <button>
+                  <a data-testid="sidebar-recommended-channel-2" data-state="false" href="/kaysan">a</a>
+                </button>
+              </section>
+            </div>
+          </div>
+        </div>
+        <div id="main-container">
+          <main>
+            <div>
+              <div>
+                <div>
+                  <div data-testid="carousel">
+                    <div>
+                      <div>
+                        <aside aria-hidden="false">
+                          <div>
+                            <div class="[--chatroom-font-size:14px] [--chatroom-message-spacing:4px] [--chatroom-timestamps-display:none] [--chatroom-mod-actions-display:none]">
+                              <div id="chatroom-messages" data-testid="chatroom-messages">div</div>
+                            </div>
+                          </div>
+                        </aside>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <section data-testid="top-live-categories">
+                  <div>
+                    <section data-layout="one-row" class="group/grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-auto-fill-category grid-rows-1 lg:grid">
+                      <div role="button" data-testid="category-card-root" data-open="false" class="group/card group-data-[layout=adaptive]/grid:below-sm:gap-2 group-data-[layout=adaptive]/grid:below-sm:h-20 group-data-[layout=adaptive]/grid:below-sm:flex-row group-data-[layout=adaptive]/grid:below-sm:items-center">
+                        <a class="group-data-[layout=adaptive]/grid:below-sm:h-full group-data-[layout=adaptive]/grid:below-sm:max-h-full group-data-[layout=adaptive]/grid:below-sm:w-auto" href="/category/just-chatting"></a>
+                        <div class="group-data-[layout=adaptive]/grid:below-sm:p-0">
+                          <div>
+                            <a data-state="inactive" href="/category/just-chatting">a</a>
+                          </div>
+                        </div>
+                      </div>
+                      <div role="button" data-testid="category-card-root" data-open="false" class="group/card group-data-[layout=adaptive]/grid:below-sm:gap-2 group-data-[layout=adaptive]/grid:below-sm:h-20 group-data-[layout=adaptive]/grid:below-sm:flex-row group-data-[layout=adaptive]/grid:below-sm:items-center">div</div>
+                    </section>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
-    <script>history.replaceState(null, '', '/');</script>
-    <script src="/dist/kick-focus.user.js"></script>
   </body>
 </html>

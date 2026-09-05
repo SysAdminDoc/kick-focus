@@ -36,7 +36,7 @@
 export const FIXTURE_CONTRACT = Object.freeze({
   home: Object.freeze({
     url: 'https://kick.com/',
-    keep: Object.freeze(['[data-testid="livestream-results-card"]', '[data-testid="livestream-results-card"] a[href]']),
+    keep: Object.freeze(['[data-testid="category-card-root"]', '[data-testid="category-card-root"] a[href]']),
     expectedChat: false,
     shell: Object.freeze({
       main: 'main-id',
@@ -47,13 +47,14 @@ export const FIXTURE_CONTRACT = Object.freeze({
       // through its third probe here and only here, which is why this is
       // written down rather than treated as a failure.
       chatPanel: 'chat-messages-owner',
-      card: 'card-testid',
+      card: null,
     }),
-    derived: Object.freeze({ cardSlug: 'ok', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
-    markers: Object.freeze(['id="main-container"', 'id="sidebar-wrapper"', 'livestream-results-card']),
+    derived: Object.freeze({ cardSlug: 'absent', playerContainer: 'absent', channelPlayer: 'absent', qualityHeight: 'absent' }),
+    markers: Object.freeze(['id="main-container"', 'id="sidebar-wrapper"', 'group/card']),
     synthetic: Object.freeze({}),
     retired: Object.freeze({
       'data-testid="kicks-top-nav"': 'renamed: 0 live 2026-08-19, and nothing in src/ reads it',
+      'livestream-results-card': 'renamed: 0 live 2026-09-04; Home now serves group/card shells',
       'channel-chatroom': 'route-shaped: only a channel page carries the chatroom id',
     }),
   }),

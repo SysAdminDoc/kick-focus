@@ -88,7 +88,7 @@ export const LOCATOR_PROBES = Object.freeze({
   ]),
   card: Object.freeze([
     Object.freeze({ id: 'card-testid', selector: '[data-testid="livestream-results-card"], [data-testid="stream-card"]' }),
-    Object.freeze({ id: 'card-group', selector: '[class*="group/card"]' }),
+    Object.freeze({ id: 'card-group', selector: '[class*="group/card"]:not([data-testid="category-card-root"])' }),
     Object.freeze({ id: 'card-article', selector: 'article' }),
   ]),
 
