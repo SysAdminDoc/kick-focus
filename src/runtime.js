@@ -5915,7 +5915,14 @@ function renderStickerOrganizer() {
       ${tab('native', tr('Kick'))}
     </div>
     ${stickerDetailMarkup(descriptors)}
-    ${view === 'removed' && removed.length ? `<div data-kf-sticker-recovery><span>${escapeHtml(tr('Removed emotes stay saved until you restore them.'))}</span><button type="button" data-kf-sticker-restore-all>${escapeHtml(tr('Restore all'))}</button></div>` : ''}
+    ${view === 'removed' && removed.length ? `<div data-kf-sticker-recovery><span>${escapeHtml(tr('Removed emotes stay saved until you restore them.'))}</span>${
+      // Searching the removed view is how somebody finds the handful they
+      // meant to bring back. Without this the only choices are one at a time
+      // or all of them, and "all" is not what a filtered list is asking for.
+      query && visible.length && visible.length < removed.length
+        ? `<button type="button" data-kf-sticker-restore-shown>${escapeHtml(trf('Restore shown ({count})', { count: visible.length }))}</button>`
+        : ''
+    }<button type="button" data-kf-sticker-restore-all>${escapeHtml(tr('Restore all'))}</button></div>` : ''}
     ${view === 'group' ? pickerStickerGroupPanelMarkup(available) : ''}
     ${state.runtime.stickerPickerOrganizing && !['native', 'locked', 'removed'].includes(view) ? pickerStickerBatchMarkup() : ''}`);
   // Put the keyboard back on the equivalent control. A control the rebuild
@@ -6385,7 +6392,7 @@ function handleStickerAction(event) {
     '[data-kf-sticker-group-create]', '[data-kf-sticker-group-rename]', '[data-kf-sticker-group-delete]', '[data-kf-sticker-group-move]',
     '[data-kf-sticker-group-save]', '[data-kf-sticker-group-cancel]', '[data-kf-sticker-select-shown]',
     '[data-kf-sticker-clear-selection]', '[data-kf-sticker-batch-move]', '[data-kf-sticker-batch-remove]',
-    '[data-kf-sticker-batch-reorder]', '[data-kf-sticker-restore-all]',
+    '[data-kf-sticker-batch-reorder]', '[data-kf-sticker-restore-all]', '[data-kf-sticker-restore-shown]',
   ].join(', '));
   if (!target || !target.closest?.('[data-kf-sticker-organizer]')) return;
   event.preventDefault();
@@ -6458,6 +6465,19 @@ function handleStickerAction(event) {
   }
   if (target.hasAttribute('data-kf-sticker-batch-reorder')) {
     editPickerStickerSelection(target.dataset.kfStickerBatchReorder === 'up' ? 'earlier' : 'later');
+    return;
+  }
+  if (target.hasAttribute('data-kf-sticker-restore-shown')) {
+    // Exactly what the filtered list is showing, taken at press time rather
+    // than from the markup, so a catalog refresh between render and click
+    // cannot restore something the user could not see.
+    const shown = [...state.runtime.stickerPickerVisibleKeys];
+    if (!shown.length) return;
+    mutateStickerOrganization(() => {
+      for (const shownKey of shown) state.stickerPreferences.hidden.delete(shownKey);
+      state.runtime.stickerDetailKey = '';
+    }, trf('Restored {count} {word}.', { count: shown.length, word: plural(shown.length, 'emote', 'emotes') }),
+    'Removal state restored.');
     return;
   }
   if (target.hasAttribute('data-kf-sticker-restore-all')) {
@@ -9623,6 +9643,8 @@ const TRANSLATIONS = {
   'Create group': ['Crear grupo', 'Criar grupo'],
   'No groups yet.': ['Aún no hay grupos.', 'Ainda não há grupos.'],
   'Restore all': ['Restaurar todo', 'Restaurar tudo'],
+  'Restored {count} {word}.': ['Se restauraron {count} {word}.', 'Foram restaurados {count} {word}.'],
+  'Restore shown ({count})': ['Restaurar los mostrados ({count})', 'Restaurar os mostrados ({count})'],
   'Kick data': ['Datos de Kick', 'Dados do Kick'],
   'Collectible rarity': ['Rareza de coleccionables', 'Raridade dos colecionáveis'],
   'Shadowed emote names': ['Nombres de emote duplicados', 'Nomes de emote duplicados'],

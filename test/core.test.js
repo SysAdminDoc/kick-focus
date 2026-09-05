@@ -3935,3 +3935,36 @@ test('a route gets the first layout that claims it, and no other route does', { 
   assert.equal(layoutForRoute([first, second], ''), null);
   assert.equal(layoutForRoute([{ name: 'c', routes: [], values: {} }], 'browse'), null);
 });
+
+test('a migration keeps every removed emote, because removal is the only record that it was removed', { tags: ['unit'] }, () => {
+  // Removal is reversible by design: the emote stays in the library and the
+  // hidden set is the entire memory of the user's decision. A migration that
+  // silently drops one key does not lose a preference, it un-removes an emote
+  // the user removed on purpose, and there is nothing left to notice with.
+  const legacy = Array.from({ length: 120 }, (_, index) => `name:legacy${index}|src:https://files.kick.com/emotes/${index}/fullsize`);
+  const migrated = normalizeStickerPreferences({ schema: 7, hidden: legacy });
+  assert.equal(migrated.hidden.length, legacy.length,
+    `${legacy.length - migrated.hidden.length} removed emote(s) were dropped by the migration`);
+  for (const key of legacy) {
+    assert.ok(migrated.hidden.includes(`kick:${key}`), `${key} was not carried through the migration`);
+  }
+  // Idempotent: running the migration over its own output is a no-op, so a
+  // profile that upgrades twice does not gain or lose removals.
+  assert.deepEqual(normalizeStickerPreferences(migrated).hidden, migrated.hidden);
+});
+
+test('a removed emote cannot be silently un-removed by favoriting it in stored state', { tags: ['unit'] }, () => {
+  // The picker clears the removed flag when you favorite something, which is
+  // deliberate and visible. Stored state arriving with both set is a different
+  // thing — a corrupted or hand-edited profile — and the normalizer decides
+  // one way. This pins which way, so the answer cannot drift unnoticed.
+  const key = 'name:both|src:https://files.kick.com/emotes/1/fullsize';
+  const normalized = normalizeStickerPreferences({
+    schema: 7,
+    hidden: [key],
+    favorites: [{ key, channel: '' }],
+  });
+  assert.ok(normalized.hidden.includes(`kick:${key}`), 'the removal is the record that survives');
+  assert.equal(normalized.favorites.some((entry) => entry.key === `kick:${key}`), false,
+    'a removed emote must not also be favorited');
+});

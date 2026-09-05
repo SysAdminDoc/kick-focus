@@ -162,13 +162,6 @@ None open.
 
 ### P1, profile comment emote reliability and direct access
 
-- [ ] P1: R-119: Restore removed emotes individually
-  Why: The picker stores a showHidden state but renders no control for it. After the seven-second Undo expires, the Library can restore only the entire removed set.
-  Evidence: src/runtime.js:5052-5055; src/runtime.js:5548-5556; src/runtime.js:5715-5718; src/settings.mjs:502
-  Touches: shared mutation commands from R-120, src/runtime.js picker views and actions, src/settings.mjs Library views, src/storage.mjs normalized hidden state and bounded tombstones, emote tests, browser verifier
-  Acceptance: Removing an emote keeps a bounded tombstone with its key and safe last-known display metadata; picker and Library both expose a Removed view with a count; one emote, the current selection, or the shown result set can be restored before rediscovery; each restore changes only removed state, offers Undo, survives reload, and announces a concise status; Restore all remains available but is not the only recovery path; migration tests preserve every existing hidden key.
-  Complexity: M
-
 - [ ] P1: R-120: Use one mutation command layer in the picker and Library
   Why: The same create, delete, move, remove, and restore intent currently has different persistence and Undo behavior depending on which surface runs it.
   Evidence: src/runtime.js:5433-5542; src/runtime.js:10525-10619; src/storage.mjs emote-library normalization; RESEARCH.md Competitive Landscape
