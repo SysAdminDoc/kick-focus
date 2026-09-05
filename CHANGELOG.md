@@ -18,6 +18,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Nothing the emote picker does while rebuilding itself can reach a half-written message. The three deliberate insertion paths are the only code allowed to write to the composer, and the build now refuses any other.
+
 - The multi-stream button in Kick’s header announced itself in English to Spanish and Portuguese readers. Its name and tooltip sat translated in the dictionary and nothing ever looked them up, and the same was true of the add-to-multi-stream button’s tooltip. The button count beside them was also assembled in English word order.
 
 - Pressing a view tab, Organize, or a group control in the emote picker no longer throws the keyboard back to the top of the page. The header rebuilds itself when its contents change, and focus now lands on the same control afterwards; where a control genuinely went away, focus falls to the active view rather than to nothing.

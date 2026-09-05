@@ -159,6 +159,34 @@ const stickerInverseIsShared = (source) => {
   return (source.match(/restoreStickerOrganization\(/g) || []).length === 2;
 };
 
+/**
+ * Who is allowed to touch what the viewer has typed.
+ *
+ * The emote picker rebuilds itself constantly — every favourite, view change,
+ * group edit and search keystroke — and it sits beside a composer that may
+ * hold a half-written message. The guarantee the picker makes is that none of
+ * that rebuilding reaches the draft: the text and the caret stay exactly as
+ * they were until an emote is deliberately inserted. That is a claim about
+ * which code can write to the composer at all, so it is checked that way
+ * rather than by watching a value.
+ *
+ * `document.execCommand('insertText')` is the only path any of this uses, and
+ * it goes through the editor's own pipeline, so enumerating its callers
+ * enumerates every write.
+ */
+const composerWriters = (source) => {
+  const names = new Set();
+  const lines = source.split('\n');
+  let current = '';
+  for (const line of lines) {
+    const declared = /^function ([A-Za-z0-9_$]+)\(/.exec(line);
+    if (declared) current = declared[1];
+    if (/execCommand\(\s*'insertText'/.test(line) && !/^\s*\*/.test(line)) names.add(current);
+  }
+  return [...names].sort();
+};
+const COMPOSER_WRITERS = ['acceptEmoteCompletion', 'replaceComposerText', 'typeStickerNameIntoComposer'];
+
 const shadowAccessibilityWired = (bundle) => {
   const flags = hostKeyedAccessibility(bundle);
   return flags.has('large-targets') && flags.has('reduce-motion');
@@ -2067,6 +2095,8 @@ const checks = [
     ?.data_collection_permissions?.required?.[0] === 'none'],
   ['the emote snapshot and its inverse name the same fields, and there is one inverse',
     stickerInverseIsShared(runtimeModuleSource)],
+  ['only the three deliberate insertion paths can write to the viewer’s draft',
+    composerWriters(runtimeModuleSource).join() === COMPOSER_WRITERS.join()],
   ['every byte region is in the baseline and inside its growth allowance', regionFailures.length === 0],
   ['the measured regions sum to the whole artifact, so none can hide',
     regionMeasurement.regions.reduce((sum, region) => sum + region.bytes, 0) === regionMeasurement.total],
@@ -2112,6 +2142,13 @@ const redProbes = [
   ['size budget accepts an artifact exactly at its budget',
     overBudgetIn([['a.js', 'x'.repeat(10), 10, 'test']]).length === 0],
   ['size budget accepts the real artifacts', overBudgetIn(SIZE_BUDGETS).length === 0],
+  ['composer-write gate would catch a render path gaining a write to the draft',
+    composerWriters([
+      'function renderStickerOrganizer() {',
+      "  document.execCommand('insertText', false, x);", '}',
+    ].join('\n')).join() !== COMPOSER_WRITERS.join()],
+  ['composer-write gate accepts the real runtime',
+    composerWriters(runtimeModuleSource).join() === COMPOSER_WRITERS.join()],
   ['emote-inverse gate would catch a field captured but never restored',
     !stickerInverseIsShared([
       'function stickerOrganizationSnapshot() {',
