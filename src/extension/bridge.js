@@ -82,11 +82,11 @@ function publish(settings) {
   const sanitized = sanitizeSettings(settings);
   if (!sanitized) return;
   try {
-    chrome.storage.local.set({ settings: sanitized, updatedAt: Date.now() });
-    chrome.runtime.sendMessage({
+    void Promise.resolve(chrome.storage.local.set({ settings: sanitized, updatedAt: Date.now() })).catch(() => {});
+    void Promise.resolve(chrome.runtime.sendMessage({
       type: 'kick-focus:telemetry-preference',
       enabled: sanitized.content.reduceTelemetry,
-    });
+    })).catch(() => {});
   } catch {
     // The service worker may be restarting; the next change re-publishes.
   }

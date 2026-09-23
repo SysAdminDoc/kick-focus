@@ -84,11 +84,11 @@ function publish(settings) {
   const sanitized = sanitizeSettings(settings);
   if (!sanitized) return;
   try {
-    api.storage.local.set({ settings: sanitized, updatedAt: Date.now() });
-    api.runtime.sendMessage({
+    void Promise.resolve(api.storage.local.set({ settings: sanitized, updatedAt: Date.now() })).catch(() => {});
+    void Promise.resolve(api.runtime.sendMessage({
       type: 'kick-focus:telemetry-preference',
       enabled: sanitized.content.reduceTelemetry,
-    });
+    })).catch(() => {});
   } catch {
     // The page will announce again when it finishes booting.
   }
@@ -105,7 +105,9 @@ document.addEventListener('kick-focus:settings-changed', (event) => {
   }
 });
 
-window.addEventListener('storage', () => publish(readSettings()));
+window.addEventListener('storage', (event) => {
+  if (event.key === SETTINGS_KEY) publish(readSettings());
+});
 
 function requestSettings() {
   document.dispatchEvent(new CustomEvent('kick-focus:request-settings'));

@@ -166,7 +166,7 @@ async function render() {
     tabId: tab?.id ?? -1,
   })).catch(() => null);
 
-  if (!status) {
+  if (!status || status.ok === false) {
     renderUnavailable();
     return;
   }

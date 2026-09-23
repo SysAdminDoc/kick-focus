@@ -18,6 +18,12 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Changing or revoking a remote blocklist feed now keeps its saved approval until the old origin permission has actually been removed. A browser error could previously leave a permission granted with no visible approval to retry, or point the approval at the new feed while the old permission remained.
+
+- The Firefox companion now restores the saved telemetry choice when its event page wakes. Its bridge also ignores unrelated Kick storage writes, and both browser bridges absorb rejected background messages instead of leaking unhandled promise errors.
+
+- The extension popup now shows its unavailable state when the background cannot read storage, rather than presenting a disabled network layer assembled from missing data.
+
 - Windows High Contrast no longer erases the states this build marks with a coloured glow. A selected emote in the Library, a favourited one, a removed one, the multi-stream tile that owns the audio, a highlighted chat message and the toasts all had edges that High Contrast throws away, so they looked identical to everything around them.
 
 - Every surface this build adds to a Kick page now declares which language it is written in. Kick’s document says English, so translated labels dropped into it were being read aloud with English pronunciation — the emote dock, the card action buttons, and the emote organizer were all doing this.

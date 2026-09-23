@@ -16,6 +16,21 @@ const BLOCKLIST_TIMEOUT_MS = 8000;
 let telemetryEnabled = true;
 const blockedByTab = new Map();
 
+function restoreTelemetryPreference(settings) {
+  const stored = settings?.content?.reduceTelemetry;
+  if (typeof stored === 'boolean') telemetryEnabled = stored;
+}
+
+const telemetryPreferenceReady = Promise.resolve(api.storage.local.get('settings'))
+  .then((stored) => restoreTelemetryPreference(stored?.settings))
+  .catch(() => {});
+
+api.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes?.settings?.newValue) {
+    restoreTelemetryPreference(changes.settings.newValue);
+  }
+});
+
 /**
  * `blob:` and `filesystem:` URLs carry their real origin in the path, not the
  * hostname — `new URL('blob:https://kick.com/…').hostname` is the empty string.
@@ -152,20 +167,20 @@ async function approveBlocklist(rawUrl) {
   if (!await api.permissions.contains({ origins: [origin] })) throw new Error('Origin permission was not granted.');
 
   const previousOrigin = permissionOrigin(stored?.[BLOCKLIST_APPROVAL_KEY]?.url);
-  await api.storage.local.set({
-    [BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() },
-  });
   if (previousOrigin && previousOrigin !== origin) {
     await api.permissions.remove({ origins: [previousOrigin] });
   }
+  await api.storage.local.set({
+    [BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() },
+  });
   return { url };
 }
 
 async function revokeBlocklist() {
   const stored = await api.storage.local.get(BLOCKLIST_APPROVAL_KEY);
   const origin = permissionOrigin(stored?.[BLOCKLIST_APPROVAL_KEY]?.url);
-  await api.storage.local.remove(BLOCKLIST_APPROVAL_KEY);
   if (origin) await api.permissions.remove({ origins: [origin] });
+  await api.storage.local.remove(BLOCKLIST_APPROVAL_KEY);
 }
 
 /**
@@ -259,6 +274,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'kick-focus:status') {
     if (!fromKickPageOrOwnUi(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     (async () => {
+      await telemetryPreferenceReady;
       const stored = await api.storage.local.get('settings');
       const blocklist = await readBlocklistState();
       sendResponse({
@@ -269,7 +285,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         settings: stored?.settings || null,
         blocklist,
       });
-    })();
+    })().catch((error) => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
   if (message?.type === 'kick-focus:fetch-blocklist') {

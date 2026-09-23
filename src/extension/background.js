@@ -122,20 +122,20 @@ async function approveBlocklist(rawUrl) {
   if (!await chrome.permissions.contains({ origins: [origin] })) throw new Error('Origin permission was not granted.');
 
   const previousOrigin = permissionOrigin(stored?.[BLOCKLIST_APPROVAL_KEY]?.url);
-  await chrome.storage.local.set({
-    [BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() },
-  });
   if (previousOrigin && previousOrigin !== origin) {
     await chrome.permissions.remove({ origins: [previousOrigin] });
   }
+  await chrome.storage.local.set({
+    [BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() },
+  });
   return { url };
 }
 
 async function revokeBlocklist() {
   const stored = await chrome.storage.local.get(BLOCKLIST_APPROVAL_KEY);
   const origin = permissionOrigin(stored?.[BLOCKLIST_APPROVAL_KEY]?.url);
-  await chrome.storage.local.remove(BLOCKLIST_APPROVAL_KEY);
   if (origin) await chrome.permissions.remove({ origins: [origin] });
+  await chrome.storage.local.remove(BLOCKLIST_APPROVAL_KEY);
 }
 
 /**
@@ -244,7 +244,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         settings: stored?.settings || null,
         blocklist,
       });
-    })();
+    })().catch((error) => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
 

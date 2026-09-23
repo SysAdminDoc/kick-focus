@@ -82,6 +82,7 @@ test('popup distinguishes unavailable, disabled, and active network states', asy
   assert.match(html, /\.card\[data-state="unavailable"\]::before \{ background: var\(--danger\); \}/);
   assert.match(html, /\.state\[data-state="unavailable"\]/);
   assert.match(source, /els\.networkCard\.dataset\.state = 'unavailable'/);
+  assert.match(source, /if \(!status \|\| status\.ok === false\)/);
   assert.match(source, /els\.networkCard\.dataset\.state = adsOn \? 'on' : 'off'/);
 });
 
@@ -116,7 +117,7 @@ class CustomEventStub {
   }
 }
 
-function makeEnvironment() {
+function makeEnvironment(options = {}) {
   const document = new EventTargetStub();
   document.readyState = 'loading';
   document.documentElement = { dataset: {}, append() {} };
@@ -140,12 +141,22 @@ function makeEnvironment() {
     runtime: {
       getManifest: () => ({ version: 'test' }),
       getURL: (path) => `moz-extension://test/${path}`,
-      sendMessage: (message) => messages.push(message),
+      sendMessage: (message) => {
+        messages.push(message);
+        return options.rejectPublishes
+          ? Promise.reject(new Error('runtime unavailable'))
+          : Promise.resolve();
+      },
       onMessage: { addListener: (listener) => runtimeMessages.push(listener) },
     },
     storage: {
       local: {
-        set: (value) => published.push(value),
+        set: (value) => {
+          published.push(value);
+          return options.rejectPublishes
+            ? Promise.reject(new Error('storage unavailable'))
+            : Promise.resolve();
+        },
       },
     },
   };
@@ -165,9 +176,9 @@ function makeEnvironment() {
   return { context, document, published, messages, runtimeMessages };
 }
 
-async function runBridge(file, pageFirst) {
+async function runBridge(file, pageFirst, options = {}) {
   const source = await readFile(resolve(root, file), 'utf8');
-  const env = makeEnvironment();
+  const env = makeEnvironment(options);
   const settings = JSON.stringify({
     appearance: { theme: 'oled', accent: 'custom', customAccent: '#123ABC' },
     content: { reduceTelemetry: true },
@@ -200,19 +211,30 @@ async function loadBackground(file, options = {}) {
   const badges = [];
   const fetches = [];
   const timeouts = [];
+  const permissionRemovals = [];
+  const storageChangeListeners = [];
   const stored = structuredClone(options.stored || {});
   const granted = new Set(options.granted || []);
   const storage = {
     get: async (keys) => {
+      if (options.storageGetError) throw new Error('storage read failed');
       const wanted = Array.isArray(keys) ? keys : [keys];
       return Object.fromEntries(wanted.filter((key) => key in stored).map((key) => [key, stored[key]]));
     },
-    set: async (value) => { Object.assign(stored, value); },
-    remove: async (key) => { delete stored[key]; },
+    set: async (value) => {
+      if (options.storageSetError) throw new Error('storage write failed');
+      Object.assign(stored, value);
+    },
+    remove: async (key) => {
+      if (options.storageRemoveError) throw new Error('storage remove failed');
+      delete stored[key];
+    },
   };
   const permissions = {
     contains: async ({ origins = [] }) => origins.every((origin) => granted.has(origin)),
     remove: async ({ origins = [] }) => {
+      permissionRemovals.push(...origins);
+      if (options.permissionRemoveError) throw new Error('permission remove failed');
       origins.forEach((origin) => granted.delete(origin));
       return true;
     },
@@ -230,7 +252,7 @@ async function loadBackground(file, options = {}) {
       setBadgeBackgroundColor: () => {},
     },
     runtime,
-    storage: { local: storage },
+    storage: { local: storage, onChanged: { addListener: (fn) => storageChangeListeners.push(fn) } },
     permissions,
     tabs,
   };
@@ -245,7 +267,7 @@ async function loadBackground(file, options = {}) {
       onRuleMatchedDebug: null,
     },
     runtime,
-    storage: { local: storage },
+    storage: { local: storage, onChanged: { addListener: (fn) => storageChangeListeners.push(fn) } },
     permissions,
     tabs,
   };
@@ -269,7 +291,18 @@ async function loadBackground(file, options = {}) {
   else context.chrome = chrome;
   context.globalThis = context;
   vm.runInNewContext(source, context);
-  return { listener, badges, messageListener, fetches, stored, granted, timeouts, runtime };
+  return {
+    listener,
+    badges,
+    messageListener,
+    fetches,
+    stored,
+    granted,
+    timeouts,
+    runtime,
+    permissionRemovals,
+    storageChangeListeners,
+  };
 }
 
 async function loadFirefoxBackground(options = {}) {
@@ -382,6 +415,46 @@ test('the Firefox background leaves other sites and benign requests alone', { ta
   assert.equal(listener({ url: 'https://files.kick.com/emotes/37226/fullsize', originUrl: 'https://kick.com/xqc', tabId: 1 }), undefined);
 });
 
+test('the Firefox background restores a persisted telemetry preference when its event page wakes', { tags: ['artifact'] }, async () => {
+  const disabled = await loadFirefoxBackground({
+    stored: { settings: { content: { reduceTelemetry: false } } },
+  });
+  await new Promise((resolvePromise) => setImmediate(resolvePromise));
+  assert.equal(
+    disabled.listener({
+      url: 'https://browser-intake-datadoghq.com/api/v2/logs',
+      originUrl: 'https://kick.com/xqc',
+      tabId: 4,
+    }),
+    undefined,
+    'a stored off preference was replaced by the background default',
+  );
+  assert.equal(disabled.storageChangeListeners.length, 1);
+  disabled.storageChangeListeners[0]({
+    settings: { newValue: { content: { reduceTelemetry: true } } },
+  }, 'local');
+  assert.equal(
+    disabled.listener({
+      url: 'https://browser-intake-datadoghq.com/api/v2/logs',
+      originUrl: 'https://kick.com/xqc',
+      tabId: 4,
+    })?.cancel,
+    true,
+    'a storage update did not reach the network listener',
+  );
+
+  const enabled = await loadFirefoxBackground();
+  assert.equal(
+    enabled.listener({
+      url: 'https://browser-intake-datadoghq.com/api/v2/logs',
+      originUrl: 'https://kick.com/xqc',
+      tabId: 4,
+    })?.cancel,
+    true,
+    'the privacy-preserving first-install default stopped blocking telemetry',
+  );
+});
+
 for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js']) {
   test(`${file} survives page-first and bridge-first injection`, async () => {
     const pageFirst = await runBridge(file, true);
@@ -440,6 +513,24 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     assert.deepEqual(Object.keys(stored.content), ['reduceTelemetry', 'blocklistUrl']);
     assert.equal(stored.content.reduceTelemetry, true);
     assert.equal(stored.content.blocklistUrl, 'https://lists.example/blocked.json');
+  });
+
+  test(`${file} republishes only when the Kick Focus storage key changes`, async () => {
+    const result = await runBridge(file, true);
+    result.context.localStorage.value = result.settings;
+    const before = result.published.length;
+    result.context.window.dispatchEvent({ type: 'storage', key: 'kick:last-visited-channel' });
+    assert.equal(result.published.length, before, 'an unrelated Kick write triggered extension storage work');
+
+    result.context.window.dispatchEvent({ type: 'storage', key: 'kick-focus:settings' });
+    assert.equal(result.published.length, before + 1, 'the settings key no longer republishes');
+  });
+
+  test(`${file} absorbs rejected storage and runtime publishes`, async () => {
+    const result = await runBridge(file, true, { rejectPublishes: true });
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
+    assert.ok(result.published.length > 0, 'the failed storage write was not attempted');
+    assert.ok(result.messages.length > 0, 'the failed preference message was not attempted');
   });
 
   test(`${file} answers a companion presence ping with the same nonce`, async () => {
@@ -648,6 +739,55 @@ for (const browserCase of [
     }, browserCase.popup);
     assert.equal(accepted?.ok, true, accepted?.error);
     assert.equal(background.stored.blocklistApproval?.url, approvedUrl);
+  });
+
+  test(`${browserCase.name} keeps the previous feed approval when permission cleanup fails`, { tags: ['artifact'] }, async () => {
+    const previousUrl = 'https://old.example/blocked.json';
+    const previousOrigin = 'https://old.example/*';
+    const background = await loadBackground(browserCase.file, {
+      stored: {
+        settings: { content: { blocklistUrl: approvedUrl } },
+        blocklistApproval: { url: previousUrl, origin: previousOrigin, approvedAt: 1 },
+      },
+      granted: [origin, previousOrigin],
+      permissionRemoveError: true,
+    });
+
+    const answer = await askBackground(background, {
+      type: 'kick-focus:approve-blocklist',
+      url: approvedUrl,
+    }, browserCase.popup);
+    assert.equal(answer?.ok, false);
+    assert.equal(background.stored.blocklistApproval?.url, previousUrl,
+      'approval moved even though its previous permission could not be removed');
+    assert.deepEqual(background.permissionRemovals, [previousOrigin]);
+  });
+
+  test(`${browserCase.name} keeps a revocable approval when permission removal fails`, { tags: ['artifact'] }, async () => {
+    const background = await loadBackground(browserCase.file, {
+      stored: approvedStore,
+      granted: [origin],
+      permissionRemoveError: true,
+    });
+
+    const answer = await askBackground(background, {
+      type: 'kick-focus:revoke-blocklist',
+    }, browserCase.popup);
+    assert.equal(answer?.ok, false);
+    assert.equal(background.stored.blocklistApproval?.url, approvedUrl,
+      'the approval disappeared while its origin permission remained granted');
+    assert.deepEqual(background.permissionRemovals, [origin]);
+  });
+
+  test(`${browserCase.name} returns an explicit unavailable status when storage fails`, { tags: ['artifact'] }, async () => {
+    const background = await loadBackground(browserCase.file, { storageGetError: true });
+    const answer = await Promise.race([
+      askBackground(background, { type: 'kick-focus:status', tabId: 3 }, browserCase.popup),
+      new Promise((resolvePromise) => setTimeout(() => resolvePromise({ timeout: true }), 100)),
+    ]);
+    assert.equal(answer?.timeout, undefined, 'the popup request was left unanswered');
+    assert.equal(answer?.ok, false);
+    assert.match(answer?.error || '', /storage read failed/);
   });
 }
 
