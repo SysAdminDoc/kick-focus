@@ -2982,7 +2982,7 @@ test('ad preflight scripts are matched exactly, not by hostname alone', { tags: 
 test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', { tags: ['unit'] }, async () => {
   const {
     MULTISTREAM_MAX, addMultistreamChannel, multistreamColumns,
-    normalizeMultistream, removeMultistreamChannel, saveMultistreamLayout,
+    normalizeMultistream, saveMultistreamLayout,
   } = await import('../src/core.mjs');
 
   let grid = normalizeMultistream({ streams: ['xqc', 'XQC', 'trainwreck', 'bad slug!'] });
@@ -3006,12 +3006,15 @@ test('the multi-stream grid dedupes, caps, and keeps audio pointed somewhere', {
   assert.equal(normalizeMultistream({ streams: Array.from({ length: 40 }, (_, i) => `c${i}`) }).streams.length, MULTISTREAM_MAX);
 
   // Removing the focused stream must not leave the grid silent and chatless.
-  const removed = removeMultistreamChannel(added.value, 'xqc');
+  const removed = normalizeMultistream({
+    ...added.value,
+    streams: added.value.streams.filter((slug) => slug !== 'xqc'),
+  });
   assert.deepEqual(removed.streams, ['trainwreck', 'adin']);
   assert.equal(removed.focus, 'trainwreck');
   assert.equal(removed.chat, 'trainwreck');
-  assert.equal(removeMultistreamChannel(removed, 'trainwreck').focus, 'adin');
-  assert.equal(removeMultistreamChannel(normalizeMultistream({ streams: ['solo'] }), 'solo').focus, '');
+  assert.equal(normalizeMultistream({ ...removed, streams: ['adin'] }).focus, 'adin');
+  assert.equal(normalizeMultistream({ ...removed, streams: [] }).focus, '');
 
   const saved = saveMultistreamLayout(added.value, '  Sunday   crew  ');
   assert.equal(saved.ok, true);

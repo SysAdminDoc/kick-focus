@@ -238,10 +238,10 @@ const framesIn = (grid) => grid.querySelectorAll('[data-kf-multistream-tile]')
 test('every function the surface hands back can be called against a stub host', { tags: ['unit'] }, async () => {
   // The point of the host boundary: a dependency the module forgot to take
   // would resolve out of the bundle scope in the artifact and be invisible,
-  // but throws a ReferenceError here. Calling all fifteen is the check.
+  // but throws a ReferenceError here. Calling every export is the check.
   const { host, dom } = makeHost({ multistream: { streams: ['alpha'], focus: 'alpha' } });
   const surface = createMultistream(host);
-  assert.equal(Object.keys(surface).length, 25);
+  assert.equal(Object.keys(surface).length, 27);
 
   dom.backdrop.hidden = false;
   for (const [name, fn] of Object.entries(surface)) {
@@ -353,6 +353,82 @@ test('a commit merges with what another tab stored rather than overwriting it', 
   assert.deepEqual([...after.streams].sort(), ['alpha', 'delta', 'gamma']);
 });
 
+test('a membership commit keeps the latest presentation and stored channel order', { tags: ['unit'] }, () => {
+  const { host, state, store } = makeHost({
+    multistream: { streams: ['alpha'], paused: false, showChat: true },
+  });
+  const surface = createMultistream(host);
+
+  store.set('kick-focus:multistream', normalizeMultistream({
+    streams: ['beta', 'alpha'],
+    focus: 'beta',
+    chat: 'alpha',
+    paused: true,
+    muted: true,
+    showChat: false,
+    mergedChat: true,
+  }));
+  const merged = surface.commitMultistream(['gamma']);
+
+  assert.deepEqual(merged.streams, ['beta', 'alpha', 'gamma']);
+  assert.equal(merged.focus, 'beta');
+  assert.equal(merged.chat, 'alpha');
+  assert.equal(merged.paused, true);
+  assert.equal(merged.muted, true);
+  assert.equal(merged.showChat, false);
+  assert.equal(merged.mergedChat, true);
+  assert.equal(state.multistream, merged);
+});
+
+test('a presentation write patches only its named field onto the latest shared state', { tags: ['unit'] }, () => {
+  const { host, state, store } = makeHost({
+    multistream: { streams: ['alpha'], paused: false, muted: false },
+  });
+  const surface = createMultistream(host);
+  store.set('kick-focus:multistream', normalizeMultistream({
+    streams: ['alpha', 'beta'],
+    focus: 'beta',
+    chat: 'beta',
+    paused: false,
+    muted: true,
+    mergedChat: true,
+    layouts: [{ name: 'Remote board', streams: ['beta'] }],
+  }));
+
+  state.multistream = normalizeMultistream({ ...state.multistream, paused: true });
+  const saved = surface.persistMultistream(['paused']);
+
+  assert.deepEqual(saved.streams, ['alpha', 'beta']);
+  assert.equal(saved.focus, 'beta');
+  assert.equal(saved.chat, 'beta');
+  assert.equal(saved.paused, true);
+  assert.equal(saved.muted, true);
+  assert.equal(saved.mergedChat, true);
+  assert.deepEqual(saved.layouts, [{ name: 'Remote board', streams: ['beta'] }]);
+  assert.deepEqual(store.get('kick-focus:multistream'), saved);
+});
+
+test('named board writes preserve boards created by other tabs and can be undone', { tags: ['unit'] }, () => {
+  const { host, state, store } = makeHost({ multistream: { streams: ['alpha'] } });
+  const surface = createMultistream(host);
+  store.set('kick-focus:multistream', normalizeMultistream({
+    streams: ['alpha', 'beta'],
+    layouts: [{ name: 'Remote board', streams: ['beta'] }],
+  }));
+
+  const saved = surface.commitMultistreamLayout({ name: 'Local board', streams: ['alpha'] });
+  assert.equal(saved.ok, true);
+  assert.deepEqual(state.multistream.layouts.map((layout) => layout.name), ['Local board', 'Remote board']);
+
+  const removed = surface.removeMultistreamLayout('Local board');
+  assert.equal(removed.ok, true);
+  assert.equal(removed.layout.name, 'Local board');
+  assert.deepEqual(state.multistream.layouts.map((layout) => layout.name), ['Remote board']);
+
+  surface.commitMultistreamLayout(removed.layout);
+  assert.deepEqual(store.get('kick-focus:multistream').layouts.map((layout) => layout.name), ['Local board', 'Remote board']);
+});
+
 test('the roll-call answers with a slug only from a channel page, and offers what is missing', { tags: ['unit'] }, () => {
   const { host, state, dom } = makeHost({ multistream: { streams: ['alpha'] } });
   const surface = createMultistream(host);
@@ -391,7 +467,7 @@ test('the roll-call answers with a slug only from a channel page, and offers wha
 });
 
 test('the header toggle adds, removes, and offers an undo for each', { tags: ['unit'] }, () => {
-  const { host, state, calls } = makeHost();
+  const { host, state, store, calls } = makeHost();
   const surface = createMultistream(host);
   host.__slug = 'alpha';
 
@@ -410,9 +486,9 @@ test('the header toggle adds, removes, and offers an undo for each', { tags: ['u
   assert.match(calls.toasts.at(-1).message, /Removed alpha from the grid \(0 of 9\)/);
 
   // A full grid refuses rather than silently dropping a channel.
-  state.multistream = normalizeMultistream({
+  store.set('kick-focus:multistream', normalizeMultistream({
     streams: Array.from({ length: MULTISTREAM_MAX }, (_v, index) => `chan${index}`),
-  });
+  }));
   surface.toggleCurrentChannelInMulti();
   assert.equal(calls.toasts.at(-1).isError, true);
   assert.match(calls.toasts.at(-1).message, /full at 9 of 9/);
@@ -557,7 +633,7 @@ test('closing the grid hands focus back to whatever opened it', { tags: ['unit']
 
 test('the card chip toggles one channel and refuses a full grid', { tags: ['unit'] }, () => {
   const painted = [];
-  const { host, state, calls } = makeHost({ host: { syncCardMultiState: () => painted.push(true) } });
+  const { host, state, store, calls } = makeHost({ host: { syncCardMultiState: () => painted.push(true) } });
   const surface = createMultistream(host);
 
   const added = surface.toggleMultistreamSlug('https://kick.com/alpha/videos');
@@ -572,9 +648,9 @@ test('the card chip toggles one channel and refuses a full grid', { tags: ['unit
   assert.deepEqual(surface.toggleMultistreamSlug('https://example.com/alpha'),
     { ok: false, error: 'Enter a Kick channel name or a kick.com link.' });
 
-  state.multistream = normalizeMultistream({
+  store.set('kick-focus:multistream', normalizeMultistream({
     streams: Array.from({ length: MULTISTREAM_MAX }, (_v, index) => `chan${index}`),
-  });
+  }));
   const full = surface.toggleMultistreamSlug('alpha');
   assert.equal(full.ok, false);
   assert.match(full.error, /full at 9 of 9/);

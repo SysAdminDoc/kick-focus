@@ -3423,6 +3423,8 @@ const {
   chatPoppedOut,
   closeChatWindow,
   closeMultistream,
+  commitMultistream,
+  commitMultistreamLayout,
   popOutChat,
   installMultistreamStorageSync,
   multistreamOpen,
@@ -3430,6 +3432,7 @@ const {
   multistreamSyncChannel,
   openMultistream,
   persistMultistream,
+  removeMultistreamLayout,
   renderMultistream,
   toggleCurrentChannelInMulti,
   toggleMultistreamSlug,
@@ -9569,6 +9572,8 @@ const TRANSLATIONS = {
   'The grid is full at {max} channels.': ['La cuadrícula está llena con {max} canales.', 'A grade está cheia com {max} canais.'],
   '{name} now has the audio': ['{name} tiene ahora el audio', '{name} tem agora o áudio'],
   'Loaded board {name}': ['Se cargó el tablero {name}', 'Painel {name} carregado'],
+  'Removed board {name}.': ['Se eliminó el tablero {name}.', 'O painel {name} foi removido.'],
+  'Restored board {name}.': ['Se restauró el tablero {name}.', 'O painel {name} foi restaurado.'],
   'Copied a link to {name}.': ['Se copió un enlace a {name}.', 'Link para {name} copiado.'],
   'Opened a shared board with {count} {word}.': ['Se abrió un tablero compartido con {count} {word}.', 'Foi aberto um painel compartilhado com {count} {word}.'],
   'The shared board replaced {count} {word} you had collected.': ['El tablero compartido reemplazó {count} {word} que habías reunido.', 'O painel compartilhado substituiu {count} {word} que você tinha reunido.'],
@@ -10599,7 +10604,7 @@ function buildInterface() {
   }
   shadow.querySelector('[data-kf-multistream-chat-select]')?.addEventListener('change', (event) => {
     state.multistream = normalizeMultistream({ ...state.multistream, chat: event.target.value });
-    persistMultistream();
+    persistMultistream(['chat']);
     renderMultistream();
   });
   renderSettingsPage();
@@ -11492,9 +11497,10 @@ function onInterfaceClick(event) {
     if (input) { input.value = ''; input.focus(); }
   }
   else if (action === 'multistream-remove') {
-    state.multistream = removeMultistreamChannel(state.multistream, actionTarget.dataset.slug);
+    commitMultistream([], [actionTarget.dataset.slug]);
     state.multistreamError = '';
-    persistMultistream();
+    syncHeaderMultiState();
+    syncCardMultiState();
     renderMultistream();
   }
   else if (action === 'multistream-focus') {
@@ -11508,27 +11514,27 @@ function onInterfaceClick(event) {
       focus: slug,
       chat: followChat ? slug : state.multistream.chat,
     });
-    persistMultistream();
+    persistMultistream(['focus', 'chat']);
     renderMultistream();
     announce(trf('{name} now has the audio', { name: slug }));
   }
   else if (action === 'multistream-toggle-pause') {
     const paused = !state.multistream.paused;
     state.multistream = normalizeMultistream({ ...state.multistream, paused });
-    persistMultistream();
+    persistMultistream(['paused']);
     renderMultistream();
     announce(paused ? 'All streams paused' : 'All streams playing');
   }
   else if (action === 'multistream-toggle-mute') {
     const muted = !state.multistream.muted;
     state.multistream = normalizeMultistream({ ...state.multistream, muted });
-    persistMultistream();
+    persistMultistream(['muted']);
     renderMultistream();
     announce(muted ? 'All streams muted' : 'Audio restored to the focused stream');
   }
   else if (action === 'multistream-toggle-merged') {
     state.multistream = normalizeMultistream({ ...state.multistream, mergedChat: !state.multistream.mergedChat });
-    persistMultistream();
+    persistMultistream(['mergedChat']);
     renderMultistream();
     announce(state.multistream.mergedChat ? 'Showing one merged chat for every channel in the grid' : 'Showing the focused channel chat');
   }
@@ -11539,27 +11545,28 @@ function onInterfaceClick(event) {
   }
   else if (action === 'multistream-toggle-chat') {
     state.multistream = normalizeMultistream({ ...state.multistream, showChat: !state.multistream.showChat });
-    persistMultistream();
+    persistMultistream(['showChat']);
     renderMultistream();
   }
   else if (action === 'multistream-save') {
     const input = state.shadow.querySelector('[data-kf-multistream-layout-name]');
+    commitMultistream();
     const result = saveMultistreamLayout(state.multistream, input?.value || '');
     state.multistreamError = result.ok ? '' : result.error;
     if (result.ok) {
-      state.multistream = result.value;
-      persistMultistream();
+      commitMultistreamLayout(result.value.layouts[0]);
       if (input) input.value = '';
       showToast('Board saved.');
     }
     renderMultistream();
   }
   else if (action === 'multistream-load') {
+    commitMultistream();
     const layout = state.multistream.layouts.find((entry) => entry.name === actionTarget.dataset.layout);
     if (layout) {
       state.multistream = normalizeMultistream({ ...state.multistream, streams: layout.streams, focus: layout.streams[0], chat: layout.streams[0] });
       state.multistreamError = '';
-      persistMultistream();
+      persistMultistream(['streams', 'focus', 'chat']);
       renderMultistream();
       announce(trf('Loaded board {name}', { name: layout.name }));
     }
@@ -11577,11 +11584,20 @@ function onInterfaceClick(event) {
   }
   else if (action === 'multistream-delete-layout') {
     const name = actionTarget.dataset.layout;
-    state.multistream = normalizeMultistream({
-      ...state.multistream,
-      layouts: state.multistream.layouts.filter((entry) => entry.name !== name),
-    });
-    persistMultistream();
+    const removed = removeMultistreamLayout(name);
+    if (removed.ok) {
+      showToast(trf('Removed board {name}.', { name: removed.layout.name }), false, [
+        {
+          label: 'Undo',
+          onClick: () => {
+            commitMultistreamLayout(removed.layout);
+            renderMultistream();
+            announce(trf('Restored board {name}.', { name: removed.layout.name }));
+          },
+        },
+      ]);
+      announce(trf('Removed board {name}.', { name: removed.layout.name }));
+    }
     renderMultistream();
   }
   else if (action === 'dismiss-storage-alert') {
@@ -14003,6 +14019,7 @@ function installCompanionBridge() {
 function openSharedLayoutFromUrl() {
   const shared = parseMultistreamLink(location.href);
   if (!shared.length) return;
+  commitMultistream();
   // A shared link replaces the grid outright. Someone half way through
   // collecting channels deserves to be told, and to be able to get them back.
   const previous = state.multistream;
@@ -14014,7 +14031,7 @@ function openSharedLayoutFromUrl() {
     chat: shared[0],
   });
   state.multistreamError = '';
-  persistMultistream();
+  persistMultistream(['streams', 'focus', 'chat']);
   try {
     const url = new URL(location.href);
     url.searchParams.delete(MULTISTREAM_LINK_PARAM);
@@ -14029,8 +14046,15 @@ function openSharedLayoutFromUrl() {
     {
       label: 'Undo',
       onClick: () => {
-        state.multistream = previous;
-        persistMultistream();
+        const restore = previous.streams.filter((slug) => !shared.some((entry) => entry.toLowerCase() === slug.toLowerCase()));
+        const remove = shared.filter((slug) => !previous.streams.some((entry) => entry.toLowerCase() === slug.toLowerCase()));
+        commitMultistream(restore, remove);
+        state.multistream = normalizeMultistream({
+          ...state.multistream,
+          focus: previous.focus,
+          chat: previous.chat,
+        });
+        persistMultistream(['focus', 'chat']);
         syncHeaderMultiState();
         syncCardMultiState();
         renderMultistream();

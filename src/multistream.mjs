@@ -75,20 +75,77 @@ export function createMultistream(host) {
 
   let syncChannel = null;
 
-  function persistMultistream() {
+  /**
+   * Persist only the presentation fields this gesture changed.
+   *
+   * Membership and saved boards are shared across every Kick tab. Rewriting
+   * the whole local snapshot for a pause or chat change resurrects channels a
+   * different tab removed and drops channels it added. Re-read first, then
+   * patch the named fields onto that latest value.
+   */
+  function persistMultistream(fields = []) {
+    const latest = normalizeMultistream(gmGet(MULTISTREAM_KEY, state.multistream));
+    const local = normalizeMultistream(state.multistream);
+    const next = { ...latest };
+    const writable = new Set(['streams', 'focus', 'chat', 'showChat', 'paused', 'muted', 'mergedChat']);
+    for (const field of Array.isArray(fields) ? fields : []) {
+      if (writable.has(field)) next[field] = local[field];
+    }
+    state.multistream = normalizeMultistream(next);
     gmSet(MULTISTREAM_KEY, state.multistream);
+    return state.multistream;
   }
 
   // Re-read, merge, write. The multi-stream store is shared across tabs, so a
   // blind write drops channels another tab added since this tab booted. This
   // applies this tab's add/remove on top of the latest stored value.
   function commitMultistream(added = [], removed = []) {
-    state.multistream = mergeMultistream(gmGet(MULTISTREAM_KEY, {}), state.multistream, added, removed);
+    const latest = normalizeMultistream(gmGet(MULTISTREAM_KEY, state.multistream));
+    // Membership operations must not carry a stale tab's order or presentation
+    // back into storage. The latest stored value is both the base and the view;
+    // only this operation's explicit add/remove is applied to it.
+    state.multistream = mergeMultistream(latest, latest, added, removed);
     gmSet(MULTISTREAM_KEY, state.multistream);
     // A no-op commit is a deliberate re-read (on open, or after a storage
     // event) and has nothing to tell anyone.
     if (added.length || removed.length) broadcastMultistream(added, removed);
     return state.multistream;
+  }
+
+  /** Save or replace exactly one named board against the latest shared list. */
+  function commitMultistreamLayout(layout) {
+    const candidate = normalizeMultistream({ layouts: [layout] }).layouts[0];
+    const latest = normalizeMultistream(gmGet(MULTISTREAM_KEY, state.multistream));
+    if (!candidate) {
+      state.multistream = latest;
+      return { ok: false, layout: null, value: latest };
+    }
+    state.multistream = normalizeMultistream({
+      ...latest,
+      layouts: [
+        candidate,
+        ...latest.layouts.filter((entry) => entry.name.toLowerCase() !== candidate.name.toLowerCase()),
+      ],
+    });
+    gmSet(MULTISTREAM_KEY, state.multistream);
+    return { ok: true, layout: candidate, value: state.multistream };
+  }
+
+  /** Remove exactly one named board without rewriting the rest of the list. */
+  function removeMultistreamLayout(name) {
+    const latest = normalizeMultistream(gmGet(MULTISTREAM_KEY, state.multistream));
+    const key = typeof name === 'string' ? name.toLowerCase() : '';
+    const layout = latest.layouts.find((entry) => entry.name.toLowerCase() === key) || null;
+    if (!layout) {
+      state.multistream = latest;
+      return { ok: false, layout: null, value: latest };
+    }
+    state.multistream = normalizeMultistream({
+      ...latest,
+      layouts: latest.layouts.filter((entry) => entry.name.toLowerCase() !== key),
+    });
+    gmSet(MULTISTREAM_KEY, state.multistream);
+    return { ok: true, layout, value: state.multistream };
   }
 
   /**
@@ -134,11 +191,12 @@ export function createMultistream(host) {
    * that this tab already saw through a storage event — lands in the same place.
    * Nothing is written back, because the tab that sent it already did.
    */
-  function applyRemoteMultistream(added = [], removed = []) {
-    const addList = (Array.isArray(added) ? added : []).filter((slug) => typeof slug === 'string');
-    const removeList = (Array.isArray(removed) ? removed : []).filter((slug) => typeof slug === 'string');
-    const next = mergeMultistream(gmGet(MULTISTREAM_KEY, {}), state.multistream, addList, removeList);
-    if (JSON.stringify(next.streams) === JSON.stringify(state.multistream.streams)) return false;
+  function applyRemoteMultistream() {
+    // The sender writes before it broadcasts. Reading the store is therefore
+    // both safer than trusting the message and immune to applying an operation
+    // twice after a storage event and a BroadcastChannel notification.
+    const next = normalizeMultistream(gmGet(MULTISTREAM_KEY, state.multistream));
+    if (JSON.stringify(next) === JSON.stringify(state.multistream)) return false;
     state.multistream = next;
     syncHeaderMultiState();
     syncCardMultiState();
@@ -164,6 +222,7 @@ export function createMultistream(host) {
   function toggleMultistreamSlug(raw) {
     const slug = parseChannelInput(raw);
     if (!slug) return { ok: false, error: 'Enter a Kick channel name or a kick.com link.' };
+    commitMultistream();
     const inGrid = state.multistream.streams.some((entry) => entry.toLowerCase() === slug.toLowerCase());
     if (!inGrid && state.multistream.streams.length >= MULTISTREAM_MAX) {
       return { ok: false, error: `Multi-stream is full at ${MULTISTREAM_MAX} of ${MULTISTREAM_MAX}.` };
@@ -241,7 +300,12 @@ export function createMultistream(host) {
   }
 
   function addPresenceOffer() {
-    const offer = state.presence.offer.slice();
+    commitMultistream();
+    const offer = presenceOffer(
+      mergePresence(state.presence.answers, Date.now()),
+      state.multistream.streams,
+      MULTISTREAM_MAX,
+    );
     if (!offer.length) return;
     const result = commitMultistream(offer, []);
     renderMultistream();
@@ -896,10 +960,10 @@ export function createMultistream(host) {
       renderMultistream();
       return;
     }
+    commitMultistream();
     const result = addMultistreamChannel(state.multistream, slug);
     state.multistreamError = result.ok ? '' : result.error;
     if (result.ok) {
-      state.multistream = result.value;
       // Merge-write so a second tab adding a different channel is not clobbered.
       commitMultistream([slug]);
       syncHeaderMultiState();
@@ -916,6 +980,7 @@ export function createMultistream(host) {
   function toggleCurrentChannelInMulti() {
     const slug = currentChannelSlug();
     if (!slug) return;
+    commitMultistream();
     const inGrid = state.multistream.streams.some((entry) => entry.toLowerCase() === slug.toLowerCase());
     if (inGrid) {
       const result = commitMultistream([], [slug]);
@@ -954,12 +1019,14 @@ export function createMultistream(host) {
     applyRemoteMultistream,
     closeMultistream,
     commitMultistream,
+    commitMultistreamLayout,
     installMultistreamStorageSync,
     multistreamOpen,
     multistreamPresenceChannel,
     multistreamSyncChannel,
     openMultistream,
     persistMultistream,
+    removeMultistreamLayout,
     refreshMultistreamLive,
     refreshMultistreamPlayback,
     renderMultistream,

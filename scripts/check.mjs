@@ -393,9 +393,9 @@ const organizerPatchesInPlace = (bundle) => /function patchStickerTileStates/.te
  * stops two tabs echoing an op at each other.
  */
 const convergenceRereads = (bundle) =>
-  /function commitMultistream[\s\S]{0,400}?mergeMultistream\(gmGet\(MULTISTREAM_KEY/.test(bundle)
+  /function commitMultistream[\s\S]{0,400}?gmGet\(MULTISTREAM_KEY/.test(bundle)
   && /function openMultistream[\s\S]{0,600}?commitMultistream\(\);/.test(bundle)
-  && /function applyRemoteMultistream[\s\S]{0,600}?mergeMultistream\(gmGet\(MULTISTREAM_KEY/.test(bundle);
+  && /function applyRemoteMultistream[\s\S]{0,600}?gmGet\(MULTISTREAM_KEY/.test(bundle);
 const remoteApplyNeverWrites = (bundle) => {
   const start = bundle.indexOf('function applyRemoteMultistream');
   if (start === -1) return false;

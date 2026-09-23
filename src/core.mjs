@@ -4481,14 +4481,6 @@ export function addMultistreamChannel(value, slug) {
   return { ok: true, value: normalizeMultistream({ ...state, streams, focus: state.focus || cleaned }) };
 }
 
-export function removeMultistreamChannel(value, slug) {
-  const state = normalizeMultistream(value);
-  const streams = state.streams.filter((entry) => entry.toLowerCase() !== String(slug).toLowerCase());
-  // Focus and chat fall through to normalizeMultistream, which re-points them
-  // at a surviving stream rather than leaving the grid muted and chatless.
-  return normalizeMultistream({ ...state, streams });
-}
-
 export function saveMultistreamLayout(value, name) {
   const state = normalizeMultistream(value);
   const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);

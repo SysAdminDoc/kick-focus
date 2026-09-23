@@ -18,6 +18,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- Multi-stream tabs now re-read the shared board before checking capacity or changing membership. Pause, mute, chat, focus, and visibility updates patch only the field that changed, so a stale tab can no longer drop a channel, restore one another tab removed, or evict the ninth channel.
+
+- Saving and removing multi-stream boards now changes one named board at a time. Boards created in another tab survive, and removing a saved board offers Undo.
+
 - A tab that has loaded the full emote library no longer replaces it with the bounded startup seed when another tab writes. The next favorite, group, or removal change now keeps every database-backed emote instead of making the partial seed permanent.
 
 - Emote Undo now takes its recovery point after a contested command has been replayed on the other tab's state. If the library changes again before Undo is pressed, the action stops and reloads the current state instead of erasing the newer change.
