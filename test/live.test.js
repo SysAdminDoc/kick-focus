@@ -53,6 +53,7 @@ function makeHost(overrides = {}) {
     },
     live: {
       slug: '', channel: null, catalog: null, catalogSource: 'dom', catalogError: '',
+      realtimeError: '',
       collisions: [], rarity: null, inventory: null, socket: null, socketState: 'offline',
       lastFrameAt: 0, unparsable: 0, subscribed: [], deletions: new Map(), pendingBadges: new Map(),
       reconnectAt: 0, reconnectAttempts: 0, provider: '', providerVerified: true, lastLiveAt: 0,
@@ -138,7 +139,7 @@ globalThis.document = eventMethods({
 test('every function the surface hands back can be called against a stub host', { tags: ['unit'] }, async () => {
   const { host } = makeHost();
   const surface = createLive(host);
-  assert.equal(Object.keys(surface).length, 18);
+  assert.equal(Object.keys(surface).length, 19);
   for (const [name, fn] of Object.entries(surface)) {
     assert.equal(typeof fn, 'function', `${name} is callable`);
   }
@@ -146,6 +147,7 @@ test('every function the surface hands back can be called against a stub host', 
   // module forgot to take would resolve out of the bundle scope in the artifact
   // and be invisible until it ran on someone's machine.
   surface.teardownRealtime();
+  surface.teardownLive();
   surface.refreshLiveDiagnostics();
   surface.replayPendingBadges();
   surface.replayPendingDeletions();
@@ -587,7 +589,7 @@ test('an unusable realtime answer degrades to the page instead of retrying blind
 
   assert.equal(state.live.socket, null, 'nothing is opened against a transport we cannot speak');
   assert.equal(state.live.socketState, 'unsupported');
-  assert.match(state.live.catalogError, /fall back to the page/);
+  assert.match(state.live.realtimeError, /fall back to the page/);
   assert.equal(state.live.apiDrift.length, 1, 'the drift is recorded so it is visible in diagnostics');
   assert.equal(state.live.apiDrift[0].endpoint, 'realtime');
 });
@@ -632,6 +634,241 @@ async function withSocketStub(run) {
 const PUSHER_ANSWER = {
   data: { connections: [{ provider: 'pusher', credentials: { app_key: 'key-1', cluster: 'us2' } }] },
 };
+
+const jsonResponse = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  text: async () => JSON.stringify(body),
+});
+
+test('concurrent channel refreshes share one channel and broker handshake', { tags: ['unit'] }, async () => {
+  const requests = [];
+  let releaseChannel;
+  const { host } = makeHost({
+    pageFetch: (url) => {
+      const value = String(url);
+      requests.push(value);
+      if (/\/api\/v2\/channels\/alpha$/.test(value)) {
+        return new Promise((resolveResponse) => {
+          releaseChannel = () => resolveResponse(jsonResponse({ id: 7, slug: 'alpha', chatroom: { id: 42 } }));
+        });
+      }
+      if (value.includes('/emotes/')) return Promise.resolve(jsonResponse([]));
+      if (value.endsWith('/me')) return Promise.resolve(jsonResponse({ subscription: null }));
+      return Promise.resolve(jsonResponse(PUSHER_ANSWER));
+    },
+  });
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    const first = surface.refreshLiveChannel();
+    const second = surface.refreshLiveChannel();
+    assert.equal(first, second, 'the second caller receives the in-flight refresh');
+    assert.equal(requests.filter((url) => /\/api\/v2\/channels\/alpha$/.test(url)).length, 1);
+
+    releaseChannel();
+    await Promise.all([first, second]);
+
+    assert.equal(requests.filter((url) => /\/api\/v2\/channels\/alpha$/.test(url)).length, 1);
+    assert.equal(requests.filter((url) => url.includes('/emotes/')).length, 1);
+    assert.equal(requests.filter((url) => url.endsWith('/me')).length, 1);
+    assert.equal(requests.length, 4, 'one broker request completes the shared refresh');
+    assert.equal(SocketStub.opened.length, 1);
+    surface.teardownLive();
+  });
+});
+
+test('an in-flight refresh reconciles a changed feature intent without repeating channel identity', { tags: ['unit'] }, async () => {
+  const requests = [];
+  let releaseChannel;
+  const { host, state } = makeHost({
+    pageFetch: (url) => {
+      const value = String(url);
+      requests.push(value);
+      if (/\/api\/v2\/channels\/alpha$/.test(value)) {
+        return new Promise((resolveResponse) => {
+          releaseChannel = () => resolveResponse(jsonResponse({ id: 7, slug: 'alpha', chatroom: { id: 42 } }));
+        });
+      }
+      return Promise.resolve(jsonResponse(PUSHER_ANSWER));
+    },
+  });
+  state.settings.content.liveEmoteCatalog = false;
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    const first = surface.refreshLiveChannel();
+    state.settings.content.liveChatEvents = false;
+    const reconciled = surface.refreshLiveChannel();
+    assert.equal(first, reconciled, 'the changed intent still shares the pending identity read');
+
+    releaseChannel();
+    await first;
+
+    assert.equal(requests.filter((url) => /\/api\/v2\/channels\/alpha$/.test(url)).length, 1);
+    assert.equal(SocketStub.opened.length, 0, 'the later disabled state wins before a socket is opened');
+    surface.teardownLive();
+  });
+});
+
+test('suspension short-circuits both channel refresh and realtime connect', { tags: ['unit'] }, async () => {
+  let requests = 0;
+  const { host, state } = makeHost({
+    pageFetch: async () => {
+      requests += 1;
+      return jsonResponse(PUSHER_ANSWER);
+    },
+  });
+  state.runtime = { suspended: true };
+  state.live.channel = { chatroomId: 42, id: 7 };
+
+  const surface = createLive(host);
+  await surface.refreshLiveChannel();
+  assert.equal(await surface.connectRealtime(), false);
+  assert.equal(requests, 0);
+});
+
+test('teardown aborts a pending realtime handshake before it can open a socket', { tags: ['unit'] }, async () => {
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42, id: 7 };
+  let signal;
+  host.pageFetch = (_url, init) => {
+    signal = init.signal;
+    return new Promise(() => {});
+  };
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    const pending = surface.connectRealtime();
+    await Promise.resolve();
+    assert.equal(signal?.aborted, false);
+
+    surface.teardownLive();
+    await pending;
+
+    assert.equal(signal.aborted, true);
+    assert.equal(SocketStub.opened.length, 0);
+    assert.equal(state.live.socket, null);
+  });
+});
+
+test('same-channel refreshes reconcile live feature switches in both directions', { tags: ['unit'] }, async () => {
+  const requests = [];
+  let closed = false;
+  const { host, state } = makeHost({
+    pageFetch: async (url) => {
+      const value = String(url);
+      requests.push(value);
+      if (value.includes('/emotes/')) return jsonResponse([
+        { id: 7, name: 'alpha', slug: 'alpha', emotes: [{ id: 44, name: 'wave' }] },
+      ]);
+      if (value.endsWith('/me')) return jsonResponse({ subscription: null });
+      return jsonResponse(PUSHER_ANSWER);
+    },
+  });
+  state.live.slug = 'alpha';
+  state.live.channel = { slug: 'alpha', chatroomId: 42, id: 7 };
+  state.live.catalog = { emotes: [{ id: 1 }] };
+  state.live.catalogSource = 'api';
+  state.live.socket = { close() { closed = true; } };
+  state.settings.content.liveEmoteCatalog = false;
+  state.settings.content.liveChatEvents = false;
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    await surface.refreshLiveChannel();
+    assert.equal(closed, true, 'turning chat events off closes the existing socket');
+    assert.equal(state.live.catalog, null, 'turning the API catalog off retires its stale answer');
+    assert.equal(requests.length, 0, 'disabling both features costs no request');
+
+    state.settings.content.liveEmoteCatalog = true;
+    state.settings.content.liveChatEvents = true;
+    await surface.refreshLiveChannel();
+
+    assert.equal(state.live.catalogSource, 'api');
+    assert.ok(state.live.socket, 'turning chat events back on opens a new connection');
+    assert.equal(requests.filter((url) => /\/api\/v2\/channels\/alpha$/.test(url)).length, 0,
+      'the known channel identity is reused');
+    assert.equal(requests.filter((url) => url.includes('/emotes/')).length, 1);
+    assert.equal(SocketStub.opened.length, 1);
+    surface.teardownLive();
+  });
+});
+
+test('a failed realtime handshake is cleared so a later attempt can succeed', { tags: ['unit'] }, async () => {
+  const { host, state } = makeHost();
+  state.live.channel = { chatroomId: 42, id: 7 };
+  let attempts = 0;
+  host.pageFetch = async () => {
+    attempts += 1;
+    return attempts === 1 ? jsonResponse({}, 503) : jsonResponse(PUSHER_ANSWER);
+  };
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    assert.equal(await surface.connectRealtime(), false);
+    assert.equal(state.live.socket, null);
+
+    assert.equal(await surface.connectRealtime(), true);
+    assert.equal(attempts, 2);
+    assert.equal(SocketStub.opened.length, 1);
+    surface.teardownLive();
+  });
+});
+
+test('a route change aborts and cannot publish the previous channel response', { tags: ['unit'] }, async () => {
+  let alphaSignal;
+  const { host, state } = makeHost({
+    pageFetch: (url, init) => {
+      const value = String(url);
+      if (/\/api\/v2\/channels\/alpha$/.test(value)) {
+        alphaSignal = init.signal;
+        return new Promise(() => {});
+      }
+      if (/\/api\/v2\/channels\/beta$/.test(value)) {
+        return Promise.resolve(jsonResponse({ id: 8, slug: 'beta', chatroom: { id: 84 } }));
+      }
+      if (value.includes('/emotes/')) return Promise.resolve(jsonResponse([]));
+      if (value.endsWith('/me')) return Promise.resolve(jsonResponse({ subscription: null }));
+      return Promise.resolve(jsonResponse(PUSHER_ANSWER));
+    },
+  });
+  state.settings.content.liveChatEvents = false;
+  const surface = createLive(host);
+  const alpha = surface.refreshLiveChannel();
+  await Promise.resolve();
+  host.__slug = 'beta';
+  const beta = surface.refreshLiveChannel();
+  await Promise.all([alpha, beta]);
+
+  assert.equal(alphaSignal.aborted, true);
+  assert.equal(state.live.slug, 'beta');
+  assert.equal(state.live.channel?.slug, 'beta');
+  surface.teardownLive();
+});
+
+test('a silent single-channel socket is replaced instead of only reported stale', { tags: ['unit'] }, async () => {
+  const { host, state } = makeHost({
+    pageFetch: async () => jsonResponse(PUSHER_ANSWER),
+  });
+  state.settings.content.liveEmoteCatalog = false;
+  state.live.slug = 'alpha';
+  state.live.channel = { slug: 'alpha', chatroomId: 42, id: 7 };
+
+  await withSocketStub(async () => {
+    const surface = createLive(host);
+    await surface.refreshLiveChannel();
+    const first = state.live.socket;
+    first.fire('open');
+    state.live.lastFrameAt = Date.now() - 60_001;
+
+    await surface.refreshLiveChannel();
+
+    assert.equal(SocketStub.opened.length, 2);
+    assert.notEqual(state.live.socket, first);
+    surface.teardownLive();
+  });
+});
 
 function makeMergedClock(start = 10_000) {
   let now = start;
@@ -898,7 +1135,7 @@ test('an unverified transport that never delivered a frame degrades instead of r
 
     state.live.socket.fire('close');
     assert.equal(state.live.socketState, 'unsupported');
-    assert.match(state.live.catalogError, /fall back to the page/);
+    assert.match(state.live.realtimeError, /fall back to the page/);
     assert.equal(state.live.reconnectAt, 0, 'a transport this build cannot speak is not retried in a loop');
     assert.equal(state.live.reconnectAttempts, 0, 'and no attempt is counted against it');
     assert.equal(state.live.apiDrift.at(-1)?.reason, 'unverified-transport-failed');

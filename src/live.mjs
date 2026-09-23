@@ -39,6 +39,7 @@ import {
   normalizeEmoteSets,
   normalizeRealtimeConnection,
   parseRealtimeFrame,
+  REALTIME_SILENCE_MS,
   realtimeChannels,
   realtimeHealth,
   realtimeSubscribeFrame,
@@ -117,6 +118,14 @@ export function createLive(host) {
     reconcileStickerSubscriptions = () => false,
     renderStickerOrganizer = () => {},
   } = host;
+
+  let refreshGeneration = 0;
+  let refreshPending = null;
+  let realtimeGeneration = 0;
+  let realtimePending = null;
+  let reconciledSlug = '';
+  let catalogEnabled = false;
+  let chatEnabled = false;
 
   /**
    * The bearer token Kick's own page sends, read from its own cookie.
@@ -268,43 +277,130 @@ export function createLive(host) {
    * public artwork is not account entitlement. API-only channel entries remain
    * channel-only or locked until the native picker corroborates access.
    */
-  async function refreshLiveChannel() {
+  function refreshLiveChannel() {
+    if (state.runtime?.suspended) return Promise.resolve();
     const slug = currentChannelSlug();
-    if (!slug) {
-      teardownRealtime();
-      state.live.slug = '';
-      state.live.channel = null;
-      return;
+    const key = `${slug}\n${currentVodId() || ''}`;
+    const content = state.settings.content;
+    const intent = `${key}\n${Number(content.liveEmoteCatalog)}${Number(content.liveChatEvents)}${Number(content.showVodExpiry)}${Number(content.showEmoteRarity)}`;
+    if (refreshPending?.key === key) {
+      // A setting or route observer can ask again while the first read is in
+      // flight. Share the network work, then make one cheap reconciliation pass
+      // so a setting changed during that await is not missed.
+      if (refreshPending.intent !== intent) {
+        refreshPending.intent = intent;
+        refreshPending.rerun = true;
+      }
+      return refreshPending.promise;
     }
-    if (state.live.slug === slug && state.live.channel) {
-      // Same channel, different recording. Opening a VOD from the channel's own
-      // list is an SPA navigation that changes only the last path segment, so
-      // nothing below re-runs and the retention read has to be reached here or
-      // it never happens at all.
-      await refreshVodRetention(slug);
-      return;
-    }
-    teardownRealtime();
-    state.live.slug = slug;
-    state.live.channel = null;
+
+    refreshPending?.controller.abort();
+    const generation = ++refreshGeneration;
+    const controller = new AbortController();
+    const pending = { key, intent, generation, controller, rerun: false, promise: null };
+    refreshPending = pending;
+    pending.promise = (async () => {
+      do {
+        pending.rerun = false;
+        await runLiveRefresh(slug, generation, controller.signal);
+      } while (pending.rerun
+        && generation === refreshGeneration
+        && !state.runtime?.suspended
+        && `${currentChannelSlug()}\n${currentVodId() || ''}` === key);
+    })().finally(() => {
+      if (refreshPending === pending) refreshPending = null;
+    });
+    return pending.promise;
+  }
+
+  function liveRefreshIsCurrent(slug, generation) {
+    return generation === refreshGeneration
+      && currentChannelSlug() === slug
+      && !state.runtime?.suspended;
+  }
+
+  function clearApiCatalog() {
     state.live.catalog = null;
     state.live.catalogSource = 'dom';
-    state.live.catalogError = '';
     state.live.collisions = [];
     state.live.rarity = null;
     state.live.inventory = null;
     state.live.standing = { known: false, subscribed: null, following: null, moderator: null };
+    if (/emote (?:API|payload)/i.test(state.live.catalogError)) state.live.catalogError = '';
+  }
+
+  async function reconcileLiveFeatures(slug, generation, signal) {
+    const isCurrent = () => liveRefreshIsCurrent(slug, generation);
+    const channelChanged = reconciledSlug !== slug;
+    const wantsCatalog = state.settings.content.liveEmoteCatalog;
+    const wantsChat = state.settings.content.liveChatEvents;
+    const catalogChanged = channelChanged || catalogEnabled !== wantsCatalog;
+    const chatChanged = channelChanged || chatEnabled !== wantsChat;
+    reconciledSlug = slug;
+    catalogEnabled = wantsCatalog;
+    chatEnabled = wantsChat;
+
+    // Same channel, different recording. Opening a VOD from the channel's own
+    // list is an SPA navigation that changes only the last path segment.
+    await refreshVodRetention(slug, isCurrent, signal);
+    if (!isCurrent()) return;
+
+    if (!wantsCatalog) clearApiCatalog();
+    else if (catalogChanged || (!state.live.catalog && !state.live.catalogError)) {
+      await refreshEmoteCatalog(slug, isCurrent, signal);
+    } else {
+      state.live.collisions = state.settings.content.warnShadowedEmotes
+        ? findShadowedNames(state.live.catalog?.emotes || [])
+        : [];
+      if (!state.settings.content.showEmoteRarity) {
+        state.live.rarity = null;
+        state.live.inventory = null;
+      }
+    }
+    if (!isCurrent()) return;
+
+    const stale = Boolean(state.live.socket
+      && state.live.lastFrameAt
+      && Date.now() - state.live.lastFrameAt > REALTIME_SILENCE_MS);
+    if (!wantsChat) {
+      if (state.live.socket || realtimePending || state.live.reconnectAt) teardownRealtime();
+    } else if (chatChanged || stale) {
+      if (stale) teardownRealtime();
+      await connectRealtime();
+    }
+    refreshLiveDiagnostics();
+  }
+
+  async function runLiveRefresh(slug, generation, signal) {
+    const isCurrent = () => liveRefreshIsCurrent(slug, generation);
+    if (!slug) {
+      teardownRealtime();
+      state.live.slug = '';
+      state.live.channel = null;
+      reconciledSlug = '';
+      catalogEnabled = false;
+      chatEnabled = false;
+      return;
+    }
+    if (state.live.slug === slug && state.live.channel) {
+      await reconcileLiveFeatures(slug, generation, signal);
+      return;
+    }
+
+    teardownRealtime();
+    state.live.slug = slug;
+    state.live.channel = null;
+    clearApiCatalog();
+    state.live.catalogError = '';
     state.live.vod = null;
 
-    // The retention chip needs this read too — for the channel's id and its
-    // `verified` flag — so it has to be able to ask for it. Still free on a
-    // channel page, and free on a VOD when the setting is off: the guard is the
-    // route and the setting together, not the setting alone.
+    // The retention chip needs this read too for the channel id and verified
+    // flag. A plain channel with all three live features off costs nothing.
     const wantsVodDate = state.settings.content.showVodExpiry && Boolean(currentVodId());
     if (!state.settings.content.liveEmoteCatalog && !state.settings.content.liveChatEvents && !wantsVodDate) return;
 
-    const channelResponse = await kickFetchJson(endpoints.channel(slug));
-    if (state.live.slug !== slug) return; // navigated away mid-flight
+    const channelResponse = await kickFetchJson(endpoints.channel(slug), { signal });
+    if (!isCurrent()) return;
     if (!channelResponse.ok) {
       state.live.catalogError = `Kick's channel API ${describeKickFetchFailure(channelResponse.status)}.`;
       refreshLiveDiagnostics();
@@ -318,10 +414,15 @@ export function createLive(host) {
       return;
     }
 
-    await refreshVodRetention(slug);
-    if (state.settings.content.liveEmoteCatalog) await refreshEmoteCatalog(slug);
-    if (state.settings.content.liveChatEvents) connectRealtime();
-    refreshLiveDiagnostics();
+    await reconcileLiveFeatures(slug, generation, signal);
+  }
+
+  function teardownLive() {
+    refreshGeneration += 1;
+    const pending = refreshPending;
+    refreshPending = null;
+    pending?.controller.abort();
+    teardownRealtime();
   }
 
   /**
@@ -333,7 +434,7 @@ export function createLive(host) {
    * simply not in the returned window all leave `state.live.vod` null, and the
    * surface renders nothing rather than guessing a deadline.
    */
-  async function refreshVodRetention(slug) {
+  async function refreshVodRetention(slug, isCurrent = () => state.live.slug === slug, signal) {
     if (!state.settings.content.showVodExpiry) {
       state.live.vod = null;
       return;
@@ -349,8 +450,8 @@ export function createLive(host) {
     state.live.vod = null;
     const channelId = state.live.channel?.id;
     if (!channelId) return;
-    const response = await kickFetchJson(endpoints.channelVideos(channelId));
-    if (state.live.slug !== slug) return; // navigated away mid-flight
+    const response = await kickFetchJson(endpoints.channelVideos(channelId), { signal });
+    if (!isCurrent() || currentVodId() !== id) return;
     if (!response.ok) return;
     const videos = normalizeChannelVideos(response.body);
     if (!videos) {
@@ -372,8 +473,8 @@ export function createLive(host) {
    * null subscription as "unknown", never as "denied", which is the difference
    * between not knowing and greying out an emote the user owns.
    */
-  async function readChannelStanding(slug) {
-    const response = await kickFetchJson(endpoints.channelMe(slug));
+  async function readChannelStanding(slug, signal) {
+    const response = await kickFetchJson(endpoints.channelMe(slug), { signal });
     if (!response.ok) return { known: false, subscribed: null, following: null, moderator: null };
     const body = response.body && typeof response.body === 'object' ? response.body : null;
     if (!body) {
@@ -388,12 +489,12 @@ export function createLive(host) {
     };
   }
 
-  async function refreshEmoteCatalog(slug) {
+  async function refreshEmoteCatalog(slug, isCurrent = () => state.live.slug === slug, signal) {
     const [response, standing] = await Promise.all([
-      kickFetchJson(endpoints.emoteSets(slug), { credentials: 'include' }),
-      readChannelStanding(slug),
+      kickFetchJson(endpoints.emoteSets(slug), { credentials: 'include', signal }),
+      readChannelStanding(slug, signal),
     ]);
-    if (state.live.slug !== slug) return;
+    if (!isCurrent() || !state.settings.content.liveEmoteCatalog) return;
     state.live.standing = standing;
     if (!response.ok) {
       state.live.catalogError = `Kick's emote API ${describeKickFetchFailure(response.status)}; using the picker instead.`;
@@ -444,7 +545,7 @@ export function createLive(host) {
     // is off, so repaint as soon as the account catalog has been reconciled.
     renderStickerOrganizer();
 
-    if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug);
+    if (state.settings.content.showEmoteRarity) await refreshCollectibleRarity(slug, isCurrent, signal);
     refreshLiveDiagnostics();
   }
 
@@ -454,10 +555,10 @@ export function createLive(host) {
    * Anonymous sessions get 403 here, which is expected and not an error worth
    * reporting: the whole point is that this is the user's own inventory.
    */
-  async function refreshCollectibleRarity(slug) {
+  async function refreshCollectibleRarity(slug, isCurrent = () => state.live.slug === slug, signal) {
     if (!state.live.catalog?.emotes.some((emote) => emote.collectible)) return;
-    const response = await kickFetchJson(endpoints.collectibles());
-    if (state.live.slug !== slug || !response.ok) return;
+    const response = await kickFetchJson(endpoints.collectibles(), { signal });
+    if (!isCurrent() || !state.settings.content.showEmoteRarity || !response.ok) return;
     const cards = Array.isArray(response.body?.data) ? response.body.data
       : (Array.isArray(response.body) ? response.body : []);
     if (!cards.length) return;
@@ -513,6 +614,10 @@ export function createLive(host) {
   // -------------------------------------------------------------------------
 
   function teardownRealtime() {
+    realtimeGeneration += 1;
+    const pending = realtimePending;
+    realtimePending = null;
+    pending?.controller.abort();
     clearTimeout(state.live.reconnectAt);
     state.live.reconnectAt = 0;
     const socket = state.live.socket;
@@ -522,6 +627,7 @@ export function createLive(host) {
     state.live.provider = '';
     state.live.providerVerified = true;
     state.live.lastLiveAt = 0;
+    state.live.realtimeError = '';
     try { socket?.close(); } catch { /* already gone */ }
   }
 
@@ -534,26 +640,58 @@ export function createLive(host) {
    * not — so the key is never written in this source, and an unrecognised
    * provider degrades to the DOM path rather than guessing.
    */
-  async function connectRealtime() {
+  function connectRealtime() {
     const channel = state.live.channel;
-    if (!channel?.chatroomId || state.live.socket) return;
+    if (!channel?.chatroomId
+      || state.live.socket
+      || !state.settings.content.liveChatEvents
+      || state.runtime?.suspended) return Promise.resolve(false);
+    if (realtimePending?.channel === channel) return realtimePending.promise;
+    realtimePending?.controller.abort();
+    clearTimeout(state.live.reconnectAt);
+    state.live.reconnectAt = 0;
+    const generation = ++realtimeGeneration;
+    const controller = new AbortController();
+    const pending = { channel, generation, controller, promise: null };
+    realtimePending = pending;
+    pending.promise = connectRealtimeAttempt(channel, generation, controller.signal)
+      .finally(() => {
+        if (realtimePending === pending) realtimePending = null;
+      });
+    return pending.promise;
+  }
+
+  function realtimeAttemptIsCurrent(channel, generation) {
+    return generation === realtimeGeneration
+      && state.live.channel === channel
+      && state.settings.content.liveChatEvents
+      && !state.runtime?.suspended;
+  }
+
+  async function connectRealtimeAttempt(channel, generation, signal) {
     const clientId = crypto.randomUUID();
-    const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId));
-    if (!response.ok || state.live.channel !== channel) return;
+    const response = await kickFetchJson(endpoints.realtimeChat(channel.chatroomId, clientId), { signal });
+    if (!realtimeAttemptIsCurrent(channel, generation)) return false;
+    if (!response.ok) {
+      state.live.socketState = 'offline';
+      scheduleRealtimeReconnect();
+      return false;
+    }
 
     const connection = normalizeRealtimeConnection(response.body);
     if (!connection.ok) {
       state.live.socketState = 'unsupported';
-      state.live.catalogError = connection.reason === 'unsupported-provider'
+      state.live.realtimeError = connection.reason === 'unsupported-provider'
         ? `Kick switched realtime provider to ${connection.offered.join(', ')}; chat features fall back to the page.`
         : 'Kick did not return usable realtime credentials; chat features fall back to the page.';
       recordApiDrift('realtime', connection.reason, connection.offered?.join(', '));
       refreshLiveDiagnostics();
-      return;
+      return false;
     }
 
     state.live.provider = connection.provider;
     state.live.providerVerified = connection.verified;
+    state.live.realtimeError = '';
     let socket;
     try {
       // The transport owns the URL; everything below is protocol, shared by all
@@ -562,13 +700,19 @@ export function createLive(host) {
       socket = new WebSocket(connection.transport.socketUrl(connection));
     } catch {
       state.live.socketState = 'offline';
-      return;
+      scheduleRealtimeReconnect();
+      return false;
+    }
+    if (!realtimeAttemptIsCurrent(channel, generation)) {
+      try { socket.close(); } catch { /* already gone */ }
+      return false;
     }
     state.live.socket = socket;
     state.live.socketState = 'connecting';
     state.live.unparsable = 0;
 
     socket.addEventListener('open', () => {
+      if (state.live.socket !== socket || generation !== realtimeGeneration) return;
       state.live.socketState = 'open';
       state.live.lastFrameAt = Date.now();
       state.live.reconnectAttempts = 0;
@@ -582,7 +726,9 @@ export function createLive(host) {
       }
       refreshLiveDiagnostics();
     });
-    socket.addEventListener('message', onRealtimeFrame);
+    socket.addEventListener('message', (event) => {
+      if (state.live.socket === socket && generation === realtimeGeneration) onRealtimeFrame(event);
+    });
     socket.addEventListener('close', () => {
       if (state.live.socket !== socket) return;
       state.live.socket = null;
@@ -592,14 +738,17 @@ export function createLive(host) {
       // features broken silently; degrading to the DOM path says so instead.
       if (!state.live.providerVerified && !state.live.lastLiveAt) {
         state.live.socketState = 'unsupported';
-        state.live.catalogError = `Kick's ${connection.transport.label} transport did not connect; chat features fall back to the page.`;
+        state.live.realtimeError = `Kick's ${connection.transport.label} transport did not connect; chat features fall back to the page.`;
         recordApiDrift('realtime', 'unverified-transport-failed', connection.transport.id);
         refreshLiveDiagnostics();
         return;
       }
       scheduleRealtimeReconnect();
     });
-    socket.addEventListener('error', () => { state.live.socketState = 'error'; });
+    socket.addEventListener('error', () => {
+      if (state.live.socket === socket && generation === realtimeGeneration) state.live.socketState = 'error';
+    });
+    return true;
   }
 
   function scheduleRealtimeReconnect() {
@@ -607,7 +756,10 @@ export function createLive(host) {
     const delay = REALTIME_BACKOFF_MS[Math.min(state.live.reconnectAttempts, REALTIME_BACKOFF_MS.length - 1)];
     state.live.reconnectAttempts += 1;
     clearTimeout(state.live.reconnectAt);
-    state.live.reconnectAt = window.setTimeout(connectRealtime, delay);
+    state.live.reconnectAt = window.setTimeout(() => {
+      state.live.reconnectAt = 0;
+      connectRealtime();
+    }, delay);
   }
 
   // -------------------------------------------------------------------------
@@ -1243,6 +1395,7 @@ export function createLive(host) {
     if (state.live.rarity) parts.push(`Rarity resolved for ${state.live.rarity.matched.length} of ${state.live.rarity.total} collectibles.`);
     if (state.live.collisions.length) parts.push(`${state.live.collisions.length} ${plural(state.live.collisions.length, 'emote name shadowed.', 'emote names shadowed.')}`);
     if (state.live.catalogError) parts.push(state.live.catalogError);
+    if (state.live.realtimeError) parts.push(state.live.realtimeError);
     return parts.join(' ');
   }
 
@@ -1264,6 +1417,7 @@ export function createLive(host) {
     refreshLiveDiagnostics,
     replayPendingBadges,
     replayPendingDeletions,
+    teardownLive,
     teardownRealtime,
   };
 }

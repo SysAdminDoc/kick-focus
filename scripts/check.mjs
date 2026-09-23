@@ -1430,6 +1430,8 @@ const checks = [
   })()],
   ['pausing hands Kick back every surface, in an order that can release the page', (() => {
     const region = extractFunction(source, 'clearEnhancedPage');
+    const suspended = region.indexOf('state.runtime.suspended = true');
+    const live = region.indexOf('liveSurface.teardownLive()');
     const grid = region.indexOf('closeMultistream()');
     const separator = region.indexOf('releaseChatSeparator()');
     const release = region.indexOf('releasePageInert()');
@@ -1437,7 +1439,9 @@ const checks = [
     // again, so it kept claiming aria-modal while everything behind it answered
     // the pointer. Releasing before the surfaces close is the same defect in
     // the other order.
-    return grid >= 0 && separator >= 0 && release > grid && release > separator
+    return suspended >= 0 && live > suspended
+      && region.includes('clearTimeout(state.runtime.stickerSearchTimer)')
+      && grid >= 0 && separator >= 0 && release > grid && release > separator
       && extractFunction(source, 'restoreEnhancedPage').includes('syncPageInert()');
   })()],
   ['composer recall is opt-in, session-only, visible, and leaves the keyboard to Kick', (() => {

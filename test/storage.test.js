@@ -146,8 +146,8 @@ test('an oversized library is trimmed by bytes, not only by entry count', { tags
  * This matters because the previous version of the test below measured a
  * ~107 B entry, called it realistic, and concluded the byte budget was never
  * reached. A real record is roughly twice that, so the budget binds long before
- * the 400-entry count does — and when the budget dropped to 50 KB the only
- * thing that changed was the assertion.
+ * the 400-entry count does. Tightening it changes the first-paint slice, while
+ * the database record remains whole.
  */
 const realisticEntry = (index) => ({
   key: `kick:${1730000 + index}`,

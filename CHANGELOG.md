@@ -28,6 +28,10 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - Saving a follow-gated chat emote now finishes its local write before it asks Kick to follow the source channel. A contested tab reloads and retries once, a failed seed write never leaks only into IndexedDB, and Undo only unfollows a channel when that save created the relationship.
 
+- Live channel refreshes and realtime handshakes now share in-flight work. Route changes, disabled settings, and the panic switch cancel stale requests and sockets, while failed or silent connections can recover without opening duplicates.
+
+- The synchronous emote seed now uses a 33 KB byte ceiling. It still holds at least 150 realistic recent entries for first paint, while the complete library remains in IndexedDB, and the smaller cache keeps the userscript plus storage below its injection budget.
+
 - Changing or revoking a remote blocklist feed now keeps its saved approval until the old origin permission has actually been removed. A browser error could previously leave a permission granted with no visible approval to retry, or point the approval at the new feed while the old permission remained.
 
 - The Firefox companion now restores the saved telemetry choice when its event page wakes. Its bridge also ignores unrelated Kick storage writes, and both browser bridges absorb rejected background messages instead of leaking unhandled promise errors.

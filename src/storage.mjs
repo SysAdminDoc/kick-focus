@@ -45,7 +45,7 @@ export const LIBRARY_SEED_LIMIT = 400;
  * length.
  *
  * This is the *binding* limit, not a safety net. A real Kick record serialises
- * to roughly 210 B, so 50 KB is about 240 entries and `LIBRARY_SEED_LIMIT`'s
+ * to roughly 210 B, so 33 KB is about 150 entries and `LIBRARY_SEED_LIMIT`'s
  * 400 is only reachable for unusually short records. That is deliberate: the
  * reserve below the injection ceiling is worth more than the tail of the seed,
  * because the tail is exactly what IndexedDB restores a frame or two later.
@@ -54,7 +54,7 @@ export const LIBRARY_SEED_LIMIT = 400;
  * panel. Change this constant and `test/storage.test.js` will tell you what it
  * costs a realistic library.
  */
-export const LIBRARY_SEED_BYTES = 50_000;
+export const LIBRARY_SEED_BYTES = 33_000;
 
 const libraryUtf8Encoder = new TextEncoder();
 

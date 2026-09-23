@@ -288,6 +288,7 @@ const state = {
     catalog: null,
     catalogSource: 'dom',
     catalogError: '',
+    realtimeError: '',
     collisions: [],
     rarity: null,
     inventory: null,
@@ -5846,6 +5847,7 @@ function renderStickerOrganizer() {
       clearTimeout(state.runtime.stickerSearchTimer);
       state.runtime.stickerSearchTimer = window.setTimeout(() => {
         state.runtime.stickerSearchTimer = 0;
+        if (state.runtime.suspended) return;
         state.runtime.stickerGridAnchor = 0;
         renderStickerOrganizer();
       }, STICKER_SEARCH_DEBOUNCE_MS);
@@ -13063,6 +13065,10 @@ function runSelfCheck() {
 
 function clearEnhancedPage() {
   const root = document.documentElement;
+  // Async storage, search, and live-data work all reads this before publishing.
+  // Mark the pause first so nothing can remount while teardown is in progress.
+  state.runtime.suspended = true;
+  liveSurface.teardownLive();
   state.chatResizeCleanup?.();
   state.chatResizeCleanup = null;
   clearStickerUI();
@@ -13087,6 +13093,8 @@ function clearEnhancedPage() {
   clearKeywordHighlight();
   clearTimeout(state.applyTimer);
   state.applyTimer = 0;
+  clearTimeout(state.runtime.stickerSearchTimer);
+  state.runtime.stickerSearchTimer = 0;
   clearRewardTimer();
   const ownedRewardDialog = rewardDialog();
   if (ownedRewardDialog) closeRewardDialog(ownedRewardDialog, state.reward.restoreFocusTo);
@@ -13140,7 +13148,6 @@ function clearEnhancedPage() {
   // Last, once nothing is open to keep it inert.
   releasePageInert();
   state.profileStatsHost?.remove?.();
-  state.runtime.suspended = true;
   syncQuickButton();
 }
 
