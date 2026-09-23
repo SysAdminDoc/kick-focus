@@ -273,6 +273,72 @@ window.__kickFocusArtifactTest = {
   assert.equal(result.busy, false, 'the gesture always releases its busy state');
 });
 
+test('late blocklist responses cannot publish after a source change or disable', { tags: ['artifact'] }, async () => {
+  const bundle = await readArtifact('dist/kick-focus.user.js');
+  const instrumented = bundle.replace(/\r?\n\}\)\(\);\s*$/, `
+window.__kickFocusBlocklistTest = {
+  state,
+  scheduleRemoteBlocklistSync,
+  REMOTE_BLOCKLIST_KEY,
+};
+})();
+`);
+  assert.notEqual(instrumented, bundle, 'the blocklist test hook was not inserted inside the bundle closure');
+  const pending = new Map();
+  const fetch = (url, init) => new Promise((resolveResponse) => {
+    pending.set(String(url), { init, resolveResponse });
+  });
+  let nextId = 0;
+  const context = makeBootEnvironment({
+    AbortController,
+    crypto: { randomUUID: () => `request-${++nextId}` },
+    fetch,
+  });
+  vm.runInNewContext(instrumented, context, { filename: resolve(root, 'dist/kick-focus.blocklist-test.js') });
+  const hooks = context.window.__kickFocusBlocklistTest;
+  const firstUrl = 'https://lists.example/first.json';
+  const secondUrl = 'https://lists.example/second.json';
+  const response = (url, channel) => ({
+    ok: true,
+    status: 200,
+    url,
+    redirected: false,
+    headers: { get: (name) => (String(name).toLowerCase() === 'content-type' ? 'application/json' : '') },
+    body: null,
+    text: async () => JSON.stringify({ channels: [channel], categories: [], keywords: [] }),
+  });
+
+  hooks.state.settings.content.blocklistSubscription = true;
+  hooks.state.settings.content.blocklistUrl = firstUrl;
+  hooks.scheduleRemoteBlocklistSync(true);
+  assert.equal(pending.get(firstUrl)?.init.redirect, 'error');
+
+  hooks.state.settings.content.blocklistUrl = secondUrl;
+  hooks.scheduleRemoteBlocklistSync(true);
+  assert.equal(pending.get(firstUrl)?.init.signal.aborted, true, 'the previous source request was not cancelled');
+  pending.get(secondUrl).resolveResponse(response(secondUrl, 'beta'));
+  await new Promise((resolvePromise) => setImmediate(resolvePromise));
+  pending.get(firstUrl).resolveResponse(response(firstUrl, 'alpha'));
+  await new Promise((resolvePromise) => setImmediate(resolvePromise));
+
+  assert.equal(hooks.state.remoteBlocklist.source, secondUrl);
+  assert.deepEqual([...hooks.state.remoteBlocklist.channels], ['/beta']);
+  const stored = JSON.parse(context.localStorage.getItem(hooks.REMOTE_BLOCKLIST_KEY));
+  assert.equal(stored.source, secondUrl, 'the late first response replaced the current cache');
+
+  const thirdUrl = 'https://lists.example/third.json';
+  hooks.state.settings.content.blocklistUrl = thirdUrl;
+  hooks.scheduleRemoteBlocklistSync(true);
+  hooks.state.settings.content.blocklistSubscription = false;
+  hooks.scheduleRemoteBlocklistSync(true);
+  assert.equal(pending.get(thirdUrl)?.init.signal.aborted, true);
+  pending.get(thirdUrl).resolveResponse(response(thirdUrl, 'gamma'));
+  await new Promise((resolvePromise) => setImmediate(resolvePromise));
+  assert.equal(hooks.state.remoteBlocklist.status, 'off');
+  assert.equal(hooks.state.remoteBlocklist.channels.size, 0);
+  assert.equal(context.localStorage.getItem(hooks.REMOTE_BLOCKLIST_KEY), null);
+});
+
 test('the complete interface boot tolerates a sparse but present page body', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   const context = makeBootEnvironment();

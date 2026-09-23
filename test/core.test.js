@@ -111,6 +111,9 @@ import {
   recordEmoteUse,
   USAGE_GLOBAL_LIMIT,
   normalizeBlocklistUrl,
+  blocklistResponseHeader,
+  assertBlocklistJsonResponse,
+  readBoundedBlocklistBody,
   observationsFromChatEmotes,
   mergeMultistream,
   MULTISTREAM_MAX,
@@ -1077,6 +1080,73 @@ test('a blocklist URL is accepted only when it is a well-formed https URL', { ta
   // It survives the full settings normalizer round-trip.
   assert.equal(normalizeSettings({ content: { blocklistUrl: 'http://evil/list' } }).content.blocklistUrl, '');
   assert.equal(normalizeSettings({ content: { blocklistUrl: 'https://ok/list' } }).content.blocklistUrl, 'https://ok/list');
+});
+
+test('blocklist response metadata refuses redirects, non-JSON, and declared oversize bodies', { tags: ['unit'] }, () => {
+  const url = 'https://example.com/list.json';
+  const response = (overrides = {}) => ({
+    ok: true,
+    status: 200,
+    url,
+    redirected: false,
+    headers: { get: (name) => (String(name).toLowerCase() === 'content-type' ? 'application/feed+json; charset=utf-8' : '') },
+    ...overrides,
+  });
+  assert.doesNotThrow(() => assertBlocklistJsonResponse(response(), url, 8));
+  assert.equal(blocklistResponseHeader('x-test: no\r\nContent-Type: application/json\r\nMalformed', 'content-type'), 'application/json');
+  assert.equal(blocklistResponseHeader('', 'content-type'), '');
+  assert.doesNotThrow(() => assertBlocklistJsonResponse({
+    status: 200,
+    finalUrl: url,
+    responseHeaders: 'Content-Type: application/json\r\nContent-Length: 8',
+  }, url, 8, 'Content-Type: application/json\r\nContent-Length: 8'));
+  assert.throws(() => assertBlocklistJsonResponse(response({ ok: false, status: 503 }), url, 8), /HTTP 503/);
+  assert.throws(() => assertBlocklistJsonResponse(response({ redirected: true }), url, 8), /redirect/i);
+  assert.throws(() => assertBlocklistJsonResponse(response({ url: 'https://other.example/list.json' }), url, 8), /redirect/i);
+  assert.throws(() => assertBlocklistJsonResponse(response({
+    headers: { get: () => 'text/plain' },
+  }), url, 8), /JSON/i);
+  assert.throws(() => assertBlocklistJsonResponse(response({
+    headers: { get: (name) => (String(name).toLowerCase() === 'content-type' ? 'application/json' : '9') },
+  }), url, 8), /512 KiB/i);
+});
+
+test('a streamed blocklist is cancelled at the byte boundary instead of buffered whole', { tags: ['unit'] }, async () => {
+  const chunks = [new Uint8Array([65, 66]), new Uint8Array([67, 68, 69])];
+  let reads = 0;
+  let cancelled = false;
+  const response = {
+    body: {
+      getReader: () => ({
+        read: async () => (reads < chunks.length
+          ? { done: false, value: chunks[reads++] }
+          : { done: true }),
+        cancel: async () => { cancelled = true; },
+      }),
+    },
+  };
+  await assert.rejects(readBoundedBlocklistBody(response, 4), /512 KiB/i);
+  assert.equal(reads, 2, 'the reader continued after the first chunk over the cap');
+  assert.equal(cancelled, true, 'the refused response stream remained open');
+
+  let fitIndex = 0;
+  const fitChunks = [new Uint8Array(), ...chunks];
+  const fit = {
+    body: {
+      getReader: () => ({
+        read: async () => (fitIndex < fitChunks.length
+          ? { done: false, value: fitChunks[fitIndex++] }
+          : { done: true }),
+        cancel: async () => { throw new Error('already closed'); },
+      }),
+    },
+  };
+  assert.equal(await readBoundedBlocklistBody(fit, 5), 'ABCDE');
+
+  const fallback = { body: null, text: async () => 'ééé' };
+  await assert.rejects(readBoundedBlocklistBody(fallback, 5), /512 KiB/i,
+    'the fallback counted UTF-16 characters instead of response bytes');
+  assert.equal(await readBoundedBlocklistBody({ text: async () => 'ok' }, 2), 'ok');
 });
 
 test('the store registry keeps the library on reset but marks every private store for clearing', { tags: ['unit'] }, () => {

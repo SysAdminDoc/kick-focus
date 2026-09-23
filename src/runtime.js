@@ -11,7 +11,7 @@ const REMOTE_BLOCKLIST_KEY = 'kick-focus:remote-blocklist';
 // The same 512 KiB the companion refuses at, named once here too: the
 // userscript reads the feed itself when no extension is installed, and the two
 // paths disagreeing about the cap would be a difference nobody would look for.
-const BLOCKLIST_MAX_TEXT = 512 * 1024;
+const BLOCKLIST_MAX_BYTES = 512 * 1024;
 const EMOTE_USAGE_KEY = 'kick-focus:emote-usage';
 const MULTISTREAM_KEY = 'kick-focus:multistream';
 const PRE_IMPORT_BACKUP_KEY = 'kick-focus:pre-import-backup';
@@ -338,7 +338,8 @@ const state = {
   uptimeTimer: 0,
   discoveryUptimeTimer: 0,
   remoteSyncTimer: 0,
-  remoteSyncInFlight: false,
+  remoteSyncInFlight: null,
+  remoteSyncGeneration: 0,
 };
 
 /**
@@ -7592,10 +7593,32 @@ function updateRemoteBlocklistInPlace() {
 }
 
 function clearRemoteBlocklist() {
+  cancelRemoteBlocklistSync();
   gmDelete(REMOTE_BLOCKLIST_KEY);
   state.remoteBlocklist = { source: '', fetchedAt: 0, attemptedAt: 0, channels: new Set(), categories: new Set(), keywords: new Set(), status: 'off', method: '' };
   updateRemoteBlocklistInPlace();
   scheduleApply(0);
+}
+
+function blocklistAbortError() {
+  const error = new Error('blocklist request cancelled');
+  error.name = 'AbortError';
+  return error;
+}
+
+function cancelRemoteBlocklistSync() {
+  state.remoteSyncGeneration += 1;
+  const active = state.remoteSyncInFlight;
+  state.remoteSyncInFlight = null;
+  active?.controller.abort();
+}
+
+function remoteBlocklistRequestIsCurrent(request) {
+  const content = state.settings.content;
+  return state.remoteSyncInFlight === request
+    && request.generation === state.remoteSyncGeneration
+    && content.blocklistSubscription
+    && normalizeBlocklistUrl(content.blocklistUrl) === request.href;
 }
 
 /**
@@ -7606,7 +7629,7 @@ function clearRemoteBlocklist() {
  *
  * Returns { text, method } on success; throws on failure.
  */
-function fetchBlocklistText(href) {
+function fetchBlocklistText(href, requestId, signal) {
   // Strategy 1: companion extension background fetch (CORS-free).
   if (companionInfo().active) {
     return new Promise((resolve, reject) => {
@@ -7618,53 +7641,104 @@ function fetchBlocklistText(href) {
       const done = (settle, value) => {
         window.clearTimeout(timer);
         document.removeEventListener('kick-focus:blocklist-result', handler);
+        signal.removeEventListener('abort', abort);
         settle(value);
       };
       const handler = (event) => {
+        let result;
         try {
-          const result = typeof event.detail === 'string' ? JSON.parse(event.detail) : event.detail;
+          result = typeof event.detail === 'string' ? JSON.parse(event.detail) : event.detail;
+        } catch {
+          return;
+        }
+        if (result?.requestId !== requestId || normalizeBlocklistUrl(result?.url) !== href) return;
+        try {
           if (!result?.ok) throw new Error(result?.error || 'companion fetch failed');
           done(resolve, { text: result.text, method: 'companion' });
         } catch (error) {
           done(reject, error);
         }
       };
+      const abort = () => done(reject, blocklistAbortError());
       const timer = window.setTimeout(() => done(reject, new Error('companion timeout')), 10000);
       document.addEventListener('kick-focus:blocklist-result', handler);
-      document.dispatchEvent(new CustomEvent('kick-focus:fetch-blocklist', { detail: { url: href } }));
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+      else document.dispatchEvent(new CustomEvent('kick-focus:fetch-blocklist', { detail: { url: href, requestId } }));
     });
   }
 
   // Strategy 2: GM_xmlhttpRequest (CORS-free, userscript sandbox).
   if (typeof GM_xmlhttpRequest === 'function') {
     return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: 'GET',
-        url: href,
-        // No ambient cookies: @connect * would otherwise let a blocklist URL on
-        // any host receive the user's credentials for that host.
-        anonymous: true,
-        timeout: 8000,
-        onload(response) {
-          if (response.status >= 200 && response.status < 300) resolve({ text: response.responseText, method: 'userscript' });
-          else reject(new Error(`HTTP ${response.status}`));
-        },
-        onerror() { reject(new Error('GM_xmlhttpRequest network error')); },
-        ontimeout() { reject(new Error('GM_xmlhttpRequest timeout')); },
-      });
+      let request;
+      let settled = false;
+      const done = (settle, value) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', abort);
+        settle(value);
+      };
+      const abort = () => {
+        try { request?.abort?.(); } catch { /* already finished */ }
+        done(reject, blocklistAbortError());
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) {
+        abort();
+        return;
+      }
+      try {
+        request = GM_xmlhttpRequest({
+          method: 'GET',
+          url: href,
+          // No ambient cookies: @connect * would otherwise let a blocklist URL on
+          // any host receive the user's credentials for that host.
+          anonymous: true,
+          redirect: 'error',
+          timeout: 8000,
+          onprogress(progress) {
+            if (Number(progress.loaded) > BLOCKLIST_MAX_BYTES) {
+              done(reject, new Error('blocklist exceeds 512 KiB'));
+              try { request?.abort?.(); } catch { /* already finished */ }
+            }
+          },
+          onload(response) {
+            try {
+              assertBlocklistJsonResponse(response, href, BLOCKLIST_MAX_BYTES, response.responseHeaders);
+              const text = String(response.responseText || '');
+              if (new TextEncoder().encode(text).byteLength > BLOCKLIST_MAX_BYTES) throw new Error('blocklist exceeds 512 KiB');
+              done(resolve, { text, method: 'userscript' });
+            } catch (error) {
+              done(reject, error);
+            }
+          },
+          onerror() { done(reject, new Error('GM_xmlhttpRequest network error')); },
+          ontimeout() { done(reject, new Error('GM_xmlhttpRequest timeout')); },
+          onabort() { done(reject, blocklistAbortError()); },
+        });
+      } catch (error) {
+        done(reject, error);
+      }
     });
   }
 
   // Strategy 3: page-realm fetch (subject to CORS).
   const controller = new AbortController();
+  const forwardAbort = () => controller.abort();
+  signal.addEventListener('abort', forwardAbort, { once: true });
+  if (signal.aborted) controller.abort();
   const timeout = window.setTimeout(() => controller.abort(), 8000);
-  return fetch(href, { credentials: 'omit', cache: 'no-store', signal: controller.signal })
-    .then((response) => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.text();
+  return fetch(href, { credentials: 'omit', cache: 'no-store', redirect: 'error', signal: controller.signal })
+    .then(async (response) => {
+      assertBlocklistJsonResponse(response, href, BLOCKLIST_MAX_BYTES);
+      return readBoundedBlocklistBody(response, BLOCKLIST_MAX_BYTES);
     })
     .then((text) => ({ text, method: 'page' }))
-    .finally(() => window.clearTimeout(timeout));
+    .finally(() => {
+      window.clearTimeout(timeout);
+      signal.removeEventListener('abort', forwardAbort);
+    });
 }
 
 function scheduleRemoteBlocklistSync(force = false) {
@@ -7677,6 +7751,7 @@ function scheduleRemoteBlocklistSync(force = false) {
   // protocol, so it accepted a credentialed URL the extension copies refused.
   const href = normalizeBlocklistUrl(settings.blocklistUrl);
   if (!href) {
+    cancelRemoteBlocklistSync();
     state.remoteBlocklist.status = 'error';
     updateRemoteBlocklistInPlace();
     return;
@@ -7688,13 +7763,22 @@ function scheduleRemoteBlocklistSync(force = false) {
   if (!force && state.remoteSyncInFlight) return;
   if (!force && sameSource && state.remoteBlocklist.fetchedAt && now - state.remoteBlocklist.fetchedAt < interval) return;
   if (!force && state.remoteBlocklist.attemptedAt && now - state.remoteBlocklist.attemptedAt < 60 * 1000) return;
-  state.remoteSyncInFlight = true;
+  if (state.remoteSyncInFlight) cancelRemoteBlocklistSync();
+  const controller = new AbortController();
+  const request = {
+    controller,
+    generation: ++state.remoteSyncGeneration,
+    href,
+    requestId: crypto.randomUUID(),
+  };
+  state.remoteSyncInFlight = request;
   state.remoteBlocklist.attemptedAt = now;
   state.remoteBlocklist.status = 'loading';
   updateRemoteBlocklistInPlace();
-  fetchBlocklistText(url.href)
+  fetchBlocklistText(url.href, request.requestId, controller.signal)
     .then(({ text, method }) => {
-      if (text.length > BLOCKLIST_MAX_TEXT) throw new Error('blocklist too large');
+      if (!remoteBlocklistRequestIsCurrent(request)) return;
+      if (new TextEncoder().encode(text).byteLength > BLOCKLIST_MAX_BYTES) throw new Error('blocklist exceeds 512 KiB');
       const result = validateRemoteBlocklist(JSON.parse(text));
       if (!result.ok) throw new Error(result.error);
       const payload = result.value;
@@ -7712,12 +7796,14 @@ function scheduleRemoteBlocklistSync(force = false) {
       recordProtection('Blocklist', { category: 'local', label: `validated ${payload.channels.length + payload.categories.length + payload.keywords.length} entries via ${method}` });
       scheduleApply(0);
     })
-    .catch(() => {
+    .catch((error) => {
+      if (!remoteBlocklistRequestIsCurrent(request) || error?.name === 'AbortError') return;
       state.remoteBlocklist.status = sameSource && state.remoteBlocklist.fetchedAt ? 'stale' : 'error';
       updateRemoteBlocklistInPlace();
     })
     .finally(() => {
-      state.remoteSyncInFlight = false;
+      if (state.remoteSyncInFlight !== request) return;
+      state.remoteSyncInFlight = null;
       updateRemoteBlocklistInPlace();
     });
 }
@@ -8146,7 +8232,12 @@ function updateSetting(path, value, message = 'Autosaved') {
   }
   if (path === 'content.blocklistSubscription' && !state.settings.content.blocklistSubscription) clearRemoteBlocklist();
   if (path === 'content.blocklistUrl' && state.remoteBlocklist.source !== state.settings.content.blocklistUrl) clearRemoteBlocklist();
-  if (path.startsWith('content.blocklist')) window.setTimeout(() => scheduleRemoteBlocklistSync(true), 0);
+  if (path.startsWith('content.blocklist')) {
+    // The companion must see this exact URL before the privileged request is
+    // allowed to start. The ordinary persisted save still happens below.
+    publishSettingsState();
+    window.setTimeout(() => scheduleRemoteBlocklistSync(true), 0);
+  }
   saveSettings(message);
   scheduleApply(0);
   renderSettingsPage();
@@ -13124,6 +13215,7 @@ function clearEnhancedPage() {
   state.runtime.stickerPickerTarget = null;
   clearInterval(state.remoteSyncTimer);
   state.remoteSyncTimer = 0;
+  cancelRemoteBlocklistSync();
   state.runtime.focus = false;
   state.runtime.theater = false;
   state.runtime.chatHidden = false;

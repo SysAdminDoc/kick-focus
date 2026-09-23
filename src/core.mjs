@@ -2183,6 +2183,58 @@ export function normalizeBlocklistUrl(value) {
   }
 }
 
+export function blocklistResponseHeader(headers, name) {
+  if (typeof headers?.get === 'function') return String(headers.get(name) || '');
+  const wanted = String(name).toLowerCase();
+  const line = String(headers || '').split(/\r?\n/).find((entry) => {
+    const separator = entry.indexOf(':');
+    return separator > 0 && entry.slice(0, separator).trim().toLowerCase() === wanted;
+  });
+  return line ? line.slice(line.indexOf(':') + 1).trim() : '';
+}
+
+export function assertBlocklistJsonResponse(response, expectedUrl, maxBytes, headers = response?.headers) {
+  if (!response?.ok && !(response?.status >= 200 && response?.status < 300)) {
+    throw new Error(`HTTP ${response?.status || 0}`);
+  }
+  const finalUrl = normalizeBlocklistUrl(response?.url || response?.finalUrl);
+  if (response?.redirected || finalUrl !== expectedUrl) throw new Error('redirected blocklist responses are refused');
+  const mime = blocklistResponseHeader(headers, 'content-type').split(';', 1)[0].trim().toLowerCase();
+  if (mime !== 'application/json' && !mime.endsWith('+json')) throw new Error('a JSON response is required');
+  const declared = blocklistResponseHeader(headers, 'content-length');
+  if (declared && Number(declared) > maxBytes) throw new Error('blocklist exceeds 512 KiB');
+}
+
+export async function readBoundedBlocklistBody(response, maxBytes) {
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error('blocklist exceeds 512 KiB');
+    return text;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      total += value.byteLength;
+      if (total > maxBytes) throw new Error('blocklist exceeds 512 KiB');
+      chunks.push(value);
+    }
+  } finally {
+    try { await reader.cancel(); } catch { /* already closed */ }
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder('utf-8', { fatal: true }).decode(body);
+}
+
 export function normalizeSettings(input) {
   const source = isRecord(input) ? input : {};
   const layout = isRecord(source.layout) ? source.layout : {};

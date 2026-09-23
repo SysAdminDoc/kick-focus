@@ -237,7 +237,7 @@ async function fetchApprovedBlocklist(requestedUrl) {
   const state = await readBlocklistState();
   const requestUrl = normalizeBlocklistUrl(requestedUrl);
   if (!state.approved) throw new Error('Blocklist feed approval is required.');
-  if (requestedUrl && requestUrl !== state.approvedUrl) throw new Error('Blocklist URL mismatch.');
+  if (!requestUrl || requestUrl !== state.approvedUrl) throw new Error('Blocklist URL mismatch.');
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BLOCKLIST_TIMEOUT_MS);
@@ -258,7 +258,7 @@ async function fetchApprovedBlocklist(requestedUrl) {
     if (Number.isFinite(declaredLength) && declaredLength > BLOCKLIST_MAX_BYTES) {
       throw new Error(BLOCKLIST_TOO_LARGE);
     }
-    return await readBoundedBody(response);
+    return { text: await readBoundedBody(response), url: state.approvedUrl };
   } finally {
     clearTimeout(timeout);
   }
@@ -291,7 +291,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'kick-focus:fetch-blocklist') {
     if (!fromKickPage(sender)) { sendResponse({ ok: false, error: 'refused' }); return true; }
     fetchApprovedBlocklist(message.url)
-      .then((text) => sendResponse({ ok: true, text }))
+      .then((result) => sendResponse({ ok: true, ...result, requestId: message.requestId }))
       .catch((error) => sendResponse({ ok: false, error: String(error) }));
     return true;
   }

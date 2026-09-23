@@ -141,11 +141,15 @@ function makeEnvironment(options = {}) {
     runtime: {
       getManifest: () => ({ version: 'test' }),
       getURL: (path) => `moz-extension://test/${path}`,
-      sendMessage: (message) => {
+      sendMessage: (message, callback) => {
         messages.push(message);
+        if (typeof callback === 'function') {
+          callback(options.messageResponse);
+          return undefined;
+        }
         return options.rejectPublishes
           ? Promise.reject(new Error('runtime unavailable'))
-          : Promise.resolve();
+          : Promise.resolve(options.messageResponse);
       },
       onMessage: { addListener: (listener) => runtimeMessages.push(listener) },
     },
@@ -191,6 +195,7 @@ async function runBridge(file, pageFirst, options = {}) {
   vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
   if (!pageFirst) env.document.addEventListener('kick-focus:request-settings', respondToRequest);
   env.document.dispatchEvent(new CustomEventStub('DOMContentLoaded'));
+  await new Promise((resolvePromise) => setImmediate(resolvePromise));
 
   return { ...env, settings };
 }
@@ -471,15 +476,34 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     }
   });
 
-  test(`${file} lets the page trigger a blocklist refresh without choosing its URL`, async () => {
+  test(`${file} binds each blocklist refresh to its announced URL and request id`, async () => {
     const source = await readFile(resolve(root, file), 'utf8');
-    const env = makeEnvironment();
-    env.context.localStorage.value = JSON.stringify({ content: { reduceTelemetry: false, blocklistUrl: 'https://good.example/list.json' } });
+    const url = 'https://good.example/list.json';
+    const env = makeEnvironment({ messageResponse: { ok: true, text: '{"channels":[]}', url } });
+    const results = [];
+    env.context.localStorage.value = JSON.stringify({ content: { reduceTelemetry: false, blocklistUrl: url } });
+    env.document.addEventListener('kick-focus:blocklist-result', (event) => results.push(JSON.parse(event.detail)));
     vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
-    env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', { detail: { url: 'https://evil.example/steal' } }));
+    env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', {
+      detail: { url, requestId: 'request-good' },
+    }));
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
     const fetchMessage = env.messages.find((message) => message?.type === 'kick-focus:fetch-blocklist');
     assert.ok(fetchMessage, 'a fetch-blocklist message should be sent');
-    assert.deepEqual(Object.keys(fetchMessage), ['type']);
+    assert.deepEqual(JSON.parse(JSON.stringify(fetchMessage)), {
+      type: 'kick-focus:fetch-blocklist', url, requestId: 'request-good',
+    });
+    assert.equal(results.at(-1)?.requestId, 'request-good');
+    assert.equal(results.at(-1)?.url, url);
+
+    const before = env.messages.length;
+    env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', {
+      detail: { url: 'https://evil.example/steal', requestId: 'request-evil' },
+    }));
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
+    assert.equal(env.messages.length, before, 'a URL other than the announced setting reached the background');
+    assert.equal(results.at(-1)?.ok, false);
+    assert.equal(results.at(-1)?.requestId, 'request-evil');
   });
 
   test(`${file} refuses to fetch when no https blocklist URL is configured`, async () => {
@@ -487,7 +511,9 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     const env = makeEnvironment();
     env.context.localStorage.value = JSON.stringify({ content: { reduceTelemetry: false, blocklistUrl: 'http://insecure/list' } });
     vm.runInNewContext(source, env.context, { filename: pathToFileURL(resolve(root, file)).href });
-    env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', { detail: { url: 'https://evil.example/steal' } }));
+    env.document.dispatchEvent(new CustomEventStub('kick-focus:fetch-blocklist', {
+      detail: { url: 'https://evil.example/steal', requestId: 'request-evil' },
+    }));
     assert.ok(!env.messages.some((message) => message?.type === 'kick-focus:fetch-blocklist'), 'no fetch for a non-https configured URL');
   });
 
@@ -502,6 +528,7 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
         evil: { drop: 1 },
       }) },
     }));
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
     const stored = env.published.at(-1)?.settings;
     assert.deepEqual(Object.keys(stored), ['appearance', 'content']);
     assert.deepEqual(Object.keys(stored.appearance), ['theme', 'accent', 'customAccent']);
@@ -523,6 +550,7 @@ for (const file of ['src/extension/bridge.js', 'src/extension/bridge.firefox.js'
     assert.equal(result.published.length, before, 'an unrelated Kick write triggered extension storage work');
 
     result.context.window.dispatchEvent({ type: 'storage', key: 'kick-focus:settings' });
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
     assert.equal(result.published.length, before + 1, 'the settings key no longer republishes');
   });
 
@@ -574,9 +602,13 @@ for (const browserCase of [
       granted: [origin],
       fetch: async (url) => jsonResponse(url),
     });
-    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    const answer = await askBackground(background, {
+      type: 'kick-focus:fetch-blocklist', url: approvedUrl, requestId: 'request-1',
+    }, browserCase.page);
     assert.equal(answer?.ok, true, answer?.error);
     assert.equal(answer?.text, '{"blocked":[]}');
+    assert.equal(answer?.url, approvedUrl);
+    assert.equal(answer?.requestId, 'request-1');
     assert.equal(background.fetches.length, 1);
     const [url, init] = background.fetches[0];
     assert.equal(url, approvedUrl);
@@ -600,6 +632,13 @@ for (const browserCase of [
     assert.match(selectedAnswer?.error || '', /mismatch/i);
     assert.equal(selected.fetches.length, 0);
 
+    const omittedAnswer = await askBackground(selected, {
+      type: 'kick-focus:fetch-blocklist', requestId: 'request-omitted',
+    }, browserCase.page);
+    assert.equal(omittedAnswer?.ok, false);
+    assert.match(omittedAnswer?.error || '', /mismatch/i);
+    assert.equal(selected.fetches.length, 0);
+
     const stale = await loadBackground(browserCase.file, {
       stored: {
         ...approvedStore,
@@ -608,7 +647,9 @@ for (const browserCase of [
       granted: [origin],
       fetch: async (url) => jsonResponse(url),
     });
-    const staleAnswer = await askBackground(stale, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    const staleAnswer = await askBackground(stale, {
+      type: 'kick-focus:fetch-blocklist', url: approvedUrl, requestId: 'request-1',
+    }, browserCase.page);
     assert.equal(staleAnswer?.ok, false);
     assert.match(staleAnswer?.error || '', /approval/i);
     assert.equal(stale.fetches.length, 0);
@@ -642,7 +683,9 @@ for (const browserCase of [
         granted: [origin],
         fetch: async () => invalid.response(),
       });
-      const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+      const answer = await askBackground(background, {
+        type: 'kick-focus:fetch-blocklist', url: approvedUrl, requestId: 'request-1',
+      }, browserCase.page);
       assert.equal(answer?.ok, false);
       assert.match(answer?.error || '', invalid.error);
     });
@@ -660,7 +703,9 @@ for (const browserCase of [
       fetch: async () => endless.response,
     });
 
-    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    const answer = await askBackground(background, {
+      type: 'kick-focus:fetch-blocklist', url: approvedUrl, requestId: 'request-1',
+    }, browserCase.page);
     assert.equal(answer?.ok, false);
     assert.match(answer?.error || '', /512 KiB/i);
     assert.equal(endless.taken.chunks, 9,
@@ -695,7 +740,9 @@ for (const browserCase of [
       }),
     });
 
-    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    const answer = await askBackground(background, {
+      type: 'kick-focus:fetch-blocklist', url: approvedUrl, requestId: 'request-1',
+    }, browserCase.page);
     assert.equal(answer?.ok, true, answer?.error);
     assert.equal(answer.text, text, 'a chunked body came back joined wrongly');
   });
@@ -710,7 +757,9 @@ for (const browserCase of [
         return jsonResponse(approvedUrl);
       },
     });
-    const answer = await askBackground(background, { type: 'kick-focus:fetch-blocklist' }, browserCase.page);
+    const answer = await askBackground(background, {
+      type: 'kick-focus:fetch-blocklist', url: approvedUrl, requestId: 'request-1',
+    }, browserCase.page);
     assert.equal(answer?.ok, false);
     assert.match(answer?.error || '', /aborted/i);
     assert.deepEqual(background.timeouts, [8000]);

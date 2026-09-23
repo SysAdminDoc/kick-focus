@@ -1732,19 +1732,25 @@ const checks = [
     && source.includes('gmDelete(EMOTE_USAGE_KEY)')
     && !extractFunction(source, 'clearPrivateData').includes('REWARD_STATE_KEY')
     && source.includes('Local reward check history is also kept so reset cannot make a handled reward look due again.')],
-  // R-97: privileged transport hardening. The page may trigger a refresh, but
-  // it never supplies the background request target.
-  ['blocklist fetch target is owned by extension approval, not the page event', bridge.includes("sendMessage({ type: 'kick-focus:fetch-blocklist' }")
-    && firefoxBridge.includes("sendMessage({ type: 'kick-focus:fetch-blocklist' }")
-    && !bridge.includes("type: 'kick-focus:fetch-blocklist', url")
-    && !firefoxBridge.includes("type: 'kick-focus:fetch-blocklist', url")
-    && background.includes('candidateUrl === approvedUrl')
-    && firefoxBackground.includes('candidateUrl === approvedUrl')],
+  // R-97: privileged transport hardening. A page refresh carries identity and
+  // the URL it believes current, but both bridges compare that URL with the
+  // latest sanitized announcement and both backgrounds require exact popup
+  // approval before they fetch it.
+  ['blocklist fetch target is bound to its request and exact extension approval', [bridge, firefoxBridge].every((file) => file.includes("type: 'kick-focus:fetch-blocklist', url, requestId")
+    && file.includes('url !== configuredUrl')
+    && file.includes('settingsWrite')
+    && file.includes('.then(() =>'))
+    && [background, firefoxBackground].every((file) => file.includes('!requestUrl || requestUrl !== state.approvedUrl'))
+    && source.includes("detail: { url: href, requestId }")
+    && source.includes('result?.requestId !== requestId')],
   ['blocklist transport rejects redirects, non-JSON, oversized bodies, and eight-second stalls', [background, firefoxBackground].every((file) => file.includes("redirect: 'error'")
     && file.includes("mime !== 'application/json'")
     && file.includes('BLOCKLIST_MAX_BYTES = 512 * 1024')
     && file.includes('BLOCKLIST_TIMEOUT_MS = 8000')
-    && file.includes('response.arrayBuffer()'))],
+    && file.includes('response.arrayBuffer()'))
+    && source.includes("redirect: 'error'")
+    && source.includes('function readBoundedBlocklistBody')
+    && source.includes('onprogress(progress)')],
   ['popup gesture requests one feed origin and stores one exact URL', popup.includes('permissions.request({ origins: [origin] })')
     && popup.includes("type: 'kick-focus:approve-blocklist'")
     && background.includes('[BLOCKLIST_APPROVAL_KEY]: { url, origin, approvedAt: Date.now() }')

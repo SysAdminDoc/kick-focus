@@ -1,6 +1,6 @@
 {
   "artifact": "dist/kick-focus.user.js",
-  "total": 905023,
+  "total": 909800,
   "regions": [
     {
       "name": "TRANSLATIONS",
@@ -48,7 +48,7 @@
     },
     {
       "name": "remainder",
-      "bytes": 639085
+      "bytes": 643862
     }
   ]
 }

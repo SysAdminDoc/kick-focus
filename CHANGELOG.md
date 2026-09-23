@@ -32,6 +32,8 @@ All notable changes are documented here. Dates use ISO 8601.
 
 - The synchronous emote seed now uses a 33 KB byte ceiling. It still holds at least 150 realistic recent entries for first paint, while the complete library remains in IndexedDB, and the smaller cache keeps the userscript plus storage below its injection budget.
 
+- Remote blocklist refreshes now carry an exact source URL and request identity through the page, companion, and background. Changing or disabling a feed cancels the old request, and every userscript transport rejects redirects, non-JSON responses, oversized streams, and late replies.
+
 - Changing or revoking a remote blocklist feed now keeps its saved approval until the old origin permission has actually been removed. A browser error could previously leave a permission granted with no visible approval to retry, or point the approval at the new feed while the old permission remained.
 
 - The Firefox companion now restores the saved telemetry choice when its event page wakes. Its bridge also ignores unrelated Kick storage writes, and both browser bridges absorb rejected background messages instead of leaking unhandled promise errors.

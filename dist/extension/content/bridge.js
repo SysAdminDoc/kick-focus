@@ -78,11 +78,17 @@ function sanitizeSettings(raw) {
   };
 }
 
+let publishedSettings = null;
+let settingsWrite = Promise.resolve();
+
 function publish(settings) {
   const sanitized = sanitizeSettings(settings);
   if (!sanitized) return;
+  publishedSettings = sanitized;
   try {
-    void Promise.resolve(chrome.storage.local.set({ settings: sanitized, updatedAt: Date.now() })).catch(() => {});
+    settingsWrite = settingsWrite
+      .then(() => chrome.storage.local.set({ settings: sanitized, updatedAt: Date.now() }))
+      .catch(() => {});
     void Promise.resolve(chrome.runtime.sendMessage({
       type: 'kick-focus:telemetry-preference',
       enabled: sanitized.content.reduceTelemetry,
@@ -134,23 +140,35 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', requestSettings, { once: true });
 }
 
-// The page can trigger a refresh, but it cannot choose the privileged request
-// target. The background reads an exact URL approved from the extension popup
-// and refuses the request if the mirrored page setting no longer matches it.
-document.addEventListener('kick-focus:fetch-blocklist', () => {
-  const url = normalizeBlocklistUrl(readSettings()?.content?.blocklistUrl);
-  if (!url) {
+// The page can trigger a refresh only for the URL it just announced. The
+// background independently requires popup approval for that same exact URL.
+// Request identity is echoed so overlapping page requests cannot consume one
+// another's response.
+document.addEventListener('kick-focus:fetch-blocklist', (event) => {
+  let request = event.detail;
+  try { if (typeof request === 'string') request = JSON.parse(request); } catch { request = null; }
+  const requestId = typeof request?.requestId === 'string' ? request.requestId : '';
+  const url = normalizeBlocklistUrl(request?.url);
+  const configuredUrl = normalizeBlocklistUrl(publishedSettings?.content?.blocklistUrl);
+  const reply = (response) => {
     document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
-      detail: JSON.stringify({ ok: false, error: 'no configured blocklist URL' }),
+      detail: JSON.stringify({ ...(response || { ok: false, error: 'no response' }), requestId, url }),
     }));
+  };
+  if (!requestId || !url || url !== configuredUrl) {
+    reply({ ok: false, error: 'configured blocklist URL mismatch' });
     return;
   }
-  chrome.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist' }, (response) => {
-    void chrome.runtime.lastError;
-    document.dispatchEvent(new CustomEvent('kick-focus:blocklist-result', {
-      detail: JSON.stringify(response || { ok: false, error: 'no response' }),
-    }));
-  });
+  void settingsWrite.then(() => {
+    chrome.runtime.sendMessage({ type: 'kick-focus:fetch-blocklist', url, requestId }, (response) => {
+      void chrome.runtime.lastError;
+      if (response?.ok && normalizeBlocklistUrl(response.url) !== url) {
+        reply({ ok: false, error: 'blocklist response URL mismatch' });
+        return;
+      }
+      reply(response);
+    });
+  }).catch((error) => reply({ ok: false, error: String(error) }));
 });
 
 // Presence handshake: the page proves the companion is really present with a
