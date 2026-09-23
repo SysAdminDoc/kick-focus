@@ -18,6 +18,16 @@ All notable changes are documented here. Dates use ISO 8601.
 
 ### Fixed
 
+- A tab that has loaded the full emote library no longer replaces it with the bounded startup seed when another tab writes. The next favorite, group, or removal change now keeps every database-backed emote instead of making the partial seed permanent.
+
+- Emote Undo now takes its recovery point after a contested command has been replayed on the other tab's state. If the library changes again before Undo is pressed, the action stops and reloads the current state instead of erasing the newer change.
+
+- Import and Undo import now replace the bounded emote seed and full database record under one commit stamp. A valid import could previously appear to work, then bring the old library back after reload because its database write was rejected as stale.
+
+- Reset and import now save their recovery backup before changing anything. If the backup cannot be stored, the requested action stops and the earlier recovery slot stays intact.
+
+- Saving a follow-gated chat emote now finishes its local write before it asks Kick to follow the source channel. A contested tab reloads and retries once, a failed seed write never leaks only into IndexedDB, and Undo only unfollows a channel when that save created the relationship.
+
 - Changing or revoking a remote blocklist feed now keeps its saved approval until the old origin permission has actually been removed. A browser error could previously leave a permission granted with no visible approval to retry, or point the approval at the new feed while the old permission remained.
 
 - The Firefox companion now restores the saved telemetry choice when its event page wakes. Its bridge also ignores unrelated Kick storage writes, and both browser bridges absorb rejected background messages instead of leaking unhandled promise errors.

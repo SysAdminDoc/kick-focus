@@ -216,13 +216,13 @@ test('the follow mutation refuses a junk channel before it reaches the network',
   const surface = createLive(host);
 
   for (const bad of ['', '../admin', 'a'.repeat(65), '-leading', 'has space']) {
-    assert.deepEqual(await surface.mutateKickChannelFollow(bad), { ok: false, status: 'invalid-channel' });
+    assert.deepEqual(await surface.mutateKickChannelFollow(bad), { ok: false, status: 'invalid-channel', created: false });
   }
   assert.deepEqual(attempts, [], 'nothing invalid was ever sent');
 
   // A real slug goes out with Kick's own CSRF header, taken from the cookie.
   globalThis.document.cookie = 'foo=1; XSRF-TOKEN=abc%2Fdef; bar=2';
-  assert.deepEqual(await surface.mutateKickChannelFollow('alpha'), { ok: true, status: 200 });
+  assert.deepEqual(await surface.mutateKickChannelFollow('alpha'), { ok: true, status: 200, created: true });
   assert.equal(attempts.length, 1);
   assert.equal(attempts[0].init.headers['x-xsrf-token'], 'abc/def', 'the token is decoded, not passed raw');
   assert.equal(attempts[0].init.method, 'POST');
@@ -231,7 +231,7 @@ test('the follow mutation refuses a junk channel before it reaches the network',
 
   // Already-following answers 409, which is success for this gesture.
   const { host: conflict } = makeHost({ pageFetch: async () => ({ ok: false, status: 409 }) });
-  assert.deepEqual(await createLive(conflict).mutateKickChannelFollow('alpha'), { ok: true, status: 409 });
+  assert.deepEqual(await createLive(conflict).mutateKickChannelFollow('alpha'), { ok: true, status: 409, created: false });
 });
 
 test('drift is accumulated up to a cap rather than growing without bound', { tags: ['unit'] }, () => {

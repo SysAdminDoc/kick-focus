@@ -74,11 +74,13 @@ export const PROVIDER_SCORES = Object.freeze({ indexeddb: 100, localstorage: -10
 // scope in the artifact, so a second top-level `isRecord` is a SyntaxError.
 const isStoredRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const SEED_MARKER = 'librarySeedTotal';
+const REPLACE_MARKER = 'librarySeedReplace';
 
 function withoutMarker(value) {
-  if (!isStoredRecord(value) || !(SEED_MARKER in value)) return value;
+  if (!isStoredRecord(value) || (!(SEED_MARKER in value) && !(REPLACE_MARKER in value))) return value;
   const copy = { ...value };
   delete copy[SEED_MARKER];
+  delete copy[REPLACE_MARKER];
   return copy;
 }
 
@@ -91,13 +93,22 @@ function withoutMarker(value) {
  * the ones least likely to be reached for in the moment before the full record
  * loads — not an arbitrary prefix of whatever order it happened to be in.
  */
-export function planLibraryPersist(value, { seedLimit = LIBRARY_SEED_LIMIT, seedBytes = LIBRARY_SEED_BYTES } = {}) {
+export function planLibraryPersist(value, {
+  seedLimit = LIBRARY_SEED_LIMIT,
+  seedBytes = LIBRARY_SEED_BYTES,
+  replace = false,
+} = {}) {
   const source = isStoredRecord(value) ? withoutMarker(value) : {};
   const library = Array.isArray(source.library) ? source.library : [];
   const limit = Math.max(0, Math.floor(Number(seedLimit)) || 0);
   const ordered = [...library].sort((a, b) => (Number(b?.lastSeen) || 0) - (Number(a?.lastSeen) || 0));
   const budget = Math.max(0, Math.floor(Number(seedBytes)) || 0);
-  const build = (count) => ({ ...source, library: ordered.slice(0, count), [SEED_MARKER]: library.length });
+  const build = (count) => ({
+    ...source,
+    library: ordered.slice(0, count),
+    [SEED_MARKER]: library.length,
+    ...(replace ? { [REPLACE_MARKER]: true } : {}),
+  });
   // Drop from the oldest end until the serialised seed fits. Halving rather
   // than stepping so a library of oversized entries costs a handful of
   // stringify calls instead of one per entry, and the last accepted count is
@@ -156,6 +167,10 @@ export function isSeedPartial(value) {
   const total = Number(value[SEED_MARKER]);
   if (!Number.isFinite(total)) return false;
   return total > (Array.isArray(value.library) ? value.library.length : 0);
+}
+
+function isReplacementSeed(value) {
+  return isSeedPartial(value) && value?.[REPLACE_MARKER] === true;
 }
 
 /**
@@ -253,6 +268,7 @@ export function createLibraryStore(host) {
   let opened = false;
   let queued = null;
   let draining = null;
+  let fullRecord = null;
 
   const provider = () => (database ? 'indexeddb' : 'localstorage');
   const score = () => PROVIDER_SCORES[provider()];
@@ -270,6 +286,17 @@ export function createLibraryStore(host) {
     // Reading is how a tab catches up. Whatever it just read is now the state
     // it is allowed to write on top of.
     seen = stickerCommitStamp(value);
+    if (isReplacementSeed(value)) {
+      if (isStoredRecord(fullRecord) && sameStickerCommit(stickerCommitStamp(value), stickerCommitStamp(fullRecord))) {
+        return fullRecord;
+      }
+      return value;
+    }
+    if (isSeedPartial(value) && isStoredRecord(fullRecord)) {
+      fullRecord = mergeHydratedLibrary(value, fullRecord);
+      return fullRecord;
+    }
+    if (!isSeedPartial(value) && isStoredRecord(value)) fullRecord = withoutMarker(value);
     return value;
   }
 
@@ -278,13 +305,20 @@ export function createLibraryStore(host) {
    * or null when there is nothing more than the seed already had.
    */
   async function hydrate() {
+    const seed = readSync();
     const db = await connect();
     if (!db) return null;
     try {
       const transaction = db.transaction(LIBRARY_STORE, 'readonly');
       const stored = await request(transaction.objectStore(LIBRARY_STORE).get('preferences'));
       if (!isStoredRecord(stored)) return null;
-      return mergeHydratedLibrary(readFallback(), stored);
+      if (isReplacementSeed(seed)) {
+        if (!sameStickerCommit(stickerCommitStamp(seed), stickerCommitStamp(stored))) return seed;
+        fullRecord = withoutMarker(stored);
+        return fullRecord;
+      }
+      fullRecord = mergeHydratedLibrary(seed, stored);
+      return fullRecord;
     } catch (error) {
       onError('hydrate', error);
       return null;
@@ -310,10 +344,37 @@ export function createLibraryStore(host) {
     const stamped = stampStickerCommit(value, writer, sequence);
     const plan = planLibraryPersist(stamped, { seedLimit });
     const ok = writeFallback(plan.seed);
-    if (ok) seen = { writer, sequence };
-    queued = plan.full;
-    void flush();
+    if (ok) {
+      seen = { writer, sequence };
+      fullRecord = plan.full;
+      queued = plan.full;
+      void flush();
+    }
     return { ok, truncated: plan.truncated, provider: provider(), foreign: false };
+  }
+
+  function prepareReplacement(value) {
+    const nextSequence = sequence + 1;
+    const stamped = stampStickerCommit(value, writer, nextSequence);
+    const plan = planLibraryPersist(stamped, { seedLimit, replace: true });
+    return { ...plan, writer, sequence: nextSequence };
+  }
+
+  function commitReplacement(plan) {
+    if (!isStoredRecord(plan?.seed) || !isStoredRecord(plan?.full)) {
+      return { ok: false, truncated: 0, provider: provider(), foreign: false };
+    }
+    sequence = Math.max(sequence, Number(plan.sequence) || 0);
+    seen = { writer: String(plan.writer || writer), sequence };
+    fullRecord = withoutMarker(plan.full);
+    queued = fullRecord;
+    void flush();
+    return {
+      ok: true,
+      truncated: Math.max(0, Number(plan.truncated) || 0),
+      provider: provider(),
+      foreign: false,
+    };
   }
 
   /**
@@ -389,5 +450,17 @@ export function createLibraryStore(host) {
     }
   }
 
-  return { readSync, hydrate, write, flush, putBlob, getBlob, clear, provider, score };
+  return {
+    readSync,
+    hydrate,
+    write,
+    prepareReplacement,
+    commitReplacement,
+    flush,
+    putBlob,
+    getBlob,
+    clear,
+    provider,
+    score,
+  };
 }

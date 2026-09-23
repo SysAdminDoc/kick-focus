@@ -75,12 +75,12 @@ function makeStore(overrides = {}) {
   const idb = overrides.idb === undefined ? fakeIndexedDB() : overrides.idb;
   const store = createLibraryStore({
     readFallback: () => fallback,
-    writeFallback: (seed) => { fallback = seed; return true; },
+    writeFallback: overrides.writeFallback || ((seed) => { fallback = seed; return true; }),
     indexedDB: idb,
     seedLimit: overrides.seedLimit,
     onError: (stage, error) => errors.push([stage, error?.message]),
   });
-  return { store, idb, errors, seed: () => fallback };
+  return { store, idb, errors, seed: () => fallback, setSeed: (value) => { fallback = value; } };
 }
 
 test('the seed carries everything small and the newest slice of the library', { tags: ['unit'] }, () => {
@@ -306,6 +306,32 @@ test('the full record goes to the database and comes back merged', { tags: ['uni
   assert.deepEqual(merged, { ...value, commit: { writer: 'unknown', sequence: 1 } });
 });
 
+test('a prepared replacement supersedes a stamped library in both backends', { tags: ['unit'] }, async () => {
+  const { store, idb, seed, setSeed } = makeStore({ seedLimit: 10 });
+  store.readSync();
+  store.write(preferences(libraryOf(600)));
+  await store.flush();
+
+  const imported = preferences(libraryOf(500, 1000));
+  const plan = store.prepareReplacement(imported);
+  setSeed(plan.seed);
+  const result = store.commitReplacement(plan);
+  assert.equal(result.ok, true);
+  await store.flush();
+
+  const reload = createLibraryStore({
+    readFallback: seed,
+    writeFallback: () => true,
+    indexedDB: idb,
+    seedLimit: 10,
+    writer: 'reload',
+  });
+  const restored = await reload.hydrate();
+  assert.deepEqual(restored.library.map((item) => item.key), imported.library.map((item) => item.key));
+  assert.ok(restored.library.every((item) => Number(item.key.split(':').at(-1)) >= 1000),
+    'entries from the replaced library came back during hydration');
+});
+
 test('rapid writes coalesce instead of queueing one transaction each', { tags: ['unit'] }, async () => {
   const { store, idb } = makeStore({ seedLimit: 5 });
   // The library is rewritten on every emote observed in chat, so a busy channel
@@ -343,6 +369,25 @@ test('a failing write is reported and does not wedge the queue', { tags: ['unit'
   store.write(preferences(libraryOf(60)));
   await store.flush();
   assert.equal(errors.length, 2);
+});
+
+test('a rejected seed write never commits only the database half', { tags: ['unit'] }, async () => {
+  const initial = preferences(libraryOf(4));
+  const idb = fakeIndexedDB();
+  const { store, seed } = makeStore({
+    initial,
+    idb,
+    writeFallback: () => false,
+  });
+  store.readSync();
+
+  const result = store.write(preferences(libraryOf(40)));
+  await store.flush();
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(seed(), initial, 'the synchronous source of truth remains unchanged');
+  assert.equal(idb.__stores.get(LIBRARY_STORE).has('preferences'), false,
+    'a failed seed write must not leave a newer database record behind');
 });
 
 test('junk in either half is handled rather than propagated', { tags: ['unit'] }, () => {
@@ -414,6 +459,33 @@ test('a tab that re-reads first is current again and its write lands', { tags: [
   assert.equal(retried.foreign, false, 'after catching up the write is uncontested');
   assert.equal(retried.ok, true);
   assert.equal(shared().library.length, 7);
+});
+
+test('a hydrated tab merges a foreign partial seed before its next write', { tags: ['unit'] }, async () => {
+  const idb = fakeIndexedDB();
+  const { open } = makeSharedPair({ idb, seedLimit: 10 });
+  const first = open('tab-a');
+  const second = open('tab-b');
+  first.readSync();
+  second.readSync();
+
+  const initial = preferences(libraryOf(600));
+  first.write(initial);
+  await first.flush();
+  assert.equal((await second.hydrate()).library.length, 600, 'tab B did not hydrate the full record');
+
+  const latest = preferences([...libraryOf(600), entry('kick:id:600', 600)]);
+  first.write(latest);
+  const replayed = second.readSync();
+  assert.equal(replayed.library.length, 601,
+    'the cross-tab nudge replaced the hydrated record with the bounded seed');
+
+  replayed.hidden = [...replayed.hidden, 'kick:id:10'];
+  const result = second.write(replayed);
+  assert.equal(result.foreign, false);
+  await second.flush();
+  assert.equal(idb.__stores.get(LIBRARY_STORE).get('preferences').library.length, 601,
+    'an unrelated preference write truncated the database record');
 });
 
 test('a tab writing repeatedly never contends with itself', { tags: ['unit'] }, () => {

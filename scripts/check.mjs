@@ -159,6 +159,31 @@ const stickerInverseIsShared = (source) => {
   return (source.match(/restoreStickerOrganization\(/g) || []).length === 2;
 };
 
+const stickerCrossTabRefreshIsFull = (source) => {
+  const channelStart = source.indexOf('function stickerSyncChannel');
+  const channelEnd = source.indexOf('\nfunction persistStickerPreferences', channelStart);
+  const bridgeStart = source.indexOf('function installCompanionBridge');
+  const bridgeEnd = source.indexOf('\nfunction openSharedLayoutFromUrl', bridgeStart);
+  if ([channelStart, channelEnd, bridgeStart, bridgeEnd].some((value) => value < 0)) return false;
+  const channel = source.slice(channelStart, channelEnd);
+  const bridge = source.slice(bridgeStart, bridgeEnd);
+  return channel.includes('hydrateLibrary()') && bridge.includes('stickerSyncChannel();');
+};
+
+const stickerConflictUndoIsSafe = (source) => {
+  const start = source.indexOf('function mutateStickerOrganization');
+  const end = source.indexOf('\nfunction focusPickerStickerGroupInput', start);
+  if (start < 0 || end < 0) return false;
+  const body = source.slice(start, end);
+  const stale = body.indexOf('if (state.runtime.lastStickerWriteWasStale)');
+  return /let before = stickerOrganizationSnapshot\(\)/.test(body)
+    && stale >= 0
+    && body.indexOf('before = stickerOrganizationSnapshot()', stale) > stale
+    && body.includes('const after = stickerOrganizationSnapshot()')
+    && body.includes('!sameStickerOrganization(stickerOrganizationSnapshot(), after)')
+    && (body.match(/state\.stickerPreferences = readStickerPreferences\(\)/g) || []).length >= 2;
+};
+
 /**
  * Who is allowed to touch what the viewer has typed.
  *
@@ -1686,8 +1711,9 @@ const checks = [
     const write = region.indexOf('gmSet(PRE_IMPORT_BACKUP_KEY');
     return snapshot >= 0
       && write > snapshot
-      // Written after clearPrivateData, which deletes the very key it goes in.
-      && write > region.indexOf('clearPrivateData()')
+      // The recovery point must exist before the first destructive write, and
+      // clearPrivateData deliberately leaves that one slot alone.
+      && write < region.indexOf('clearPrivateData()')
       && region.includes("label: 'Undo'")
       // And the confirmation it replaced is gone rather than orphaned: no
       // markup, no lifecycle, no layer in the focus ladder.
@@ -1815,8 +1841,9 @@ const checks = [
     !packageJson.dependencies && !packageJson.devDependencies
     && !/(?:^|\n)\s*import\s[^\n]*from\s+['"][^.'"][^'"]*['"]/.test(await read('src/storage.mjs'))],
   ['every library write goes through the provider, including an import',
-    /entries\.push\(\[STICKER_PREFERENCES_KEY, planLibraryPersist\(/.test(source)
-    && /libraryStore\.write\(result\.stickers\)/.test(source)
+    /libraryStore\.prepareReplacement\(result\.stickers\)/.test(source)
+    && /entries\.push\(\[STICKER_PREFERENCES_KEY, stickerPlan\.seed\]\)/.test(source)
+    && /libraryStore\.commitReplacement\(stickerPlan\)/.test(source)
     && /libraryStore\.clear\(\)/.test(source)],
   ['emote completion is accepted by click only and never sends', completionIsMouseOnly(source)],
   [`no source file carries a stray control byte${controlByteFiles.length ? `: ${controlByteFiles.join('; ')}` : ''}`, controlByteFiles.length === 0],
@@ -2152,6 +2179,10 @@ const checks = [
     ?.data_collection_permissions?.required?.[0] === 'none'],
   ['the emote snapshot and its inverse name the same fields, and there is one inverse',
     stickerInverseIsShared(runtimeModuleSource)],
+  ['every tab listens before its first emote write and refreshes through the full store',
+    stickerCrossTabRefreshIsFull(runtimeModuleSource)],
+  ['a rebased emote command refreshes its Undo point and refuses a second conflict',
+    stickerConflictUndoIsSafe(runtimeModuleSource)],
   ['only the three deliberate insertion paths can write to the viewer’s draft',
     composerWriters(runtimeModuleSource).join() === COMPOSER_WRITERS.join()],
   ['every state drawn as a shadow survives Windows High Contrast', forcedColorsGaps(runtimeModuleSource).length === 0],
@@ -2242,6 +2273,24 @@ const redProbes = [
       'restoreStickerOrganization(mine);',
     ].join('\n'))],
   ['emote-inverse gate accepts the real runtime', stickerInverseIsShared(runtimeModuleSource)],
+  ['emote-sync gate would catch a tab that listens only after its first write',
+    !stickerCrossTabRefreshIsFull([
+      'function stickerSyncChannel() { hydrateLibrary(); }',
+      'function persistStickerPreferences() { stickerSyncChannel(); }',
+      'function installCompanionBridge() {}',
+      'function openSharedLayoutFromUrl() {}',
+    ].join('\n'))],
+  ['emote-undo gate would catch a rebase that keeps the obsolete snapshot',
+    !stickerConflictUndoIsSafe([
+      'function mutateStickerOrganization() {',
+      '  const before = stickerOrganizationSnapshot();',
+      '  if (state.runtime.lastStickerWriteWasStale) {',
+      '    state.stickerPreferences = readStickerPreferences();',
+      '  }',
+      '  restoreStickerOrganization(before);',
+      '}',
+      'function focusPickerStickerGroupInput() {}',
+    ].join('\n'))],
   ['byte-region gate would catch a region growing past the allowance',
     compareToBaseline({ total: 10, regions: [{ name: 'TRANSLATIONS', bytes: 1 }] },
       { regions: [{ name: 'TRANSLATIONS', bytes: 1 - REGION_GROWTH_ALLOWANCE - 1 }] }).length === 1],

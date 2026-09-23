@@ -223,7 +223,7 @@ export function createLive(host) {
    * marks follow-gated; ordinary channel emotes never reach this path.
    */
   async function mutateKickChannelFollow(slug, method = 'POST') {
-    if (!isValidSlug(slug || '')) return { ok: false, status: 'invalid-channel' };
+    if (!isValidSlug(slug || '')) return { ok: false, status: 'invalid-channel', created: false };
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
     try {
@@ -239,9 +239,14 @@ export function createLive(host) {
         headers,
         signal: controller.signal,
       });
-      return { ok: response.ok || response.status === 409, status: response.status };
+      const alreadyFollowing = method === 'POST' && response.status === 409;
+      return {
+        ok: response.ok || alreadyFollowing,
+        status: response.status,
+        created: method === 'POST' && response.ok,
+      };
     } catch (error) {
-      return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network' };
+      return { ok: false, status: error?.name === 'AbortError' ? 'timeout' : 'network', created: false };
     } finally {
       clearTimeout(timer);
     }

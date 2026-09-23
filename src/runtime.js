@@ -3203,11 +3203,7 @@ function stickerSyncChannel() {
   try {
     state.runtime.stickerChannel = new BroadcastChannel('kick-focus:emotes');
     state.runtime.stickerChannel.addEventListener('message', guard('emote sync', () => {
-      state.stickerPreferences = readStickerPreferences();
-      applySettingsAttributes();
-      renderStickerOrganizer();
-      if (state.modal && !state.modal.hidden && state.currentPage === 'emotes') renderSettingsPage();
-      scheduleApply(0);
+      hydrateLibrary().catch((error) => logAppError('library sync', error));
     }));
   } catch {
     state.runtime.stickerChannel = null;
@@ -3224,7 +3220,7 @@ function persistStickerPreferences() {
   if (result.ok) {
     try { stickerSyncChannel()?.postMessage({ type: 'emotes-changed' }); } catch { /* a tab that misses it re-reads on its next commit */ }
   }
-  return value;
+  return result;
 }
 
 /**
@@ -3267,18 +3263,35 @@ function readStoredLibrarySeed() {
   storageHealth.librarySeed = { truncated: Math.max(0, total - held), total };
 }
 
-async function hydrateLibrary() {
+let stickerHydrationPending = null;
+let stickerHydrationRequested = false;
+
+async function refreshStickerPreferencesFromStore() {
   readStoredLibrarySeed();
-  const merged = await libraryStore.hydrate();
-  if (!merged) return;
+  const merged = await libraryStore.hydrate() || libraryStore.readSync();
   const value = normalizeStickerPreferences(merged);
-  if (value.library.length <= state.stickerPreferences.library.size) return;
   state.stickerPreferences = stickerPreferencesFromValue(value);
   state.runtime.stickerCatalogDirty = true;
+  if (state.runtime.suspended) return;
+  applySettingsAttributes();
   renderStickerOrganizer();
+  if (state.modal && !state.modal.hidden && state.currentPage === 'emotes') renderSettingsPage();
   for (const summary of state.shadow?.querySelectorAll('[data-kf-sticker-library-summary]') || []) {
     summary.textContent = stickerLibrarySummary();
   }
+  scheduleApply(0);
+}
+
+function hydrateLibrary() {
+  stickerHydrationRequested = true;
+  if (stickerHydrationPending) return stickerHydrationPending;
+  stickerHydrationPending = (async () => {
+    do {
+      stickerHydrationRequested = false;
+      await refreshStickerPreferencesFromStore();
+    } while (stickerHydrationRequested);
+  })().finally(() => { stickerHydrationPending = null; });
+  return stickerHydrationPending;
 }
 
 // ---------------------------------------------------------------------------
@@ -6267,7 +6280,7 @@ function clearStickerPreferences() {
   showToast('Emote favorites, removals, and custom groups reset.');
 }
 
-function commitPickerStickerChange() {
+function repaintStickerOrganization() {
   for (const [key, descriptor] of state.stickerCatalog) {
     for (const original of descriptor.originals || []) {
       original.dataset.kfStickerHidden = String(state.stickerPreferences.hidden.has(key));
@@ -6275,11 +6288,15 @@ function commitPickerStickerChange() {
       original.dataset.kfStickerLocked = String(descriptor.locked === true);
     }
   }
-  persistStickerPreferences();
   applySettingsAttributes();
   renderStickerOrganizer();
   if (state.modal && !state.modal.hidden && state.currentPage === 'emotes') renderSettingsPage();
   scheduleApply(0);
+}
+
+function commitPickerStickerChange() {
+  persistStickerPreferences();
+  repaintStickerOrganization();
 }
 
 /**
@@ -6325,6 +6342,23 @@ function restoreStickerOrganization(snapshot) {
   }
 }
 
+function stickerOrganizationSignature(snapshot) {
+  const byKey = ([left], [right]) => String(left).localeCompare(String(right));
+  return JSON.stringify({
+    favorites: snapshot.favorites,
+    order: snapshot.order,
+    hidden: [...snapshot.hidden].sort(),
+    view: snapshot.view,
+    activeGroup: snapshot.activeGroup,
+    groups: snapshot.groups,
+    assignments: [...snapshot.assignments].sort(byKey),
+  });
+}
+
+function sameStickerOrganization(left, right) {
+  return stickerOrganizationSignature(left) === stickerOrganizationSignature(right);
+}
+
 /**
  * The one way this build changes emote organization, and the one inverse.
  *
@@ -6343,7 +6377,7 @@ function restoreStickerOrganization(snapshot) {
  * the undo path too or Undo silently moves focus to the top of the grid.
  */
 function mutateStickerOrganization(mutate, message, undoMessage = 'Emote organization restored.', afterCommit = null) {
-  const before = stickerOrganizationSnapshot();
+  let before = stickerOrganizationSnapshot();
   mutate();
   commitPickerStickerChange();
   // Another tab wrote while this one was holding its state, so the commit was
@@ -6354,16 +6388,35 @@ function mutateStickerOrganization(mutate, message, undoMessage = 'Emote organiz
   // more use than a third attempt.
   if (state.runtime.lastStickerWriteWasStale) {
     state.stickerPreferences = readStickerPreferences();
+    before = stickerOrganizationSnapshot();
     mutate();
     commitPickerStickerChange();
-    if (state.runtime.lastStickerWriteWasStale) showToast(tr('Another tab changed your emotes first. Check them before continuing.'), true);
+    if (state.runtime.lastStickerWriteWasStale) {
+      state.stickerPreferences = readStickerPreferences();
+      repaintStickerOrganization();
+      afterCommit?.();
+      showToast(tr('Another tab changed your emotes first. Check them before continuing.'), true);
+      return;
+    }
   }
+  const after = stickerOrganizationSnapshot();
   afterCommit?.();
   showToast(message, false, [{
     label: 'Undo',
     onClick: () => {
+      if (!sameStickerOrganization(stickerOrganizationSnapshot(), after)) {
+        showToast(tr('Another tab changed your emotes first. Check them before continuing.'), true);
+        return;
+      }
       restoreStickerOrganization(before);
       commitPickerStickerChange();
+      if (state.runtime.lastStickerWriteWasStale) {
+        state.stickerPreferences = readStickerPreferences();
+        repaintStickerOrganization();
+        afterCommit?.();
+        showToast(tr('Another tab changed your emotes first. Check them before continuing.'), true);
+        return;
+      }
       afterCommit?.();
       showToast(undoMessage);
     },
@@ -6713,7 +6766,26 @@ function handleStickerAction(event) {
   }
 }
 
-function updateFollowedEmoteState(slug, followed) {
+async function commitStickerPreferenceMutation(mutate) {
+  let value;
+  let result = { ok: false, foreign: false };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    value = mutate();
+    result = persistStickerPreferences();
+    if (result.ok) return { ok: true, value, result };
+    await hydrateLibrary();
+    if (!result.foreign) break;
+  }
+  return { ok: false, value, result };
+}
+
+function showStickerCommitFailure(result) {
+  showToast(result?.foreign
+    ? tr('Another tab changed your emotes first. Check them before continuing.')
+    : tr('Your emote changes could not be saved. Reload this page before trying again.'), true);
+}
+
+function applyFollowedEmoteState(slug, followed) {
   const source = String(slug || '').toLowerCase();
   for (const emote of state.live.catalog?.emotes || []) {
     if (String(emote.sourceSlug || '').toLowerCase() === source) emote.followed = followed;
@@ -6726,19 +6798,34 @@ function updateFollowedEmoteState(slug, followed) {
       access: followed ? (entry.subscribersOnly ? 'locked' : 'channel') : 'locked',
     });
   }
-  persistStickerPreferences();
+}
+
+async function updateFollowedEmoteState(slug, followed) {
+  const commit = await commitStickerPreferenceMutation(() => {
+    applyFollowedEmoteState(slug, followed);
+  });
+  // The account mutation already happened. If local storage is unavailable,
+  // keep this page honest and let the persistent storage warning explain why
+  // a reload may need to learn the relationship from Kick again.
+  if (!commit.ok) applyFollowedEmoteState(slug, followed);
+  return commit.ok;
 }
 
 async function undoChatStickerSave({ key, scope, removeFavorite, unfollowSlug }) {
   if (removeFavorite) {
-    state.stickerPreferences.favorites = state.stickerPreferences.favorites
-      .filter((entry) => !(entry.key === key && entry.channel === scope));
-    persistStickerPreferences();
+    const commit = await commitStickerPreferenceMutation(() => {
+      state.stickerPreferences.favorites = state.stickerPreferences.favorites
+        .filter((entry) => !(entry.key === key && entry.channel === scope));
+    });
+    if (!commit.ok) {
+      showStickerCommitFailure(commit.result);
+      return;
+    }
     scheduleApply(0);
   }
   if (unfollowSlug) {
     const result = await mutateKickChannelFollow(unfollowSlug, 'DELETE');
-    if (result.ok) updateFollowedEmoteState(unfollowSlug, false);
+    if (result.ok) await updateFollowedEmoteState(unfollowSlug, false);
     else {
       showToast(trf('The emote was removed, but Kick could not unfollow {channel}.', { channel: unfollowSlug }), true);
       return;
@@ -6755,17 +6842,24 @@ async function saveChatSticker(image) {
   image.setAttribute('aria-busy', 'true');
   try {
     const scope = newFavoriteChannel();
-    const alreadyFavorite = isFavorited(sticker.key);
-    state.stickerPreferences.hidden.delete(sticker.key);
-    mergeStickerLibrary([sticker]);
-    if (!alreadyFavorite) {
-      state.stickerPreferences.favorites = toggleStickerFavorite(
-        state.stickerPreferences.favorites,
-        sticker.key,
-        scope,
-      );
+    const commit = await commitStickerPreferenceMutation(() => {
+      const alreadyFavorite = isFavorited(sticker.key);
+      state.stickerPreferences.hidden.delete(sticker.key);
+      mergeStickerLibrary([sticker]);
+      if (!alreadyFavorite) {
+        state.stickerPreferences.favorites = toggleStickerFavorite(
+          state.stickerPreferences.favorites,
+          sticker.key,
+          scope,
+        );
+      }
+      return { alreadyFavorite };
+    });
+    if (!commit.ok) {
+      showStickerCommitFailure(commit.result);
+      return;
     }
-    persistStickerPreferences();
+    const { alreadyFavorite } = commit.value;
     announce(alreadyFavorite ? 'Emote already saved' : 'Emote saved');
 
     const follow = emoteFollowRequirement(sticker, sticker.sourceSlug);
@@ -6781,8 +6875,8 @@ async function saveChatSticker(image) {
         showToast(trf('Saved {name} locally, but Kick could not follow {channel} ({status}). Sign in or reload the channel and try again.', { name: sticker.name, channel: follow.slug, status: result.status }), true);
         return;
       }
-      followedNow = true;
-      updateFollowedEmoteState(follow.slug, true);
+      followedNow = result.created === true;
+      await updateFollowedEmoteState(follow.slug, true);
     }
 
     const stored = state.stickerPreferences.library.get(sticker.key) || sticker;
@@ -9988,6 +10082,7 @@ const TRANSLATIONS = {
   'Nothing removed': ['No hay emotes eliminados', 'Nenhum emote removido'],
   'Emotes you remove will stay recoverable here.': ['Los emotes que elimines se podrán recuperar aquí.', 'Os emotes que você remover poderão ser recuperados aqui.'],
   'The emote could not be saved. The error log on the Content & Ads page says why.': ['No se pudo guardar el emote. El registro de errores de la página Contenido y anuncios dice por qué.', 'Não foi possível salvar o emote. O registro de erros da página Conteúdo e anúncios diz por quê.'],
+  'Your emote changes could not be saved. Reload this page before trying again.': ['No se pudieron guardar los cambios de emotes. Recarga esta página antes de volver a intentarlo.', 'Não foi possível salvar as alterações de emotes. Recarregue esta página antes de tentar novamente.'],
   'Open a channel page first.': ['Abre primero la página de un canal.', 'Abra primeiro a página de um canal.'],
   'Local channel tools saved.': ['Herramientas locales del canal guardadas.', 'Ferramentas locais do canal salvas.'],
   'Local channel tools cleared.': ['Herramientas locales del canal borradas.', 'Ferramentas locais do canal limpas.'],
@@ -10021,6 +10116,7 @@ const TRANSLATIONS = {
   'Could not read that settings file. Pick a JSON file exported by Kick Focus.': ['No se pudo leer ese archivo de configuración. Elige un archivo JSON exportado por Kick Focus.', 'Não foi possível ler esse arquivo de configurações. Escolha um arquivo JSON exportado pelo Kick Focus.'],
   'That backup is too large for this browser’s storage. Nothing was changed.': ['Esa copia de seguridad es demasiado grande para el almacenamiento de este navegador. No se cambió nada.', 'Esse backup é grande demais para o armazenamento deste navegador. Nada foi alterado.'],
   'The import could not be saved. Your previous settings are unchanged.': ['No se pudo guardar la importación. Tu configuración anterior no ha cambiado.', 'Não foi possível salvar a importação. Suas configurações anteriores não foram alteradas.'],
+  'A recovery backup could not be saved. Nothing was changed.': ['No se pudo guardar una copia de recuperación. No se cambió nada.', 'Não foi possível salvar um backup de recuperação. Nada foi alterado.'],
   'Settings imported.': ['Configuración importada.', 'Configurações importadas.'],
   'Previous settings backed up. Use Undo import to restore them.': ['Se hizo una copia de la configuración anterior. Usa Deshacer importación para restaurarla.', 'Foi feito backup das configurações anteriores. Use Desfazer importação para restaurá-las.'],
   ' and {count} more': [' y {count} más', ' e mais {count}'],
@@ -11713,7 +11809,6 @@ function clearPrivateData() {
   gmDelete(CHANNEL_NOTES_KEY);
   state.mediaPreferences = {};
   gmDelete(MEDIA_PREFERENCES_KEY);
-  gmDelete(PRE_IMPORT_BACKUP_KEY);
 }
 
 /**
@@ -11726,9 +11821,19 @@ function clearPrivateData() {
  * the tab rather than only the toast.
  */
 function resetSettings(scope) {
-  // Taken before anything is thrown away, and written after, because the 'all'
-  // path clears every private store including the slot this goes in.
+  const section = scope === 'all' ? null : resettableSection(state.currentPage);
+  if (scope !== 'all' && !section) {
+    showToast('This page has nothing to reset.', true);
+    return;
+  }
   const before = currentExportPayload();
+  if (!gmSet(PRE_IMPORT_BACKUP_KEY, {
+    action: scope === 'all' ? 'reset-all' : 'reset-page',
+    payload: before,
+  })) {
+    showToast(tr('A recovery backup could not be saved. Nothing was changed.'), true);
+    return;
+  }
   if (scope === 'all') {
     state.settings = normalizeSettings(DEFAULT_SETTINGS);
     gmDelete(STORAGE_KEY);
@@ -11738,19 +11843,9 @@ function resetSettings(scope) {
     clearPrivateData();
     saveSettings('All settings reset');
   } else {
-    const section = resettableSection(state.currentPage);
-    // A page with no section of its own has nothing to reset. Saying so and
-    // stopping is the point: this used to fall through, announce a reset that
-    // had not happened, and overwrite the undo slot with a snapshot of the
-    // unchanged state — throwing away a real import's undo on a stray click.
-    if (!section) {
-      showToast('This page has nothing to reset.', true);
-      return;
-    }
     state.settings = normalizeSettings({ ...state.settings, [section]: DEFAULT_SETTINGS[section] });
     saveSettings('Page reset');
   }
-  gmSet(PRE_IMPORT_BACKUP_KEY, { action: scope === 'all' ? 'reset-all' : 'reset-page', payload: before });
   renderSettingsPage();
   scheduleApply(0);
   announce('Settings reset');
@@ -11810,13 +11905,14 @@ function exportSettings() {
  */
 function applyImportedStores(result) {
   const entries = [];
+  const stickerPlan = result.stickers ? libraryStore.prepareReplacement(result.stickers) : null;
   if (result.settings) entries.push([STORAGE_KEY, result.settings]);
   // The transaction has to stay one sized write, so what it commits is the
   // bounded seed; the complete library follows into the database once the
   // commit succeeds. Pushing the whole library through here instead would both
   // blow the size budget the transaction is checking and leave the database
   // holding a backup the user had just replaced.
-  if (result.stickers) entries.push([STICKER_PREFERENCES_KEY, planLibraryPersist(result.stickers).seed]);
+  if (stickerPlan) entries.push([STICKER_PREFERENCES_KEY, stickerPlan.seed]);
   if (result.usage) entries.push([EMOTE_USAGE_KEY, result.usage]);
   if (result.multistream) entries.push([MULTISTREAM_KEY, result.multistream]);
   if (result.channelLayouts) entries.push([CHANNEL_LAYOUT_KEY, result.channelLayouts]);
@@ -11833,14 +11929,19 @@ function applyImportedStores(result) {
 
   if (result.settings) state.settings = result.settings;
   state.settingsIndex = null;
-  if (result.stickers) {
-    noteLibrarySeed(libraryStore.write(result.stickers), result.stickers);
+  if (stickerPlan) {
+    noteLibrarySeed(libraryStore.commitReplacement(stickerPlan), result.stickers);
     state.stickerPreferences = stickerPreferencesFromValue(result.stickers);
     state.runtime.stickerCatalogDirty = true;
     state.runtime.stickerLibraryFilter = 'all';
     state.runtime.stickerLibraryQuery = '';
     state.runtime.stickerLibrarySelection.clear();
     state.runtime.stickerLibraryBulkGroup = '';
+    libraryStore.flush()
+      .then(() => {
+        try { stickerSyncChannel()?.postMessage({ type: 'emotes-changed' }); } catch { /* the next store read still converges */ }
+      })
+      .catch((error) => logAppError('library replacement', error));
   }
   if (result.usage) state.emoteUsage = result.usage;
   if (result.multistream) {
@@ -11871,15 +11972,21 @@ async function onImportFile(event) {
       return;
     }
     const snapshot = currentExportPayload();
+    const previousRecovery = gmGet(PRE_IMPORT_BACKUP_KEY, null);
+    if (!gmSet(PRE_IMPORT_BACKUP_KEY, { action: 'import', payload: snapshot })) {
+      showToast(tr('A recovery backup could not be saved. Nothing was changed.'), true);
+      return;
+    }
     const commit = applyImportedStores(result);
     if (!commit.ok) {
+      if (previousRecovery === null) gmDelete(PRE_IMPORT_BACKUP_KEY);
+      else gmSet(PRE_IMPORT_BACKUP_KEY, previousRecovery);
       const message = commit.reason === 'over-budget'
         ? tr('That backup is too large for this browser’s storage. Nothing was changed.')
         : tr('The import could not be saved. Your previous settings are unchanged.');
       showToast(message, true);
       return;
     }
-    gmSet(PRE_IMPORT_BACKUP_KEY, { action: 'import', payload: snapshot });
     renderSettingsPage();
     scheduleApply(0);
     // Naming what was not kept, because an import that silently drops half a
@@ -13780,6 +13887,7 @@ function installCompanionBridge() {
   });
   handshakeCompanion();
   openSharedLayoutFromUrl();
+  stickerSyncChannel();
   // Off the boot path deliberately: the interface is already on screen, and the
   // fuller library arrives when the database answers.
   hydrateLibrary().catch((error) => logAppError('library hydrate', error));

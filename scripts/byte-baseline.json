@@ -1,18 +1,18 @@
 {
   "artifact": "dist/kick-focus.user.js",
-  "total": 888279,
+  "total": 895799,
   "regions": [
     {
       "name": "TRANSLATIONS",
-      "bytes": 118541
+      "bytes": 119339
     },
     {
       "name": "SITE_CSS",
-      "bytes": 65642
+      "bytes": 66701
     },
     {
       "name": "UI_CSS",
-      "bytes": 53894
+      "bytes": 54170
     },
     {
       "name": "PREVIEW_DATA_URI",
@@ -48,7 +48,7 @@
     },
     {
       "name": "remainder",
-      "bytes": 624973
+      "bytes": 630360
     }
   ]
 }

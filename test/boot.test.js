@@ -193,6 +193,112 @@ test('the built bundle boots in a stubbed environment without a TDZ or bad const
   assert.equal(context.window.__kickFocusBooted, true);
 });
 
+test('a contested chat emote save is durable before follow and undo account writes', { tags: ['artifact'] }, async () => {
+  const bundle = await readArtifact('dist/kick-focus.user.js');
+  const instrumented = bundle.replace(/\r?\n\}\)\(\);\s*$/, `
+window.__kickFocusArtifactTest = {
+  state,
+  saveChatSticker,
+  undoChatStickerSave,
+  stickerPreferencesValue,
+  STICKER_PREFERENCES_KEY,
+};
+})();
+`);
+  assert.notEqual(instrumented, bundle, 'the artifact test hook was not inserted inside the bundle closure');
+  const accountWrites = [];
+  let context;
+  const fetch = async (url, init = {}) => {
+    accountWrites.push({
+      url: String(url),
+      method: init.method,
+      stored: JSON.parse(context.localStorage.getItem('kick-focus:sticker-preferences') || '{}'),
+    });
+    return { ok: true, status: 200 };
+  };
+  context = makeBootEnvironment({ AbortController, fetch });
+  context.document.cookie = '';
+  vm.runInNewContext(instrumented, context, { filename: resolve(root, 'dist/kick-focus.artifact-test.js') });
+  accountWrites.length = 0;
+
+  const hooks = context.window.__kickFocusArtifactTest;
+  hooks.state.settings.content.clickChatEmotes = true;
+  hooks.state.settings.content.favoriteScope = 'global';
+  hooks.state.live.catalog = { emotes: [{
+      id: '42', name: 'Wave', setName: 'Alpha', sourceSlug: 'alpha', kind: 'channel',
+      requiresFollow: true, followed: false, subscribersOnly: false, entitlement: 'unknown',
+  }] };
+
+  // Move the commit stamp after this tab's boot read. The first local write
+  // must be refused, reloaded, and replayed before the POST can happen.
+  context.localStorage.setItem(hooks.STICKER_PREFERENCES_KEY, JSON.stringify({
+    ...hooks.stickerPreferencesValue(),
+    commit: { writer: 'other-tab', sequence: 1 },
+  }));
+  const attributes = new Map([
+    ['src', 'https://files.kick.com/emotes/42/fullsize'],
+    ['alt', 'Wave'],
+    ['data-emote-id', '42'],
+  ]);
+  const image = {
+    dataset: { emoteId: '42' },
+    getAttribute: (name) => attributes.get(name) || null,
+    setAttribute: (name, value) => attributes.set(name, String(value)),
+    removeAttribute: (name) => attributes.delete(name),
+  };
+
+  await hooks.saveChatSticker(image);
+  const afterSave = hooks.stickerPreferencesValue();
+  await hooks.undoChatStickerSave({
+    key: 'kick:id:42', scope: '', removeFavorite: true, unfollowSlug: 'alpha',
+  });
+  const result = {
+    afterSave,
+    afterUndo: hooks.stickerPreferencesValue(),
+    busy: attributes.has('aria-busy'),
+  };
+
+  assert.equal(accountWrites.length, 2, 'one POST and its explicit undo DELETE reach Kick');
+  assert.equal(accountWrites[0].method, 'POST');
+  assert.equal(accountWrites[0].stored.favorites[0]?.key, 'kick:id:42',
+    'the favorite is on disk before the follow request starts');
+  assert.equal(accountWrites[0].stored.library.some((entry) => entry.key === 'kick:id:42'), true,
+    'the emote library entry is on disk before the follow request starts');
+  assert.equal(accountWrites[1].method, 'DELETE');
+  assert.deepEqual(accountWrites[1].stored.favorites, [],
+    'Undo removes the local favorite before it reverses the account follow');
+  assert.equal(result.afterSave.library.find((entry) => entry.key === 'kick:id:42')?.followed, true);
+  assert.deepEqual([...result.afterUndo.favorites], []);
+  assert.equal(result.afterUndo.library.find((entry) => entry.key === 'kick:id:42')?.followed, false);
+  assert.equal(result.busy, false, 'the gesture always releases its busy state');
+});
+
+test('the complete interface boot tolerates a sparse but present page body', { tags: ['artifact'] }, async () => {
+  const bundle = await readArtifact('dist/kick-focus.user.js');
+  const context = makeBootEnvironment();
+  const surface = fakeNode();
+  const nodes = new Map();
+  surface.querySelector = (selector) => {
+    if (!nodes.has(selector)) nodes.set(selector, fakeNode());
+    return nodes.get(selector);
+  };
+  surface.querySelectorAll = () => [];
+  context.document.body = fakeNode();
+  context.document.createElement = (tag) => {
+    context.document.__created.push(String(tag).toLowerCase());
+    const node = fakeNode();
+    node.attachShadow = () => surface;
+    return node;
+  };
+
+  vm.runInNewContext(bundle, context, BUNDLE_RUN_OPTIONS);
+
+  assert.equal(context.window.__kickFocusBooted, true);
+  assert.ok(nodes.has('[data-kf-settings-backdrop]'), 'the settings dialog was wired');
+  assert.ok(nodes.has('[data-kf-command-list]'), 'the command list was wired');
+  assert.equal(context.document.__created.includes('div'), true, 'the interface host was created');
+});
+
 test('the built bundle resolves every embedded visual asset', { tags: ['artifact'] }, async () => {
   const bundle = await readArtifact('dist/kick-focus.user.js');
   assert.equal(bundle.includes('__KICK_FOCUS_ICON__'), false, 'icon placeholder survived the build');
@@ -586,8 +692,45 @@ test('reset recovery persists without a timer and the page keyboard stays with K
   const privateReset = source.slice(source.indexOf('function clearPrivateData'), source.indexOf('\n}\n\n/**', source.indexOf('function clearPrivateData')));
   assert.doesNotMatch(privateReset, /REWARD_STATE_KEY|state\.reward/,
     'full reset still deletes reward history that its undo snapshot cannot restore');
+  assert.doesNotMatch(privateReset, /PRE_IMPORT_BACKUP_KEY/,
+    'full reset still deletes the recovery slot after creating it');
+  const resetStart = source.indexOf('function resetSettings');
+  const reset = source.slice(resetStart, source.indexOf('\n}\n\n// Everything the About page', resetStart));
+  assert.ok(reset.indexOf('gmSet(PRE_IMPORT_BACKUP_KEY') < reset.indexOf("if (scope === 'all')"),
+    'reset still creates its recovery backup after destructive writes');
+  assert.match(reset, /if \(!gmSet\(PRE_IMPORT_BACKUP_KEY,[\s\S]*?Nothing was changed/,
+    'reset still proceeds when the recovery backup cannot be saved');
+  const importStart = source.indexOf('async function onImportFile');
+  const importHandler = source.slice(importStart, source.indexOf('\n}\n\nfunction undoLastDestructiveAction', importStart));
+  assert.ok(importHandler.indexOf('gmSet(PRE_IMPORT_BACKUP_KEY') < importHandler.indexOf('applyImportedStores(result)'),
+    'import still creates its recovery backup after replacing stored data');
+  assert.match(importHandler, /if \(!gmSet\(PRE_IMPORT_BACKUP_KEY,[\s\S]*?Nothing was changed/,
+    'import still proceeds when the recovery backup cannot be saved');
+  const applyStart = source.indexOf('function applyImportedStores');
+  const applyImport = source.slice(applyStart, source.indexOf('\n}\n\nasync function onImportFile', applyStart));
+  assert.match(applyImport, /prepareReplacement\(result\.stickers\)[\s\S]*commitReplacement\(stickerPlan\)/,
+    'import does not carry one replacement stamp through the seed and database record');
+  assert.doesNotMatch(applyImport, /libraryStore\.write\(result\.stickers\)/,
+    'import still asks the stale-write guard to accept its own unstamped seed');
   assert.match(source, /Local reward check history is also kept so reset cannot make a handled reward look due again\./,
     'the reset copy must explain why reward history stays');
+});
+
+test('chat emote saves are durable before account follow mutations', { tags: ['artifact'] }, async () => {
+  const source = await readFile(resolve(root, 'src/runtime.js'), 'utf8');
+  const helperStart = source.indexOf('async function commitStickerPreferenceMutation');
+  const helper = source.slice(helperStart, source.indexOf('\n}\n\nfunction showStickerCommitFailure', helperStart));
+  assert.match(helper, /attempt < 2[\s\S]*persistStickerPreferences\(\)[\s\S]*await hydrateLibrary\(\)[\s\S]*!result\.foreign/,
+    'a contested emote write must reload and retry once without looping on storage failure');
+
+  const saveStart = source.indexOf('async function saveChatSticker');
+  const save = source.slice(saveStart, source.indexOf('\n}\n\nfunction handleChatStickerSave', saveStart));
+  assert.ok(save.indexOf('await commitStickerPreferenceMutation') < save.indexOf('await mutateKickChannelFollow'),
+    'the Kick follow request can still run before the local emote save is durable');
+  assert.match(save, /followedNow = result\.created === true/,
+    'Undo follow must only be offered when this gesture created the relationship');
+  assert.doesNotMatch(save, /followedNow = true/,
+    'a 409 already-following response still looks like a newly created relationship');
 });
 
 test('followed sidebar rows install no hover or focus popup', { tags: ['artifact'] }, async () => {
