@@ -111,14 +111,6 @@ None open.
 
 ### P2
 
-- [x] P2: R-112: Localize popup and extension metadata to the shipped languages
-  Why: The page UI supports English, Spanish, and Portuguese, but both manifests and the companion popup remain English-only.
-  Evidence: src/runtime.js translations; src/extension/popup.html; src/extension/manifest.json; src/extension/manifest.firefox.json; https://developer.chrome.com/docs/extensions/reference/api/i18n
-  Touches: src/extension/_locales/en, es, and pt_BR, both manifests, popup HTML and JS, scripts/check.mjs, companion tests
-  Acceptance: Name, description, action title, popup controls, errors, and status text have key-parity in en, es, and pt_BR; the popup sets lang and dir; stored pt remains compatible while document metadata emits pt-BR; packaging fails on a missing or unused key.
-  Shipped: Both packages carry the same 55 keys in en, es, and pt_BR. Manifests localize their name, description, and action title. The popup localizes every control, title, status, and error, writes lang and dir, maps stored pt to pt-BR, and the artifact test rejects key drift or dead messages.
-  Complexity: M
-
 - [ ] P2: R-114: Extract the emote workspace from runtime behind a host factory
   Why: src/runtime.js is 12,864 lines and the emote picker, library, groups, selection, restore, and completion state now form the largest coherent boundary left in the monolith.
   Evidence: src/runtime.js emote workspace; src/settings.mjs createSettings factory; scripts/build.mjs concatenation order
@@ -183,14 +175,6 @@ None open.
   Acceptance: Library opened from a profile comment shows Back to comment as its primary exit; returning restores the route, picker view, search, group, scroll window, and focus at the native comment control; if the original composer no longer exists, the action becomes Done and reports that the page changed; opening Library from normal settings keeps the existing settings return path.
   Complexity: S
 
-- [x] P2: R-129: Keep emote management affordances discoverable at every supported width
-  Why: Tile actions rely on hover or focus and narrow top actions become icon-only, which hides organization from pointer and touchpad users who have not learned the surface.
-  Evidence: design/qa/emote-picker-all-v1.38.png; design/qa/emote-picker-narrow-v1.38.png; design/qa/settings-responsive-680.jpg; visual audit on 2026-08-23
-  Touches: picker and Library styles, action labels or overflow menu, settings navigation overflow cue, visual references, browser geometry checks
-  Acceptance: Every tile has one visible management affordance at rest; Favorite and Remove remain reachable in one additional activation at most; narrow top actions use labels where they fit and a named overflow menu otherwise; controls are at least 24 by 24 CSS pixels normally and 40 by 40 when Larger targets is enabled; nothing clips or covers the native composer; screenshot comparison passes at 1440, 900, and 680 pixels in Studio, OLED, and Slate.
-  Shipped 2026-08-25: Favorite stays visible at rest and Remove remains directly reachable on hover or focus. Browser geometry measured 24-pixel normal controls and 40-pixel Larger pointer targets, with matching virtual-grid rows. Paired reference checks and a nine-shot theme and width matrix verified the native composer and organizer at 1440, 900, and 680 pixels in Studio, OLED, and Slate. A follow-up made the organizer respond to its own rail width and added Compact, Balanced, and Roomy densities plus Short, Medium, and Tall shelf heights.
-  Complexity: S
-
 - [ ] P2: R-130: Add a private emote workspace self-check and diagnostics block
   Why: Current diagnostics cannot distinguish a missing picker anchor, stale catalog, failed storage provider, bad window range, or mutation conflict without inspecting code.
   Evidence: src/runtime.js diagnostics and picker state; src/storage.mjs providers and seed; src/settings.mjs About diagnostics
@@ -215,35 +199,6 @@ Found during a full-repository audit. Everything the audit fixed is in
   Why: R-104 asked for render, action, empty/error, persistence and localization contracts per page and delivered render, empty/error and localization. The two missing ones cannot be written against `createSettings`, which is a pure renderer: the click path is `onInterfaceClick` in src/runtime.js, which has no imports and is only ever concatenated, so no test can call it. An adversarial review named this on 2026-08-25 and it is a fair reading of the criterion.
   Where: src/runtime.js `onInterfaceClick` and `updateSetting`; test/settings.test.js; scripts/verify-extension.mjs
   Acceptance: Pressing a control on each of the seven pages runs the action it declares and, for a setting, the value is read back from storage afterwards. Either extract the click routing behind a host factory the way `createSettings` and `createMultistream` already are, so it can be driven offline, or add the coverage to the live gate where a real click exists. Whichever is chosen, a missing handler for a rendered `data-action` must fail rather than do nothing.
-  Complexity: M
-
-- [x] P2: R-148: Make the reset Undo reachable for longer than seven seconds
-  Why: R-107's criterion says "a focused status toast with Undo". The toast is `role="status"` with `aria-live="polite"` and is never focused, and its Undo button is removed by a 7,000 ms timer. After a *page* reset the only other Undo is on the About page, so a keyboard or screen-reader user has seven seconds to reach a polite live region, or has to navigate to a different settings page to find the offer again. Moving focus to a toast unprompted is its own accessibility problem, so this is a design decision rather than a one-line fix.
-  Where: src/runtime.js `showToast` (the 7,000 ms action timeout) and `resetSettings`; src/settings.mjs About page undo button
-  Acceptance: After any reset, the Undo is reachable by keyboard without racing a timer. The action toast either persists until dismissed or acted on, or the offer appears on the page that was just reset rather than only on About. Whatever is chosen must not move focus without the user asking.
-  Shipped: The action toast persists until Undo or Dismiss is pressed, sits above the settings footer, and leaves focus where the reset began.
-  Complexity: S
-
-- [x] P2: R-149: Include the reward record in the reset snapshot, or stop clearing it
-  Why: `clearPrivateData` deletes `REWARD_STATE_KEY` (`lastClaimAt`, `claims`) on a full reset, and `currentExportPayload` does not carry it, so the Undo written beside that reset cannot put it back. R-107's criterion lists settings, notes, filters and channel lists rather than this. It is still state a reset destroys with no way back, which is the thing the undo exists to prevent.
-  Where: src/runtime.js `clearPrivateData`, `currentExportPayload`, the store registry in src/core.mjs, and the import validation that has to accept a new section
-Acceptance: Either the reward record travels with the export payload, so import, export and Undo all round-trip it, or the reset leaves it alone and says why. Adding it means the import validator and the About page's store list have to know about it too.
-Shipped 2026-08-25: Full reset now leaves the local reward-check record untouched. The About page explains that the record prevents reset from making a handled reward appear due again, while settings, notes, filters, channel lists, usage, layouts, and boards still reset and remain covered by Undo.
-Complexity: S
-
-- [x] P2: R-150: Keep every settings page inside the 375-pixel phone viewport
-  Why: The second responsive audit measured two gaps that spot screenshots missed. Appearance kept its desktop control column and the Content protection log let long request paths widen its table, so both pages clipped their right edge.
-  Where: src/runtime.js narrow settings rules; test/boot.test.js artifact contracts; design-qa.md responsive matrix
-  Acceptance: Every settings page has zero document overflow and no control outside its page at 375 by 812 pixels. Appearance stacks its control column, protection-log paths wrap inside a fixed table, and the same checks stay clean at 680, 900, and 1440 pixels.
-  Shipped 2026-08-25: Appearance now stacks the affected rows below 430 pixels. Content keeps all four protection-log columns inside the page and wraps long matches. A full seven-page matrix passed at 1440, 900, 680, and 375 pixels.
-  Complexity: S
-
-- [x] P2: R-137: Normalize the control geometry the panel renders
-  Why: Controls that sit in the same `.kf-control` column are 32, 36, 38 and 40 pixels tall (`.kf-switch`, `.kf-select`, `.kf-icon-button`, `.kf-button`), which reads as jitter down the right edge of every settings page. Eight radius literals bypass the Corner radius setting: `.kf-toast` and `.kf-toast-action` at 4px, `.kf-icon-button` at 5px, the About panel at 4px, the emote completion list and rows at 9px and 6px, and the two injected header buttons at 5px and 8px. Those two buttons also disagree on height, weight and font size while sitting in the same Kick chrome. Two focus treatments coexist: `outline: var(--focus-ring)` on the nav search, and `outline: 0` plus a box-shadow ring on `.kf-text`, `.kf-textarea`, `.kf-select`, and both multi-stream inputs.
-  Where: src/runtime.js UI_CSS around 7289-7500, 7769, 7819-7831, 11555-11573, 12598-12645
-  Acceptance: One control height scale, every radius through `--kf-radius` or a token derived from it, one focus treatment, and the two injected buttons sharing a declaration.
-  Found and fixed 2026-08-25: the test named "one focus treatment, defined once and used everywhere" scanned only for `outline: 0` written on a `:focus` selector line. `.kf-command-head input` set `outline: 0` in its base rule and received only a box-shadow on focus, so it slipped past a test whose name said it could not. The revised contract reads every base rule and rejects shadow-only focus rings as well.
-  Shipped: Settings uses 40 and 32 pixel control tokens, every adjustable corner reads from the radius scale, text controls use the shared outline, and both injected header actions share one base declaration. The artifact test now rejects base outline suppression, shadow-only focus rings, fixed settings radii, and drift between the two injected controls.
   Complexity: M
 
 ### P3
